@@ -1,0 +1,12 @@
+{
+  "name": "persona-chat-studio",
+  "version": "1.0.0",
+  "description": "仿 DeepSeek 网页端的人设扮演实时流式对话与三层上下文记忆系统",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node --no-warnings server/index.js"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  }
+}

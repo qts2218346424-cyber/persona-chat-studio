@@ -35,15 +35,22 @@ function buildLocalSmartAnalysis({ filename = '', rawText = '', focusMode = 'bal
   const baseName = path.basename(filename || '', path.extname(filename || '')).trim();
   const lines = clean.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
 
-  // 1. 识别剧本标题
-  let title = baseName;
-  if (!title || title === 'script' || title === 'draft') {
-    const h1 = lines.find((l) => /^#+\s+/.test(l) || /^《.+》$/.test(l));
-    if (h1) {
-      title = h1.replace(/^#+\s+/, '').replace(/^[《「]|[》」]$/g, '').trim().slice(0, 22);
-    } else {
-      title = (lines[0] || '未命名星语剧本').replace(/[。！？，,.!?：:].*$/, '').slice(0, 18) || '未命名互动剧本';
-    }
+  // 1. 识别剧本标题（优先提取正文中的显式书名号/Markdown一级标题，避免被英文临时文件名覆盖）
+  const h1 = lines.find((l) => /^#+\s+/.test(l) || /^[《「].+[》」]$/.test(l));
+  const headingTitle = h1
+    ? h1.replace(/^#+\s+/, '').replace(/^[《「]|[》」]$/g, '').trim().slice(0, 22)
+    : '';
+  const hasChineseBaseName = /[\u4e00-\u9fa5]/.test(baseName);
+
+  let title = '';
+  if (headingTitle) {
+    title = headingTitle;
+  } else if (hasChineseBaseName) {
+    title = baseName.replace(/^示例上传剧本[_-]?/, '').slice(0, 22);
+  } else if (baseName && !/^(?:script|draft|sample|test|upload)/i.test(baseName)) {
+    title = baseName.slice(0, 22);
+  } else {
+    title = (lines[0] || '未命名星语剧本').replace(/[。！？，,.!?：:].*$/, '').slice(0, 18) || '未命名互动剧本';
   }
 
   // 2. 自动推断题材氛围图标与副标题

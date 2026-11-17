@@ -2,7 +2,7 @@
   let initialUiMode = 'roleplay';
   let initialScriptId = 'script_clannad';
   try {
-    const savedMode = localStorage.getItem('ui_mode_v2');
+    const savedMode = localStorage.getItem('ui_mode_v3');
     if (savedMode === 'roleplay' || savedMode === 'deepseek') initialUiMode = savedMode;
     const savedSc = localStorage.getItem('active_script_id');
     if (savedSc) initialScriptId = savedSc;
@@ -12,6 +12,11 @@
     uiMode: initialUiMode, // 'roleplay' | 'deepseek'
     scripts: [],
     activeScriptId: initialScriptId,
+    squareItems: [],
+    squareFilterType: 'all',
+    workshopFocus: 'balanced',
+    workshopFilename: '',
+    workshopDraft: null,
     user: null,
     personas: [],
     sessions: [],
@@ -4736,23 +4741,101 @@
     showToast(`🎀 主控人设已更新！现在你是他眼中的「${res.user.user_persona.role || res.user.nickname}」`);
   });
 
-  // B. 📖 互动剧本选集大厅（先选剧本，不同剧本加载各自独立的登场人设与章节）
-  function openScriptSelectModal() {
-    renderPlazaModal();
-    plazaDialog.showModal();
+  // B. 📖 剧本与共创中心（我的剧本库 ｜ 上传与 AI 改剧本 ｜ 共创设计广场）
+  const WORKSHOP_SAMPLE_DRAFTS = {
+    piano: `# 《旧音乐室的雨夜四重奏》
+【世界观背景】
+海滨小镇的青叶高中即将拆除五十年前建成的木造旧音乐馆。每逢傍晚落雨，三楼上锁的旧琴房里总会传出半首未弹完的肖邦夜曲，却没人见过弹琴的人。
+
+【登场人物】
+角色1：白川诗织 —— 高三休学中的天才钢琴少女，因为一年前挚友转学失联而患上舞台失语症，每天傍晚偷偷从天台楼梯潜入旧琴房，试图补完两人当年合写的毕业曲。外表清冷寡言，其实一旦有人听懂她的琴声就会眼眶泛红。
+角色2：夏目阳葵 —— 元气爽朗的广播部二年级学妹，手里攥着一台录下神秘琴声的旧磁带录音机，拉着你成立“旧校舍不可思议调查团”，嘴上说想做独家广播专题，其实一直默默担心白川学姐的身体。
+
+【故事草稿】
+第一天放学下起暴雨，夏目阳葵拽着我去旧音乐馆躲雨录音，我们意外推开了三楼琴房的木门，撞见淋湿校服的白川诗织正对着泛黄乐谱发呆。距离旧音乐馆正式断电拆除只剩最后七天，我们决定帮她在拆除前办一场只有三个人的黄昏告别演奏会，找回乐谱丢失的最后一页……`,
+    train: `# 《银河铁道末班车的守望人》
+【世界观背景】
+在海平面上升后的雾港群岛，子夜零点有一列只在退潮时浮现轨道的水上蒸汽列车「白鸟号」，专门搭载放不下遗憾的旅人前往记忆尽头的灯塔站。
+
+【登场人物】
+角色1：诺亚 —— 白鸟号列车的银发检票员少年，戴着单边怀表链眼镜，说话礼貌克制却带点冷幽默。他已经在列车上守望了整整一百年，怀表里藏着一张早已褪色的双人车票。
+角色2：星野萤 —— 提着旧煤油灯登车的神秘少女画师，声称自己弄丢了最重要的“某人的名字”，一路上在车窗雾气上画下沿途闪过的星座，性格温柔天然却在接近终点站时越来越透明。
+
+【故事草稿】
+我在雨夜旧站台捡到一枚发光的黄铜车票，误登上了子夜发车的白鸟号。检票员诺亚看清我手里的车票后神色剧变，破例允许我留在餐车同行；而在第三节车厢画画的少女星野萤却微笑着喊出了我小时候才用过的小名……天亮之前列车即将抵达终点灯塔，我必须在靠站前查清车票背后的百年契约。`
+  };
+
+  function switchHubTab(targetTabId = 'hub-tab-library') {
+    const tablist = document.getElementById('hub-tablist');
+    if (!tablist) return;
+    const tabs = [...tablist.querySelectorAll('[role="tab"]')];
+    tabs.forEach((tab) => {
+      const isSelected = tab.id === targetTabId;
+      tab.setAttribute('aria-selected', String(isSelected));
+      tab.tabIndex = isSelected ? 0 : -1;
+      const panelId = tab.dataset.hpanel;
+      const panel = panelId ? document.getElementById(panelId) : null;
+      if (panel) {
+        panel.hidden = !isSelected;
+      }
+    });
+
+    if (targetTabId === 'hub-tab-library') {
+      renderPlazaModal();
+    } else if (targetTabId === 'hub-tab-square') {
+      populateSquarePublishTargets();
+      renderSquareCards();
+      refreshSquareItemsSilent();
+    }
   }
 
+  // 绑定 tablist 点击与左右方向键无障碍切换（Roving tabindex）
+  const hubTablistEl = document.getElementById('hub-tablist');
+  if (hubTablistEl) {
+    hubTablistEl.addEventListener('click', (e) => {
+      const btn = e.target.closest('[role="tab"]');
+      if (!btn) return;
+      switchHubTab(btn.id);
+    });
+    hubTablistEl.addEventListener('keydown', (e) => {
+      const tabs = [...hubTablistEl.querySelectorAll('[role="tab"]')];
+      const idx = tabs.indexOf(document.activeElement);
+      if (idx === -1) return;
+      let nextIdx = -1;
+      if (e.key === 'ArrowRight') nextIdx = (idx + 1) % tabs.length;
+      else if (e.key === 'ArrowLeft') nextIdx = (idx - 1 + tabs.length) % tabs.length;
+      else if (e.key === 'Home') nextIdx = 0;
+      else if (e.key === 'End') nextIdx = tabs.length - 1;
+      if (nextIdx !== -1) {
+        e.preventDefault();
+        tabs[nextIdx].focus();
+        switchHubTab(tabs[nextIdx].id);
+      }
+    });
+  }
+
+  function openScriptSelectModal(defaultTabId = 'hub-tab-library') {
+    const tabId = typeof defaultTabId === 'string' && defaultTabId.startsWith('hub-tab-')
+      ? defaultTabId
+      : 'hub-tab-library';
+    switchHubTab(tabId);
+    if (!plazaDialog.open) {
+      plazaDialog.showModal();
+    }
+  }
+
+  // ---------- 页签 1：📚 我的剧本库 ----------
   function renderPlazaModal() {
     const grid = document.getElementById('plaza-cards-grid');
+    if (!grid) return;
     grid.innerHTML = '';
 
-    const scriptsList =
-      state.scripts.length > 0
-        ? state.scripts
-        : [getActiveScriptObj()];
+    const scriptsList = state.scripts.length > 0 ? state.scripts : [getActiveScriptObj()];
 
     for (const sc of scriptsList) {
       const isCurrent = sc.id === state.activeScriptId;
+      const isCustom = Boolean(sc.is_custom);
+      const fromSquare = Boolean(sc.source_share_id);
       const castList = state.personas.filter(
         (p) => p.id !== 'persona_deepseek_official' && resolvePersonaScriptId(p) === sc.id
       );
@@ -4772,6 +4855,15 @@
         })
         .join('');
 
+      const badgeHtml = [
+        isCustom
+          ? `<span class="ssc-custom-badge">${fromSquare ? '🌐 广场获取' : '✨ 我的原创'}</span>`
+          : '',
+        isCurrent ? '<span class="ssc-active-badge">当前剧本</span>' : ''
+      ]
+        .filter(Boolean)
+        .join('');
+
       const card = document.createElement('div');
       card.className = `script-select-card ${isCurrent ? 'active' : ''}`;
       card.innerHTML = `
@@ -4783,7 +4875,7 @@
               <div class="ssc-sub">${escapeHtml(sc.subtitle || '')}</div>
             </div>
           </div>
-          ${isCurrent ? '<span class="ssc-active-badge">当前剧本</span>' : ''}
+          <div class="ssc-badges-right">${badgeHtml}</div>
         </div>
 
         <p class="ssc-synopsis">${escapeHtml(sc.synopsis || '')}</p>
@@ -4795,12 +4887,22 @@
 
         <div class="ssc-cast-block">
           <span class="ssc-cast-label">🎭 本剧专属人设（点击角色直接开演）：</span>
-          <div class="ssc-cast-list">${castHtml}</div>
+          <div class="ssc-cast-list">${castHtml || '<span class="muted-count">暂无角色</span>'}</div>
         </div>
 
-        <button type="button" class="primary-btn full-width enter-script-btn">
-          ${isCurrent ? '✨ 继续体验本剧本' : `📖 进入《${escapeHtml(sc.title)}》 ▸`}
-        </button>
+        <div class="ssc-footer-row">
+          <button type="button" class="primary-btn enter-script-btn">
+            ${isCurrent ? '✨ 继续体验本剧本' : `📖 进入《${escapeHtml(sc.title)}》 ▸`}
+          </button>
+          <button type="button" class="secondary-btn ssc-share-btn" title="将该剧本连同登场人设一键分享到共创设计广场">
+            🌐 分享到广场
+          </button>
+          ${
+            isCustom
+              ? '<button type="button" class="secondary-btn ssc-del-btn" title="从我的剧本库移除此自建剧本">🗑️</button>'
+              : ''
+          }
+        </div>
       `;
 
       card.querySelectorAll('.script-cast-chip').forEach((chip) => {
@@ -4818,12 +4920,594 @@
         }
       });
 
+      card.querySelector('.ssc-share-btn').addEventListener('click', async (e) => {
+        const btn = e.currentTarget;
+        btn.disabled = true;
+        try {
+          const res = await apiJson('/api/square/publish', {
+            method: 'POST',
+            body: JSON.stringify({
+              share_type: 'script',
+              target_id: sc.id,
+              tags: '剧本共享,多幕群像'
+            })
+          });
+          if (Array.isArray(res.items)) state.squareItems = res.items;
+          showToast(`🌐 已将《${sc.title}》打包发布到共创设计广场！`);
+          switchHubTab('hub-tab-square');
+        } catch (err) {
+          showToast(err.message || '分享失败，请稍后再试');
+        } finally {
+          btn.disabled = false;
+        }
+      });
+
+      const delBtn = card.querySelector('.ssc-del-btn');
+      if (delBtn) {
+        delBtn.addEventListener('click', async () => {
+          delBtn.disabled = true;
+          try {
+            const res = await apiJson(`/api/scripts/${encodeURIComponent(sc.id)}`, {
+              method: 'DELETE'
+            });
+            state.scripts = res.scripts || state.scripts;
+            state.personas = res.personas || state.personas;
+            if (state.activeScriptId === sc.id && state.scripts[0]) {
+              await switchActiveScript(state.scripts[0].id, null);
+            } else {
+              renderPersonaList();
+            }
+            renderPlazaModal();
+            showToast(`🗑️ 已移除剧本《${sc.title}》`);
+          } catch (err) {
+            showToast(err.message || '移除失败');
+            delBtn.disabled = false;
+          }
+        });
+      }
+
       grid.appendChild(card);
     }
   }
 
-  document.getElementById('open-plaza-btn')?.addEventListener('click', openScriptSelectModal);
-  document.getElementById('topbar-script-switch-btn')?.addEventListener('click', openScriptSelectModal);
+  document.getElementById('lib-jump-workshop-btn')?.addEventListener('click', () => {
+    switchHubTab('hub-tab-workshop');
+  });
+  document.getElementById('lib-jump-square-btn')?.addEventListener('click', () => {
+    switchHubTab('hub-tab-square');
+  });
+
+  // ---------- 页签 2：🪄 上传剧本 · AI 辅助优化改进与提取人设工坊 ----------
+  const wsFileInput = document.getElementById('ws-file-input');
+  const wsDropzone = document.getElementById('ws-dropzone');
+  const wsRawTextarea = document.getElementById('ws-raw-textarea');
+  const wsFileStatusTitle = document.getElementById('ws-file-status-title');
+  const wsAnalyzeBtn = document.getElementById('ws-analyze-btn');
+  const wsResultZone = document.getElementById('ws-result-zone');
+
+  async function handleWorkshopFilePicked(file) {
+    if (!file) return;
+    const text = await file.text();
+    state.workshopFilename = file.name || 'uploaded_script.txt';
+    if (wsRawTextarea) wsRawTextarea.value = text;
+    if (wsFileStatusTitle) {
+      wsFileStatusTitle.textContent = `✅ 已载入剧本文件：${file.name}（共 ${text.length} 字，点下方按钮即可 AI 优化提取）`;
+    }
+    showToast(`📄 已读取《${file.name}》，点击下方按钮开始 AI 优化与提取人设`);
+  }
+
+  document.getElementById('ws-select-file-btn')?.addEventListener('click', () => {
+    wsFileInput?.click();
+  });
+  wsFileInput?.addEventListener('change', (e) => {
+    const f = e.target.files?.[0];
+    if (f) handleWorkshopFilePicked(f);
+    wsFileInput.value = '';
+  });
+
+  if (wsDropzone) {
+    wsDropzone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      wsDropzone.classList.add('drag-over');
+    });
+    wsDropzone.addEventListener('dragleave', () => {
+      wsDropzone.classList.remove('drag-over');
+    });
+    wsDropzone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      wsDropzone.classList.remove('drag-over');
+      const f = e.dataTransfer?.files?.[0];
+      if (f) handleWorkshopFilePicked(f);
+    });
+  }
+
+  document.querySelectorAll('.ws-sample-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const key = btn.dataset.sample;
+      const sampleText = WORKSHOP_SAMPLE_DRAFTS[key] || WORKSHOP_SAMPLE_DRAFTS.piano;
+      state.workshopFilename = key === 'train' ? '银河铁道末班车的守望人.md' : '旧音乐室的雨夜四重奏.md';
+      if (wsRawTextarea) wsRawTextarea.value = sampleText;
+      if (wsFileStatusTitle) {
+        wsFileStatusTitle.textContent = `✨ 已填入示例草稿：${state.workshopFilename}（可直接点击下方 AI 优化按钮体验）`;
+      }
+    });
+  });
+
+  document.getElementById('ws-clear-raw-btn')?.addEventListener('click', () => {
+    if (wsRawTextarea) wsRawTextarea.value = '';
+    state.workshopFilename = '';
+    if (wsFileStatusTitle) {
+      wsFileStatusTitle.textContent = '上传本地剧本 / 小说 / 设定稿文件（.txt / .md / .json）';
+    }
+  });
+
+  document.querySelectorAll('.ws-focus-chip').forEach((chip) => {
+    chip.addEventListener('click', () => {
+      state.workshopFocus = chip.dataset.focus || 'balanced';
+      document.querySelectorAll('.ws-focus-chip').forEach((c) => {
+        const active = c === chip;
+        c.classList.toggle('active', active);
+        c.setAttribute('aria-pressed', String(active));
+      });
+    });
+  });
+
+  function renderWorkshopPersonaCardDom(pObj, index) {
+    const card = document.createElement('div');
+    card.className = 'ws-persona-edit-card';
+    card.innerHTML = `
+      <div class="ws-pcard-head">
+        <input type="text" class="ws-pcard-avatar" value="${escapeHtml(pObj.avatar || '🌸')}" maxlength="4" aria-label="角色头像徽记" />
+        <input type="text" class="ws-pcard-name" value="${escapeHtml(pObj.name || `登场角色 ${index + 1}`)}" placeholder="角色姓名 · 头衔" aria-label="角色姓名与头衔" />
+        <input type="text" class="ws-pcard-tag" value="${escapeHtml(pObj.category_tag || '核心主线')}" placeholder="路线标签" aria-label="角色路线标签" />
+        <button type="button" class="fim-clear-mini ws-remove-pcard-btn" title="移除该角色">移除</button>
+      </div>
+      <input type="text" class="ws-pcard-tagline" value="${escapeHtml(pObj.tagline || '')}" placeholder="一句话记忆点简介…" aria-label="一句话简介" />
+      <textarea class="ws-pcard-personality" rows="2" placeholder="性格反差与背景细节…" aria-label="性格与背景">${escapeHtml(
+        pObj.personality || ''
+      )}</textarea>
+      <input type="hidden" class="ws-pcard-backstory" value="${escapeHtml(pObj.backstory || '')}" />
+      <input type="hidden" class="ws-pcard-style" value="${escapeHtml(pObj.speaking_style || '')}" />
+      <input type="hidden" class="ws-pcard-prompts" value="${escapeHtml(
+        JSON.stringify(Array.isArray(pObj.starter_prompts) ? pObj.starter_prompts : [])
+      )}" />
+      <label class="muted-count">💬 初遇第一句开场白：</label>
+      <textarea class="ws-pcard-greeting" rows="3" placeholder="*场景神态描写* 第一句对白…" aria-label="初遇开场白">${escapeHtml(
+        pObj.greeting || ''
+      )}</textarea>
+    `;
+    card.querySelector('.ws-remove-pcard-btn').addEventListener('click', () => {
+      const container = document.getElementById('ws-personas-editor-grid');
+      if (container && container.children.length <= 1) {
+        showToast('至少需要保留 1 位登场人设哦');
+        return;
+      }
+      card.remove();
+      updateWorkshopPersonaCountLabel();
+    });
+    return card;
+  }
+
+  function updateWorkshopPersonaCountLabel() {
+    const grid = document.getElementById('ws-personas-editor-grid');
+    const lbl = document.getElementById('ws-personas-count-title');
+    if (grid && lbl) {
+      lbl.textContent = `🎭 自动从剧本提取的专属登场人设（共 ${grid.children.length} 位，可直接修改）`;
+    }
+  }
+
+  function renderWorkshopAnalysisResult(data) {
+    state.workshopDraft = data;
+    wsResultZone?.classList.remove('hidden');
+
+    const engineBadge = document.getElementById('ws-engine-badge');
+    if (engineBadge) {
+      engineBadge.textContent =
+        data.engine === 'llm' ? '✨ AI 编剧大模型深度精修' : '⚡ 智能剧本引擎拆解完成';
+    }
+
+    const critiqueList = document.getElementById('ws-critique-list');
+    if (critiqueList) {
+      critiqueList.innerHTML = (data.critique || [])
+        .map((item) => `<li>${escapeHtml(item)}</li>`)
+        .join('');
+    }
+
+    const sc = data.script || {};
+    document.getElementById('ws-sc-icon').value = sc.icon || '🌸';
+    document.getElementById('ws-sc-title').value = sc.title || '未命名互动剧本';
+    document.getElementById('ws-sc-subtitle').value = sc.subtitle || '玩家原创多幕互动剧';
+    document.getElementById('ws-sc-role').value = sc.player_role || '卷入故事核心的同行者';
+    document.getElementById('ws-sc-synopsis').value = sc.synopsis || '';
+
+    const chapGrid = document.getElementById('ws-chapters-editor-list');
+    if (chapGrid) {
+      chapGrid.innerHTML = '';
+      (sc.chapters || []).forEach((ch, idx) => {
+        const div = document.createElement('div');
+        div.className = 'ws-chap-edit-card';
+        div.innerHTML = `
+          <input type="text" class="ws-ch-title" value="${escapeHtml(ch.title || `第 ${idx + 1} 幕`)}" aria-label="幕次标题" />
+          <textarea class="ws-ch-note" rows="2" aria-label="本幕剧情导引">${escapeHtml(ch.note || '')}</textarea>
+          <input type="text" class="ws-ch-opener" value="${escapeHtml(ch.opener || '')}" placeholder="切入本幕的首句行动台词" aria-label="切入台词" />
+        `;
+        chapGrid.appendChild(div);
+      });
+    }
+
+    const pGrid = document.getElementById('ws-personas-editor-grid');
+    if (pGrid) {
+      pGrid.innerHTML = '';
+      (data.personas || []).forEach((p, idx) => {
+        pGrid.appendChild(renderWorkshopPersonaCardDom(p, idx));
+      });
+      updateWorkshopPersonaCountLabel();
+    }
+
+    wsResultZone?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  document.getElementById('ws-add-persona-card-btn')?.addEventListener('click', () => {
+    const pGrid = document.getElementById('ws-personas-editor-grid');
+    if (!pGrid) return;
+    const scTitle = document.getElementById('ws-sc-title')?.value?.trim() || '本剧本';
+    pGrid.appendChild(
+      renderWorkshopPersonaCardDom(
+        {
+          avatar: '🌙',
+          name: `新角色 · 《${scTitle}》同行者`,
+          category_tag: '新增支线',
+          tagline: '与你在故事中并肩前行的关键人物',
+          personality: '细腻真诚，嘴硬心软，在关键剧情节点与你共同进退。',
+          backstory: `【所属剧本：《${scTitle}》】与{{user}}在事件中结下羁绊的重要伙伴。`,
+          speaking_style: '自然生动，善用星号描写动作与神态细节',
+          greeting: `*微风拂过，对方停下脚步转头看向走近的你。*\n\n你也来啦？正好，我们一起去看看前面有什么线索吧。`,
+          starter_prompts: ['“好呀，我们一起过去看看！”']
+        },
+        pGrid.children.length
+      )
+    );
+    updateWorkshopPersonaCountLabel();
+  });
+
+  wsAnalyzeBtn?.addEventListener('click', async () => {
+    const content = (wsRawTextarea?.value || '').trim();
+    if (!content) {
+      showToast('请先上传剧本文件、粘贴草稿，或点一下上方的「示例草稿」按钮');
+      wsRawTextarea?.focus();
+      return;
+    }
+    const origText = wsAnalyzeBtn.textContent;
+    wsAnalyzeBtn.disabled = true;
+    wsAnalyzeBtn.textContent = '⏳ 正在读取诊断剧本并提取登场人设…';
+    try {
+      const res = await apiJson('/api/workshop/analyze', {
+        method: 'POST',
+        body: JSON.stringify({
+          filename: state.workshopFilename,
+          content,
+          focus_mode: state.workshopFocus
+        })
+      });
+      renderWorkshopAnalysisResult(res);
+      showToast(`✨ 已完成剧本优化并提取出 ${(res.personas || []).length} 位专属人设！`);
+    } catch (err) {
+      showToast(err.message || '剧本解析失败，请稍后重试');
+    } finally {
+      wsAnalyzeBtn.disabled = false;
+      wsAnalyzeBtn.textContent = origText;
+    }
+  });
+
+  document.getElementById('ws-save-and-play-btn')?.addEventListener('click', async (e) => {
+    const saveBtn = e.currentTarget;
+    const scTitle = document.getElementById('ws-sc-title')?.value?.trim();
+    if (!scTitle) {
+      showToast('请填写剧本标题');
+      return;
+    }
+
+    const chapters = [...document.querySelectorAll('#ws-chapters-editor-list .ws-chap-edit-card')].map((el) => ({
+      title: el.querySelector('.ws-ch-title')?.value?.trim() || '新章节',
+      note: el.querySelector('.ws-ch-note')?.value?.trim() || '',
+      opener: el.querySelector('.ws-ch-opener')?.value?.trim() || '我们继续往前推进剧情吧。'
+    }));
+
+    const personas = [...document.querySelectorAll('#ws-personas-editor-grid .ws-persona-edit-card')].map((el) => {
+      let starterPrompts = [];
+      try {
+        starterPrompts = JSON.parse(el.querySelector('.ws-pcard-prompts')?.value || '[]');
+      } catch {}
+      const pName = el.querySelector('.ws-pcard-name')?.value?.trim() || '原创角色';
+      const pPers = el.querySelector('.ws-pcard-personality')?.value?.trim() || '';
+      const rawBack = el.querySelector('.ws-pcard-backstory')?.value?.trim() || '';
+      return {
+        avatar: el.querySelector('.ws-pcard-avatar')?.value?.trim() || '🌸',
+        name: pName,
+        category_tag: el.querySelector('.ws-pcard-tag')?.value?.trim() || '核心主线',
+        tagline: el.querySelector('.ws-pcard-tagline')?.value?.trim() || '',
+        personality: pPers,
+        backstory: rawBack || `【所属剧本：《${scTitle}》】\n${pPers}`,
+        speaking_style: el.querySelector('.ws-pcard-style')?.value?.trim() || '自然沉浸，带细腻神态动作描写',
+        greeting: el.querySelector('.ws-pcard-greeting')?.value?.trim() || '',
+        starter_prompts: starterPrompts
+      };
+    });
+
+    const publishToSquare = Boolean(document.getElementById('ws-sync-square-chk')?.checked);
+    saveBtn.disabled = true;
+    const oldText = saveBtn.textContent;
+    saveBtn.textContent = '⏳ 正在创建剧本与专属人设…';
+
+    try {
+      const res = await apiJson('/api/workshop/save', {
+        method: 'POST',
+        body: JSON.stringify({
+          script: {
+            icon: document.getElementById('ws-sc-icon')?.value?.trim() || '📖',
+            title: scTitle,
+            subtitle: document.getElementById('ws-sc-subtitle')?.value?.trim() || 'AI 精修原创互动剧',
+            player_role: document.getElementById('ws-sc-role')?.value?.trim() || '剧中同行者',
+            synopsis: document.getElementById('ws-sc-synopsis')?.value?.trim() || '',
+            chapters
+          },
+          personas,
+          lorebooks: state.workshopDraft?.lorebooks || [],
+          publish_to_square: publishToSquare
+        })
+      });
+
+      state.scripts = res.scripts || state.scripts;
+      state.personas = res.personas || state.personas;
+      if (Array.isArray(res.square_items)) state.squareItems = res.square_items;
+
+      plazaDialog.close();
+      await switchActiveScript(res.script_id, res.first_persona_id);
+      showToast(
+        publishToSquare
+          ? `🎉 剧本《${scTitle}》已创建开演，并同步共享至共创设计广场！`
+          : `🎉 剧本《${scTitle}》与 ${personas.length} 位人设已创建，立即开演！`
+      );
+    } catch (err) {
+      showToast(err.message || '保存剧本失败');
+    } finally {
+      saveBtn.disabled = false;
+      saveBtn.textContent = oldText;
+    }
+  });
+
+  // ---------- 页签 3：🌐 共创设计广场（共享剧本与人设） ----------
+  async function refreshSquareItemsSilent() {
+    try {
+      const kw = (document.getElementById('sq-search-input')?.value || '').trim();
+      const qs = new URLSearchParams({
+        type: state.squareFilterType || 'all',
+        q: kw
+      });
+      const res = await apiJson(`/api/square/items?${qs.toString()}`);
+      if (Array.isArray(res.items)) {
+        state.squareItems = res.items;
+        renderSquareCards();
+      }
+    } catch {}
+  }
+
+  function populateSquarePublishTargets() {
+    const kindSel = document.getElementById('sq-pub-kind');
+    const targetSel = document.getElementById('sq-pub-target');
+    if (!kindSel || !targetSel) return;
+
+    if (kindSel.value === 'persona') {
+      const list = state.personas.filter((p) => p.id !== 'persona_deepseek_official');
+      targetSel.innerHTML = list
+        .map((p) => `<option value="${escapeHtml(p.id)}">${escapeHtml(p.avatar)} ${escapeHtml(p.name)}</option>`)
+        .join('');
+    } else {
+      targetSel.innerHTML = state.scripts
+        .map((sc) => `<option value="${escapeHtml(sc.id)}">${escapeHtml(sc.icon || '📖')} 《${escapeHtml(sc.title)}》</option>`)
+        .join('');
+    }
+  }
+
+  document.getElementById('sq-pub-kind')?.addEventListener('change', populateSquarePublishTargets);
+
+  document.getElementById('sq-toggle-publish-btn')?.addEventListener('click', () => {
+    const drawer = document.getElementById('sq-publish-drawer');
+    if (!drawer) return;
+    populateSquarePublishTargets();
+    drawer.classList.toggle('hidden');
+  });
+
+  document.getElementById('sq-cancel-publish-btn')?.addEventListener('click', () => {
+    document.getElementById('sq-publish-drawer')?.classList.add('hidden');
+  });
+
+  document.getElementById('sq-publish-drawer')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const kind = document.getElementById('sq-pub-kind')?.value || 'script';
+    const targetId = document.getElementById('sq-pub-target')?.value || '';
+    const tags = document.getElementById('sq-pub-tags')?.value?.trim() || '';
+    if (!targetId) return;
+    try {
+      const res = await apiJson('/api/square/publish', {
+        method: 'POST',
+        body: JSON.stringify({
+          share_type: kind,
+          target_id: targetId,
+          tags
+        })
+      });
+      if (Array.isArray(res.items)) state.squareItems = res.items;
+      document.getElementById('sq-publish-drawer')?.classList.add('hidden');
+      document.getElementById('sq-pub-tags').value = '';
+      renderSquareCards();
+      showToast('🌐 发布成功！你的作品已上架共创设计广场，大家都可以体验啦');
+    } catch (err) {
+      showToast(err.message || '发布失败');
+    }
+  });
+
+  document.querySelectorAll('.sq-type-chip').forEach((chip) => {
+    chip.addEventListener('click', () => {
+      state.squareFilterType = chip.dataset.sqtype || 'all';
+      document.querySelectorAll('.sq-type-chip').forEach((c) => {
+        const active = c === chip;
+        c.classList.toggle('active', active);
+        c.setAttribute('aria-pressed', String(active));
+      });
+      renderSquareCards();
+      refreshSquareItemsSilent();
+    });
+  });
+
+  document.getElementById('sq-search-input')?.addEventListener('input', () => {
+    renderSquareCards();
+  });
+
+  function renderSquareCards() {
+    const grid = document.getElementById('square-cards-grid');
+    if (!grid) return;
+    grid.innerHTML = '';
+
+    const kw = (document.getElementById('sq-search-input')?.value || '').trim().toLowerCase();
+    const filtered = (state.squareItems || []).filter((item) => {
+      if (state.squareFilterType !== 'all' && item.share_type !== state.squareFilterType) {
+        return false;
+      }
+      if (!kw) return true;
+      const hay = `${item.title} ${item.subtitle} ${item.synopsis} ${item.author_name} ${(item.tags || []).join(' ')}`.toLowerCase();
+      return hay.includes(kw);
+    });
+
+    if (filtered.length === 0) {
+      grid.innerHTML = '<div class="info-callout" style="grid-column: 1 / -1;">暂无匹配的共享作品，快来成为第一个上传分享该题材的创作者吧！</div>';
+      return;
+    }
+
+    for (const item of filtered) {
+      const isScript = item.share_type === 'script';
+      const castHtml = (item.cast_preview || [])
+        .map(
+          (c) =>
+            `<span class="sq-cast-mini">${escapeHtml(c.avatar || '🌸')} ${escapeHtml(c.name)}${
+              c.tag ? `<small style="color:var(--brand-primary);font-weight:500;">(${escapeHtml(c.tag)})</small>` : ''
+            }</span>`
+        )
+        .join(' · ');
+
+      const tagsHtml = (item.tags || [])
+        .slice(0, 4)
+        .map((t) => `<span class="sq-tag-pill">#${escapeHtml(t)}</span>`)
+        .join('');
+
+      const card = document.createElement('div');
+      card.className = 'square-share-card';
+      card.innerHTML = `
+        <div>
+          <div class="sq-card-top">
+            <div class="ssc-title-group">
+              <span class="ssc-icon">${escapeHtml(item.icon || (isScript ? '📖' : '🎭'))}</span>
+              <div>
+                <div class="ssc-title">${escapeHtml(item.title)}</div>
+                <div class="ssc-sub">${escapeHtml(item.subtitle || '')}</div>
+              </div>
+            </div>
+            <span class="sq-type-badge ${isScript ? 'is-script' : 'is-persona'}">
+              ${isScript ? `📖 完整剧本 · ${item.chapter_count || 3}幕` : '🎭 独立人设卡'}
+            </span>
+          </div>
+
+          <div class="sq-author-row" style="margin-top: 8px;">
+            <span class="sq-author-chip">${escapeHtml(item.author_avatar || '🎀')} 创作者：@${escapeHtml(item.author_name || '星语玩家')}</span>
+            <span class="sq-dl-count">🔥 ${item.downloads_count || 0} 人已获取体验</span>
+          </div>
+
+          <p class="ssc-synopsis" style="margin-top: 8px;">${escapeHtml(item.synopsis || '')}</p>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          ${tagsHtml ? `<div class="sq-tags-row">${tagsHtml}</div>` : ''}
+          ${
+            castHtml
+              ? `<div class="sq-cast-preview"><span class="muted-count">${isScript ? '包含人设：' : '角色预览：'}</span>${castHtml}</div>`
+              : ''
+          }
+          <div class="sq-card-footer">
+            <div class="sq-stats-left">
+              <button type="button" class="sq-like-btn ${item.liked_by_me ? 'liked' : ''}" aria-pressed="${Boolean(item.liked_by_me)}">
+                <span>${item.liked_by_me ? '❤️' : '🤍'}</span>
+                <span class="sq-like-num">${item.likes_count || 0}</span>
+              </button>
+            </div>
+            <button type="button" class="primary-btn sq-adopt-btn">
+              ${isScript ? '📥 获取剧本并开演 ▸' : '📥 加入当前剧本开聊 ▸'}
+            </button>
+          </div>
+        </div>
+      `;
+
+      const likeBtn = card.querySelector('.sq-like-btn');
+      likeBtn.addEventListener('click', async () => {
+        try {
+          const res = await apiJson(`/api/square/items/${encodeURIComponent(item.id)}/like`, {
+            method: 'POST'
+          });
+          item.liked_by_me = res.liked;
+          item.likes_count = res.likes_count;
+          likeBtn.classList.toggle('liked', Boolean(res.liked));
+          likeBtn.setAttribute('aria-pressed', String(Boolean(res.liked)));
+          likeBtn.innerHTML = `<span>${res.liked ? '❤️' : '🤍'}</span><span class="sq-like-num">${res.likes_count}</span>`;
+        } catch (err) {
+          showToast(err.message || '点赞失败');
+        }
+      });
+
+      const adoptBtn = card.querySelector('.sq-adopt-btn');
+      adoptBtn.addEventListener('click', async () => {
+        adoptBtn.disabled = true;
+        const prevTxt = adoptBtn.textContent;
+        adoptBtn.textContent = '⏳ 正在载入…';
+        try {
+          const res = await apiJson(`/api/square/items/${encodeURIComponent(item.id)}/adopt`, {
+            method: 'POST',
+            body: JSON.stringify({ active_script_id: state.activeScriptId })
+          });
+          state.scripts = res.scripts || state.scripts;
+          state.personas = res.personas || state.personas;
+          if (Array.isArray(res.items)) state.squareItems = res.items;
+
+          plazaDialog.close();
+          if (res.share_type === 'script') {
+            await switchActiveScript(res.script_id, res.persona_id);
+            showToast(`🎉 已从广场获取剧本《${item.title}》，专属人设已就绪！`);
+          } else {
+            renderPersonaList();
+            await selectOrStartPersona(res.persona_id, false);
+            showToast(`🎭 已将角色「${item.title}」加入当前剧本并开启初遇！`);
+          }
+        } catch (err) {
+          showToast(err.message || '获取失败，请稍后重试');
+        } finally {
+          adoptBtn.disabled = false;
+          adoptBtn.textContent = prevTxt;
+        }
+      });
+
+      grid.appendChild(card);
+    }
+  }
+
+  document.getElementById('open-plaza-btn')?.addEventListener('click', () => openScriptSelectModal('hub-tab-library'));
+  document.getElementById('topbar-script-switch-btn')?.addEventListener('click', () => openScriptSelectModal('hub-tab-library'));
+  document.getElementById('sidebar-open-workshop-btn')?.addEventListener('click', () => openScriptSelectModal('hub-tab-workshop'));
+  document.getElementById('more-open-workshop-btn')?.addEventListener('click', () => {
+    hidePopoverSafe('topbar-more-popover');
+    openScriptSelectModal('hub-tab-workshop');
+  });
+  document.getElementById('more-open-square-btn')?.addEventListener('click', () => {
+    hidePopoverSafe('topbar-more-popover');
+    openScriptSelectModal('hub-tab-square');
+  });
   document.getElementById('close-plaza-dialog').addEventListener('click', () => plazaDialog.close());
 
   // C. 🎬 故事幕次剧本匣 & 番外小剧场（支持角色专属多幕推进长篇剧本 + 通用番剧高光番外）
@@ -5380,7 +6064,7 @@
     const isDs = mode === 'deepseek';
     state.uiMode = isDs ? 'deepseek' : 'roleplay';
     try {
-      localStorage.setItem('ui_mode_v2', state.uiMode);
+      localStorage.setItem('ui_mode_v3', state.uiMode);
     } catch {}
 
     appShell.dataset.uiMode = state.uiMode;
@@ -6133,6 +6817,7 @@
       window.__starAuthStore?.setActiveUserId(boot.user.id);
     }
     state.scripts = boot.scripts || [];
+    state.squareItems = boot.square_items || [];
     state.personas = boot.personas || [];
     state.sessions = boot.sessions || [];
     state.settings = boot.settings || {};

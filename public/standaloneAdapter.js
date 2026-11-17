@@ -14,7 +14,7 @@
     window.location.hostname === 'appassets.androidplatform.net' ||
     Boolean(window.AndroidAppBridge);
 
-  const STORE_KEY = 'ds_persona_apk_db_v1';
+  const STORE_KEY = 'ds_persona_apk_db_v2';
   const TAB_TOKEN_KEY = 'star_tab_auth_token';
   const PERSIST_TOKEN_KEY = 'star_default_auth_token';
   const GUEST_ID_KEY = 'star_guest_user_id';
@@ -96,8 +96,9 @@
     },
     {
       id: 'persona_nagisa_sakura',
+      script_id: 'script_clannad',
       user_id: 'system',
-      category_tag: '🎬 番剧长篇剧',
+      category_tag: '治愈主线',
       name: '星野汐 · 樱坂坡道下的演剧部少女',
       avatar: '🌸',
       tagline: '在樱花长坡下轻声问出“你喜欢这座小镇吗”的留级少女，与你重建废部演剧社、收集改写寒冬宿命的微光之玉',
@@ -112,8 +113,9 @@
     },
     {
       id: 'persona_shiraishi_rin',
+      script_id: 'script_steins',
       user_id: 'system',
-      category_tag: '🎬 番剧长篇剧',
+      category_tag: '观测者主线',
       name: '白石凛 · 旧钟表铺里的世界线观测者',
       avatar: '⏳',
       tagline: '披着白大褂在蝉鸣海岛修怀表的毒舌中二少年，用玩笑掩盖独自轮回十七次救你的孤独记忆',
@@ -128,8 +130,9 @@
     },
     {
       id: 'persona_violet_eve',
+      script_id: 'script_violet',
       user_id: 'system',
-      category_tag: '🎬 番剧长篇剧',
+      category_tag: '书信救赎线',
       name: '伊芙琳 · 鸢尾邮局的银腕代笔师',
       avatar: '✉️',
       tagline: '拥有精密银白机械双手的前军团少女，与你乘蒸汽夜车远行，在一封封代笔信中学会何为“爱与心痛”',
@@ -144,8 +147,9 @@
     },
     {
       id: 'persona_frieren_shuer',
+      script_id: 'script_frieren',
       user_id: 'system',
-      category_tag: '🎬 番剧长篇剧',
+      category_tag: '千年守望线',
       name: '修尔 · 收集微风魔法的半精灵旅人',
       avatar: '🌿',
       tagline: '活了近千年总爱收集“无用生活小魔法”的散漫白发旅者，直到与你同行才开始珍惜每一场日落',
@@ -397,12 +401,169 @@
       };
       return jsonResponse({
         user: dbObj.user,
+        scripts: dbObj.scripts || [
+          {
+            id: 'script_clannad',
+            icon: '🌸',
+            title: '樱坂坡道上的风',
+            subtitle: '青春催泪群像剧 · 致敬《CLANNAD》',
+            player_role: '樱坂高中三年级生',
+            synopsis: '四月的海滨小镇樱坂，你将与坡道下的留级少女重建废部演剧社，在温暖日常里收集改写寒冬宿命的微光之玉。',
+            chapters: []
+          },
+          {
+            id: 'script_steins',
+            icon: '⏳',
+            title: '第八月三十一日的观测站',
+            subtitle: '夏岛悬疑轮回剧 · 致敬《命运石之门》',
+            player_role: '收到未来乱码短信的共犯',
+            synopsis: '8月30日傍晚收到警告短信，在距离烟花大会仅剩24小时的轮回里跨越1%世界线变动率。',
+            chapters: []
+          },
+          {
+            id: 'script_violet',
+            icon: '✉️',
+            title: '鸢尾邮局与无名信',
+            subtitle: '蒸汽时代书信公路剧 · 致敬《紫罗兰永恒花园》',
+            player_role: '鸢尾邮政公社引路搭档',
+            synopsis: '搭乘夜间蒸汽列车投递二十年前未送达的无名旧信，在一封封代笔信中学会爱与释怀。',
+            chapters: []
+          },
+          {
+            id: 'script_frieren',
+            icon: '🌿',
+            title: '千年星旅与苍月花原',
+            subtitle: '奇幻散漫公路剧 · 致敬《葬送的芙莉莲》',
+            player_role: '结伴北行的人类旅伴',
+            synopsis: '前往极北魂眠花原寻找五十年盛开一次的苍月草，收集无用却温暖的民间小魔法。',
+            chapters: []
+          },
+          {
+            id: 'script_classic',
+            icon: '🌙',
+            title: '雾港花房与长安静思录',
+            subtitle: '幻想都市与古风独立单元选集',
+            player_role: '命中注定的重逢旅人',
+            synopsis: '收录眠星钟楼、霓虹雾港事务所与长安雪竹苑等独立幻想恋语篇章。',
+            chapters: []
+          }
+        ],
+        square_items: dbObj.square_items || [
+          {
+            id: 'share_april_piano',
+            author_name: '白昼梦游者',
+            author_avatar: '🎹',
+            share_type: 'script',
+            icon: '🎹',
+            title: '四月琴房与听不见的春之曲',
+            subtitle: '青春音乐救赎剧 · 致敬《四月是你的谎言》',
+            tags: ['校园治愈', '古典乐', '双向救赎'],
+            synopsis: '在樱花吹进音乐教室的四月午后，遇见强行指定你做伴奏者的自由小提琴少女。',
+            cast_preview: [{ avatar: '🎻', name: '夏川弦音', tag: '春风救赎线' }],
+            chapter_count: 3,
+            likes_count: 186,
+            downloads_count: 95,
+            liked_by_me: false
+          }
+        ],
         personas: dbObj.personas,
         sessions: decorateSessions(dbObj),
         settings: dbObj.settings,
         membership: m,
         wallet: mockWallet
       });
+    }
+    if (pathname === '/api/workshop/analyze' && method === 'POST') {
+      const raw = String(bodyObj?.content || '').trim();
+      const titleMatch = raw.match(/《([^》]+)》/) || raw.match(/^#+\s*(.+)$/m);
+      const scTitle = (titleMatch ? titleMatch[1] : '未命名星语原创剧本').trim().slice(0, 20);
+      return jsonResponse({
+        engine: 'local_smart',
+        critique: [
+          `已从草稿提炼核心世界观，重构为适合自由对话推进的《${scTitle}》四幕剧场`,
+          '已增强首句开场白的环境分镜与互动钩子，让开局即可无缝入戏',
+          '已自动提取剧本核心角色并绑定专属剧本隔离标记'
+        ],
+        script: {
+          icon: '🌸',
+          title: scTitle,
+          subtitle: 'AI 辅助精修原创互动剧',
+          player_role: '卷入故事核心的同行者',
+          synopsis: raw.slice(0, 140),
+          chapters: [
+            { title: '🌸 第一幕 · 初遇与微光线索', note: '故事开篇初遇，确认彼此掌握的线索。', opener: '*推开虚掩的门走近你* 我们从这条线索开始查起吧！' },
+            { title: '🌧️ 第二幕 · 并肩推进与心意靠近', note: '共同化解突发阻碍，卸下心防。', opener: '*递给你一杯热饮* 忙了一下午，先歇会儿告诉我你的想法吧。' },
+            { title: '⚡ 第三幕 · 核心真相与转折抉择', note: '关键秘密揭晓，拒绝独自承担宿命。', opener: '*握紧你的手认真看着你* 无论接下来发生什么，我们一起面对！' },
+            { title: '🌅 终幕 · 跨越约定的黎明回响', note: '解开执念，迎接属于彼此的全新结局。', opener: '*迎着晨风朝你微笑* 终于走到这一步啦，谢谢你一直陪在我身边。' }
+          ]
+        },
+        personas: [
+          {
+            avatar: '🌸',
+            name: `林晚音 · 《${scTitle}》核心主角`,
+            category_tag: '核心主线',
+            tagline: `在《${scTitle}》中与你并肩破局的关键角色`,
+            personality: '外柔内韧，细腻真挚，在并肩行动中逐渐向你敞开心扉。',
+            backstory: raw.slice(0, 300),
+            speaking_style: '细腻自然，富画面分镜感',
+            greeting: `*微风拂过安静的窗边，对方转过身望向走近的你。*\n\n你来得正好，关于这件事我们现在就开始行动吧？`,
+            starter_prompts: ['“好呀，我们现在就出发！”']
+          }
+        ],
+        lorebooks: []
+      });
+    }
+    if (pathname === '/api/workshop/save' && method === 'POST') {
+      if (!Array.isArray(dbObj.scripts)) dbObj.scripts = [];
+      if (!Array.isArray(dbObj.square_items)) dbObj.square_items = [];
+      const scId = 'usc_' + Date.now();
+      const sc = bodyObj.script || {};
+      const newSc = {
+        id: scId,
+        is_custom: true,
+        icon: sc.icon || '🌸',
+        title: sc.title || '原创剧本',
+        subtitle: sc.subtitle || '玩家原创剧',
+        player_role: sc.player_role || '故事主角',
+        synopsis: sc.synopsis || '',
+        chapters: sc.chapters || []
+      };
+      dbObj.scripts.unshift(newSc);
+      let firstPid = null;
+      (bodyObj.personas || []).forEach((p, idx) => {
+        const pid = 'persona_' + Date.now() + '_' + idx;
+        if (idx === 0) firstPid = pid;
+        dbObj.personas.unshift({
+          ...p,
+          id: pid,
+          script_id: scId,
+          user_id: dbObj.user.id
+        });
+      });
+      if (bodyObj.publish_to_square) {
+        dbObj.square_items.unshift({
+          id: 'shr_' + Date.now(),
+          author_name: dbObj.user.nickname || '星语玩家',
+          author_avatar: dbObj.user.avatar || '🎀',
+          share_type: 'script',
+          icon: newSc.icon,
+          title: newSc.title,
+          subtitle: newSc.subtitle,
+          tags: ['玩家共创'],
+          synopsis: newSc.synopsis,
+          cast_preview: (bodyObj.personas || []).map((p) => ({ avatar: p.avatar || '🌸', name: (p.name || '').split('·')[0], tag: p.category_tag || '' })),
+          chapter_count: (newSc.chapters || []).length || 4,
+          likes_count: 1,
+          downloads_count: 0,
+          liked_by_me: true,
+          payload: { script: newSc, personas: bodyObj.personas || [] }
+        });
+      }
+      saveLocalDb(dbObj);
+      return jsonResponse({ ok: true, script_id: scId, first_persona_id: firstPid, scripts: dbObj.scripts, personas: dbObj.personas, square_items: dbObj.square_items }, 201);
+    }
+    if (pathname === '/api/square/items') {
+      return jsonResponse({ items: dbObj.square_items || [] });
     }
     if (pathname === '/api/wallet/overview') {
       return jsonResponse({

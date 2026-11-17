@@ -11,6 +11,22 @@ if (!fs.existsSync(DATA_DIR)) {
 const DB_PATH = path.join(DATA_DIR, 'persona_studio.sqlite');
 const db = new DatabaseSync(DB_PATH);
 
+if (typeof db.transaction !== 'function') {
+  db.transaction = (fn) => (...args) => {
+    db.exec('BEGIN IMMEDIATE');
+    try {
+      const result = fn(...args);
+      db.exec('COMMIT');
+      return result;
+    } catch (err) {
+      try {
+        db.exec('ROLLBACK');
+      } catch {}
+      throw err;
+    }
+  };
+}
+
 db.exec(`
   PRAGMA journal_mode = WAL;
   PRAGMA busy_timeout = 5000;

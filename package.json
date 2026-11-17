@@ -1,7 +1,7 @@
 {
   "name": "persona-chat-studio",
-  "version": "1.0.0",
-  "description": "仿 DeepSeek 网页端的人设扮演实时流式对话与三层上下文记忆系统",
+  "version": "1.1.0",
+  "description": "星语恋庭 · 互动剧本与角色扮演剧场（含 AI 剧本优化提取工坊、共创设计广场与三层上下文记忆引擎）",
   "main": "server/index.js",
   "scripts": {
     "start": "node --no-warnings server/index.js"

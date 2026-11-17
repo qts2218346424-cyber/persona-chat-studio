@@ -9,7 +9,7 @@
       document.querySelector('meta[name="color-scheme"]').content = localStorage.getItem("color-scheme") ?? "light dark";
     } catch {}
   </script>
-  <title>DeepSeek · 深度求索</title>
+  <title>星语恋庭 · 互动剧本与角色扮演剧场</title>
   <link rel="icon" type="image/svg+xml" href="/assets/deepseek-whale.svg" />
   <link rel="stylesheet" href="/styles.css" />
   <link rel="stylesheet" href="/companion3d.css" />
@@ -223,12 +223,12 @@
         </button>
       </div>
 
-      <!-- 第一层核心入口：当前所在剧本（点击切换剧本，不同剧本加载不同人设） -->
+      <!-- 第一层核心入口：当前所在剧本（点击打开剧本库、上传AI改剧本与共创设计广场） -->
       <div class="active-script-wrap rp-only-block" id="tour-anchor-vip">
-        <button type="button" class="active-script-card" id="open-plaza-btn" title="点击切换其他互动剧本，不同剧本拥有专属人设与章节">
+        <button type="button" class="active-script-card" id="open-plaza-btn" title="点击打开剧本库、AI剧本优化工坊与共创设计广场">
           <span class="asc-icon" id="sidebar-script-icon">🌸</span>
           <div class="asc-body">
-            <span class="asc-kicker">当前剧本 · 点击切换 ▾</span>
+            <span class="asc-kicker">当前剧本 · 剧本库与广场 ▾</span>
             <strong class="asc-title" id="sidebar-script-title">樱坂坡道上的风</strong>
           </div>
         </button>
@@ -266,6 +266,7 @@
           <span class="section-label" id="persona-section-heading">🎭 本剧登场人设</span>
           <div class="inline-mini-actions">
             <button type="button" class="text-action-btn hidden" id="quick-upload-persona-btn">上传</button>
+            <button type="button" class="text-action-btn" id="sidebar-open-workshop-btn" title="上传剧本草稿，让 AI 帮你优化改进并自动提取人设">🪄 传剧本</button>
             <button type="button" class="text-action-btn" id="create-persona-btn" title="为当前剧本添加新角色">+ 加人设</button>
           </div>
         </div>
@@ -391,9 +392,9 @@
             type="button"
             class="soft-tool-btn rp-only-inline"
             id="topbar-script-switch-btn"
-            title="打开剧本选集大厅，切换其他故事世界"
+            title="打开剧本库、上传AI优化剧本与共创设计广场"
           >
-            📖 换剧本
+            📖 剧本与广场
           </button>
 
           <button
@@ -437,6 +438,12 @@
           </button>
 
           <div id="topbar-more-popover" popover="auto" class="anchored-popover topbar-more-panel">
+            <button type="button" class="popover-action-item rp-only-flex" id="more-open-workshop-btn">
+              <span>🪄 上传剧本 · AI 优化与提取人设</span>
+            </button>
+            <button type="button" class="popover-action-item rp-only-flex" id="more-open-square-btn">
+              <span>🌐 共创设计广场（共享剧本与人设）</span>
+            </button>
             <button type="button" class="popover-action-item rp-only-flex" id="more-open-drawer-btn">
               <span>💫 展开羁绊记忆与世界书伏笔</span>
             </button>
@@ -1591,18 +1598,286 @@
     </div>
   </dialog>
 
-  <!-- 模态弹窗 6：📖 互动剧本选集大厅（先选剧本，不同剧本加载不同专属人设群像） -->
-  <dialog id="plaza-dialog" class="modal-dialog modal-wide" closedby="any" aria-labelledby="plaza-dialog-title">
+  <!-- 模态弹窗 6：📖 剧本与共创中心（我的剧本库 ｜ 上传与 AI 改剧本 ｜ 共创设计广场） -->
+  <dialog id="plaza-dialog" class="modal-dialog modal-wide hub-modal" closedby="any" aria-labelledby="plaza-dialog-title">
     <div class="modal-inner">
       <div class="modal-header">
-        <h2 id="plaza-dialog-title">📖 选择你要体验的互动剧本</h2>
-        <button type="button" class="icon-btn" id="close-plaza-dialog" aria-label="关闭剧本大厅">✕</button>
+        <div class="hub-head-group">
+          <h2 id="plaza-dialog-title">📖 剧本与共创中心</h2>
+          <span class="hub-sub-pill">剧本独立人设 · AI 改剧本 · 玩家共享广场</span>
+        </div>
+        <button type="button" class="icon-btn" id="close-plaza-dialog" aria-label="关闭剧本与共创中心">✕</button>
       </div>
-      <div class="info-callout">
-        每一部剧本都拥有独立的世界观与<strong>专属登场人设群像</strong>。选定剧本后，左侧只会展示属于该故事的角色与存档，互不串戏。
+
+      <!-- 严格遵循 modern-web-guidance: tabs 规范（单行不换行、aria-selected 驱动、伪元素形状指示条） -->
+      <div class="hub-tabs-shell">
+        <div class="hub-tablist" id="hub-tablist" role="tablist" aria-label="剧本库、AI工坊与共创广场切换">
+          <button
+            type="button"
+            role="tab"
+            class="hub-tab"
+            id="hub-tab-library"
+            data-hpanel="hub-panel-library"
+            aria-selected="true"
+            tabindex="0"
+          >
+            <span>📚 我的剧本库</span>
+          </button>
+          <button
+            type="button"
+            role="tab"
+            class="hub-tab"
+            id="hub-tab-workshop"
+            data-hpanel="hub-panel-workshop"
+            aria-selected="false"
+            tabindex="-1"
+          >
+            <span>🪄 上传与 AI 改剧本</span>
+          </button>
+          <button
+            type="button"
+            role="tab"
+            class="hub-tab"
+            id="hub-tab-square"
+            data-hpanel="hub-panel-square"
+            aria-selected="false"
+            tabindex="-1"
+          >
+            <span>🌐 共创设计广场</span>
+          </button>
+        </div>
+
+        <div class="hub-panels-stack">
+          <!-- 页签面板 1：我的剧本库（官方精选 + 自创剧本 + 广场收藏） -->
+          <div role="tabpanel" id="hub-panel-library" aria-labelledby="hub-tab-library">
+            <div class="hub-panel-inner">
+              <div class="hub-library-banner">
+                <p>
+                  💡 每部剧本拥有独立的<strong>专属登场人设与四幕剧情</strong>，切换剧本后左侧仅展示本剧角色，绝不串戏。
+                </p>
+                <div class="hub-banner-actions">
+                  <button type="button" class="secondary-btn mini-jump-btn" id="lib-jump-workshop-btn">
+                    🪄 上传我的剧本让 AI 优化
+                  </button>
+                  <button type="button" class="secondary-btn mini-jump-btn" id="lib-jump-square-btn">
+                    🌐 去共创广场淘剧本
+                  </button>
+                </div>
+              </div>
+              <div class="hidden" id="plaza-filter-bar"></div>
+              <div class="script-select-grid" id="plaza-cards-grid"></div>
+            </div>
+          </div>
+
+          <!-- 页签面板 2：上传剧本 + AI 辅助优化改进 + 自动提取人设工坊 -->
+          <div role="tabpanel" id="hub-panel-workshop" aria-labelledby="hub-tab-workshop" hidden>
+            <div class="hub-panel-inner">
+              <div class="fim-beginner-guide ws-guide-bar" aria-label="三步轻松完成剧本优化与人设提取">
+                <p class="fim-guide-lead">
+                  🪄 <strong>有现成的小说片段、故事灵感或粗糙剧本？</strong>上传或粘贴进来，AI 自动帮你诊断改进、拆成四幕互动剧并提取全套人设：
+                </p>
+                <div class="fim-steps-row">
+                  <span class="fim-step-pill"><b>1</b> 上传文件或点选示例草稿</span>
+                  <span class="fim-step-arrow" aria-hidden="true">➔</span>
+                  <span class="fim-step-pill"><b>2</b> AI 诊断改进 + 自动提取人设</span>
+                  <span class="fim-step-arrow" aria-hidden="true">➔</span>
+                  <span class="fim-step-pill"><b>3</b> 一键保存开演或分享到广场</span>
+                </div>
+              </div>
+
+              <!-- 上传拖拽区 + 一键体验示例剧本草稿 -->
+              <div class="ws-upload-card" id="ws-dropzone">
+                <input type="file" id="ws-file-input" accept=".txt,.md,.json" class="visually-hidden" />
+                <div class="ws-upload-row">
+                  <div class="ws-upload-left">
+                    <span class="ws-upload-icon" aria-hidden="true">📄</span>
+                    <div>
+                      <strong id="ws-file-status-title">上传本地剧本 / 小说 / 设定稿文件（.txt / .md / .json）</strong>
+                      <p>支持将文档直接拖拽至此，或在下方文本框粘贴任意故事草稿、大纲或人物对话</p>
+                    </div>
+                  </div>
+                  <button type="button" class="secondary-btn" id="ws-select-file-btn">📂 选择剧本文件</button>
+                </div>
+
+                <div class="ws-demo-samples-row">
+                  <span class="fim-row-label">✨ 没带文件？点一下试试现成草稿：</span>
+                  <button type="button" class="starter-chip ws-sample-btn" data-sample="piano">
+                    🎹 示例草稿：雨夜旧琴房与失忆学姐
+                  </button>
+                  <button type="button" class="starter-chip ws-sample-btn" data-sample="train">
+                    🚂 示例草稿：末班银河列车的守望人
+                  </button>
+                </div>
+              </div>
+
+              <div class="field-group" style="margin-top: 10px;">
+                <div class="fim-label-row">
+                  <label for="ws-raw-textarea">📝 剧本原文 / 故事大纲草稿（支持直接编写或修改）</label>
+                  <button type="button" class="fim-clear-mini" id="ws-clear-raw-btn">清空内容</button>
+                </div>
+                <textarea
+                  id="ws-raw-textarea"
+                  class="ws-raw-textarea"
+                  rows="5"
+                  placeholder="在这里粘贴你的剧本草稿、小说片段或故事点子……&#10;例如：&#10;《旧美术室的向日葵》&#10;高二暑假，我在即将拆除的旧美术室遇见了每天画同一幅海景的少女林夏栀，还有嘴硬心软却偷偷替她留钥匙的青梅顾言……"
+                ></textarea>
+              </div>
+
+              <!-- 精修优化方向胶囊 + 一键启动 AI 分析按钮 -->
+              <div class="ws-action-bar">
+                <div class="ws-focus-group" role="group" aria-label="选择 AI 优化改进侧重方向">
+                  <span class="fim-row-label">🎯 优化方向：</span>
+                  <button type="button" class="fim-tone-chip ws-focus-chip active" data-focus="balanced" aria-pressed="true">
+                    🌸 全面精修分幕（推荐）
+                  </button>
+                  <button type="button" class="fim-tone-chip ws-focus-chip" data-focus="clannad_healing" aria-pressed="false">
+                    💧 强化催泪治愈感
+                  </button>
+                  <button type="button" class="fim-tone-chip ws-focus-chip" data-focus="suspense_twist" aria-pressed="false">
+                    🔍 强化悬疑与反转
+                  </button>
+                </div>
+
+                <button type="button" class="primary-btn" id="ws-analyze-btn">
+                  ✨ AI 读取诊断 · 优化剧本并提取人设
+                </button>
+              </div>
+
+              <!-- AI 优化与提取结果预览 & 可视化微调区 -->
+              <div class="ws-result-zone hidden" id="ws-result-zone">
+                <!-- 1. AI 诊断与改进亮点 -->
+                <div class="ws-critique-card">
+                  <div class="block-title-row">
+                    <span>💡 AI 编剧诊断与剧本优化亮点</span>
+                    <span class="ds-cache-pill" id="ws-engine-badge">智能编剧精修完成</span>
+                  </div>
+                  <ul class="ws-critique-list" id="ws-critique-list"></ul>
+                </div>
+
+                <!-- 2. 优化后的剧本主信息与四幕章节（可直接编辑） -->
+                <div class="ws-edit-section">
+                  <div class="block-title-row">
+                    <span>📖 优化后的剧本设定与四幕主线（可直接微调文字）</span>
+                  </div>
+                  <div class="inline-row">
+                    <div class="field-group avatar-field">
+                      <label for="ws-sc-icon">图标</label>
+                      <input id="ws-sc-icon" type="text" maxlength="4" value="🌸" />
+                    </div>
+                    <div class="field-group flex-1">
+                      <label for="ws-sc-title">剧本标题</label>
+                      <input id="ws-sc-title" type="text" placeholder="剧本名称" />
+                    </div>
+                    <div class="field-group flex-1">
+                      <label for="ws-sc-subtitle">风格副标题</label>
+                      <input id="ws-sc-subtitle" type="text" placeholder="例如：青春催泪群像剧" />
+                    </div>
+                  </div>
+                  <div class="inline-row" style="margin-top: 8px;">
+                    <div class="field-group flex-1">
+                      <label for="ws-sc-role">👤 玩家在剧中的默认身份</label>
+                      <input id="ws-sc-role" type="text" placeholder="例如：偶然推开旧琴房门的同级生" />
+                    </div>
+                  </div>
+                  <div class="field-group" style="margin-top: 8px;">
+                    <label for="ws-sc-synopsis">📜 优化后的故事总纲</label>
+                    <textarea id="ws-sc-synopsis" rows="2"></textarea>
+                  </div>
+
+                  <div class="ws-chapters-head">
+                    <span>🎬 自动拆解的主线幕次（聊天中可随时一键切入）</span>
+                  </div>
+                  <div class="ws-chapters-editor-list" id="ws-chapters-editor-list"></div>
+                </div>
+
+                <!-- 3. 自动提取出的登场人设卡片列表（可直接修改或增删） -->
+                <div class="ws-edit-section">
+                  <div class="block-title-row">
+                    <span id="ws-personas-count-title">🎭 自动从剧本提取的专属登场人设</span>
+                    <button type="button" class="mini-btn" id="ws-add-persona-card-btn">+ 增补一位登场角色</button>
+                  </div>
+                  <div class="ws-personas-editor-grid" id="ws-personas-editor-grid"></div>
+                </div>
+
+                <!-- 4. 一键保存开演 & 同步共享到设计广场 -->
+                <div class="ws-save-footer">
+                  <label class="ws-publish-check" for="ws-sync-square-chk">
+                    <input type="checkbox" id="ws-sync-square-chk" checked />
+                    <span>🌐 同步将这部剧本与人设分享到「共创设计广场」，和其他玩家一起共享</span>
+                  </label>
+                  <button type="button" class="primary-btn ws-save-play-btn" id="ws-save-and-play-btn">
+                    🚀 保存剧本并立即开演！
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 页签面板 3：共创设计广场（玩家互相上传共享剧本与人设） -->
+          <div role="tabpanel" id="hub-panel-square" aria-labelledby="hub-tab-square" hidden>
+            <div class="hub-panel-inner">
+              <div class="sq-toolbar">
+                <div class="sq-filter-pills" role="group" aria-label="按共享类型筛选">
+                  <button type="button" class="fim-tone-chip sq-type-chip active" data-sqtype="all" aria-pressed="true">
+                    🌟 全部共享
+                  </button>
+                  <button type="button" class="fim-tone-chip sq-type-chip" data-sqtype="script" aria-pressed="false">
+                    📖 完整剧本包（含人设）
+                  </button>
+                  <button type="button" class="fim-tone-chip sq-type-chip" data-sqtype="persona" aria-pressed="false">
+                    🎭 独立人设卡
+                  </button>
+                </div>
+
+                <div class="sq-right-controls">
+                  <label for="sq-search-input" class="visually-hidden">搜索广场剧本或人设</label>
+                  <input
+                    id="sq-search-input"
+                    type="search"
+                    class="sq-search-input"
+                    placeholder="搜索剧本、人设或作者…"
+                    autocomplete="off"
+                  />
+                  <button type="button" class="primary-btn sq-open-pub-btn" id="sq-toggle-publish-btn">
+                    📤 上传分享我的作品
+                  </button>
+                </div>
+              </div>
+
+              <!-- 快捷发布面板：支持玩家把已有的剧本或单个人设一键发布到广场 -->
+              <form id="sq-publish-drawer" class="sq-publish-drawer hidden">
+                <div class="block-title-row">
+                  <span>📤 将我创作的剧本或角色人设发布到共创设计广场</span>
+                  <button type="button" class="fim-clear-mini" id="sq-cancel-publish-btn">收起 ✕</button>
+                </div>
+                <div class="sq-pub-grid">
+                  <div class="field-group">
+                    <label for="sq-pub-kind">1. 选择要共享的类型</label>
+                    <select id="sq-pub-kind">
+                      <option value="script">📖 分享完整剧本（连同本剧登场人设一起打包）</option>
+                      <option value="persona">🎭 仅分享单个角色人设卡</option>
+                    </select>
+                  </div>
+                  <div class="field-group">
+                    <label for="sq-pub-target">2. 选择要上传的作品</label>
+                    <select id="sq-pub-target"></select>
+                  </div>
+                  <div class="field-group">
+                    <label for="sq-pub-tags">3. 作品标签（选填，逗号分隔）</label>
+                    <input id="sq-pub-tags" type="text" placeholder="例如：青春治愈,校园,双女主" />
+                  </div>
+                </div>
+                <div class="sq-pub-actions">
+                  <span class="muted-count">💡 也可切到「🪄 上传与 AI 改剧本」上传本地新文档优化后发布</span>
+                  <button type="submit" class="primary-btn">🌐 立即发布到设计广场</button>
+                </div>
+              </form>
+
+              <div class="square-cards-grid" id="square-cards-grid"></div>
+            </div>
+          </div>
+        </div>
       </div>
-      <div class="hidden" id="plaza-filter-bar"></div>
-      <div class="script-select-grid" id="plaza-cards-grid"></div>
     </div>
   </dialog>
 

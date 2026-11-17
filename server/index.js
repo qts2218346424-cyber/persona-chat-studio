@@ -7,6 +7,12 @@ const {
   db,
   genId,
   STORY_SCRIPTS,
+  listScriptsForUser,
+  saveWorkshopScriptForUser,
+  listCommunityShares,
+  publishExistingToSquare,
+  toggleLikeShareItem,
+  adoptShareItemToUser,
   getSafeClientSettings,
   updateSafeClientSettings,
   getExecutionSettingsForUser,
@@ -80,6 +86,7 @@ const {
   generateDemoProactiveTurn,
   generateFollowUpSuggestions
 } = require('./proactiveEngine');
+const { analyzeAndOptimizeScript } = require('./scriptWorkshop');
 
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
 const PORT = parseInt(process.env.PORT || '3210', 10);
@@ -292,7 +299,7 @@ function extractAuthToken(req) {
   return cookies[COOKIE_NAME] || '';
 }
 
-async function handleApi(req, res, pathname) {
+async function handleApi(req, res, pathname, parsedUrl) {
   const method = req.method || 'GET';
   const currentToken = extractAuthToken(req);
   const currentUser = getUserByToken(currentToken);
@@ -402,13 +409,131 @@ async function handleApi(req, res, pathname) {
     const wallet = getWalletOverview(userId);
     return sendJson(res, 200, {
       user: currentUser,
-      scripts: STORY_SCRIPTS,
+      scripts: listScriptsForUser(userId),
+      square_items: listCommunityShares({ userId }),
       personas: listPersonasForUser(userId),
       sessions: listSessionsForUser(userId),
       settings: getSafeClientSettings(userId),
       membership: wallet.membership,
       wallet
     });
+  }
+
+  // ========= 2.5 AI 剧本工坊（读取/诊断/精修剧本 + 自动提取人设）与共创设计广场接口 =========
+  if (method === 'POST' && pathname === '/api/workshop/analyze') {
+    const body = await readJsonBody(req, 512 * 1024);
+    const content = String(body.content || '').trim();
+    if (!content) {
+      return sendJson(res, 400, { error: '请先上传剧本文件或粘贴您的故事草稿' });
+    }
+    try {
+      const execSettings = getExecutionSettingsForUser(userId);
+      const analysis = await analyzeAndOptimizeScript({
+        filename: String(body.filename || ''),
+        rawText: content,
+        focusMode: String(body.focus_mode || 'balanced'),
+        settings: execSettings
+      });
+      return sendJson(res, 200, analysis);
+    } catch (err) {
+      return sendJson(res, 400, { error: sanitizePublicErrorMessage(err, '剧本智能拆解失败，请稍后重试') });
+    }
+  }
+
+  if (method === 'POST' && pathname === '/api/workshop/save') {
+    const body = await readJsonBody(req, 512 * 1024);
+    try {
+      const saved = saveWorkshopScriptForUser(userId, {
+        script: body.script || {},
+        personas: Array.isArray(body.personas) ? body.personas : [],
+        lorebooks: Array.isArray(body.lorebooks) ? body.lorebooks : [],
+        publishToSquare: Boolean(body.publish_to_square)
+      });
+      return sendJson(res, 201, {
+        ok: true,
+        ...saved,
+        scripts: listScriptsForUser(userId),
+        personas: listPersonasForUser(userId),
+        square_items: listCommunityShares({ userId })
+      });
+    } catch (err) {
+      return sendJson(res, 400, { error: err.message });
+    }
+  }
+
+  const customScriptMatch = pathname.match(/^\/api\/scripts\/([^/]+)$/);
+  if (customScriptMatch && method === 'DELETE') {
+    const scriptId = decodeURIComponent(customScriptMatch[1]);
+    const existingSc = db
+      .prepare('SELECT id FROM user_scripts WHERE id = ? AND user_id = ?')
+      .get(scriptId, userId);
+    if (!existingSc) {
+      return sendJson(res, 400, { error: '官方精选剧本不可删除，仅可移除自建或获取的剧本' });
+    }
+    db.transaction(() => {
+      db.prepare('DELETE FROM personas WHERE script_id = ? AND user_id = ?').run(scriptId, userId);
+      db.prepare('DELETE FROM user_scripts WHERE id = ? AND user_id = ?').run(scriptId, userId);
+    })();
+    return sendJson(res, 200, {
+      ok: true,
+      scripts: listScriptsForUser(userId),
+      personas: listPersonasForUser(userId)
+    });
+  }
+
+  if (method === 'GET' && pathname === '/api/square/items') {
+    const type = parsedUrl?.searchParams?.get('type') || 'all';
+    const q = parsedUrl?.searchParams?.get('q') || '';
+    return sendJson(res, 200, {
+      items: listCommunityShares({ userId, type, query: q })
+    });
+  }
+
+  if (method === 'POST' && pathname === '/api/square/publish') {
+    const body = await readJsonBody(req, 128 * 1024);
+    try {
+      const resPub = publishExistingToSquare(userId, {
+        shareType: body.share_type === 'persona' ? 'persona' : 'script',
+        targetId: String(body.target_id || '').trim(),
+        tags: String(body.tags || '').trim()
+      });
+      return sendJson(res, 201, {
+        ok: true,
+        ...resPub,
+        items: listCommunityShares({ userId })
+      });
+    } catch (err) {
+      return sendJson(res, 400, { error: err.message });
+    }
+  }
+
+  const squareActionMatch = pathname.match(/^\/api\/square\/items\/([^/]+)\/(like|adopt)$/);
+  if (squareActionMatch && method === 'POST') {
+    const shareId = decodeURIComponent(squareActionMatch[1]);
+    const action = squareActionMatch[2];
+    if (action === 'like') {
+      try {
+        const resLike = toggleLikeShareItem(userId, shareId);
+        return sendJson(res, 200, resLike);
+      } catch (err) {
+        return sendJson(res, 400, { error: err.message });
+      }
+    }
+    if (action === 'adopt') {
+      const body = await readJsonBody(req, 32 * 1024);
+      try {
+        const resAdopt = adoptShareItemToUser(userId, shareId, body.active_script_id || 'script_clannad');
+        return sendJson(res, 200, {
+          ok: true,
+          ...resAdopt,
+          scripts: listScriptsForUser(userId),
+          personas: listPersonasForUser(userId),
+          items: listCommunityShares({ userId })
+        });
+      } catch (err) {
+        return sendJson(res, 400, { error: err.message });
+      }
+    }
   }
 
   // ========= 3. 账户积分、签到、任务、日卡/月卡充值、兑换码与站长发卡台接口 =========
@@ -2567,7 +2692,7 @@ const server = http.createServer(async (req, res) => {
     const pathname = parsedUrl.pathname;
 
     if (pathname.startsWith('/api/')) {
-      await handleApi(req, res, pathname);
+      await handleApi(req, res, pathname, parsedUrl);
     } else {
       serveStatic(req, res, pathname);
     }

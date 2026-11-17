@@ -470,12 +470,16 @@ function buildThreeTierContext({ sessionId, expectedUserId = null, latestUserTex
     `${latestUserText || ''} ${recentSnippet}`
   );
 
-  // 组装主控人设块（自动随当前所选剧本匹配玩家的剧中身份，防止跨剧本串戏）
-  const activeScriptObj = (STORY_SCRIPTS || []).find((s) => s.id === rawPersona.script_id);
+  // 组装主控人设块（自动随当前所选剧本匹配玩家的剧中身份，兼顾官方剧本与工坊/广场自建剧本）
+  let activeScriptRole = (STORY_SCRIPTS || []).find((s) => s.id === rawPersona.script_id)?.player_role || '';
+  if (!activeScriptRole && rawPersona.script_id) {
+    const customSc = db.prepare('SELECT player_role FROM user_scripts WHERE id = ?').get(rawPersona.script_id);
+    if (customSc?.player_role) activeScriptRole = customSc.player_role;
+  }
   const rawUserRole = (userRow?.user_persona_role || '').trim();
   const effectiveUserRole =
     !rawUserRole || rawUserRole === '命中注定的重逢旅人'
-      ? activeScriptObj?.player_role || '与你相遇的同行者'
+      ? activeScriptRole || '与你相遇的同行者'
       : rawUserRole;
 
   const userPersonaLines = [`- **对方称呼**：${userNick}`, `- **在本剧中的身份**：${effectiveUserRole}`];

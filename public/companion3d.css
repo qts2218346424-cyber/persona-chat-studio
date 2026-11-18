@@ -1,24 +1,35 @@
 /* ================= 2.5D 破框立体陪伴舞台 & 三维全息星轨底座样式 ================= */
 
 .companion-stage {
-  width: 268px !important;
+  width: 248px !important;
   padding: 10px 12px 8px 2px !important;
-  overflow: visible !important;
+  overflow: hidden !important;
+  isolation: isolate;
 }
 
-/* 彻底拆除旧版平面图片方框，改为开放式三维立体透视空间 */
+/* 彻底拆除旧版平面图片方框，改为开放式三维立体透视空间（隔离内部 Z 轴合成层不遮挡上下操作条） */
 .companion-stage .companion-figure-card {
   border: none !important;
   background: transparent !important;
   box-shadow: none !important;
   border-radius: 0 !important;
   overflow: visible !important;
-  min-height: 235px;
+  min-height: 220px;
   perspective: 900px;
   display: flex;
   align-items: center;
   justify-content: center;
   position: relative;
+  z-index: 1;
+  isolation: isolate;
+}
+
+.companion-stage .companion-Style-bar,
+.companion-stage .comp-voice-wrap,
+.companion-stage .companion-foot {
+  position: relative;
+  z-index: 22 !important;
+  pointer-events: auto !important;
 }
 
 .companion-stage .companion-figure-card.speaking-glow {

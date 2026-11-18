@@ -95,6 +95,7 @@ const {
   generateFollowUpSuggestions
 } = require('./proactiveEngine');
 const { analyzeAndOptimizeScript } = require('./scriptWorkshop');
+const { parseAnyUploadedFile } = require('./fileParser');
 
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
 const PORT = parseInt(process.env.PORT || '3210', 10);
@@ -242,6 +243,32 @@ function sanitizePublicErrorMessage(err, fallback = '请求处理失败，请稍
     .replace(/Bearer\s+[^\s"']+/gi, 'Bearer [已脱敏]')
     .replace(/(?:[A-Za-z]:\\|\/Users\/|\/home\/)[^\s"']+/g, '[内部路径]')
     .slice(0, 180);
+}
+
+function readRawBufferBody(req, maxBytes = 20 * 1024 * 1024) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let byteLen = 0;
+    let tooLarge = false;
+    req.on('data', (chunk) => {
+      byteLen += chunk.length;
+      if (byteLen > maxBytes) {
+        tooLarge = true;
+        if (byteLen > maxBytes + 2 * 1024 * 1024) {
+          req.destroy();
+        }
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on('end', () => {
+      if (tooLarge) {
+        return reject(Object.assign(new Error('单个上传文件体积请控制在 20MB 以内'), { statusCode: 413 }));
+      }
+      resolve(Buffer.concat(chunks));
+    });
+    req.on('error', reject);
+  });
 }
 
 function readJsonBody(req, maxBytes = 128 * 1024) {
@@ -922,6 +949,15 @@ async function handleApi(req, res, pathname, parsedUrl) {
     const rawGender = String(body.gender || '').trim().toLowerCase();
     const cleanGender = rawGender === 'female' || rawGender === 'male' ? rawGender : '';
     const defaultAvatar = cleanGender === 'male' ? '✨' : '🌸';
+    // 独立自建角色默认归入通用「心动角色全集」，防止误继承其他主题剧本的特定身份导致串戏
+    const rawScriptId = String(body.script_id || 'script_classic').trim();
+    const isAdoptedScript = Boolean(
+      db.prepare('SELECT 1 FROM user_scripts WHERE id = ? AND source_share_id IS NOT NULL').get(rawScriptId)
+    );
+    const safeScriptId =
+      rawScriptId.startsWith('usc_') && !isAdoptedScript && /【所属剧本/.test(String(body.backstory || ''))
+        ? rawScriptId
+        : 'script_classic';
 
     db.prepare(`
       INSERT INTO personas (
@@ -930,7 +966,7 @@ async function handleApi(req, res, pathname, parsedUrl) {
     `).run(
       id,
       userId,
-      String(body.script_id || 'script_classic').trim(),
+      safeScriptId,
       cleanGender,
       name,
       (body.avatar || defaultAvatar).trim(),
@@ -1092,13 +1128,14 @@ async function handleApi(req, res, pathname, parsedUrl) {
     const title = (body.title || defaultTitle).trim();
     const dsThinking = body.ds_thinking !== undefined ? (body.ds_thinking ? 1 : 0) : 1;
     const dsSearch = body.ds_search !== undefined ? (body.ds_search ? 1 : 0) : 0;
+    const initProactive = body.proactive_enabled ? 1 : 0;
 
     db.prepare(`
       INSERT INTO sessions (
         id, user_id, persona_id, title, session_mode, ds_thinking, ds_search, ds_json_mode, ds_tools_enabled, proactive_enabled,
         rolling_summary, summarized_until_msg_id, enable_inner_thought, enable_auto_memory, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 1, 1, '', 0, 1, 1, ?, ?)
-    `).run(sessionId, userId, personaId, title, sessionMode, dsThinking, dsSearch, now, now);
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 1, ?, '', 0, 1, 1, ?, ?)
+    `).run(sessionId, userId, personaId, title, sessionMode, dsThinking, dsSearch, initProactive, now, now);
 
     // 原生 DeepSeek 模式保持官方 App 纯净新对话欢迎态；仅在恋庭沉浸模式注入初遇开场白
     if (sessionMode !== 'deepseek_native' && persona.greeting && persona.greeting.trim()) {
@@ -1147,6 +1184,31 @@ async function handleApi(req, res, pathname, parsedUrl) {
     }
 
     return sendJson(res, 201, { session_id: sessionId, sessions: listSessionsForUser(userId) });
+  }
+
+  // 「🪄 帮我回一句」专用：根据当前角色与最近一句台词，快速生成 3 条玩家可直接填入发送的回复草稿
+  const suggestReplyMatch = pathname.match(/^\/api\/sessions\/([^/]+)\/suggest-replies$/);
+  if (suggestReplyMatch && method === 'POST') {
+    const sessionId = decodeURIComponent(suggestReplyMatch[1]);
+    const sess = db.prepare('SELECT * FROM sessions WHERE id = ? AND user_id = ?').get(sessionId, userId);
+    if (!sess) return sendJson(res, 404, { error: '会话不存在' });
+    const persona = resolveEffectivePersona(sess);
+    const nurturing = formatNurturingSnapshot(sess);
+    const lastAst = db
+      .prepare("SELECT content FROM messages WHERE session_id = ? AND role = 'assistant' ORDER BY id DESC LIMIT 1")
+      .get(sessionId);
+    const lastUsr = db
+      .prepare("SELECT content FROM messages WHERE session_id = ? AND role = 'user' ORDER BY id DESC LIMIT 1")
+      .get(sessionId);
+    const suggestions = generateFollowUpSuggestions({
+      sessionMode: sess.session_mode || 'roleplay',
+      isPureOfficial: persona.id === 'persona_deepseek_official',
+      persona,
+      nurturing,
+      userText: lastUsr?.content || '',
+      assistantText: lastAst?.content || persona.greeting || ''
+    });
+    return sendJson(res, 200, { replies: suggestions });
   }
 
   const sessionImportMatch = pathname.match(/^\/api\/sessions\/([^/]+)\/import-history$/);
@@ -2638,24 +2700,59 @@ async function handleApi(req, res, pathname, parsedUrl) {
     }
   }
 
+  // ========= 8.9 全格式文档解析接口（支持 PDF / Word / Excel / PPT / 代码 / 压缩包 / 任意文本自动转码提取） =========
+  if (method === 'POST' && pathname === '/api/files/parse') {
+    const ctype = String(req.headers['content-type'] || '').toLowerCase();
+    let fileName = '未命名文件';
+    let fileMime = '';
+    let fileBuffer = null;
+
+    if (ctype.includes('application/json')) {
+      const body = await readJsonBody(req, 22 * 1024 * 1024);
+      fileName = String(body.name || '未命名文件');
+      fileMime = String(body.mime || '');
+      const b64 = String(body.data_base64 || '').replace(/^data:[^;]+;base64,/, '');
+      fileBuffer = Buffer.from(b64, 'base64');
+    } else {
+      const rawHeaderName = String(req.headers['x-file-name'] || '');
+      try {
+        fileName = rawHeaderName ? decodeURIComponent(rawHeaderName) : '未命名文件';
+      } catch {
+        fileName = rawHeaderName || '未命名文件';
+      }
+      fileMime = String(req.headers['x-file-mime'] || ctype || '');
+      fileBuffer = await readRawBufferBody(req, 20 * 1024 * 1024);
+    }
+
+    const parsed = parseAnyUploadedFile({
+      name: fileName,
+      mime: fileMime,
+      buffer: fileBuffer
+    });
+    return sendJson(res, 200, parsed);
+  }
+
   // ========= 9. 核心 SSE 实时流式对话端点（同时驱动恋庭沉浸模式 & 原生 DeepSeek 全家桶模式） =========
   if (method === 'POST' && pathname === '/api/chat/stream') {
-    const body = await readJsonBody(req, 6 * 1024 * 1024);
+    const body = await readJsonBody(req, 8 * 1024 * 1024);
     const sessionId = body.session_id;
     const isRegenerate = Boolean(body.regenerate);
     const editMessageId = Number(body.edit_message_id || 0);
     let userContent = (body.content || '').trim();
-    const rawAttachments = Array.isArray(body.attachments) ? body.attachments.slice(0, 6) : [];
+    const rawAttachments = Array.isArray(body.attachments) ? body.attachments.slice(0, 8) : [];
     const attachments = rawAttachments
       .filter((a) => a && a.name && (typeof a.content === 'string' || a.is_image))
       .map((a) => ({
-        name: String(a.name).slice(0, 120),
+        name: String(a.name).slice(0, 140),
         size: Number(a.size) || (a.content ? a.content.length : 0),
+        badge: a.badge ? String(a.badge).slice(0, 10) : '',
+        color: a.color ? String(a.color).slice(0, 16) : '',
+        char_count: Number(a.char_count) || 0,
         is_image: Boolean(a.is_image),
-        mime: a.mime ? String(a.mime).slice(0, 48) : '',
+        mime: a.mime ? String(a.mime).slice(0, 64) : '',
         dimensions: a.dimensions ? String(a.dimensions).slice(0, 32) : '',
-        data_url: a.is_image && typeof a.data_url === 'string' ? a.data_url.slice(0, 380000) : '',
-        content: String(a.content || '').slice(0, 32000)
+        data_url: a.is_image && typeof a.data_url === 'string' ? a.data_url.slice(0, 420000) : '',
+        content: String(a.content || '').slice(0, 60000)
       }));
     const assistantPrefix = String(body.assistant_prefix || '');
 
@@ -2952,6 +3049,14 @@ async function handleApi(req, res, pathname, parsedUrl) {
           signal: abortController.signal
         });
       } else {
+        const cleanRpPrefix = String(assistantPrefix || '').trim();
+        if (cleanRpPrefix && contextBundle.messagesPayload.length > 0) {
+          const lastMsgObj = contextBundle.messagesPayload[contextBundle.messagesPayload.length - 1];
+          if (lastMsgObj.role === 'user') {
+            lastMsgObj.content = `${lastMsgObj.content}\n\n[系统导演提示：请以「${cleanRpPrefix}」作为你正式回复正文的第一句开头，并自然连贯地往下继续演绎，不要重复输出两遍开头。]`;
+          }
+        }
+        let rpPrefixInjected = false;
         const rpStreamMeta = await streamPersonaChat({
           settings,
           contextBundle,
@@ -2961,6 +3066,14 @@ async function handleApi(req, res, pathname, parsedUrl) {
             sendEvent('reasoning', { delta });
           },
           onContent: (delta) => {
+            if (cleanRpPrefix && !rpPrefixInjected) {
+              rpPrefixInjected = true;
+              const trimmedLeading = String(delta || '').trimStart();
+              if (!trimmedLeading.startsWith(cleanRpPrefix.slice(0, Math.min(4, cleanRpPrefix.length)))) {
+                fullContent += cleanRpPrefix;
+                sendEvent('content', { delta: cleanRpPrefix });
+              }
+            }
             fullContent += delta;
             sendEvent('content', { delta });
           },

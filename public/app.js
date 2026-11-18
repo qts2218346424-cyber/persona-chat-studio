@@ -2,10 +2,14 @@
   let initialUiMode = 'roleplay';
   let initialScriptId = 'script_classic';
   try {
-    const qMode = new URLSearchParams(window.location.search).get('mode');
+    const searchParams = new URLSearchParams(window.location.search);
+    const qMode = searchParams.get('mode');
+    const isDemoUrl = searchParams.get('demo') === '1' || searchParams.get('demo') === 'true';
     const savedMode = localStorage.getItem('ui_mode_v5');
     if (qMode === 'roleplay' || qMode === 'deepseek') {
       initialUiMode = qMode;
+    } else if (isDemoUrl) {
+      initialUiMode = 'roleplay';
     } else if (savedMode === 'roleplay' || savedMode === 'deepseek') {
       initialUiMode = savedMode;
     }
@@ -665,7 +669,7 @@
 
     safe = safe
       .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-      .replace(/\*([^*\n]+)\*/g, '<em class="rp-action">*$1*</em>')
+      .replace(/\*([^*\n]+)\*/g, '<em class="rp-action">$1</em>')
       .replace(/`([^`\n]+)`/g, '<code>$1</code>');
 
     const blocks = safe.split(/\n{2,}/);
@@ -690,16 +694,105 @@
     return joined;
   }
 
+  function getPersonaPronoun(persona = state.activePersona) {
+    if (!persona) return '他';
+    const explicitGender = String(persona.gender || '').trim().toLowerCase();
+    if (explicitGender === 'female' || explicitGender === '女' || explicitGender === 'f') return '她';
+    if (explicitGender === 'male' || explicitGender === '男' || explicitGender === 'm') return '他';
+
+    const femaleIds = new Set([
+      'persona_nagisa_sakura',
+      'persona_kagaribi_kyou',
+      'persona_ichinose_kotomi',
+      'persona_makise_sei',
+      'persona_asagiri_mio',
+      'persona_violet_eve',
+      'persona_suwanqing',
+      'persona_yunzhiyao',
+      'persona_xia_ningmeng',
+      'persona_yan_feiyu'
+    ]);
+    const maleIds = new Set([
+      'persona_shenxinghui',
+      'persona_luchen',
+      'persona_xieqingyan',
+      'persona_jiangyubai',
+      'persona_jiran',
+      'persona_guxiuyuan',
+      'persona_shiraishi_rin',
+      'persona_hodgins_landon',
+      'persona_frieren_shuer',
+      'persona_stark_fer'
+    ]);
+    if (femaleIds.has(persona.id)) return '她';
+    if (maleIds.has(persona.id)) return '他';
+
+    const desc = `${persona.name || ''} ${persona.category_tag || ''} ${persona.tagline || ''} ${persona.personality || ''} ${persona.greeting || ''}`;
+    if (/女执政官|神女|师姐|学妹|学姐|御姐|甜妹|歌姬|大小姐|巫女|修女|女王|公主|名伶|女家主|少女|女生|女孩|姐姐|仙子|双马尾/.test(desc) && !/少年|公子|先生|学弟|男主|剑尊/.test(desc)) {
+      return '她';
+    }
+    const sheCnt = (desc.match(/她/g) || []).length;
+    const heCnt = (desc.match(/他/g) || []).length;
+    if (sheCnt > heCnt) return '她';
+    if (/[妍婷薇柔婉菲瑶晴柠汐琴奈澪琳樱雪莉娜茜媛妃姝娴]/.test(persona.name || '') && heCnt === 0) {
+      return '她';
+    }
+    return '他';
+  }
+
+  function replaceClientMacros(rawStr) {
+    const s = String(rawStr || '');
+    if (!s) return '';
+    const uNick =
+      state.user?.nickname && !/^星[语屿]旅人/.test(state.user.nickname)
+        ? state.user.nickname
+        : '你';
+    const cName = (state.activePersona?.name || '').split(/[·\s]/)[0] || '对方';
+    return s.replace(/\{\{\s*user\s*\}\}/gi, uNick).replace(/\{\{\s*char\s*\}\}/gi, cName);
+  }
+
+  function dismissBootSplash() {
+    const splash = document.getElementById('boot-splash');
+    if (splash && !splash.classList.contains('hidden')) {
+      splash.classList.add('hidden');
+    }
+  }
+
   let toastTimer = null;
+  let topToastTimer = null;
   let walletBannerTimer = null;
   let adminBannerTimer = null;
-  function showToast(text) {
+  memoryToastEl?.addEventListener('click', () => {
+    clearTimeout(toastTimer);
+    memoryToastEl.classList.add('hidden');
+  });
+  function showToast(text, durationMs = 3000) {
     memoryToastEl.textContent = text;
+    memoryToastEl.title = '点击可立即收起提示';
     memoryToastEl.classList.remove('hidden');
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => {
       memoryToastEl.classList.add('hidden');
-    }, 3800);
+    }, durationMs);
+
+    // 同步渲染至浏览器 Top Layer (popover="manual")，确保在任何模态 <dialog> 打开时依然 100% 清晰可见
+    const topToast = document.getElementById('global-top-toast');
+    if (topToast) {
+      topToast.textContent = text;
+      try {
+        if (typeof topToast.showPopover === 'function' && !topToast.matches(':popover-open')) {
+          topToast.showPopover();
+        }
+      } catch {}
+      clearTimeout(topToastTimer);
+      topToastTimer = setTimeout(() => {
+        try {
+          if (typeof topToast.hidePopover === 'function' && topToast.matches(':popover-open')) {
+            topToast.hidePopover();
+          }
+        } catch {}
+      }, durationMs);
+    }
 
     const walletBanner = document.getElementById('wallet-feedback-banner');
     if (walletBanner && membershipDialog?.open) {
@@ -796,6 +889,10 @@
     if (personaListEl) personaListEl.innerHTML = '';
     if (memoryCardsList) memoryCardsList.innerHTML = '';
     if (adminConsoleDialog) adminConsoleDialog.innerHTML = '';
+    if (chatInput) chatInput.value = '';
+    const prefixInp = document.getElementById('ds-prefix-input');
+    if (prefixInp) prefixInp.value = '';
+    document.getElementById('ds-prefix-bar')?.classList.add('hidden');
     document.getElementById('open-admin-console-btn')?.classList.add('hidden');
     document.getElementById('ds-menu-admin-btn')?.classList.add('hidden');
 
@@ -877,6 +974,7 @@
   });
 
   function showAuthScreen() {
+    dismissBootSplash();
     closeOnboardingTour(false);
     appShell.classList.add('hidden');
     authGate.classList.remove('hidden');
@@ -921,12 +1019,7 @@
       signupForm.reset();
       document.getElementById('signup-avatar').value = '🎀';
       await enterWorkspace();
-      const giftDays = res.gifted_days || 30;
-      showToast(
-        res.gifted_vip !== false
-          ? `🎉 注册成功！已自动赠送您「${giftDays} 天星月会员」礼包，全站角色扮演与个人 API 接入全免费畅玩！`
-          : '🎉 新账户创建成功！欢迎开启心动初遇'
-      );
+      showToast('🎉 新账号创建成功！全站所有角色扮演与真声配音均可免费无限畅玩！');
     } catch (err) {
       setAuthError(err.message);
     }
@@ -934,6 +1027,9 @@
 
   quickDemoLoginBtn.addEventListener('click', async () => {
     setAuthError('');
+    const origLabel = quickDemoLoginBtn.textContent;
+    quickDemoLoginBtn.disabled = true;
+    quickDemoLoginBtn.textContent = '⏳ 正在进入星语恋庭…';
     try {
       resetClientWorkspaceState();
       const savedGuestId = window.__starAuthStore?.getGuestUserId() || '';
@@ -944,16 +1040,22 @@
       applyAuthLoginPayload(res, { persistDefault: true, rememberGuest: true });
       await enterWorkspace();
       if (res.is_new_guest) {
-        showToast(`🎀 已为您开启独立访客账号「${res.user.nickname}」，已赠畅享会员，支持免费自由接入个人 API！`);
+        showToast('🎀 已为您开启专属访客空间，全站角色与长效记忆均可免费畅玩！');
       }
     } catch (err) {
       setAuthError(err.message);
+    } finally {
+      quickDemoLoginBtn.disabled = false;
+      quickDemoLoginBtn.textContent = origLabel;
     }
   });
 
   if (freshGuestLoginBtn) {
     freshGuestLoginBtn.addEventListener('click', async () => {
       setAuthError('');
+      const origLabel = freshGuestLoginBtn.textContent;
+      freshGuestLoginBtn.disabled = true;
+      freshGuestLoginBtn.textContent = '⏳ 正在创建全新独立访客号，请稍候…';
       try {
         resetClientWorkspaceState();
         const res = await apiJson('/api/auth/demo-login', {
@@ -963,14 +1065,29 @@
         // 新开测试访客仅绑定当前浏览器标签页，不影响其他打开的标签页账户
         applyAuthLoginPayload(res, { persistDefault: false, rememberGuest: false });
         await enterWorkspace();
-        showToast(`🔒 已在当前窗口开启全新独立账户「${res.user.nickname}」，与其他账号会话完全隔离！`);
+        showToast('🔒 已开启全新独立访客号，与之前的聊天记录完全隔离！');
       } catch (err) {
         setAuthError(err.message);
+      } finally {
+        freshGuestLoginBtn.disabled = false;
+        freshGuestLoginBtn.textContent = origLabel;
       }
     });
   }
 
+  let stashedGuestIdBeforeSwitch = '';
+
   async function performAccountLogout() {
+    const curNick = state.user?.nickname || '当前账号';
+    const ok = await askUserConfirm({
+      title: '🔄 切换账号或前往登录页',
+      message: `确定要离开「${curNick}」前往登录/注册页吗？\n（放心，进入登录页后仍可点击顶部「← 返回继续刚才的聊天」随时回来）`,
+      confirmText: '前往切换账号',
+      danger: false
+    });
+    if (!ok) return;
+
+    stashedGuestIdBeforeSwitch = window.__starAuthStore?.getGuestUserId?.() || state.user?.id || '';
     try {
       sessionStorage.setItem('manual_account_switch', '1');
     } catch {}
@@ -978,7 +1095,27 @@
     resetClientWorkspaceState();
     window.__starAuthStore?.clearTabSession(true);
     showAuthScreen();
+    document.getElementById('auth-back-to-chat-btn')?.classList.remove('hidden');
   }
+
+  document.getElementById('auth-back-to-chat-btn')?.addEventListener('click', async () => {
+    try {
+      sessionStorage.removeItem('manual_account_switch');
+    } catch {}
+    const gid = stashedGuestIdBeforeSwitch || window.__starAuthStore?.getGuestUserId?.() || '';
+    try {
+      const demoRes = await apiJson('/api/auth/demo-login', {
+        method: 'POST',
+        body: JSON.stringify({ guest_user_id: gid })
+      });
+      applyAuthLoginPayload(demoRes, { persistDefault: true, rememberGuest: true });
+      document.getElementById('auth-back-to-chat-btn')?.classList.add('hidden');
+      await enterWorkspace();
+      showToast('✨ 已回到刚才的聊天空间');
+    } catch {
+      document.getElementById('quick-demo-login-btn')?.click();
+    }
+  });
 
   logoutBtn.addEventListener('click', performAccountLogout);
   document.getElementById('ds-menu-logout-btn')?.addEventListener('click', () => {
@@ -991,31 +1128,31 @@
     performAccountLogout();
   });
 
-  // ================= 2. 4 步零门槛新手引导模式（遵循 persistent-app-tours） =================
+  // ================= 2. 4 步零门槛新手引导模式（全白话说明，首次进入自动弹出） =================
   const TOUR_STEPS = [
     {
       anchorId: 'tour-anchor-persona',
       ensureLeftOpen: true,
-      title: '🌸 第一步：选一位心动角色，或上传人设文档',
-      desc: '点击左侧任意角色即可开启一段新故事！如果你手里有写好的人物小传文件（.txt / .md / .json），点旁边的「📄 上传文档」就能一秒生成专属角色。'
+      title: '🌸 第一步：选一位喜欢的角色（或自己创建）',
+      desc: '点击左侧任意角色就能直接开聊！也可以点上方的「换剧本」体验多幕互动剧，或点「+ 创建新角色」定制专属伴侣。'
     },
     {
       anchorId: 'tour-anchor-composer',
       ensureLeftOpen: false,
-      title: '💭 第二步：直接发消息聊天 & 偷听他的潜台词',
-      desc: '不知怎么开头？点输入框上方的「🪄 快捷灵感」试试！开启「💭 偷听心声独白」还能像翻看日记一样，看到他开口前藏在心底的小心思。'
+      title: '💬 第二步：直接打字聊天 & 帮我回一句',
+      desc: '像平时聊天一样输入文字即可发送；不知道聊什么时，点左下角「🪄 帮我回一句」就能插入台词灵感或让对方主动找话题。'
     },
     {
       anchorId: 'tour-anchor-tools',
       ensureLeftOpen: false,
-      title: '📥 第三步：随时改背景故事 & 导入旧聊天记录',
-      desc: '你在聊天里提过的名字、喜好和约定，他都会自动记在心里！点右上角「📥 导入对话」还能把以前的聊天记录导进来无缝接着聊，点「🎀 人设与记忆匣」可随时修改设定。'
+      title: '💞 第三步：查看好感度日记、记忆与专属设定',
+      desc: '点击右上角「💞 养成·记忆·设定」，可以偷看角色为你写的私密日记、管理 TA 记住的事，或给当前对话写专属设定。'
     },
     {
-      anchorId: 'tour-anchor-vip',
+      anchorId: 'user-profile-bar',
       ensureLeftOpen: true,
-      title: '🔑 第四步：全免费畅玩 & 自由接入个人 API',
-      desc: '当前全站已开启全免费畅玩模式，新用户注册即送会员！点击左下角设置或输入框旁的「🔑 接入个人 API」，即可把您自己的 API 自由接入到 DeepSeek 原生对话与角色扮演剧场中！'
+      title: '🎀 第四步：改一个你在故事里的名字（全站免费）',
+      desc: '点击左下角个人卡片修改你的名字，所有角色都会立刻改口叫你！全站完全免费畅玩，点旁边的 ⚙ 还能选配音或绑定个人密钥。'
     }
   ];
 
@@ -1151,6 +1288,7 @@
       pressedOutside = false;
     });
   }
+  const confirmActionDialog = document.getElementById('confirm-action-dialog');
   [
     personaDialog,
     importHistoryDialog,
@@ -1164,10 +1302,143 @@
     codePreviewDialog,
     attachmentPreviewDialog,
     dsShareDialog,
-    adminConsoleDialog
+    adminConsoleDialog,
+    confirmActionDialog
   ]
     .filter(Boolean)
     .forEach(setupDialogLightDismiss);
+
+  // 通用高风险操作二次确认模态框（返回 Promise<boolean>）
+  let pendingConfirmResolver = null;
+  function resolvePendingConfirm(result) {
+    if (pendingConfirmResolver) {
+      const fn = pendingConfirmResolver;
+      pendingConfirmResolver = null;
+      fn(Boolean(result));
+    }
+    if (confirmActionDialog?.open) {
+      confirmActionDialog.close();
+    }
+  }
+  document.getElementById('close-confirm-dialog')?.addEventListener('click', () => resolvePendingConfirm(false));
+  document.getElementById('cancel-confirm-dialog')?.addEventListener('click', () => resolvePendingConfirm(false));
+  document.getElementById('ok-confirm-dialog')?.addEventListener('click', () => resolvePendingConfirm(true));
+  confirmActionDialog?.addEventListener('close', () => {
+    if (pendingConfirmResolver) {
+      const fn = pendingConfirmResolver;
+      pendingConfirmResolver = null;
+      fn(false);
+    }
+  });
+
+  function askUserConfirm({
+    title = '⚠️ 请确认本次操作',
+    message = '确定要继续执行此操作吗？',
+    confirmText = '确认执行',
+    danger = true
+  } = {}) {
+    if (!confirmActionDialog || typeof confirmActionDialog.showModal !== 'function') {
+      return Promise.resolve(window.confirm(message));
+    }
+    if (pendingConfirmResolver) {
+      resolvePendingConfirm(false);
+    }
+    const titleEl = document.getElementById('confirm-dialog-title');
+    const msgEl = document.getElementById('confirm-dialog-message');
+    const okBtn = document.getElementById('ok-confirm-dialog');
+    if (titleEl) titleEl.textContent = title;
+    if (msgEl) msgEl.textContent = message;
+    if (okBtn) {
+      okBtn.textContent = confirmText;
+      okBtn.classList.toggle('danger-confirm-btn', danger !== false);
+    }
+    return new Promise((resolve) => {
+      pendingConfirmResolver = resolve;
+      confirmActionDialog.showModal();
+      document.getElementById('cancel-confirm-dialog')?.focus();
+    });
+  }
+
+  // 全局中文表单必填与格式校验提示（消除浏览器英文 "Please fill out this field."）
+  function resolveFieldLabelText(field) {
+    if (!field) return '此必填项';
+    if (field.id) {
+      const lbl = document.querySelector(`label[for="${CSS.escape(field.id)}"]`);
+      if (lbl) {
+        return lbl.textContent.replace(/\*/g, '').replace(/（.*?）/g, '').trim() || '此必填项';
+      }
+    }
+    return field.getAttribute('aria-label') || field.placeholder || '此必填项';
+  }
+
+  document.addEventListener(
+    'invalid',
+    (e) => {
+      const el = e.target;
+      if (!(el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement)) {
+        return;
+      }
+      el.setCustomValidity('');
+      const v = el.validity;
+      const name = resolveFieldLabelText(el);
+      if (v.valueMissing) {
+        el.setCustomValidity(`请填写「${name}」`);
+      } else if (v.typeMismatch && el.type === 'email') {
+        el.setCustomValidity(`请输入格式正确的邮箱地址（例如 name@example.com）`);
+      } else if (v.tooShort && el.minLength > 0) {
+        el.setCustomValidity(`「${name}」至少需要输入 ${el.minLength} 个字符`);
+      } else if (v.tooLong && el.maxLength > 0) {
+        el.setCustomValidity(`「${name}」不能超过 ${el.maxLength} 个字符`);
+      }
+    },
+    true
+  );
+
+  document.addEventListener(
+    'input',
+    (e) => {
+      const el = e.target;
+      if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement) {
+        if (el.validationMessage) el.setCustomValidity('');
+      }
+    },
+    true
+  );
+
+  // 确定性 Popover 触发器接管：彻底消除按 Esc 关闭 <dialog> 后首次点击 ⋯更多 / 🪄帮我回一句 被吞掉的问题
+  function bindDeterministicPopoverTrigger(triggerEl, popoverId) {
+    const popEl = document.getElementById(popoverId);
+    if (!triggerEl || !popEl || typeof popEl.showPopover !== 'function') return;
+    triggerEl.removeAttribute('popovertarget');
+    triggerEl.setAttribute('aria-expanded', 'false');
+    popEl.addEventListener('toggle', (ev) => {
+      triggerEl.setAttribute('aria-expanded', ev.newState === 'open' ? 'true' : 'false');
+    });
+    triggerEl.addEventListener('click', (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      const isOpen = popEl.matches(':popover-open');
+      if (isOpen) {
+        try {
+          popEl.hidePopover();
+        } catch {}
+      } else {
+        try {
+          popEl.showPopover({ source: triggerEl });
+        } catch {
+          try {
+            popEl.showPopover();
+          } catch {}
+        }
+      }
+    });
+  }
+  bindDeterministicPopoverTrigger(document.getElementById('topbar-more-btn'), 'topbar-more-popover');
+  bindDeterministicPopoverTrigger(document.getElementById('magic-popover-btn'), 'magic-quick-popover');
+  bindDeterministicPopoverTrigger(document.getElementById('ds-profile-btn'), 'ds-user-popover');
+  document.querySelectorAll('.ds-dots-btn[popovertarget="ds-user-popover"]').forEach((btn) => {
+    bindDeterministicPopoverTrigger(btn, 'ds-user-popover');
+  });
 
   let lastCompositionEndAt = null;
   chatInput.addEventListener('compositionend', (event) => {
@@ -1179,6 +1450,13 @@
       event.preventDefault();
       if (event.isComposing || event.keyCode === 229) return;
       if (lastCompositionEndAt !== null && Math.abs(event.timeStamp - lastCompositionEndAt) < 50) {
+        return;
+      }
+      if (state.isStreaming) {
+        showToast('⏳ 正在生成回复中，请稍候或点击「轻声止步」后再发送（草稿已为你保留）');
+        return;
+      }
+      if (!chatInput.value.trim() && state.pendingAttachments.length === 0) {
         return;
       }
       chatForm.requestSubmit();
@@ -1268,18 +1546,64 @@
     showToast(`已切换外观主题为：${labelMap[next]}`);
   });
 
-  // ================= 5. 侧栏与抽屉控制 =================
-  toggleLeftBtn.addEventListener('click', () => {
-    appShell.classList.add('left-collapsed');
-    expandLeftBtn.classList.remove('hidden');
+  // ================= 5. 侧栏与抽屉控制（持久化折叠状态 + 顶栏兜底入口 + 宽屏默认展开右侧面板） =================
+  const collapsedQuickNav = document.getElementById('collapsed-quick-nav');
+  function setLeftSidebarCollapsed(collapsed, persist = true) {
+    appShell.classList.toggle('left-collapsed', collapsed);
+    expandLeftBtn.classList.toggle('hidden', !collapsed);
+    expandLeftBtn.setAttribute('aria-expanded', String(!collapsed));
+    collapsedQuickNav?.classList.toggle('hidden', !collapsed);
+    if (persist && !window.matchMedia('(max-width: 860px)').matches) {
+      try {
+        localStorage.setItem('left_sidebar_collapsed_v1', collapsed ? '1' : '0');
+      } catch {}
+    }
+  }
+
+  function setRightPanelCollapsed(collapsed, persist = true) {
+    appShell.classList.toggle('right-collapsed', collapsed);
+    if (collapsed) {
+      appShell.classList.remove('artifacts-wide');
+    }
+    toggleRightBtn?.classList.toggle('active', !collapsed);
+    if (persist && !window.matchMedia('(max-width: 860px)').matches) {
+      try {
+        localStorage.setItem('right_panel_collapsed_v1', collapsed ? '1' : '0');
+      } catch {}
+    }
+  }
+
+  // 初始化恢复桌面端左侧栏折叠状态
+  try {
+    if (!window.matchMedia('(max-width: 860px)').matches) {
+      const savedLeft = localStorage.getItem('left_sidebar_collapsed_v1') === '1';
+      setLeftSidebarCollapsed(savedLeft, false);
+    }
+  } catch {}
+
+  toggleLeftBtn.addEventListener('click', () => setLeftSidebarCollapsed(true, true));
+  expandLeftBtn.addEventListener('click', () => setLeftSidebarCollapsed(false, true));
+
+  // 左侧栏收起时的顶栏兜底快捷入口绑定
+  document.getElementById('topbar-collapsed-new-chat-btn')?.addEventListener('click', () => {
+    if (state.uiMode === 'deepseek') {
+      document.getElementById('ds-new-chat-btn')?.click();
+    } else {
+      document.getElementById('new-chat-btn')?.click();
+    }
   });
-  expandLeftBtn.addEventListener('click', () => {
-    appShell.classList.remove('left-collapsed');
-    expandLeftBtn.classList.add('hidden');
+  document.getElementById('topbar-collapsed-create-persona-btn')?.addEventListener('click', () => {
+    document.getElementById('create-persona-btn')?.click();
+  });
+  document.getElementById('topbar-collapsed-settings-btn')?.addEventListener('click', () => {
+    openSettingsModal(false);
+  });
+  document.getElementById('topbar-collapsed-account-btn')?.addEventListener('click', () => {
+    document.getElementById('logout-btn')?.click();
   });
 
-  function openRightTab(tabId) {
-    appShell.classList.remove('right-collapsed');
+  function openRightTab(tabId, persist = true) {
+    setRightPanelCollapsed(false, persist);
     appShell.classList.toggle('artifacts-wide', tabId === 'ds-artifacts-tab');
     document.querySelectorAll('.tab-btn').forEach((btn) => {
       const active = btn.dataset.tab === tabId;
@@ -1297,20 +1621,24 @@
 
   toggleRightBtn.addEventListener('click', () => {
     if (appShell.classList.contains('right-collapsed')) {
-      const dsTabVisible = !document.getElementById('ds-suite-tab')?.classList.contains('hidden');
-      if (state.uiMode === 'roleplay' && dsTabVisible) {
+      const nurtureHidden = document.getElementById('nurture-tab')?.classList.contains('hidden');
+      const memHidden = document.getElementById('memory-tab')?.classList.contains('hidden');
+      const perHidden = document.getElementById('persona-tab')?.classList.contains('hidden');
+      if (state.uiMode === 'roleplay' && nurtureHidden && memHidden && perHidden) {
         openRightTab('nurture-tab');
         return;
       }
-      appShell.classList.remove('right-collapsed');
+      if (state.uiMode === 'roleplay') {
+        openRightTab('nurture-tab');
+      } else {
+        openRightTab('memory-tab');
+      }
     } else {
-      appShell.classList.add('right-collapsed');
-      appShell.classList.remove('artifacts-wide');
+      setRightPanelCollapsed(true, true);
     }
   });
   closeRightBtn.addEventListener('click', () => {
-    appShell.classList.add('right-collapsed');
-    appShell.classList.remove('artifacts-wide');
+    setRightPanelCollapsed(true, true);
   });
   memoryStatusPill.addEventListener('click', () => openRightTab('memory-tab'));
   document.querySelectorAll('.tab-btn').forEach((btn) => {
@@ -1337,13 +1665,18 @@
       adminConsoleDialog.innerHTML = '';
     }
 
-    if (state.user) {
+      if (state.user) {
+      const fullNick = state.user.nickname || '星语旅人';
       navUserAvatar.textContent = state.user.avatar || '🎀';
-      navUserNickname.textContent = state.user.nickname || '星语旅人';
+      navUserNickname.textContent = fullNick;
+      navUserNickname.title = fullNick;
       const dsAv = document.getElementById('ds-nav-avatar');
       const dsNick = document.getElementById('ds-nav-nickname');
       if (dsAv) dsAv.textContent = state.user.avatar || '🍀';
-      if (dsNick) dsNick.textContent = state.user.nickname || '星语旅人';
+      if (dsNick) {
+        dsNick.textContent = fullNick;
+        dsNick.title = fullNick;
+      }
       const rawRole = state.user.user_persona?.role || '';
       const curSc =
         state.scripts.find((s) => s.id === state.activeScriptId) || state.scripts[0];
@@ -1353,7 +1686,12 @@
           : rawRole;
       const roleStr = isAdmin ? '🛡️ 站长账户' : effectiveRole;
       if (navUserRoleLabel) {
-        navUserRoleLabel.textContent = `${roleStr.slice(0, 11)} ▸`;
+        navUserRoleLabel.textContent = `${roleStr} ▸`;
+        navUserRoleLabel.title = roleStr;
+      }
+      const userBtnEl = document.getElementById('open-user-persona-btn');
+      if (userBtnEl) {
+        userBtnEl.title = `${fullNick} · ${roleStr}（点击修改我在剧中的名字与身份）`;
       }
       const isoBadge = document.getElementById('wallet-account-badge');
       if (isoBadge) {
@@ -1697,6 +2035,7 @@
 
     for (const tab of walletTabBtns) {
       const active = tab === selectedBtn;
+      tab.classList.toggle('active', active);
       tab.setAttribute('aria-selected', String(active));
       tab.setAttribute('tabindex', active ? '0' : '-1');
     }
@@ -1704,14 +2043,17 @@
     for (const panel of walletPanels) {
       const match = panel.id === selectedBtn.dataset.wpanel;
       panel.hidden = !match;
-    }
-
-    try {
-      selectedBtn.scrollIntoView({ block: 'nearest', inline: 'nearest', container: 'nearest' });
-    } catch {
-      selectedBtn.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      panel.classList.toggle('hidden', !match);
     }
   }
+
+  walletTablistEl?.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    const btn = e.target.closest('.wallet-tab');
+    if (btn && !btn.classList.contains('hidden')) {
+      selectWalletTab(btn.id);
+    }
+  });
 
   walletTabBtns.forEach((btn) => {
     btn.addEventListener('click', () => selectWalletTab(btn.id));
@@ -1767,21 +2109,28 @@
     const chkGrid = document.getElementById('checkin-days-grid');
     if (chkGrid && Array.isArray(chk.calendar)) {
       chkGrid.innerHTML = chk.calendar
-        .map(
-          (item) => `
+        .map((item) => {
+          const effectivePts = Number(item.effective_points ?? item.points ?? 0);
+          const bonusPts = Number(item.card_bonus ?? 0);
+          const bonusSubHtml =
+            !item.completed && bonusPts > 0
+              ? `<span class="chk-bonus-sub">${escapeHtml(item.card_bonus_label || `含会员+${bonusPts}`)}</span>`
+              : '';
+          return `
             <div class="checkin-day-cell ${item.completed ? 'done' : ''} ${
             item.is_today_target ? 'today-target' : ''
           }" role="listitem">
               <span class="chk-day-num">第 ${item.day} 天</span>
-              <span class="chk-pts-val">${item.completed ? '✓ 已领' : `+${item.points}分`}</span>
+              <span class="chk-pts-val">${item.completed ? '✓ 已领' : `+${effectivePts}分`}</span>
+              ${bonusSubHtml}
               ${
                 item.credits > 0
                   ? `<span class="chk-extra-tag">+${item.credits}次对话</span>`
                   : `<span class="chk-day-num">${escapeHtml(item.label)}</span>`
               }
             </div>
-          `
-        )
+          `;
+        })
         .join('');
     }
 
@@ -1951,6 +2300,20 @@
 
       exGrid.querySelectorAll('.ex-buy-btn').forEach((btn) => {
         btn.addEventListener('click', async () => {
+          const itemObj = (w.exchange_items || []).find((x) => x.key === btn.dataset.itemKey);
+          const costPts = itemObj?.cost_points ?? 0;
+          const itemName = itemObj?.name || '所选礼盒';
+          if ((state.membership?.points ?? 0) < costPts) {
+            showToast(`⚠️ 当前可用星光积分为 ${state.membership?.points ?? 0} 分，兑换「${itemName}」需 ${costPts} 分`);
+            return;
+          }
+          const confirmed = await askUserConfirm({
+            title: '🎁 确认兑换星光积分好礼',
+            message: `确定消耗 ${costPts} 星光积分兑换「${itemName}」吗？\n兑换后积分将立即扣除并激活对应权益。`,
+            confirmText: `确认消耗 ${costPts} 积分`,
+            danger: false
+          });
+          if (!confirmed) return;
           try {
             const res = await apiJson('/api/wallet/exchange', {
               method: 'POST',
@@ -2060,6 +2423,7 @@
     openWalletModal(state.membership?.checked_in_today ? 'wtab-redeem' : 'wtab-checkin');
   });
   document.getElementById('close-vip-dialog').addEventListener('click', () => membershipDialog.close());
+  document.getElementById('cancel-vip-dialog')?.addEventListener('click', () => membershipDialog.close());
 
   document.getElementById('do-checkin-btn')?.addEventListener('click', async (e) => {
     const btn = e.currentTarget;
@@ -2119,7 +2483,11 @@
     e.preventDefault();
     const input = document.getElementById('redeem-code-input');
     const code = input.value.trim();
-    if (!code) return;
+    if (!code) {
+      showToast('⚠️ 请先输入活动礼包码或兑换卡密后再点击兑换');
+      input.focus();
+      return;
+    }
     try {
       const res = await apiJson('/api/membership/redeem', {
         method: 'POST',
@@ -3286,24 +3654,56 @@
     }
 
     for (const p of displayCast) {
+      const isActivePersona = Boolean(state.activePersona && state.activePersona.id === p.id);
+      const isCustomOwned = Boolean(state.user?.id && p.user_id === state.user.id);
       const item = document.createElement('div');
-      item.className = `persona-card-item ${
-        state.activePersona && state.activePersona.id === p.id ? 'active' : ''
-      }`;
+      item.className = `persona-card-item ${isActivePersona ? 'active' : ''}`;
       item.setAttribute('role', 'listitem');
+      item.tabIndex = 0;
+      if (isActivePersona) {
+        item.setAttribute('aria-current', 'true');
+      }
       const shortName = (p.name || '').split('·')[0].trim();
-      const routeTag = p.category_tag || '角色线';
+      const routeTag = isCustomOwned ? '自建角色' : p.category_tag || '角色线';
+      const subText = p.tagline || p.backstory || '点击切入角色故事线';
+      const customActionsHtml = isCustomOwned
+        ? `<div class="persona-card-actions">
+             <button type="button" class="persona-mini-act-btn p-edit-btn" title="编辑自建角色设定" aria-label="编辑角色 ${escapeHtml(shortName)}">✏️</button>
+             <button type="button" class="persona-mini-act-btn danger p-del-btn" title="删除此自建角色" aria-label="删除角色 ${escapeHtml(shortName)}">🗑️</button>
+           </div>`
+        : '';
       item.innerHTML = `
         <span class="p-avatar">${escapeHtml(p.avatar)}</span>
         <div class="p-meta">
           <div class="p-name-row">
-            <span class="p-name">${escapeHtml(shortName)}</span>
+            <span class="p-name" title="${escapeHtml(p.name || shortName)}">${escapeHtml(shortName)}</span>
             <span class="p-route-pill">${escapeHtml(routeTag)}</span>
+            ${customActionsHtml}
           </div>
-          <div class="p-sub">${escapeHtml(p.tagline || p.backstory || '点击切入角色故事线')}</div>
+          <div class="p-sub" title="${escapeHtml(subText)}">${escapeHtml(subText)}</div>
         </div>
       `;
-      item.addEventListener('click', () => selectOrStartPersona(p.id, false));
+      item.addEventListener('click', (e) => {
+        if (e.target.closest('.persona-card-actions')) return;
+        selectOrStartPersona(p.id, false);
+      });
+      item.addEventListener('keydown', (e) => {
+        if (e.target !== item) return;
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          selectOrStartPersona(p.id, false);
+        }
+      });
+      if (isCustomOwned) {
+        item.querySelector('.p-edit-btn')?.addEventListener('click', (e) => {
+          e.stopPropagation();
+          openPersonaModalForEdit(p);
+        });
+        item.querySelector('.p-del-btn')?.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          await deleteCustomPersona(p);
+        });
+      }
       personaListEl.appendChild(item);
     }
 
@@ -3379,19 +3779,25 @@
       if (committed) return;
       committed = true;
       const nextTitle = inp.value.trim();
-      if (save && nextTitle && nextTitle !== oldTitle) {
-        try {
-          const res = await apiJson(`/api/sessions/${encodeURIComponent(sessionObj.id)}`, {
-            method: 'PATCH',
-            body: JSON.stringify({ title: nextTitle, title_locked: true })
-          });
-          state.sessions = res.sessions || state.sessions;
-          if (state.activeSessionId === sessionObj.id && state.activeSession) {
-            state.activeSession.title = nextTitle;
-            renderUserAndMembership();
+      if (save) {
+        if (!nextTitle) {
+          showToast('⚠️ 对话标题不能为空，已为你保留原标题');
+        } else if (nextTitle !== oldTitle) {
+          try {
+            const res = await apiJson(`/api/sessions/${encodeURIComponent(sessionObj.id)}`, {
+              method: 'PATCH',
+              body: JSON.stringify({ title: nextTitle, title_locked: true })
+            });
+            state.sessions = res.sessions || state.sessions;
+            if (state.activeSessionId === sessionObj.id && state.activeSession) {
+              state.activeSession.title = nextTitle;
+              renderUserAndMembership();
+            }
+            showToast(`✅ 对话已重命名为「${nextTitle}」`);
+          } catch (err) {
+            showToast(`⚠️ 重命名失败：${err.message || '请稍后重试'}`);
           }
-          showToast('✏️ 对话标题已重命名并锁定');
-        } catch {}
+        }
       }
       renderSessionList();
     };
@@ -3545,9 +3951,14 @@
         }
       }
 
+      const isActiveSession = s.id === state.activeSessionId;
       const item = document.createElement('div');
-      item.className = `session-item ${s.id === state.activeSessionId ? 'active' : ''}`;
+      item.className = `session-item ${isActiveSession ? 'active' : ''}`;
       item.setAttribute('role', 'listitem');
+      item.tabIndex = 0;
+      if (isActiveSession) {
+        item.setAttribute('aria-current', 'true');
+      }
       const prefixSpan = isDsUi
         ? s.pinned === 1
           ? '<span class="ds-pin-glyph" aria-hidden="true">📌</span>'
@@ -3568,7 +3979,7 @@
       item.innerHTML = `
         <div class="session-title-wrap">
           ${prefixSpan}
-          <span class="session-title-text" title="双击可快速重命名">${escapeHtml(s.title)}</span>
+          <span class="session-title-text" title="${escapeHtml(s.title || '新对话')}（双击可快速重命名）">${escapeHtml(s.title)}</span>
           ${customBadgeHtml}
         </div>
         <div class="session-row-actions">
@@ -3587,6 +3998,14 @@
           return;
         }
         loadSession(s.id);
+      });
+
+      item.addEventListener('keydown', (e) => {
+        if (e.target !== item) return;
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          loadSession(s.id);
+        }
       });
 
       item.querySelector('.session-title-text')?.addEventListener('dblclick', (e) => {
@@ -3628,18 +4047,25 @@
       trust: 26,
       intimacy: 18,
       current_mood: '温柔浅笑',
-      stage: { badge: '🌱 初遇微光 Lv.1', promptDirective: '' },
+      stage: { badge: '🌱 初识破冰 Lv.1', playerDesc: '' },
       secret_diary: []
     };
     updateBondBadge();
+    const pronoun = getPersonaPronoun();
 
-    document.getElementById('nurture-stage-badge').textContent = n.stage?.badge || '🌱 初遇微光 Lv.1';
+    document.getElementById('nurture-stage-badge').textContent = n.stage?.badge || '🌱 初识破冰 Lv.1';
     document.getElementById('nurture-mood-text').textContent = `心境：${n.current_mood || '温柔浅笑'}`;
-    if (n.stage?.promptDirective) {
-      document.getElementById('nurture-stage-desc').textContent = n.stage.promptDirective.replace(
-        /^【[^】]+】/,
-        ''
-      );
+    const descEl = document.getElementById('nurture-stage-desc');
+    if (descEl) {
+      if (n.stage?.playerDesc) {
+        descEl.textContent = n.stage.playerDesc;
+      } else {
+        descEl.textContent = `随着好感、信任与默契提升，${pronoun}对你的称呼、语气亲密度与互动细节都会自然升温。`;
+      }
+    }
+    const diarySecTitle = document.getElementById('diary-section-title');
+    if (diarySecTitle) {
+      diarySecTitle.textContent = `📔 ${pronoun}的私密日记`;
     }
 
     const pAff = document.getElementById('prog-affection');
@@ -3656,18 +4082,18 @@
     diaryListEl.innerHTML = '';
     const diaries = Array.isArray(n.secret_diary) ? n.secret_diary : [];
     if (diaries.length === 0) {
-      diaryListEl.innerHTML =
-        '<div class="diary-card">点击上方「🌙 梦境整理 &amp; 写日记」，偷看他在心底为你写下的私密手札吧。</div>';
+      diaryListEl.innerHTML = `<div class="diary-card">点击上方「🌙 整理记忆 &amp; 写日记」，偷看${pronoun}在心底为你写下的私密日记吧。</div>`;
     } else {
       for (const d of diaries) {
         const card = document.createElement('div');
         card.className = 'diary-card';
+        const cleanDiaryText = String(d.content || '').replace(/。{2,}/g, '。');
         card.innerHTML = `
           <div class="diary-meta-row">
-            <span>${escapeHtml(d.date || '星夜手札')}</span>
+            <span>${escapeHtml(d.date || '星夜日记')}</span>
             <span>${escapeHtml(d.mood || '')}</span>
           </div>
-          <div>${escapeHtml(d.content)}</div>
+          <div>${escapeHtml(cleanDiaryText)}</div>
         `;
         diaryListEl.appendChild(card);
       }
@@ -3709,13 +4135,19 @@
   function syncSessionIsolationBadges() {
     const sess = state.activeSession;
     const hasPrompt = Boolean(sess?.session_prompt && String(sess.session_prompt).trim());
-    const hasOverride = Boolean(sess?.custom_persona_override);
-    const hasDirector = Boolean(sess?.director_note && String(sess.director_note).trim());
-    const hasCustom = hasPrompt || hasOverride || hasDirector;
+    let hasOverride = false;
+    if (sess?.custom_persona_override) {
+      try {
+        const ov = JSON.parse(sess.custom_persona_override);
+        hasOverride = Boolean(ov && typeof ov === 'object' && Object.values(ov).some((v) => typeof v === 'string' && v.trim()));
+      } catch {}
+    }
+    // 仅当用户真正填写保存了本对话专属设定或自定义角色覆盖时才显示生效中（排除幕次自动场景注）
+    const hasCustom = hasPrompt || hasOverride;
 
     const statusBadge = document.getElementById('session-prompt-status-badge');
     if (statusBadge) {
-      statusBadge.textContent = hasCustom ? '🎯 专属设定生效中' : '仅本对话生效';
+      statusBadge.textContent = hasCustom ? '🎯 专属设定生效中' : '未填写（仅本对话生效）';
     }
     const dsSettingPill = document.getElementById('ds-session-setting-pill');
     if (dsSettingPill) {
@@ -3724,8 +4156,8 @@
       dsSettingPill.classList.toggle('hidden', !shouldShow);
       if (shouldShow) {
         dsSettingPill.textContent = hasCustom
-          ? `🎯 独立设定${memCnt > 0 ? ` · 记忆 ${memCnt}` : ''}`
-          : `🧠 独立记忆 ${memCnt} 条`;
+          ? `🎯 本对话专属设定${memCnt > 0 ? ` · 已记 ${memCnt} 条` : ''}`
+          : `🧠 已记住 ${memCnt} 件事`;
       }
     }
   }
@@ -3735,19 +4167,20 @@
     if (!p) return;
     topbarAvatar.textContent = p.avatar || '🌸';
     topbarName.textContent = p.name;
-    topbarTagline.textContent =
+    topbarTagline.textContent = replaceClientMacros(
       (state.activeSession?.session_prompt && String(state.activeSession.session_prompt).trim().slice(0, 48)) ||
-      p.tagline ||
-      p.backstory?.slice(0, 48) ||
-      '';
+        p.tagline ||
+        p.backstory?.slice(0, 48) ||
+        ''
+    );
     updateBondBadge();
 
     document.getElementById('ip-avatar').value = p.avatar || '🌸';
     document.getElementById('ip-name').value = p.name || '';
-    document.getElementById('ip-tagline').value = p.tagline || '';
-    document.getElementById('ip-personality').value = p.personality || '';
-    document.getElementById('ip-backstory').value = p.backstory || '';
-    document.getElementById('ip-style').value = p.speaking_style || '';
+    document.getElementById('ip-tagline').value = replaceClientMacros(p.tagline || '');
+    document.getElementById('ip-personality').value = replaceClientMacros(p.personality || '');
+    document.getElementById('ip-backstory').value = replaceClientMacros(p.backstory || '');
+    document.getElementById('ip-style').value = replaceClientMacros(p.speaking_style || '');
 
     const sessionPromptEl = document.getElementById('session-prompt-input');
     if (sessionPromptEl) {
@@ -4126,26 +4559,19 @@
       bodyEl.appendChild(toolBar);
     }
 
-    // 4. 思维链 / 心声独白折叠框（原生模式严格采用正版线性原子图标 +「已深度思考（用时 X 秒）」）
-    const femaleIds = new Set([
-      'persona_nagisa_sakura',
-      'persona_kagaribi_kyou',
-      'persona_ichinose_kotomi',
-      'persona_makise_sei',
-      'persona_asagiri_mio',
-      'persona_violet_eve'
-    ]);
-    const pPronoun =
-      femaleIds.has(state.activePersona?.id) ||
-      (/少女|学妹|女主|女生|女孩|青梅|巫女/.test(`${state.activePersona?.name || ''} ${state.activePersona?.tagline || ''}`) &&
-        !/少年|公子|先生|学弟|家主|剑士/.test(`${state.activePersona?.name || ''} ${state.activePersona?.tagline || ''}`))
-        ? '她'
-        : '他';
-    if (msg.reasoning && msg.reasoning.trim()) {
+    // 4. 思维链 / 心声独白折叠框（准确匹配角色性别「她的心声独白 / 他的心声独白」）
+    const pPronoun = getPersonaPronoun(state.activePersona);
+    function isSystemPlaceholderReasoning(text) {
+      const t = String(text || '').trim();
+      if (!t) return true;
+      return /^已载入「.*」的性格羁绊与世界观设定/.test(t);
+    }
+
+    if (msg.reasoning && !isSystemPlaceholderReasoning(msg.reasoning)) {
       const secNum = Math.max(1, Math.round((msg.duration_ms || 1200) / 1000));
       const summaryLabel = isDsUi
         ? `已深度思考（用时 ${secNum} 秒）`
-        : `💭 ${pPronoun}的心声独白${msg.duration_ms ? `（心动推演 ${(msg.duration_ms / 1000).toFixed(1)}s）` : ''}`;
+        : `💭 ${pPronoun}的心声独白${msg.duration_ms ? `（思考 ${(msg.duration_ms / 1000).toFixed(1)}s）` : ''}`;
       const details = document.createElement('details');
       details.className = 'thought-details';
       if (isDsUi && isLastAssistant) details.open = true;
@@ -4160,11 +4586,46 @@
       bodyEl.appendChild(details);
     }
 
-    // 5. 正文 Markdown 渲染（传入联网参考来源以激活 [1] 引用角标）
+    // 5. 正文 Markdown 渲染（兼容识别孤立 "*" 历史中断残留）
+    const rawTrimmedMsg = String(msg.content || '').trim();
+    const isOrphanStar = /^[*＊]$/.test(rawTrimmedMsg);
+    const displayContent = isOrphanStar
+      ? '*（上次生成在刷新或网络中断时止步，可点击下方按钮继续或重演）*'
+      : msg.content;
+    const isInterruptedMsg = Boolean(
+      meta.interrupted ||
+        meta.partial_recovered ||
+        isOrphanStar ||
+        /\*\((?:已停止生成|生成已中断)\)\*$/.test(rawTrimmedMsg)
+    );
+
     const prose = document.createElement('div');
     prose.className = 'assistant-prose';
-    prose.innerHTML = renderMessageMarkdown(msg.content, meta.search_results || []);
+    prose.innerHTML = renderMessageMarkdown(displayContent, meta.search_results || []);
     bodyEl.appendChild(prose);
+
+    if (isInterruptedMsg && isLastAssistant && !state.isStreaming) {
+      const intrBar = document.createElement('div');
+      intrBar.className = 'msg-interrupted-bar';
+      intrBar.innerHTML = `
+        <span>⚡ 生成已中断（已生成内容已为你完整保留）</span>
+        <div class="msg-interrupted-actions">
+          <button type="button" class="mini-primary-btn intr-continue-btn">▶️ 接着往下写</button>
+          <button type="button" class="mini-btn intr-regen-btn">🔄 重新生成</button>
+        </div>
+      `;
+      intrBar.querySelector('.intr-continue-btn')?.addEventListener('click', () => {
+        if (!state.isStreaming) {
+          sendStreamMessage('请紧接着你刚才中断的地方自然继续往下说，不要重复前面已经说过的内容。', false);
+        }
+      });
+      intrBar.querySelector('.intr-regen-btn')?.addEventListener('click', () => {
+        if (!state.isStreaming) {
+          sendStreamMessage('', true);
+        }
+      });
+      bodyEl.appendChild(intrBar);
+    }
 
     // 6. 底部操作栏（原生 DeepSeek 模式采用官方线性 SVG 工具栏 + < 1 / 2 > 多版本切换器）
     let cacheTagHtml = '';
@@ -4380,6 +4841,9 @@
   function syncComposerEmptyState() {
     const isEmpty = !chatInput.value.trim() && state.pendingAttachments.length === 0;
     chatForm.classList.toggle('input-empty', isEmpty);
+    if (sendBtn) {
+      sendBtn.disabled = Boolean(state.isStreaming || isEmpty);
+    }
   }
 
   function renderMessages() {
@@ -4484,12 +4948,21 @@
           docAtts.length > 0
             ? `<div class="msg-attachments-row">
                 ${docAtts
-                  .map(
-                    (a, docIdx) =>
-                      `<span class="attachment-chip clickable-att" data-preview-doc-idx="${docIdx}" title="点击预览：${escapeHtml(
-                        a.name
-                      )}">📎 ${renderFilenameHtml(a.name)}</span>`
-                  )
+                  .map((a, docIdx) => {
+                    const fMeta = inferClientFileBadge(a.name, a.badge, a.color);
+                    const subInfo = a.char_count
+                      ? `已提取 ${Number(a.char_count).toLocaleString()} 字`
+                      : formatFileByteSize(a.size || (a.content ? a.content.length : 0));
+                    return `<span class="ds-file-card clickable-att" data-preview-doc-idx="${docIdx}" title="点击查看文件内容：${escapeHtml(
+                      a.name
+                    )}">
+                      <span class="ds-file-badge ${escapeHtml(fMeta.color)}">${escapeHtml(fMeta.badge)}</span>
+                      <span class="ds-file-meta">
+                        <span class="ds-file-name">${escapeHtml(a.name)}</span>
+                        <span class="ds-file-sub">${escapeHtml(subInfo)}</span>
+                      </span>
+                    </span>`;
+                  })
                   .join('')}
               </div>`
             : '';
@@ -4498,10 +4971,14 @@
         row.className = 'msg-row user';
         const wrap = document.createElement('div');
         wrap.className = 'user-msg-wrap';
+        const renderedUserHtml = escapeHtml(msg.content).replace(
+          /\*([^*\n]+)\*/g,
+          '<em class="rp-action">$1</em>'
+        );
         wrap.innerHTML = `
           ${imgGridHtml}
           ${attHtml}
-          <div class="msg-body">${escapeHtml(msg.content)}</div>
+          <div class="msg-body user-bubble">${renderedUserHtml}</div>
           <div class="user-msg-tools">
             <button type="button" class="msg-tool-btn u-copy-btn">复制</button>
             <button type="button" class="msg-tool-btn u-edit-btn">✏️ 编辑</button>
@@ -4547,6 +5024,17 @@
         if (rwBtn) {
           rwBtn.addEventListener('click', async () => {
             if (state.isStreaming || !msg.id) return;
+            const subsequentCount = Math.max(0, state.messages.length - 1 - idx);
+            const confirmed = await askUserConfirm({
+              title: '⏪ 确认回溯对话进度',
+              message:
+                subsequentCount > 0
+                  ? `确定要回溯到这句话吗？\n此句之后的 ${subsequentCount} 条后续对话记录将被永久清除且无法恢复（如需保留原线，可先点回复下方的「🌿 分支」开启新周目）。`
+                  : '确定要重置此节点状态吗？',
+              confirmText: '确认回溯并清除后续',
+              danger: true
+            });
+            if (!confirmed) return;
             await apiJson(`/api/messages/${msg.id}/rewind`, { method: 'POST' });
             await loadSession(state.activeSessionId);
             showToast('⏪ 已回溯到该对话节点');
@@ -4573,12 +5061,13 @@
     }
 
     updateBondBadge();
+    syncComposerEmptyState();
     scrollToBottom(true);
   }
 
   function setStreamingUi(streaming) {
     state.isStreaming = streaming;
-    sendBtn.disabled = streaming;
+    syncComposerEmptyState();
     stopStreamBtn.classList.toggle('hidden', !streaming);
     const stopLbl = document.getElementById('stop-btn-label');
     if (stopLbl) stopLbl.textContent = state.uiMode === 'deepseek' ? '停止生成' : '轻声止步';
@@ -4594,7 +5083,10 @@
   }
 
   stopStreamBtn.addEventListener('click', () => {
-    if (state.streamingAbort) state.streamingAbort.abort();
+    if (state.streamingAbort) {
+      state.userStoppedStream = true;
+      state.streamingAbort.abort('user_stop');
+    }
   });
 
   async function sendStreamMessage(text, regenerate = false, editMessageId = 0, _retried404 = false) {
@@ -4610,6 +5102,10 @@
     }
     const isDsUi = state.uiMode === 'deepseek';
     let trimmed = (text || '').trim();
+    if (!regenerate && !editMessageId && state.pendingAttachments.some((a) => a.parsing)) {
+      showToast('⏳ 文件正在读取解析中，请稍候片刻再发送');
+      return;
+    }
     const stagedFiles = !regenerate && !editMessageId ? [...state.pendingAttachments] : [];
 
     if (!regenerate && !trimmed && stagedFiles.length === 0) return;
@@ -4632,8 +5128,8 @@
     const prefixInputEl = document.getElementById('ds-prefix-input');
     const prefixBarEl = document.getElementById('ds-prefix-bar');
     const assistantPrefix =
-      isDsUi && prefixBarEl && !prefixBarEl.classList.contains('hidden')
-        ? prefixInputEl.value
+      prefixBarEl && !prefixBarEl.classList.contains('hidden') && prefixInputEl
+        ? prefixInputEl.value.trim()
         : '';
 
     if (editMessageId > 0) {
@@ -4662,8 +5158,12 @@
     }
     renderMessages();
 
+    const originSessionId = state.activeSessionId;
+    const originIsDsUi = isDsUi;
+    const isStillOriginSession = () => state.activeSessionId === originSessionId;
+
     const liveRow = document.createElement('div');
-    liveRow.className = 'msg-row assistant';
+    liveRow.className = 'msg-row assistant awaiting-first-token';
 
     const avatarEl = document.createElement('div');
     avatarEl.className = 'msg-avatar';
@@ -4690,7 +5190,7 @@
 
     const proseEl = document.createElement('div');
     proseEl.className = 'assistant-prose streaming-cursor';
-    proseEl.innerHTML = '<p>…</p>';
+    proseEl.innerHTML = `<span class="streaming-await-pill">${isDsUi ? '✦ 正在思考并组织回答…' : '✦ 正在构思回应…'}</span>`;
 
     bodyEl.appendChild(liveSearchSlot);
     bodyEl.appendChild(liveToolSlot);
@@ -4706,12 +5206,14 @@
 
     const abortController = new AbortController();
     state.streamingAbort = abortController;
+    state.streamingSessionId = originSessionId;
+    state.userStoppedStream = false;
     setStreamingUi(true);
 
     const thinkStartedAt = Date.now();
     let thinkDoneSec = null;
     const thinkTimer = setInterval(() => {
-      if (isDsUi && thinkDoneSec === null && !thoughtDetails.classList.contains('hidden')) {
+      if (originIsDsUi && isStillOriginSession() && thinkDoneSec === null && !thoughtDetails.classList.contains('hidden')) {
         const sec = ((Date.now() - thinkStartedAt) / 1000).toFixed(1);
         thoughtLabelEl.textContent = `思考中... (${sec}s)`;
       }
@@ -4727,7 +5229,7 @@
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          session_id: state.activeSessionId,
+          session_id: originSessionId,
           content: trimmed,
           regenerate,
           edit_message_id: editMessageId || 0,
@@ -4804,7 +5306,16 @@
           return;
         }
 
+        if (!isStillOriginSession()) {
+          if (eventName === 'done' && Array.isArray(payload.sessions)) {
+            state.sessions = payload.sessions;
+            renderSessionList();
+          }
+          return;
+        }
+
         if (eventName === 'search_results' && Array.isArray(payload.items)) {
+            liveRow.classList.remove('awaiting-first-token');
             liveSearchResults = payload.items;
             liveSearchSlot.innerHTML = `
               <details class="ds-fold-details" open>
@@ -4825,6 +5336,7 @@
             `;
             scrollToBottom();
           } else if (eventName === 'tool_call') {
+            liveRow.classList.remove('awaiting-first-token');
             liveToolCalls.push(payload);
             liveToolSlot.classList.remove('hidden');
             const badge = document.createElement('span');
@@ -4838,8 +5350,9 @@
             const firstItem = payload.items[0];
             showToast(
               firstItem.updated_existing
-                ? `🔄 已智能覆盖更新记忆：${firstItem.content}`
-                : `💫 已为你镌刻新记忆：${firstItem.content}`
+                ? `🔄 已更新记忆：${firstItem.content}`
+                : `💫 已镌刻新记忆：${firstItem.content}`,
+              2400
             );
           } else if (eventName === 'nurturing_updated' && payload.snapshot) {
             state.nurturing = payload.snapshot;
@@ -4847,7 +5360,8 @@
             const d = payload.deltas || {};
             if ((d.affection || 0) >= 3 || (d.trust || 0) >= 3) {
               showToast(
-                `💗 心动 +${d.affection} · 🤝 信任 +${d.trust} ｜ 此刻心境：${payload.snapshot.current_mood}`
+                `💗 心动 +${d.affection} · 🤝 信任 +${d.trust} ｜ 此刻心境：${payload.snapshot.current_mood}`,
+                2400
               );
             }
           } else if (eventName === 'telemetry') {
@@ -4855,8 +5369,8 @@
             state.recalledIds = new Set((payload.recalled_memories || []).map((m) => m.id));
             const trigLores = payload.triggered_lorebooks || [];
             state.triggeredLoreIds = new Set(trigLores.map((l) => l.id));
-            if (trigLores.length > 0 && !isDsUi) {
-              showToast(`📖 关键词已触发世界书隐藏设定：【${trigLores[0].title}】`);
+            if (trigLores.length > 0 && !originIsDsUi) {
+              showToast(`📖 已唤醒世界书设定：【${trigLores[0].title}】`, 2200);
             }
             if (payload.nurturing) {
               state.nurturing = payload.nurturing;
@@ -4868,34 +5382,24 @@
             renderLorebooks();
             renderTelemetryAndMemories();
           } else if (eventName === 'reasoning') {
+            liveRow.classList.remove('awaiting-first-token');
             accReasoning += payload.delta || '';
             thoughtDetails.classList.remove('hidden');
-            if (isDsUi) {
+            if (originIsDsUi) {
               thoughtContentEl.innerHTML = formatDsReasoningHtml(accReasoning);
             } else {
               thoughtContentEl.textContent = accReasoning;
             }
             scrollToBottom();
           } else if (eventName === 'content') {
+            liveRow.classList.remove('awaiting-first-token');
             if (thinkDoneSec === null) {
               thinkDoneSec = Math.max(1, Math.round((Date.now() - thinkStartedAt) / 1000));
             }
             thoughtContentEl.classList.remove('streaming-cursor');
             if (accReasoning) {
-              const femaleIds = new Set([
-                'persona_nagisa_sakura',
-                'persona_kagaribi_kyou',
-                'persona_ichinose_kotomi',
-                'persona_makise_sei',
-                'persona_asagiri_mio',
-                'persona_violet_eve'
-              ]);
-              const livePronoun =
-                femaleIds.has(state.activePersona?.id) ||
-                /少女|学妹|女主|青梅|巫女/.test(`${state.activePersona?.name || ''} ${state.activePersona?.tagline || ''}`)
-                  ? '她'
-                  : '他';
-              thoughtLabelEl.textContent = isDsUi
+              const livePronoun = getPersonaPronoun(state.activePersona);
+              thoughtLabelEl.textContent = originIsDsUi
                 ? `已深度思考（用时 ${thinkDoneSec} 秒）`
                 : `💭 ${livePronoun}的心声独白`;
             }
@@ -4908,7 +5412,7 @@
               id: payload.message_id,
               role: 'assistant',
               reasoning: accReasoning,
-              content: accContent || (isDsUi ? '*(生成已完成)*' : '*（温柔地注视着你）*'),
+              content: accContent || (originIsDsUi ? '*(生成已完成)*' : '*（温柔地注视着你）*'),
               duration_ms: payload.duration_ms,
               recalled_count: payload.recalled_count,
               meta: payload.meta || {
@@ -4920,7 +5424,7 @@
             if (payload.nurturing) state.nurturing = payload.nurturing;
             if (Array.isArray(payload.sessions)) {
               state.sessions = payload.sessions;
-              const cur = state.sessions.find((s) => s.id === state.activeSessionId);
+              const cur = state.sessions.find((s) => s.id === originSessionId);
               if (cur && state.activeSession) state.activeSession.title = cur.title;
             }
             if (payload.membership) state.membership = payload.membership;
@@ -4942,7 +5446,7 @@
             renderMessages();
             // 角色回复自动真声配音（零配置开箱即集成）
             if (
-              !isDsUi &&
+              !originIsDsUi &&
               accContent.trim() &&
               localStorage.getItem('auto_tts_reply') !== '0' &&
               typeof window.playCompanionNeuralTts === 'function'
@@ -4955,6 +5459,7 @@
       };
 
       for await (const chunk of response.body) {
+        if (!isStillOriginSession()) break;
         buffer += decoder.decode(chunk, { stream: true });
         const events = buffer.split(/\r?\n\r?\n/);
         buffer = events.pop() || '';
@@ -4963,30 +5468,80 @@
         }
       }
 
-      const tail = decoder.decode();
-      if (tail) buffer += tail;
-      if (buffer.trim()) {
-        for (const rawBlock of buffer.split(/\r?\n\r?\n/)) {
-          handleSseBlock(rawBlock);
+      if (isStillOriginSession()) {
+        const tail = decoder.decode();
+        if (tail) buffer += tail;
+        if (buffer.trim()) {
+          for (const rawBlock of buffer.split(/\r?\n\r?\n/)) {
+            handleSseBlock(rawBlock);
+          }
         }
       }
 
-      // 若连接提前结束且未收到 done，但已有部分生成内容，主动重拉会话对齐服务端抢救落库记录
-      if (!receivedDoneEvent && (accContent.trim() || accReasoning.trim())) {
-        await loadSession(state.activeSessionId).catch(() => {});
+      // 若连接提前结束且未收到 done，但仍在原会话且已有部分生成内容，主动重拉会话对齐服务端抢救落库记录
+      if (isStillOriginSession() && !receivedDoneEvent && (accContent.trim() || accReasoning.trim())) {
+        await loadSession(originSessionId).catch(() => {});
       }
     } catch (err) {
+      // 若已切换至其他会话，绝不触碰当前新会话的任何数据或界面
+      if (!isStillOriginSession()) {
+        return;
+      }
       if (err.name === 'AbortError') {
-        await loadSession(state.activeSessionId);
+        thoughtContentEl.classList.remove('streaming-cursor');
+        proseEl.classList.remove('streaming-cursor');
+        const substantivePartial = accContent.replace(/^[\s*＊…—-]+$/g, '').trim();
+        const trimmedAcc = accContent.trim();
+        const balancedAcc =
+          substantivePartial && (trimmedAcc.match(/\*/g) || []).length % 2 === 1
+            ? `${trimmedAcc}*`
+            : trimmedAcc;
+        const preservedText = substantivePartial
+          ? `${balancedAcc}\n\n*(生成已中断)*`
+          : '*（生成已中断，可点击下方按钮继续或重演）*';
+        state.messages.push({
+          role: 'assistant',
+          reasoning: accReasoning,
+          content: preservedText,
+          duration_ms: Date.now() - thinkStartedAt,
+          recalled_count: state.recalledIds?.size || 0,
+          meta: {
+            interrupted: true,
+            aborted_by_user: true,
+            partial_recovered: Boolean(substantivePartial),
+            search_results: liveSearchResults,
+            tool_calls: liveToolCalls
+          }
+        });
+        setStreamingUi(false);
+        renderMessages();
+        showToast('⏸️ 已轻声止步，已输出的内容已为您完整保留');
+        // 延迟静默对齐服务端记录（防止旧快照覆盖刚保留的半段回复）
+        const localCountAfterStop = state.messages.length;
+        setTimeout(async () => {
+          if (state.activeSessionId !== originSessionId || state.isStreaming) return;
+          try {
+            const syncData = await apiJson(`/api/sessions/${encodeURIComponent(originSessionId)}`);
+            if (state.activeSessionId !== originSessionId || state.isStreaming) return;
+            if (Array.isArray(syncData.messages) && syncData.messages.length >= localCountAfterStop) {
+              const lastSrv = syncData.messages[syncData.messages.length - 1];
+              if (lastSrv?.role === 'assistant') {
+                state.messages[state.messages.length - 1].id = lastSrv.id;
+              }
+            }
+          } catch {}
+        }, 500);
       } else if (accContent.trim()) {
+        liveRow.classList.remove('awaiting-first-token');
         proseEl.classList.remove('streaming-cursor');
         proseEl.innerHTML =
           renderMessageMarkdown(accContent, liveSearchResults) +
           `<p style="color: var(--accent-danger); margin-top: 8px; font-size: 13px;">⚠️ 网络波动提示：${escapeHtml(
             err.message
           )}（以上已生成正文已为你保留）</p>`;
-        await loadSession(state.activeSessionId).catch(() => {});
+        await loadSession(originSessionId).catch(() => {});
       } else {
+        liveRow.classList.remove('awaiting-first-token');
         proseEl.classList.remove('streaming-cursor');
         proseEl.innerHTML = `<p style="color: var(--accent-danger)">⚠️ 响应异常：${escapeHtml(
           err.message
@@ -4994,8 +5549,11 @@
       }
     } finally {
       clearInterval(thinkTimer);
-      state.streamingAbort = null;
-      setStreamingUi(false);
+      if (state.streamingAbort === abortController) {
+        state.streamingAbort = null;
+        state.streamingSessionId = null;
+        setStreamingUi(false);
+      }
       state.lastInteractionAt = Date.now();
     }
   }
@@ -5210,21 +5768,33 @@
     const a = document.createElement('a');
     a.href = url;
     a.download = safeName;
+    a.style.display = 'none';
     document.body.appendChild(a);
     a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
+    // 延迟释放 ObjectURL，避免现代浏览器异步启动下载流前被同步吊销导致首次点击不下载
+    setTimeout(() => {
+      a.remove();
+      URL.revokeObjectURL(url);
+    }, 15000);
   }
 
   async function exportSessionMarkdownById(targetSessionId) {
     const sid = targetSessionId || state.activeSessionId;
     if (!sid) return;
+    // 若导出的正是当前已加载会话，在用户点击同步手势帧内 0ms 立即触发浏览器下载，杜绝云浏览器拦截异步下载
+    if (sid === state.activeSessionId && state.activeSession && Array.isArray(state.messages)) {
+      const mdNow = buildCurrentSessionMarkdown();
+      const titleNow = (state.activeSession.title || state.activePersona?.name || '对话记录').slice(0, 28);
+      triggerBrowserDownload(mdNow, 'text/markdown;charset=utf-8', `${titleNow}_聊天与记忆档案.md`);
+      showToast(`📄 已开始下载「${titleNow}_聊天与记忆档案.md」！`);
+      return;
+    }
     try {
       const data = await apiJson(`/api/sessions/${encodeURIComponent(sid)}/export`);
       const md = buildClientSessionMemoryMarkdown(data);
       const baseTitle = (data.title || data.persona_name || '对话记录').slice(0, 28);
       triggerBrowserDownload(md, 'text/markdown;charset=utf-8', `${baseTitle}_聊天与记忆档案.md`);
-      showToast(`📄 已导出「${baseTitle}」的 .md 记忆档案，可随时导入到其他对话或外部平台！`);
+      showToast(`📄 已开始下载「${baseTitle}_聊天与记忆档案.md」！`);
     } catch (err) {
       showToast(`⚠️ 导出 .md 失败：${err.message}`);
     }
@@ -5247,12 +5817,23 @@
     }
   }
 
+  function syncImportReplaceDangerWarning() {
+    const mode = document.querySelector('input[name="import-mode"]:checked')?.value || 'append';
+    document.getElementById('import-replace-warning')?.classList.toggle('hidden', mode !== 'replace');
+  }
+  document.querySelectorAll('input[name="import-mode"]').forEach((radio) => {
+    radio.addEventListener('change', syncImportReplaceDangerWarning);
+  });
+
   function openImportHistoryModal() {
     hidePopoverSafe('topbar-more-popover');
     hidePopoverSafe('ds-user-popover');
     state.pendingHistoryFile = null;
     historyPasteArea.value = '';
     historyFileBadge.textContent = '📂 支持 .md 记忆档案 / .txt / .json / .jsonl';
+    const appendRadio = document.querySelector('input[name="import-mode"][value="append"]');
+    if (appendRadio) appendRadio.checked = true;
+    syncImportReplaceDangerWarning();
     const applySetChk = document.getElementById('import-apply-setting-chk');
     const repMemChk = document.getElementById('import-replace-memories-chk');
     if (applySetChk) applySetChk.checked = false;
@@ -5301,6 +5882,15 @@
     const mode = document.querySelector('input[name="import-mode"]:checked')?.value || 'append';
     const importSetting = Boolean(document.getElementById('import-apply-setting-chk')?.checked);
     const replaceMemories = Boolean(document.getElementById('import-replace-memories-chk')?.checked);
+    if (mode === 'replace' && state.messages.length > 0) {
+      const confirmed = await askUserConfirm({
+        title: '⚠️ 确认覆盖当前对话历史',
+        message: `当前对话已有 ${state.messages.length} 条消息记录。\n执行「覆盖」导入将永久删除这些现有记录并替换为导入内容，确定继续吗？`,
+        confirmText: '确认覆盖现有历史',
+        danger: true
+      });
+      if (!confirmed) return;
+    }
     try {
       const res = await apiJson(
         `/api/sessions/${encodeURIComponent(state.activeSessionId)}/import-history`,
@@ -5318,12 +5908,18 @@
       state.sessions = res.sessions || state.sessions;
       importHistoryDialog.close();
       await loadSession(state.activeSessionId);
-      const settingHint = res.applied_setting
-        ? '（已同步应用文件中的专属设定）'
-        : '（已保留当前对话的独立设定）';
-      showToast(
-        `📥 导入成功：载入 ${res.imported_count || 0} 条对话、写入 ${res.extracted_memories || 0} 条独立记忆${settingHint}！`
-      );
+      const settingHint = res.applied_setting ? '（已同步应用专属设定）' : '';
+      const memCnt = Number(res.extracted_memories) || 0;
+      const msgCnt = Number(res.imported_count) || 0;
+      if (msgCnt > 0 && memCnt > 0) {
+        showToast(`📥 导入成功：已载入 ${msgCnt} 条对话，并记住了 ${memCnt} 件重要小事${settingHint}！`);
+      } else if (msgCnt > 0) {
+        showToast(`📥 导入成功：已载入 ${msgCnt} 条对话记录${settingHint}！`);
+      } else if (memCnt > 0) {
+        showToast(`📥 导入成功：已添加 ${memCnt} 条记忆条目${settingHint}！`);
+      } else {
+        showToast(`📥 内容已成功导入当前对话${settingHint}！`);
+      }
     } catch (err) {
       showToast(`⚠️ 导入失败：${err.message}`);
     }
@@ -5346,8 +5942,32 @@
   });
 
   // ================= 10. 会话管理、梦境整理手账与世界书操作 =================
+  let loadSessionSeq = 0;
   async function loadSession(sessionId) {
+    if (!sessionId) return;
+    // 若正在另一个会话中流式生成，切换会话时立即中止旧流以彻底杜绝跨会话串台污染
+    if (state.isStreaming && state.streamingSessionId && state.streamingSessionId !== sessionId) {
+      state.userStoppedStream = false;
+      try {
+        state.streamingAbort?.abort('session_switch');
+      } catch {}
+      state.streamingAbort = null;
+      state.streamingSessionId = null;
+      setStreamingUi(false);
+    }
+
+    const reqSeq = ++loadSessionSeq;
+    const isSwitching = state.activeSessionId && state.activeSessionId !== sessionId;
+    if (isSwitching) {
+      state.activeSessionId = sessionId;
+      renderSessionList();
+      if (messagesContainer) {
+        messagesContainer.innerHTML = '<div class="session-loading-banner" role="status">⏳ 正在载入对话记录与专属记忆…</div>';
+      }
+    }
+
     const data = await apiJson(`/api/sessions/${encodeURIComponent(sessionId)}`);
+    if (reqSeq !== loadSessionSeq) return;
     state.activeSessionId = sessionId;
     state.activeSession = data.session;
     state.activePersona = data.persona;
@@ -5418,14 +6038,13 @@
       }
       renderNurturingAndDiary();
       renderTelemetryAndMemories();
-      showToast(
-        `📔 他刚刚写下了一篇新的私密手账（强化记忆 ${res.reinforced_count} 条，合并冗余 ${res.merged_count} 条）`
-      );
+      const dPronoun = getPersonaPronoun(state.activePersona);
+      showToast(`📔 ${dPronoun}刚刚写下了一篇新的私密日记，快在上方查看吧！`);
     } catch (err) {
       showToast(`⚠️ ${err.message}`);
     } finally {
       btn.disabled = false;
-      btn.textContent = '🌙 梦境整理 & 写日记';
+      btn.textContent = '🌙 整理记忆 & 写日记';
     }
   });
 
@@ -5458,38 +6077,81 @@
     }
   });
 
-  async function startSessionWithPersona(personaId) {
-    if (state.isStreaming) return;
-    if (state.uiMode !== 'roleplay') {
-      applyUiModeVisuals('roleplay');
+  let creatingSessionLock = false;
+  async function startSessionWithPersona(personaId, customTitle = '') {
+    if (state.isStreaming || creatingSessionLock) return;
+    creatingSessionLock = true;
+    const newChatBtnEl = document.getElementById('new-chat-btn');
+    if (newChatBtnEl) newChatBtnEl.disabled = true;
+    try {
+      if (state.uiMode !== 'roleplay') {
+        applyUiModeVisuals('roleplay');
+      }
+      const res = await apiJson('/api/sessions', {
+        method: 'POST',
+        body: JSON.stringify({
+          persona_id: personaId,
+          session_mode: 'roleplay',
+          ...(customTitle ? { title: customTitle } : {})
+        })
+      });
+      state.sessions = res.sessions;
+      await loadSession(res.session_id);
+    } finally {
+      creatingSessionLock = false;
+      if (newChatBtnEl) newChatBtnEl.disabled = false;
     }
-    const res = await apiJson('/api/sessions', {
-      method: 'POST',
-      body: JSON.stringify({ persona_id: personaId, session_mode: 'roleplay' })
-    });
-    state.sessions = res.sessions;
-    await loadSession(res.session_id);
   }
 
   async function startNativeDeepSeekSession(personaId = 'persona_deepseek_official') {
-    if (state.isStreaming) return;
-    if (state.uiMode !== 'deepseek') {
-      applyUiModeVisuals('deepseek');
+    if (state.isStreaming || creatingSessionLock) return;
+    // 若当前已在空白新对话中且绑定角色一致，直接聚焦输入框避免连点产生多个空白会话
+    if (
+      state.uiMode === 'deepseek' &&
+      state.activeSession?.session_mode === 'deepseek_native' &&
+      state.messages.length === 0 &&
+      (state.activePersona?.id || 'persona_deepseek_official') === personaId
+    ) {
+      chatInput.focus();
+      showToast('✨ 当前已是全新空白对话，直接输入即可开聊');
+      return;
     }
-    const res = await apiJson('/api/sessions', {
-      method: 'POST',
-      body: JSON.stringify({
-        persona_id: personaId,
-        session_mode: 'deepseek_native',
-        ds_thinking: true,
-        ds_search: false
-      })
-    });
-    state.sessions = res.sessions;
-    await loadSession(res.session_id);
+    creatingSessionLock = true;
+    const dsNewBtnEl = document.getElementById('ds-new-chat-btn');
+    if (dsNewBtnEl) dsNewBtnEl.disabled = true;
+    try {
+      if (state.uiMode !== 'deepseek') {
+        applyUiModeVisuals('deepseek');
+      }
+      const res = await apiJson('/api/sessions', {
+        method: 'POST',
+        body: JSON.stringify({
+          persona_id: personaId,
+          session_mode: 'deepseek_native',
+          ds_thinking: true,
+          ds_search: false
+        })
+      });
+      state.sessions = res.sessions;
+      await loadSession(res.session_id);
+    } finally {
+      creatingSessionLock = false;
+      if (dsNewBtnEl) dsNewBtnEl.disabled = false;
+    }
   }
 
-  async function deleteSession(sessionId) {
+  async function deleteSession(sessionId, skipConfirm = false) {
+    const targetObj = state.sessions.find((s) => s.id === sessionId);
+    const titleLabel = targetObj?.title || '该段对话';
+    if (!skipConfirm) {
+      const confirmed = await askUserConfirm({
+        title: '🗑️ 确认删除对话存档',
+        message: `确定要永久删除对话「${titleLabel}」及其专属记忆吗？\n删除后将无法恢复（如需留存可先点 📄 导出 .md 记忆档案）。`,
+        confirmText: '确认删除',
+        danger: true
+      });
+      if (!confirmed) return;
+    }
     const res = await apiJson(`/api/sessions/${encodeURIComponent(sessionId)}`, {
       method: 'DELETE'
     });
@@ -5510,11 +6172,43 @@
     } else {
       renderSessionList();
     }
+    showToast(`🗑️ 已删除对话「${titleLabel}」`);
   }
 
-  document.getElementById('new-chat-btn').addEventListener('click', () => {
+  document.getElementById('new-chat-btn').addEventListener('click', async () => {
+    if (state.isStreaming || creatingSessionLock) return;
     const pid = state.activePersona?.id || state.personas[0]?.id;
-    if (pid) startSessionWithPersona(pid);
+    if (!pid) return;
+    // 若当前会话已经是该角色的全新初遇空局（尚无任何用户发言），直接复用并提示，防止连点生出多个重复同名空存档
+    const hasUserMsg = state.messages.some((m) => m.role === 'user');
+    if (
+      state.uiMode === 'roleplay' &&
+      state.activePersona?.id === pid &&
+      !hasUserMsg &&
+      !state.activeSession?.session_prompt
+    ) {
+      chatInput.focus();
+      showToast('✨ 当前已是全新初遇开局，直接发送第一句话即可开启故事');
+      return;
+    }
+    const pObj = state.personas.find((x) => x.id === pid) || state.activePersona;
+    const shortName = (pObj?.name || '角色').split(/[·\s]/)[0];
+    if (hasUserMsg) {
+      const ok = await askUserConfirm({
+        title: `🌸 与「${shortName}」开启一段新对话`,
+        message: `要和「${shortName}」新开一局故事吗？\n（放心，当前这段聊天记录已自动保存在左侧「聊天记录」列表里，不会丢失，随时可以点回来继续聊）`,
+        confirmText: '✨ 开启新故事',
+        danger: false
+      });
+      if (!ok) return;
+    }
+    const existingCount = state.sessions.filter(
+      (s) => s.persona_id === pid && s.session_mode !== 'deepseek_native'
+    ).length;
+    const roundTitle =
+      existingCount >= 1 ? `与${shortName}的心动篇章 · 第 ${existingCount + 1} 周目` : '';
+    await startSessionWithPersona(pid, roundTitle);
+    showToast(`🌸 已开启${roundTitle || `与${shortName}的全新篇章`}`);
   });
 
   toggleThoughtBtn.addEventListener('click', async () => {
@@ -5638,11 +6332,21 @@
 
   compressNowBtn.addEventListener('click', async () => {
     if (!state.activeSessionId) return;
-    await apiJson(`/api/sessions/${encodeURIComponent(state.activeSessionId)}/compress`, {
-      method: 'POST'
-    });
-    await loadSession(state.activeSessionId);
-    showToast('✨ 已将早期对话浓缩收进回忆手札');
+    const origLabel = compressNowBtn.textContent;
+    compressNowBtn.disabled = true;
+    compressNowBtn.textContent = '⏳ 正在总结…';
+    try {
+      const res = await apiJson(`/api/sessions/${encodeURIComponent(state.activeSessionId)}/compress`, {
+        method: 'POST'
+      });
+      await loadSession(state.activeSessionId);
+      showToast(res.message || '✨ 已将近期对话总结进「前情提要」');
+    } catch (err) {
+      showToast(`⚠️ ${err.message || '总结失败，请稍后重试'}`);
+    } finally {
+      compressNowBtn.disabled = false;
+      compressNowBtn.textContent = origLabel;
+    }
   });
 
   addMemoryForm.addEventListener('submit', async (e) => {
@@ -5656,41 +6360,165 @@
     newMemoryInput.value = '';
     state.memories = res.memories;
     await loadSession(state.activeSessionId);
-    showToast('💎 已将这份专属羁绊铭记于心');
+    showToast('📌 已记住这件事，聊天时会自然回应');
   });
 
-  document.getElementById('create-persona-btn').addEventListener('click', () => personaDialog.showModal());
+  // 创建角色时联动性别单选框自动推荐对应头像图标
+  document.querySelectorAll('input[name="cp-gender"]').forEach((rad) => {
+    rad.addEventListener('change', () => {
+      const avInp = document.getElementById('cp-avatar');
+      if (!avInp) return;
+      if (rad.value === 'male' && avInp.value === '🌸') avInp.value = '✨';
+      else if (rad.value === 'female' && avInp.value === '✨') avInp.value = '🌸';
+    });
+  });
+
+  const cpBackstoryEl = document.getElementById('cp-backstory');
+  const cpBackstoryCountEl = document.getElementById('cp-backstory-count');
+  function syncPersonaBackstoryCounter() {
+    if (!cpBackstoryEl || !cpBackstoryCountEl) return;
+    cpBackstoryCountEl.textContent = `${cpBackstoryEl.value.length} / 4000`;
+  }
+  cpBackstoryEl?.addEventListener('input', syncPersonaBackstoryCounter);
+
+  function openPersonaModalForCreate() {
+    const formEl = document.getElementById('create-persona-form');
+    formEl?.reset();
+    const editIdEl = document.getElementById('cp-editing-id');
+    if (editIdEl) editIdEl.value = '';
+    const avEl = document.getElementById('cp-avatar');
+    if (avEl) avEl.value = '🌸';
+    const titleEl = document.getElementById('persona-dialog-title');
+    if (titleEl) titleEl.textContent = '🌸 缔结全新角色人设与背景故事';
+    const submitBtn = document.getElementById('submit-persona-dialog-btn');
+    if (submitBtn) submitBtn.textContent = '✨ 缔结角色并开启初遇';
+    syncPersonaBackstoryCounter();
+    setTimeout(() => personaDialog.showModal(), 10);
+  }
+
+  function openPersonaModalForEdit(p) {
+    if (!p) return;
+    const editIdEl = document.getElementById('cp-editing-id');
+    if (editIdEl) editIdEl.value = p.id;
+    document.getElementById('cp-avatar').value = p.avatar || '🌸';
+    document.getElementById('cp-name').value = p.name || '';
+    document.getElementById('cp-tagline').value = p.tagline || '';
+    document.getElementById('cp-personality').value = p.personality || '';
+    document.getElementById('cp-backstory').value = p.backstory || '';
+    document.getElementById('cp-style').value = p.speaking_style || '';
+    document.getElementById('cp-greeting').value = p.greeting || '';
+    document.getElementById('cp-prompts').value = Array.isArray(p.starter_prompts)
+      ? p.starter_prompts.join('\n')
+      : '';
+    const titleEl = document.getElementById('persona-dialog-title');
+    if (titleEl) titleEl.textContent = `✏️ 编辑自建角色「${(p.name || '').split('·')[0].trim()}」`;
+    const submitBtn = document.getElementById('submit-persona-dialog-btn');
+    if (submitBtn) submitBtn.textContent = '💾 保存角色设定';
+    syncPersonaBackstoryCounter();
+    personaDialog.showModal();
+  }
+
+  async function deleteCustomPersona(p) {
+    if (!p || !p.id) return;
+    const shortName = (p.name || '该角色').split('·')[0].trim();
+    const confirmed = await askUserConfirm({
+      title: '🗑️ 确认删除自建角色',
+      message: `确定要永久删除自建角色「${shortName}」及其关联的对话存档吗？\n此操作不可恢复。`,
+      confirmText: '确认删除角色',
+      danger: true
+    });
+    if (!confirmed) return;
+    try {
+      const res = await apiJson(`/api/personas/${encodeURIComponent(p.id)}`, {
+        method: 'DELETE'
+      });
+      state.personas = state.personas.filter((x) => x.id !== p.id);
+      if (Array.isArray(res.sessions)) {
+        state.sessions = res.sessions;
+      } else {
+        state.sessions = state.sessions.filter((s) => s.persona_id !== p.id);
+      }
+      if (state.activePersona?.id === p.id) {
+        const nextRoleplaySess = state.sessions.find((s) => s.session_mode !== 'deepseek_native');
+        if (nextRoleplaySess) {
+          await loadSession(nextRoleplaySess.id);
+        } else {
+          const fallbackPersona = state.personas.find((x) => x.id !== 'persona_deepseek_official');
+          if (fallbackPersona) {
+            await startSessionWithPersona(fallbackPersona.id);
+          }
+        }
+      } else {
+        renderPersonaList();
+        renderSessionList();
+      }
+      showToast(`🗑️ 已删除自建角色「${shortName}」`);
+    } catch (err) {
+      showToast(`⚠️ 删除失败：${err.message}`);
+    }
+  }
+
+  document.getElementById('create-persona-btn').addEventListener('click', openPersonaModalForCreate);
   document.getElementById('close-persona-dialog').addEventListener('click', () => personaDialog.close());
   document.getElementById('cancel-persona-dialog').addEventListener('click', () => personaDialog.close());
 
   document.getElementById('create-persona-form').addEventListener('submit', async (e) => {
     e.preventDefault();
+    const editingId = (document.getElementById('cp-editing-id')?.value || '').trim();
     const rawPrompts = document.getElementById('cp-prompts').value || '';
     const starterPrompts = rawPrompts
       .split('\n')
       .map((s) => s.trim())
       .filter(Boolean);
+    const pickedGender =
+      document.querySelector('input[name="cp-gender"]:checked')?.value || 'female';
+    const bodyPayload = {
+      script_id: state.activeScriptId || 'script_classic',
+      gender: pickedGender,
+      avatar: document.getElementById('cp-avatar').value.trim() || '🌸',
+      name: document.getElementById('cp-name').value.trim(),
+      tagline: document.getElementById('cp-tagline').value.trim(),
+      personality: document.getElementById('cp-personality').value.trim(),
+      backstory: document.getElementById('cp-backstory').value.trim(),
+      speaking_style: document.getElementById('cp-style').value.trim(),
+      greeting: document.getElementById('cp-greeting').value.trim(),
+      starter_prompts: starterPrompts
+    };
+
+    if (!bodyPayload.name || !bodyPayload.backstory) {
+      showToast('⚠️ 请填写角色姓名与世界观背景故事');
+      return;
+    }
+
+    if (editingId) {
+      const res = await apiJson(`/api/personas/${encodeURIComponent(editingId)}`, {
+        method: 'PUT',
+        body: JSON.stringify({ ...bodyPayload, apply_to_global: true })
+      });
+      const idx = state.personas.findIndex((x) => x.id === editingId);
+      if (idx !== -1 && res.persona) state.personas[idx] = res.persona;
+      if (Array.isArray(res.sessions)) state.sessions = res.sessions;
+      personaDialog.close();
+      renderPersonaList();
+      renderSessionList();
+      if (state.activePersona?.id === editingId && state.activeSessionId) {
+        await loadSession(state.activeSessionId);
+      }
+      showToast(`✅ 已保存角色「${res.persona?.name || bodyPayload.name}」的更新设定`);
+      return;
+    }
 
     const res = await apiJson('/api/personas', {
       method: 'POST',
-      body: JSON.stringify({
-        script_id: state.activeScriptId || 'script_clannad',
-        avatar: document.getElementById('cp-avatar').value,
-        name: document.getElementById('cp-name').value,
-        tagline: document.getElementById('cp-tagline').value,
-        personality: document.getElementById('cp-personality').value,
-        backstory: document.getElementById('cp-backstory').value,
-        speaking_style: document.getElementById('cp-style').value,
-        greeting: document.getElementById('cp-greeting').value,
-        starter_prompts: starterPrompts
-      })
+      body: JSON.stringify(bodyPayload)
     });
     state.personas.unshift(res.persona);
     personaDialog.close();
     e.target.reset();
     document.getElementById('cp-avatar').value = '🌸';
+    syncPersonaBackstoryCounter();
     await startSessionWithPersona(res.persona.id);
-    showToast(`✨ 已缔结新角色「${res.persona.name}」并开启心动初遇`);
+    showToast(`✨ 已创建角色「${res.persona.name}」，现在就开始聊天吧！`);
   });
 
   // ================= 11. 个人 API 自由接入与聊天偏好设置（DeepSeek 原生 & 角色扮演双模式通用） =================
@@ -5709,17 +6537,68 @@
     );
   }
 
+  // 设置弹窗顶部三标签页切换控制器（遵循 modern-web-guidance: tabs 规范）
+  const settingsTabs = Array.from(document.querySelectorAll('#settings-tablist [role="tab"]'));
+  function activateSettingsTab(targetTabId, focusTab = false) {
+    settingsTabs.forEach((tab) => {
+      const isSelected = tab.id === targetTabId;
+      tab.setAttribute('aria-selected', String(isSelected));
+      tab.tabIndex = isSelected ? 0 : -1;
+      const panelId = tab.dataset.spanel;
+      const panel = panelId ? document.getElementById(panelId) : null;
+      if (panel) {
+        panel.hidden = !isSelected;
+      }
+      if (isSelected && focusTab) {
+        tab.focus();
+      }
+    });
+  }
+
+  settingsTabs.forEach((tab, idx) => {
+    tab.addEventListener('click', () => activateSettingsTab(tab.id, false));
+    tab.addEventListener('keydown', (e) => {
+      let nextIdx = -1;
+      if (e.key === 'ArrowRight') nextIdx = (idx + 1) % settingsTabs.length;
+      else if (e.key === 'ArrowLeft') nextIdx = (idx - 1 + settingsTabs.length) % settingsTabs.length;
+      else if (e.key === 'Home') nextIdx = 0;
+      else if (e.key === 'End') nextIdx = settingsTabs.length - 1;
+      if (nextIdx >= 0) {
+        e.preventDefault();
+        activateSettingsTab(settingsTabs[nextIdx].id, true);
+      }
+    });
+  });
+
   function switchProviderPane(provider) {
+    const isOwn = provider === 'own_deepseek';
     document.getElementById('pane-demo')?.classList.toggle('hidden', provider !== 'demo');
     document.getElementById('pane-online')?.classList.toggle('hidden', provider !== 'online');
+    document.getElementById('mode-card-free')?.classList.toggle('active', !isOwn);
+    document.getElementById('mode-card-own')?.classList.toggle('active', isOwn);
+    document.getElementById('free-peace-card')?.classList.toggle('hidden', isOwn);
+    document.getElementById('member-own-api-box')?.classList.toggle('hidden', !isOwn);
     testResultBox?.classList.add('hidden');
   }
 
+  document.getElementById('mode-card-free')?.addEventListener('click', () => {
+    providerSelect.value = 'online';
+    switchProviderPane('online');
+  });
+
+  document.getElementById('mode-card-own')?.addEventListener('click', () => {
+    providerSelect.value = 'own_deepseek';
+    switchProviderPane('own_deepseek');
+    setTimeout(() => {
+      document.getElementById('st-own-ds-key')?.focus();
+    }, 30);
+  });
+
   providerSelect.addEventListener('change', (e) => switchProviderPane(e.target.value));
 
-  // 当用户在个人密钥框输入密钥时，自动为其切到「个人 API 自由直连」档位
+  // 当用户在个人密钥框输入密钥时，自动为其切到「用我自己的密钥」档位
   document.getElementById('st-own-ds-key')?.addEventListener('input', (e) => {
-    if (isMemberOwnApiUnlocked() && e.target.value.trim().length >= 6) {
+    if (isMemberOwnApiUnlocked() && e.target.value.trim().length >= 3) {
       providerSelect.value = 'own_deepseek';
       switchProviderPane('own_deepseek');
     }
@@ -5893,7 +6772,45 @@
     });
   });
 
+  let settingsInitialSnapshot = null;
+  let settingsSavedFlag = false;
+
+  function captureSettingsSnapshot() {
+    let storedTheme = 'system';
+    try {
+      const st = localStorage.getItem('color-scheme');
+      if (st === 'light' || st === 'dark') storedTheme = st;
+    } catch {}
+    return {
+      themeScheme: storedTheme,
+      autoTts: localStorage.getItem('auto_tts_reply') !== '0',
+      showCompanion: companionStageEl ? !companionStageEl.classList.contains('hidden') : true
+    };
+  }
+
+  function restoreSettingsSnapshot(snap) {
+    if (!snap) return;
+    applyColorSchemeValue(snap.themeScheme);
+    try {
+      localStorage.setItem('auto_tts_reply', snap.autoTts ? '1' : '0');
+    } catch {}
+    const autoTtsChk = document.getElementById('st-auto-tts-chk');
+    if (autoTtsChk) autoTtsChk.checked = snap.autoTts;
+    setCompanionVisible(Boolean(snap.showCompanion));
+    const showCompChk = document.getElementById('st-show-companion-chk');
+    if (showCompChk) showCompChk.checked = Boolean(snap.showCompanion);
+  }
+
+  settingsDialog?.addEventListener('close', () => {
+    if (!settingsSavedFlag && settingsInitialSnapshot) {
+      restoreSettingsSnapshot(settingsInitialSnapshot);
+    }
+    settingsInitialSnapshot = null;
+  });
+
   function openSettingsModal(focusOwnApi = false) {
+    settingsSavedFlag = false;
+    settingsInitialSnapshot = captureSettingsSnapshot();
     const s = state.settings || {};
     const unlocked = isMemberOwnApiUnlocked();
     const settingsFormEl = document.getElementById('settings-form');
@@ -5933,6 +6850,9 @@
     const advFold = document.getElementById('advanced-tech-settings-fold');
     if (advFold) advFold.open = false;
 
+    if (focusOwnApi === true && unlocked) {
+      providerSelect.value = 'own_deepseek';
+    }
     switchProviderPane(providerSelect.value);
     syncThemeControls();
     const autoTtsChk = document.getElementById('st-auto-tts-chk');
@@ -5943,13 +6863,13 @@
     if (showCompChk && companionStageEl) {
       showCompChk.checked = !companionStageEl.classList.contains('hidden');
     }
-    settingsDialog.showModal();
-
-    if (focusOwnApi === true && unlocked) {
-      setTimeout(() => {
+    activateSettingsTab('stab-key', false);
+    setTimeout(() => {
+      if (!settingsDialog.open) settingsDialog.showModal();
+      if (focusOwnApi === true && unlocked) {
         document.getElementById('st-own-ds-key')?.focus();
-      }, 60);
-    }
+      }
+    }, 10);
   }
 
   document.getElementById('goto-unlock-own-api-btn')?.addEventListener('click', () => {
@@ -6042,6 +6962,17 @@
   window.__collectSettingsDraft = collectSettingsPayload;
 
   document.getElementById('open-settings-btn').addEventListener('click', () => openSettingsModal(false));
+  document.getElementById('ds-topbar-settings-btn')?.addEventListener('click', () => openSettingsModal(false));
+  document.getElementById('st-quick-export-md-btn')?.addEventListener('click', () => {
+    settingsDialog.close();
+    if (state.activeSessionId) {
+      exportSessionMarkdownById(state.activeSessionId);
+    }
+  });
+  document.getElementById('st-quick-import-md-btn')?.addEventListener('click', () => {
+    settingsDialog.close();
+    openImportHistoryModal();
+  });
   document.getElementById('close-settings-dialog').addEventListener('click', () => settingsDialog.close());
   document.getElementById('cancel-settings-dialog').addEventListener('click', () => settingsDialog.close());
 
@@ -6076,6 +7007,18 @@
         }
 
         state.settings = res.settings;
+        settingsSavedFlag = true;
+        settingsInitialSnapshot = null;
+        const autoTtsChk = document.getElementById('st-auto-tts-chk');
+        if (autoTtsChk) {
+          try {
+            localStorage.setItem('auto_tts_reply', autoTtsChk.checked ? '1' : '0');
+          } catch {}
+        }
+        const showCompChk = document.getElementById('st-show-companion-chk');
+        if (showCompChk) {
+          setCompanionVisible(Boolean(showCompChk.checked));
+        }
         renderUserAndMembership();
         window.DeepSeekMonitorPlugin?.sync({
           settings: state.settings,
@@ -6087,7 +7030,7 @@
         if (res.settings.provider === 'own_deepseek') {
           showToast('🔑 您的个人 API 直连已保存生效！DeepSeek 原生对话与角色扮演剧场均可直连畅聊！');
         } else {
-          showToast('✨ 对话通道与聊天偏好设置已保存');
+          showToast('✅ 游戏画面与语音偏好设置已保存');
         }
 
         if (state.activeSessionId) {
@@ -6117,6 +7060,15 @@
   // ================= 12. 同类标杆增强模块：主控人设、角色广场、番外小剧场与心动语录签 =================
 
   // A. 🎀 我的主控人设（User Persona）
+  function syncRelPresetChipState() {
+    const curRole = (document.getElementById('up-role')?.value || '').trim();
+    document.querySelectorAll('.rel-preset-chip').forEach((chip) => {
+      const matched = chip.textContent.trim() === curRole;
+      chip.classList.toggle('active', matched);
+      chip.setAttribute('aria-pressed', String(matched));
+    });
+  }
+
   document.getElementById('open-user-persona-btn').addEventListener('click', () => {
     if (!state.user) return;
     document.getElementById('up-avatar').value = state.user.avatar || '🎀';
@@ -6124,34 +7076,48 @@
     document.getElementById('up-role').value = state.user.user_persona?.role || '';
     document.getElementById('up-appearance').value = state.user.user_persona?.appearance || '';
     document.getElementById('up-bio').value = state.user.user_persona?.bio || '';
+    syncRelPresetChipState();
     userPersonaDialog.showModal();
   });
   document.getElementById('close-up-dialog').addEventListener('click', () => userPersonaDialog.close());
   document.getElementById('cancel-up-dialog').addEventListener('click', () => userPersonaDialog.close());
 
+  document.getElementById('up-role')?.addEventListener('input', syncRelPresetChipState);
   document.querySelectorAll('.rel-preset-chip').forEach((chip) => {
     chip.addEventListener('click', () => {
       document.getElementById('up-role').value = chip.textContent.trim();
+      syncRelPresetChipState();
     });
   });
 
   document.getElementById('user-persona-form').addEventListener('submit', async (e) => {
     e.preventDefault();
-    const res = await apiJson('/api/auth/user-persona', {
-      method: 'PUT',
-      body: JSON.stringify({
-        avatar: document.getElementById('up-avatar').value,
-        nickname: document.getElementById('up-nickname').value,
-        role: document.getElementById('up-role').value,
-        appearance: document.getElementById('up-appearance').value,
-        bio: document.getElementById('up-bio').value
-      })
-    });
-    state.user = res.user;
-    userPersonaDialog.close();
-    renderUserAndMembership();
-    if (state.activeSessionId) await loadSession(state.activeSessionId);
-    showToast(`🎀 主控人设已更新！现在你是他眼中的「${res.user.user_persona.role || res.user.nickname}」`);
+    const nickInp = document.getElementById('up-nickname');
+    const cleanNick = (nickInp?.value || '').trim();
+    if (!cleanNick) {
+      showToast('⚠️ 主控昵称不能为空哦，请填写希望角色平时对你的称呼');
+      nickInp?.focus();
+      return;
+    }
+    try {
+      const res = await apiJson('/api/auth/user-persona', {
+        method: 'PUT',
+        body: JSON.stringify({
+          avatar: document.getElementById('up-avatar').value.trim() || '🎀',
+          nickname: cleanNick,
+          role: document.getElementById('up-role').value.trim(),
+          appearance: document.getElementById('up-appearance').value.trim(),
+          bio: document.getElementById('up-bio').value.trim()
+        })
+      });
+      state.user = res.user;
+      userPersonaDialog.close();
+      renderUserAndMembership();
+      if (state.activeSessionId) await loadSession(state.activeSessionId);
+      showToast(`🎀 已保存！现在所有角色都会称呼你为「${res.user.nickname}」`);
+    } catch (err) {
+      showToast(`⚠️ ${err.message}`);
+    }
   });
 
   // B. 📖 剧本与共创中心（我的剧本库 ｜ 上传与 AI 改剧本 ｜ 共创设计广场）
@@ -6358,6 +7324,13 @@
       const delBtn = card.querySelector('.ssc-del-btn');
       if (delBtn) {
         delBtn.addEventListener('click', async () => {
+          const confirmed = await askUserConfirm({
+            title: '🗑️ 确认删除自创剧本',
+            message: `确定要永久删除剧本《${sc.title}》吗？此操作无法撤销。`,
+            confirmText: '确认删除剧本',
+            danger: true
+          });
+          if (!confirmed) return;
           delBtn.disabled = true;
           try {
             const res = await apiJson(`/api/scripts/${encodeURIComponent(sc.id)}`, {
@@ -6446,7 +7419,17 @@
     });
   });
 
-  document.getElementById('ws-clear-raw-btn')?.addEventListener('click', () => {
+  document.getElementById('ws-clear-raw-btn')?.addEventListener('click', async () => {
+    const curVal = wsRawTextarea?.value || '';
+    if (curVal.trim().length > 0) {
+      const confirmed = await askUserConfirm({
+        title: '🧹 确认清空剧本草稿内容',
+        message: `当前剧本框内已有 ${curVal.length} 字内容，清空后将无法恢复，确定清空吗？`,
+        confirmText: '确认清空',
+        danger: true
+      });
+      if (!confirmed) return;
+    }
     if (wsRawTextarea) wsRawTextarea.value = '';
     state.workshopFilename = '';
     if (wsFileStatusTitle) {
@@ -6583,6 +7566,14 @@
     updateWorkshopPersonaCountLabel();
   });
 
+  let wsAnalyzeAbortCtrl = null;
+  document.getElementById('ws-cancel-analyze-btn')?.addEventListener('click', () => {
+    if (wsAnalyzeAbortCtrl) {
+      wsAnalyzeAbortCtrl.abort();
+      wsAnalyzeAbortCtrl = null;
+    }
+  });
+
   wsAnalyzeBtn?.addEventListener('click', async () => {
     const content = (wsRawTextarea?.value || '').trim();
     if (!content) {
@@ -6591,22 +7582,53 @@
       return;
     }
     const origText = wsAnalyzeBtn.textContent;
+    const progCard = document.getElementById('ws-progress-card');
+    const progBar = document.getElementById('ws-progress-bar');
+    const progLbl = document.getElementById('ws-progress-label');
+
     wsAnalyzeBtn.disabled = true;
-    wsAnalyzeBtn.textContent = '⏳ 正在读取诊断剧本并提取登场人设…';
+    wsAnalyzeBtn.textContent = '⏳ AI 正在阅读诊断剧本…';
+    if (progCard) progCard.classList.remove('hidden');
+    if (progBar) progBar.value = 10;
+
+    let pct = 10;
+    const stages = [
+      '⏳ 正在阅读剧本草稿并梳理人物关系（1/3）…',
+      '⏳ 正在拆分四幕互动剧情与转折点（2/3）…',
+      '⏳ 正在提取登场角色的开场白与设定（3/3，即将完成）…'
+    ];
+    const progTimer = setInterval(() => {
+      pct = Math.min(92, pct + (pct < 55 ? 5 : 2));
+      if (progBar) progBar.value = pct;
+      if (progLbl) {
+        progLbl.textContent = pct < 40 ? stages[0] : pct < 72 ? stages[1] : stages[2];
+      }
+    }, 900);
+
+    wsAnalyzeAbortCtrl = new AbortController();
     try {
       const res = await apiJson('/api/workshop/analyze', {
         method: 'POST',
+        signal: wsAnalyzeAbortCtrl.signal,
         body: JSON.stringify({
           filename: state.workshopFilename,
           content,
           focus_mode: state.workshopFocus
         })
       });
+      if (progBar) progBar.value = 100;
       renderWorkshopAnalysisResult(res);
-      showToast(`✨ 已完成剧本优化并提取出 ${(res.personas || []).length} 位专属人设！`);
+      showToast(`✨ 已完成剧本优化并提取出 ${(res.personas || []).length} 位专属角色！`);
     } catch (err) {
-      showToast(err.message || '剧本解析失败，请稍后重试');
+      if (err?.name === 'AbortError') {
+        showToast('⏹ 已取消本次剧本 AI 诊断');
+      } else {
+        showToast(err.message || '剧本解析失败，请稍后重试');
+      }
     } finally {
+      clearInterval(progTimer);
+      wsAnalyzeAbortCtrl = null;
+      if (progCard) progCard.classList.add('hidden');
       wsAnalyzeBtn.disabled = false;
       wsAnalyzeBtn.textContent = origText;
     }
@@ -6922,6 +7944,7 @@
     openScriptSelectModal('hub-tab-square');
   });
   document.getElementById('close-plaza-dialog').addEventListener('click', () => plazaDialog.close());
+  document.getElementById('cancel-plaza-dialog')?.addEventListener('click', () => plazaDialog.close());
 
   // C. 🎬 故事幕次剧本匣 & 番外小剧场（支持角色专属多幕推进长篇剧本 + 通用番剧高光番外）
   const PERSONA_STORY_CHAPTERS = {
@@ -7049,8 +8072,23 @@
         <button type="button" class="mini-primary-btn play-now-btn">✨ 立即切入并开演</button>
       </div>
     `;
-    card.querySelector('.fill-note-btn').addEventListener('click', () => {
-      document.getElementById('director-note-input').value = sc.note;
+    card.querySelector('.fill-note-btn').addEventListener('click', async () => {
+      const noteInput = document.getElementById('director-note-input');
+      if (noteInput) noteInput.value = sc.note;
+      if (!state.activeSessionId) return;
+      try {
+        const res = await apiJson(`/api/sessions/${encodeURIComponent(state.activeSessionId)}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ director_note: sc.note })
+        });
+        state.activeSession = res.session;
+        theaterDialog.close();
+        renderUserAndMembership();
+        renderMessages();
+        showToast(`🎬 已将当前场景氛围设为：「${sc.title}」`);
+      } catch (err) {
+        showToast(`⚠️ 设置场景失败：${err.message}`);
+      }
     });
     card.querySelector('.play-now-btn').addEventListener('click', async () => {
       if (!state.activeSessionId || state.isStreaming) return;
@@ -7116,8 +8154,7 @@
     if (isCollapsed || (!memTabActive && !perTabActive)) {
       openRightTab('memory-tab');
     } else {
-      appShell.classList.add('right-collapsed');
-      appShell.classList.remove('artifacts-wide');
+      setRightPanelCollapsed(true, true);
     }
   }
 
@@ -7137,6 +8174,17 @@
 
   document.getElementById('clear-theater-btn').addEventListener('click', async () => {
     if (!state.activeSessionId) return;
+    const draftNote = (document.getElementById('director-note-input')?.value || '').trim();
+    const savedNote = (state.activeSession?.director_note || '').trim();
+    if (draftNote || savedNote) {
+      const confirmed = await askUserConfirm({
+        title: '🎬 确认恢复默认自由推进',
+        message: '确定清除当前自定义场景旁白 / 幕次指引并恢复默认自由推进吗？',
+        confirmText: '确认清除并恢复默认',
+        danger: true
+      });
+      if (!confirmed) return;
+    }
     const res = await apiJson(`/api/sessions/${encodeURIComponent(state.activeSessionId)}`, {
       method: 'PATCH',
       body: JSON.stringify({ director_note: '' })
@@ -7164,7 +8212,13 @@
     showToast(note ? '🎬 导演氛围注已生效，下一句对话将按此情境演绎！' : '🌸 已清空导演氛围注');
   });
 
-  // D. 📸 心动瞬间语录珍藏海报签（Canvas 高清图片导出）
+  // D. 📸 心动瞬间语录珍藏海报签（Canvas 高清图片导出，自动过滤初始化占位潜台词）
+  function extractValidReasoningForQuote(rawText) {
+    const t = String(rawText || '').trim();
+    if (!t || /^已载入「.*」的性格羁绊与世界观设定/.test(t)) return '';
+    return t;
+  }
+
   let currentSnapMsg = null;
   function openQuoteSnapModal(msg) {
     currentSnapMsg = msg;
@@ -7173,6 +8227,7 @@
     const cleanQuote = String(msg.content || '')
       .replace(/^>.*$/gm, '')
       .trim();
+    const validThought = extractValidReasoningForQuote(msg.reasoning);
 
     const preview = document.getElementById('dream-snap-preview');
     preview.innerHTML = `
@@ -7184,9 +8239,9 @@
         </div>
       </div>
       ${
-        msg.reasoning
-          ? `<div class="snap-thought">💭 潜台词：${escapeHtml(msg.reasoning.slice(0, 110))}${
-              msg.reasoning.length > 110 ? '…' : ''
+        validThought
+          ? `<div class="snap-thought">💭 潜台词：${escapeHtml(validThought.slice(0, 110))}${
+              validThought.length > 110 ? '…' : ''
             }</div>`
           : ''
       }
@@ -7238,8 +8293,9 @@
     const tCtx = tempCanvas.getContext('2d');
     tCtx.font = '18px "Microsoft YaHei", sans-serif';
     const bodyLines = wrapCanvasLines(tCtx, cleanQuote, width - 96);
-    const thoughtLines = currentSnapMsg.reasoning
-      ? wrapCanvasLines(tCtx, `💭 潜台词：${currentSnapMsg.reasoning.slice(0, 95)}`, width - 116)
+    const validSnapThought = extractValidReasoningForQuote(currentSnapMsg.reasoning);
+    const thoughtLines = validSnapThought
+      ? wrapCanvasLines(tCtx, `💭 潜台词：${validSnapThought.slice(0, 95)}`, width - 116)
       : [];
 
     const height = 210 + thoughtLines.length * 26 + bodyLines.length * 30 + 60;
@@ -7324,17 +8380,39 @@
   const compAutoChk = document.getElementById('comp-auto-remind-chk');
 
   function renderCompanionStage() {
-    const c = state.companion || {
-      mode: 'cool',
-      skinKey: 'cool_silver',
-      label: '❄️ 高冷清隽 · 银发星眸',
-      img: './assets/companions/cool_silver.jpg',
-      aura: 'rgba(155, 135, 245, 0.36)',
-      particle: '✦',
-      reminderEnabled: true
-    };
+    const isFemaleNow = getPersonaPronoun(state.activePersona) === '她';
+    const rawComp = state.companion;
+    const genderMismatch =
+      rawComp &&
+      !rawComp.customImg &&
+      ((isFemaleNow && !rawComp.isFemale && !/lady|girl|chibi/.test(rawComp.skinKey || '')) ||
+        (!isFemaleNow && rawComp.isFemale && /lady|girl/.test(rawComp.skinKey || '')));
 
-    compImgEl.src = String(c.img || './assets/companions/cool_silver.jpg').replace(/^\/assets\//, './assets/');
+    const c =
+      rawComp && !genderMismatch
+        ? rawComp
+        : {
+            mode: 'cool',
+            isFemale: isFemaleNow,
+            skinKey: isFemaleNow ? 'cool_lady' : 'cool_silver',
+            label: isFemaleNow ? '👠 高冷清艳 · 专属陪伴' : '❄️ 高冷清隽 · 银发星眸',
+            img: isFemaleNow
+              ? './assets/companions/cool_lady_cutout.png'
+              : './assets/companions/cool_silver_cutout.png',
+            aura: isFemaleNow ? 'rgba(192, 132, 252, 0.45)' : 'rgba(155, 135, 245, 0.36)',
+            particle: '✦',
+            reminderEnabled: true
+          };
+
+    const normImg = String(
+      c.img || (isFemaleNow ? './assets/companions/cool_lady_cutout.png' : './assets/companions/cool_silver_cutout.png')
+    )
+      .replace(/^\/assets\//, './assets/')
+      .replace(
+        /\.\/assets\/companions\/(cool_silver|cool_dark|cool_lady|cute_boy|cute_girl|cute_chibi)\.jpg$/i,
+        './assets/companions/$1_cutout.png'
+      );
+    compImgEl.src = normImg;
     compPokeArea.style.setProperty('--comp-aura', c.aura || 'rgba(226, 85, 157, 0.25)');
     compModeCoolBtn.classList.toggle('active', c.mode === 'cool');
     compModeCuteBtn.classList.toggle('active', c.mode === 'cute');
@@ -7533,7 +8611,8 @@
 
   // ================= 13. 原生 DeepSeek 网页模式、全家桶 API 控制台与主动关怀引擎 =================
 
-  function applyUiModeVisuals(mode) {
+  function applyUiModeVisuals(mode, { resetRightDrawer = false } = {}) {
+    const prevMode = state.uiMode;
     const isDs = mode === 'deepseek';
     state.uiMode = isDs ? 'deepseek' : 'roleplay';
     try {
@@ -7556,16 +8635,19 @@
       tabDs.setAttribute('aria-selected', String(isDs));
     }
     if (quickJumpBtn) {
-      quickJumpBtn.textContent = isDs ? '🌸 切换回恋庭沉浸扮演' : '🐋 切换至极简原生模式';
+      quickJumpBtn.textContent = isDs ? '🌸 切换回恋庭沉浸扮演' : '🐋 切换到原生 DeepSeek 模式';
     }
 
+    const pronoun = getPersonaPronoun(state.activePersona);
     chatInput.placeholder = isDs
-      ? '直接写下你的开场白、故事设定或台词即可开演（支持不同对话独立设定与记忆）…'
-      : '和他说点什么吧…（支持 *星号* 描写神态动作，Enter 发送）';
+      ? '直接写下你的问题、故事设定或台词即可开始（每个对话拥有独立记忆与设定）…'
+      : `和${pronoun}说点什么吧…（可用 *星号* 描写动作细节，Enter 发送）`;
     syncComposerEmptyState();
 
-    // 默认保持右侧养成/API 抽屉收起，释放清爽通透的大视野对话空间，按需点击再展开
-    appShell.classList.add('right-collapsed');
+    // 仅在真正跨模式切换或显式要求重置时收起右栏，绝不在日常刷新会话或开关立绘时把用户已打开的右侧面板缩成 0 宽！
+    if (resetRightDrawer || prevMode !== state.uiMode) {
+      setRightPanelCollapsed(true, false);
+    }
   }
 
   async function switchWorkspaceMode(targetMode) {
@@ -7702,12 +8784,40 @@
     );
   });
 
-  // 附件上传、拖拽解析与剪贴板 Ctrl+V 粘贴截图支持
+  // 全格式文件上传（PDF / Word / Excel / PPT / 压缩包 / 源码 / 文本 / 图片）、拖拽与剪贴板 Ctrl+V 粘贴支持
   const dsAttachmentInput = document.getElementById('ds-attachment-input');
   const composerAttachmentsBar = document.getElementById('composer-attachments-bar');
 
   document.getElementById('close-att-preview-dialog')?.addEventListener('click', () => attachmentPreviewDialog?.close());
   document.getElementById('done-att-preview-btn')?.addEventListener('click', () => attachmentPreviewDialog?.close());
+
+  function inferClientFileBadge(filename = '', savedBadge = '', savedColor = '') {
+    if (savedBadge && savedColor) return { badge: savedBadge, color: savedColor };
+    const ext = (String(filename).split('.').pop() || '').toLowerCase();
+    if (ext === 'pdf') return { badge: 'PDF', color: 'pdf' };
+    if (['docx', 'doc', 'rtf', 'odt', 'epub'].includes(ext)) return { badge: ext === 'epub' ? 'EPUB' : 'WORD', color: 'word' };
+    if (['xlsx', 'xls', 'csv', 'tsv', 'ods'].includes(ext)) return { badge: ext === 'csv' ? 'CSV' : 'EXCEL', color: 'excel' };
+    if (['pptx', 'ppt', 'odp'].includes(ext)) return { badge: 'PPT', color: 'ppt' };
+    if (['zip', 'tar', 'gz'].includes(ext)) return { badge: 'ZIP', color: 'zip' };
+    if (['md', 'markdown', 'txt', 'log', 'srt', 'vtt'].includes(ext)) return { badge: ext.toUpperCase().slice(0, 4), color: 'txt' };
+    if (
+      [
+        'js', 'mjs', 'ts', 'tsx', 'jsx', 'vue', 'py', 'ipynb', 'java', 'kt',
+        'c', 'h', 'cpp', 'cs', 'go', 'rs', 'php', 'rb', 'swift', 'sql',
+        'html', 'htm', 'css', 'scss', 'json', 'jsonl', 'xml', 'yaml', 'yml', 'toml', 'ini', 'sh', 'ps1', 'bat'
+      ].includes(ext)
+    ) {
+      return { badge: ext.toUpperCase().slice(0, 5), color: 'code' };
+    }
+    return { badge: (ext || 'FILE').toUpperCase().slice(0, 5), color: 'file' };
+  }
+
+  function formatFileByteSize(bytes) {
+    const n = Number(bytes) || 0;
+    if (n < 1024) return `${n} B`;
+    if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+    return `${(n / (1024 * 1024)).toFixed(2)} MB`;
+  }
 
   function renderPendingAttachments() {
     if (!composerAttachmentsBar) return;
@@ -7719,28 +8829,44 @@
     }
     composerAttachmentsBar.classList.remove('hidden');
     composerAttachmentsBar.innerHTML = state.pendingAttachments
-      .map(
-        (att, idx) => `
-          <span class="attachment-chip clickable-att" data-stage-preview-idx="${idx}" title="点击预览：${escapeHtml(
-          att.name
-        )} (${att.is_image ? att.dimensions || '图片' : `${att.size} 字符`})">
-            ${
-              att.is_image && att.data_url
-                ? `<img src="${escapeHtml(att.data_url)}" alt="${escapeHtml(att.name)}" class="att-thumb-img" />`
-                : '<span>📎</span>'
-            }
-            ${renderFilenameHtml(att.name)}
+      .map((att, idx) => {
+        if (att.is_image && att.data_url) {
+          return `
+            <span class="attachment-chip clickable-att" data-stage-preview-idx="${idx}" title="点击预览图片：${escapeHtml(
+              att.name
+            )} (${att.dimensions || '图片'})">
+              <img src="${escapeHtml(att.data_url)}" alt="${escapeHtml(att.name)}" class="att-thumb-img" />
+              ${renderFilenameHtml(att.name)}
+              <button type="button" class="att-remove-btn" data-att-idx="${idx}" aria-label="移除附件">✕</button>
+            </span>
+          `;
+        }
+        const fMeta = inferClientFileBadge(att.name, att.badge, att.color);
+        const subText = att.parsing
+          ? '⏳ 正在读取文件内容…'
+          : att.char_count > 0
+          ? `${formatFileByteSize(att.size)} · 已读 ${Number(att.char_count).toLocaleString()} 字`
+          : formatFileByteSize(att.size);
+        return `
+          <span class="ds-file-card clickable-att" data-stage-preview-idx="${idx}" title="点击预览解析内容：${escapeHtml(
+            att.name
+          )}">
+            <span class="ds-file-badge ${escapeHtml(fMeta.color)}">${escapeHtml(fMeta.badge)}</span>
+            <span class="ds-file-meta">
+              <span class="ds-file-name">${escapeHtml(att.name)}</span>
+              <span class="ds-file-sub">${escapeHtml(subText)}</span>
+            </span>
             <button type="button" class="att-remove-btn" data-att-idx="${idx}" aria-label="移除附件">✕</button>
           </span>
-        `
-      )
+        `;
+      })
       .join('');
 
     composerAttachmentsBar.querySelectorAll('[data-stage-preview-idx]').forEach((chip) => {
       chip.addEventListener('click', (e) => {
         if (e.target.closest('.att-remove-btn')) return;
         const att = state.pendingAttachments[Number(chip.dataset.stagePreviewIdx)];
-        if (att) openAttachmentPreviewModal(att);
+        if (att && !att.parsing) openAttachmentPreviewModal(att);
       });
     });
 
@@ -7795,20 +8921,86 @@
     });
   }
 
+  async function parseDocumentFileUniversal(file) {
+    const headers = {
+      'Content-Type': 'application/octet-stream',
+      'X-File-Name': encodeURIComponent(file.name || '未命名文件'),
+      'X-File-Mime': file.type || ''
+    };
+    const tok = window.__starAuthStore?.getToken?.() || '';
+    if (tok) headers.Authorization = `Bearer ${tok}`;
+
+    try {
+      const resp = await fetch('/api/files/parse', {
+        method: 'POST',
+        headers,
+        body: file
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        if (data && data.ok) return data;
+      } else if (resp.status === 413) {
+        throw new Error('单个文件请控制在 20MB 以内');
+      }
+    } catch (err) {
+      if (String(err?.message || '').includes('20MB')) throw err;
+    }
+
+    // 离线 / 独立前端兜底解码（自动兼容 UTF-8 与中文 GB18030）
+    const buf = await file.arrayBuffer();
+    let decoded = '';
+    try {
+      decoded = new TextDecoder('utf-8', { fatal: true }).decode(buf);
+    } catch {
+      try {
+        decoded = new TextDecoder('gb18030').decode(buf);
+      } catch {
+        decoded = await readFileAsText(file).catch(() => '');
+      }
+    }
+    const cleanText = decoded.replace(/\x00/g, '').trim();
+    const fMeta = inferClientFileBadge(file.name);
+    return {
+      ok: true,
+      name: file.name,
+      size: file.size || buf.byteLength,
+      badge: fMeta.badge,
+      color: fMeta.color,
+      char_count: cleanText.length,
+      content: cleanText
+        ? cleanText.slice(0, 60000)
+        : `【已附带文件】${file.name}（大小 ${formatFileByteSize(file.size)}）`
+    };
+  }
+
   async function ingestAttachmentFiles(fileList) {
-    const files = Array.from(fileList || []).slice(0, 6);
+    const files = Array.from(fileList || []).slice(0, 8);
+    if (files.length === 0) return;
+
     let added = 0;
     for (const f of files) {
+      if (state.pendingAttachments.length >= 8) {
+        showToast('💡 单次最多同时上传 8 份文件');
+        break;
+      }
+      if (f.size > 20 * 1024 * 1024) {
+        showToast(`⚠️ 文件「${f.name}」超过 20MB 上限，请精简后再传`);
+        continue;
+      }
+
       try {
-        const isImg = Boolean(f.type && f.type.startsWith('image/')) || /\.(png|jpe?g|webp|gif|bmp)$/i.test(f.name || '');
+        const isImg =
+          Boolean(f.type && f.type.startsWith('image/')) ||
+          /\.(png|jpe?g|webp|gif|bmp|svg)$/i.test(f.name || '');
+
         if (isImg) {
           const { dataUrl, dimensions } = await readImageFileCompressed(f);
           let svgSource = '';
           if (f.type === 'image/svg+xml' || /\.svg$/i.test(f.name || '')) {
-            svgSource = (await readFileAsText(f).catch(() => '')).slice(0, 18000);
+            svgSource = (await readFileAsText(f).catch(() => '')).slice(0, 24000);
           }
           state.pendingAttachments.push({
-            name: f.name || `粘贴截图_${new Date().toTimeString().slice(0, 8).replace(/:/g, '')}.png`,
+            name: f.name || `粘贴图片_${new Date().toTimeString().slice(0, 8).replace(/:/g, '')}.png`,
             size: f.size || dataUrl.length,
             is_image: true,
             mime: f.type || 'image/jpeg',
@@ -7817,22 +9009,40 @@
             content: svgSource || `图像文件 ${f.name || 'image'}（分辨率 ${dimensions || '未知'}）`
           });
           added++;
+          renderPendingAttachments();
         } else {
-          const text = await readFileAsText(f);
-          state.pendingAttachments.push({
-            name: f.name,
-            size: text.length,
+          const fMeta = inferClientFileBadge(f.name);
+          const slot = {
+            name: f.name || '未命名文件',
+            size: f.size || 0,
+            badge: fMeta.badge,
+            color: fMeta.color,
+            char_count: 0,
             is_image: false,
-            content: text.slice(0, 32000)
-          });
+            parsing: true,
+            content: ''
+          };
+          state.pendingAttachments.push(slot);
+          renderPendingAttachments();
+
+          const parsed = await parseDocumentFileUniversal(f);
+          slot.parsing = false;
+          slot.badge = parsed.badge || fMeta.badge;
+          slot.color = parsed.color || fMeta.color;
+          slot.char_count = Number(parsed.char_count) || 0;
+          slot.content = String(parsed.content || '').slice(0, 60000);
           added++;
+          renderPendingAttachments();
         }
-      } catch {}
+      } catch (err) {
+        state.pendingAttachments = state.pendingAttachments.filter((item) => !item.parsing);
+        renderPendingAttachments();
+        showToast(`⚠️ 读取文件「${f.name}」失败：${err.message || '请重试'}`);
+      }
     }
-    state.pendingAttachments = state.pendingAttachments.slice(0, 6);
-    renderPendingAttachments();
+
     if (added > 0) {
-      showToast(`📎 已就绪 ${state.pendingAttachments.length} 份附件（点击芯片可预览内容）`);
+      showToast(`📎 已添加 ${added} 份文件（点击卡片可预览解析内容）`);
     }
   }
 
@@ -7845,8 +9055,15 @@
   });
   chatForm.addEventListener('dragover', (e) => {
     e.preventDefault();
+    chatForm.classList.add('drag-over-active');
+  });
+  chatForm.addEventListener('dragleave', (e) => {
+    if (!chatForm.contains(e.relatedTarget)) {
+      chatForm.classList.remove('drag-over-active');
+    }
   });
   chatForm.addEventListener('drop', (e) => {
+    chatForm.classList.remove('drag-over-active');
     if (e.dataTransfer?.files?.length) {
       e.preventDefault();
       ingestAttachmentFiles(e.dataTransfer.files);
@@ -7854,13 +9071,13 @@
   });
   chatInput.addEventListener('paste', (e) => {
     const items = Array.from(e.clipboardData?.items || []);
-    const imageFiles = items
-      .filter((it) => it.kind === 'file' && it.type.startsWith('image/'))
+    const pastedFiles = items
+      .filter((it) => it.kind === 'file')
       .map((it) => it.getAsFile())
       .filter(Boolean);
-    if (imageFiles.length > 0) {
+    if (pastedFiles.length > 0) {
       e.preventDefault();
-      ingestAttachmentFiles(imageFiles);
+      ingestAttachmentFiles(pastedFiles);
     }
   });
 
@@ -7911,8 +9128,7 @@
     const artTabEl = document.getElementById('ds-artifacts-tab');
     const isVisible = !appShell.classList.contains('right-collapsed') && artTabEl && !artTabEl.classList.contains('hidden');
     if (isVisible) {
-      appShell.classList.add('right-collapsed');
-      appShell.classList.remove('artifacts-wide');
+      setRightPanelCollapsed(true, true);
     } else {
       openRightTab('ds-artifacts-tab');
       if (state.lastSandboxCode) populateSideArtifactSandbox(state.lastSandboxCode, false);
@@ -7964,10 +9180,48 @@
     if (state.lastSandboxCode) openCodeSandboxPreview(state.lastSandboxCode, true);
   });
 
+  const STAR_PARTICLE_DEMO_HTML = `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><style>body{margin:0;overflow:hidden;background:radial-gradient(circle at center,#16122e,#080614);font-family:system-ui,sans-serif;color:#fff}#tip{position:fixed;top:14px;left:16px;font-size:13px;background:rgba(255,255,255,.1);padding:6px 12px;border-radius:99px;backdrop-filter:blur(8px);pointer-events:none}</style></head><body><div id="tip">✨ 移动或点击鼠标体验星际引力粒子牵引</div><canvas id="c"></canvas><script>const c=document.getElementById('c'),x=c.getContext('2d');let w,h,m={x:-999,y:-999,down:false};const r=()=>{w=c.width=innerWidth;h=c.height=innerHeight};r();onresize=r;onpointermove=e=>{m.x=e.clientX;m.y=e.clientY};onpointerdown=()=>m.down=true;onpointerup=()=>m.down=false;const p=Array.from({length:110},()=>({x:Math.random()*w,y:Math.random()*h,vx:(Math.random()-.5)*1.2,vy:(Math.random()-.5)*1.2,s:Math.random()*2.2+1,c:['#f472b6','#a78bfa','#60a5fa','#fde047'][Math.random()*4|0]}));(function f(){x.fillStyle='rgba(8,6,20,0.22)';x.fillRect(0,0,w,h);for(const a of p){const dx=m.x-a.x,dy=m.y-a.y,d=Math.hypot(dx,dy);if(d<220&&d>1){const g=(m.down?0.22:0.06)*(1-d/220);a.vx+=dx/d*g;a.vy+=dy/d*g}a.vx*=0.985;a.vy*=0.985;a.x=(a.x+a.vx+w)%w;a.y=(a.y+a.vy+h)%h;x.beginPath();x.arc(a.x,a.y,a.s,0,7);x.fillStyle=a.c;x.fill()}requestAnimationFrame(f)})()</script></body></html>`;
+
+  document.getElementById('more-open-artifacts-btn')?.addEventListener('click', () => {
+    hidePopoverSafe('topbar-more-popover');
+    setTimeout(() => {
+      openCodeSandboxPreview(state.lastSandboxCode || STAR_PARTICLE_DEMO_HTML, true);
+    }, 20);
+  });
+
   document.getElementById('ds-art-try-demo-btn')?.addEventListener('click', () => {
-    if (!state.isStreaming) {
+    populateSideArtifactSandbox(STAR_PARTICLE_DEMO_HTML, true);
+    if (!state.isStreaming && state.uiMode === 'deepseek') {
       sendStreamMessage('请帮我写一个单文件 HTML5 Canvas 星际引力粒子交互网页，支持鼠标牵引效果', false);
+    } else {
+      showToast('✨ 已在预览窗为您运行星际引力粒子交互网页！');
     }
+  });
+
+  // ✍️ 指定开头（双模式通用展开与预设填入）
+  function togglePrefixBar() {
+    const bar = document.getElementById('ds-prefix-bar');
+    const inp = document.getElementById('ds-prefix-input');
+    if (!bar) return;
+    const isNowOpen = bar.classList.toggle('hidden') === false;
+    document.getElementById('rp-toggle-prefix-btn')?.classList.toggle('active', isNowOpen);
+    document.getElementById('rp-toggle-prefix-btn')?.setAttribute('aria-pressed', String(isNowOpen));
+    document.getElementById('ds-toggle-prefix')?.classList.toggle('active', isNowOpen);
+    document.getElementById('ds-toggle-prefix')?.setAttribute('aria-pressed', String(isNowOpen));
+    if (isNowOpen && inp) {
+      inp.focus();
+    }
+  }
+  document.getElementById('rp-toggle-prefix-btn')?.addEventListener('click', togglePrefixBar);
+  document.getElementById('ds-toggle-prefix')?.addEventListener('click', togglePrefixBar);
+  document.querySelectorAll('.ds-mini-preset').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const inp = document.getElementById('ds-prefix-input');
+      if (inp) {
+        inp.value = btn.dataset.prefix || '';
+        inp.focus();
+      }
+    });
   });
 
   messagesContainer.addEventListener('click', async (e) => {
@@ -8086,76 +9340,106 @@
     });
   }
 
-  function openDsShareModal() {
+  async function openDsShareModal() {
     if (!dsShareDialog) return;
-    const hasMsgs = Array.isArray(state.messages) && state.messages.length > 0;
-    const hasMems = Array.isArray(state.memories) && state.memories.length > 0;
-    const hasPrompt = Boolean(state.activeSession?.session_prompt && state.activeSession.session_prompt.trim());
+    let exportSnapshot = {
+      title: state.activeSession?.title,
+      session_mode: state.activeSession?.session_mode,
+      persona: state.activePersona,
+      session_prompt: state.activeSession?.session_prompt,
+      memories: state.memories || [],
+      messages: state.messages || []
+    };
+    if (state.activeSessionId) {
+      try {
+        const srvExport = await apiJson(`/api/sessions/${encodeURIComponent(state.activeSessionId)}/export`);
+        if (srvExport && typeof srvExport === 'object') {
+          exportSnapshot = {
+            ...exportSnapshot,
+            ...srvExport,
+            memories: Array.isArray(srvExport.memories) ? srvExport.memories : exportSnapshot.memories,
+            messages: Array.isArray(srvExport.messages) ? srvExport.messages : exportSnapshot.messages
+          };
+        }
+      } catch {}
+    }
+
+    const msgList = exportSnapshot.messages || [];
+    const memList = exportSnapshot.memories || [];
+    const hasMsgs = msgList.length > 0;
+    const hasMems = memList.length > 0;
+    const hasPrompt = Boolean(exportSnapshot.session_prompt && String(exportSnapshot.session_prompt).trim());
     if (!hasMsgs && !hasMems && !hasPrompt) {
       showToast('💡 当前对话还没有消息或记忆条目，先聊两句或写入专属设定再来导出吧');
       return;
     }
     const card = document.getElementById('ds-share-preview-card');
-    const isNative = state.activeSession?.session_mode === 'deepseek_native';
-    const brandName = isNative ? 'deepseek' : state.activePersona?.name || '星语恋庭';
+    const isNative = exportSnapshot.session_mode === 'deepseek_native';
+    const personaObj = exportSnapshot.persona || state.activePersona;
+    const brandName = isNative ? 'deepseek' : personaObj?.name || '星语恋庭';
     const brandIcon = isNative
       ? DS_WHALE_AVATAR_SVG
-      : `<span style="font-size:18px">${escapeHtml(state.activePersona?.avatar || '🌸')}</span>`;
-    const title = state.activeSession?.title || '对话与记忆精选';
-    const recentTurns = (state.messages || []).slice(-8);
+      : `<span style="font-size:18px">${escapeHtml(personaObj?.avatar || '🌸')}</span>`;
+    const title = exportSnapshot.title || '对话与记忆精选';
+    const recentTurns = msgList.slice(-8);
+    const countSummaryText = hasMsgs
+      ? `对话消息 ${msgList.length} 条 · 独立记忆 ${memList.length} 条`
+      : `专属设定与记忆包（记忆 ${memList.length} 条）`;
     const memSummaryHtml = hasMems
-      ? `<div class="ds-share-thought-note">🧠 本对话独立记忆（共 ${state.memories.length} 条）：${escapeHtml(
-          state.memories
+      ? `<div class="ds-share-thought-note">🧠 本对话独立记忆（共 ${memList.length} 条）：${escapeHtml(
+          memList
             .slice(0, 2)
             .map((x) => x.content)
             .join(' ｜ ')
             .slice(0, 110)
-        )}${state.memories.length > 2 ? '…' : ''}</div>`
+        )}${memList.length > 2 ? '…' : ''}</div>`
       : '';
     if (card) {
       card.innerHTML = `
         <div class="ds-share-head">
           <span class="ds-share-brand">${brandIcon}<span>${escapeHtml(brandName)} · ${escapeHtml(title)}</span></span>
-          <span class="muted-count">${new Date().toLocaleDateString('zh-CN')} · 记忆 ${
-            (state.memories || []).length
-          } 条 · 消息 ${(state.messages || []).length} 条</span>
+          <span class="muted-count">${new Date().toLocaleDateString('zh-CN')} · ${escapeHtml(countSummaryText)}</span>
         </div>
         ${memSummaryHtml}
         ${
           recentTurns.length > 0
             ? recentTurns
-                .map((m) =>
-                  m.role === 'user'
+                .map((m) => {
+                  const cleanR = extractValidReasoningForQuote(m.reasoning);
+                  return m.role === 'user'
                     ? `<div class="ds-share-turn"><div class="ds-share-user-q">${escapeHtml(m.content)}</div></div>`
                     : `<div class="ds-share-turn">
                          ${
-                           m.reasoning
+                           cleanR
                              ? `<div class="ds-share-thought-note">💭 思考与心声：${escapeHtml(
-                                 m.reasoning.replace(/\s+/g, ' ').slice(0, 95)
+                                 cleanR.replace(/\s+/g, ' ').slice(0, 95)
                                )}…</div>`
                              : ''
                          }
-                         <div class="ds-share-ai-a">${escapeHtml(m.content.slice(0, 480))}${
-                        m.content.length > 480 ? '…' : ''
+                         <div class="ds-share-ai-a">${escapeHtml(String(m.content || '').slice(0, 480))}${
+                        String(m.content || '').length > 480 ? '…' : ''
                       }</div>
-                       </div>`
-                )
+                       </div>`;
+                })
                 .join('')
-            : '<div class="ds-share-thought-note">当前仅包含独立设定与记忆条目，点击下方按钮可直接下载 .md 记忆档案。</div>'
+            : '<div class="ds-share-thought-note">✨ 当前包含本对话独立设定与记忆锚点，下载 .md 后可直接导入任意新对话框复用。</div>'
         }
       `;
     }
     dsShareDialog.showModal();
   }
 
-  document.getElementById('ds-share-session-btn')?.addEventListener('click', openDsShareModal);
+  document.getElementById('ds-share-session-btn')?.addEventListener('click', () => openDsShareModal());
   document.getElementById('ds-menu-share-btn')?.addEventListener('click', () => {
     hidePopoverSafe('ds-user-popover');
     openDsShareModal();
   });
   document.getElementById('close-ds-share-dialog')?.addEventListener('click', () => dsShareDialog?.close());
+  document.getElementById('cancel-ds-share-dialog')?.addEventListener('click', () => dsShareDialog?.close());
 
-  document.getElementById('ds-copy-markdown-btn')?.addEventListener('click', async () => {
+  document.getElementById('ds-copy-markdown-btn')?.addEventListener('click', async (e) => {
+    const copyBtn = e.currentTarget;
+    const origText = copyBtn.textContent;
     let md = '';
     try {
       if (state.activeSessionId) {
@@ -8172,7 +9456,11 @@
     } catch {
       fallbackLegacyCopy(md);
     }
-    showToast('📋 已复制完整对话与独立记忆 Markdown（可直接粘贴导入到其他地方）');
+    copyBtn.textContent = '✅ 已复制 .md！';
+    setTimeout(() => {
+      copyBtn.textContent = origText;
+    }, 2200);
+    showToast('📋 已复制完整对话与记忆 Markdown，可直接粘贴使用！');
   });
 
   document.getElementById('ds-export-md-file-btn')?.addEventListener('click', () => {
@@ -8183,9 +9471,15 @@
     exportSessionJsonById(state.activeSessionId);
   });
 
-  document.getElementById('ds-download-share-png-btn')?.addEventListener('click', () => {
+  document.getElementById('ds-download-share-png-btn')?.addEventListener('click', (e) => {
+    const dlBtn = e.currentTarget;
     const turns = state.messages.slice(-6);
-    if (turns.length === 0) return;
+    if (turns.length === 0) {
+      showToast('💡 当前对话还没有聊天记录，先和角色聊上两句再来生成对话长图吧！');
+      return;
+    }
+    const origBtnText = dlBtn.textContent;
+    dlBtn.textContent = '⏳ 正在生成长图…';
     const dpr = 2;
     const width = 680;
     const tmp = document.createElement('canvas');
@@ -8284,9 +9578,72 @@
     const link = document.createElement('a');
     link.download = `${(state.activeSession?.title || 'DeepSeek对话').slice(0, 18)}_分享长图.png`;
     link.href = canvas.toDataURL('image/png');
+    document.body.appendChild(link);
     link.click();
-    showToast('🖼️ 高清对话分享长图已生成并保存！');
+    link.remove();
+    dlBtn.textContent = '✅ 长图已下载！';
+    setTimeout(() => {
+      dlBtn.textContent = origBtnText;
+    }, 2200);
+    showToast('🖼️ 高清对话分享长图已生成并开始下载！');
   });
+
+  // 「🪄 帮我回一句」AI 实时帮写回复直填输入框 + 偏好设置「允许角色安静时自动搭话」开关联动
+  let cachedSuggestedReplies = [];
+  let cachedSuggestSessionId = '';
+  let suggestCursor = 0;
+
+  document.getElementById('magic-ai-draft-btn')?.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    if (!state.activeSessionId) return;
+    const btn = e.currentTarget;
+    try {
+      if (cachedSuggestSessionId !== state.activeSessionId || cachedSuggestedReplies.length === 0) {
+        btn.textContent = '⏳ 正在结合上文帮你想台词…';
+        const res = await apiJson(`/api/sessions/${encodeURIComponent(state.activeSessionId)}/suggest-replies`, {
+          method: 'POST',
+          body: '{}'
+        });
+        cachedSuggestedReplies = Array.isArray(res.replies) && res.replies.length > 0 ? res.replies : [];
+        cachedSuggestSessionId = state.activeSessionId;
+        suggestCursor = 0;
+      }
+      if (cachedSuggestedReplies.length > 0) {
+        const picked = cachedSuggestedReplies[suggestCursor % cachedSuggestedReplies.length];
+        suggestCursor += 1;
+        chatInput.value = picked;
+        syncComposerEmptyState();
+        hidePopoverSafe('magic-quick-popover');
+        chatInput.focus();
+        showToast('✍️ 已帮你把回复写进输入框，可直接点发送或按需修改（再点可换一句）');
+      }
+    } catch {
+      chatInput.value = '*弯起眼睛看向你* 听你这么说我就安心多啦，接下来我们一起去看看吧？';
+      syncComposerEmptyState();
+      hidePopoverSafe('magic-quick-popover');
+      chatInput.focus();
+      showToast('✍️ 已帮你填入一句回复，可直接发送！');
+    } finally {
+      btn.textContent = '✨ 帮我想一句回复填入输入框（可连点换一句）';
+    }
+  });
+
+  const autoProactiveChk = document.getElementById('st-auto-proactive-chk');
+  if (autoProactiveChk) {
+    autoProactiveChk.checked = localStorage.getItem('pref_auto_proactive') === '1';
+    autoProactiveChk.addEventListener('change', async () => {
+      const enabled = autoProactiveChk.checked;
+      localStorage.setItem('pref_auto_proactive', enabled ? '1' : '0');
+      if (state.activeSessionId) {
+        await patchActiveSessionFlag(
+          { proactive_enabled: enabled },
+          enabled
+            ? '💬 已开启空闲主动搭话（停顿较久时角色会主动找你说话）'
+            : '🤫 已关闭空闲自动搭话（聊天保持安静不打断）'
+        );
+      }
+    });
+  }
 
   // 全局生产力快捷键（Ctrl/Cmd + K 搜索历史对话，Alt + N 开启新对话）
   document.addEventListener('keydown', (e) => {
@@ -8356,7 +9713,7 @@
       openRightTab('ds-suite-tab');
       renderDeepSeekSuiteTelemetry();
     } else {
-      appShell.classList.add('right-collapsed');
+      setRightPanelCollapsed(true, true);
     }
   });
   document.getElementById('ds-composer-api-chip')?.addEventListener('click', () => {
@@ -8424,7 +9781,10 @@
     if (!fimPromptInput.value.trim() && !fimSuffixInput.value.trim()) {
       applyFimPreset('rain');
     }
-    fimDialog.showModal();
+    // 下一宏任务打开，避免从 Popover 点击时被浏览器原生 closedby="any" 误判为外部点击秒关
+    setTimeout(() => {
+      if (!fimDialog.open) fimDialog.showModal();
+    }, 20);
   }
 
   document.getElementById('open-fim-dialog-btn')?.addEventListener('click', openFimLab);
@@ -8501,30 +9861,66 @@
     });
   });
 
-  // 左右文本框便捷清空按钮
-  document.querySelectorAll('.fim-clear-mini').forEach((btn) => {
-    btn.addEventListener('click', () => {
+  // 左右文本框便捷清空按钮（长内容防误触确认）
+  document.querySelectorAll('.fim-clear-mini[data-clear-target]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
       const targetEl = document.getElementById(btn.dataset.clearTarget);
-      if (targetEl) {
-        targetEl.value = '';
-        targetEl.focus();
+      if (!targetEl) return;
+      if (targetEl.value.trim().length > 20) {
+        const confirmed = await askUserConfirm({
+          title: '🧹 确认清空输入内容',
+          message: '确定要清空此文本框内已编写的内容吗？',
+          confirmText: '确认清空',
+          danger: true
+        });
+        if (!confirmed) return;
       }
+      targetEl.value = '';
+      targetEl.focus();
     });
+  });
+
+  let fimAbortCtrl = null;
+  document.getElementById('cancel-fim-stream-btn')?.addEventListener('click', () => {
+    if (fimAbortCtrl) {
+      fimAbortCtrl.abort();
+      fimAbortCtrl = null;
+    }
   });
 
   async function executeFimCompletion(isRerun = false) {
     const runBtn = document.getElementById('run-fim-btn');
     const rerunBtn = document.getElementById('rerun-fim-btn');
+    const progCard = document.getElementById('fim-progress-card');
+    const progBar = document.getElementById('fim-progress-bar');
+    const progLbl = document.getElementById('fim-progress-label');
+
     if (isRerun) {
       fimVariantCounter += 1;
     }
     runBtn.disabled = true;
     if (rerunBtn) rerunBtn.disabled = true;
     runBtn.textContent = '⏳ 正在为你构思过渡情节…';
+    if (progCard) progCard.classList.remove('hidden');
+    if (progBar) progBar.value = 15;
 
+    let pct = 15;
+    const fimTimer = setInterval(() => {
+      pct = Math.min(92, pct + 6);
+      if (progBar) progBar.value = pct;
+      if (progLbl) {
+        progLbl.textContent =
+          pct < 55
+            ? '⏳ 正在结合开头与结尾构思自然衔接细节…'
+            : '⏳ 正在润色人物动作与语气，马上就好…';
+      }
+    }, 800);
+
+    fimAbortCtrl = new AbortController();
     try {
       const res = await apiJson('/api/deepseek/fim', {
         method: 'POST',
+        signal: fimAbortCtrl.signal,
         body: JSON.stringify({
           prompt: fimPromptInput.value,
           suffix: fimSuffixInput.value,
@@ -8534,6 +9930,7 @@
           max_tokens: 512
         })
       });
+      if (progBar) progBar.value = 100;
       latestFimMerged = res.merged || '';
       fimResultPre.innerHTML = `${escapeHtml(fimPromptInput.value)}<mark class="fim-mid-highlight">${escapeHtml(
         res.completion
@@ -8544,8 +9941,15 @@
         (res.completion || '').trim().length
       } 字 · 点上方「一键填入聊天框」即可直接使用`;
     } catch (err) {
-      showToast(`🌸 ${err.message}`);
+      if (err?.name === 'AbortError') {
+        showToast('⏹ 已取消本次灵感补写');
+      } else {
+        showToast(`🌸 ${err.message}`);
+      }
     } finally {
+      clearInterval(fimTimer);
+      fimAbortCtrl = null;
+      if (progCard) progCard.classList.add('hidden');
       runBtn.disabled = false;
       if (rerunBtn) rerunBtn.disabled = false;
       runBtn.textContent = '✨ 帮我补齐中间剧情';
@@ -8576,12 +9980,13 @@
     showToast('💬 已填入下方聊天框，可直接发送或按喜好微调哦！');
   });
 
-  // 🌟 多一点主动性核心引擎：仅在恋庭沉浸扮演模式下发起主动关怀（DeepSeek 原生模式保持纯粹上下文零干扰）
+  // 🌟 多一点主动性核心引擎：仅在恋庭沉浸扮演模式下发起主动关怀（锁定发起会话 ID 严防串台）
   async function triggerProactiveMessage(triggerReason = 'manual') {
     if (state.isStreaming || !state.activeSessionId) return;
     if (state.uiMode === 'deepseek' || state.activeSession?.session_mode === 'deepseek_native') return;
+    const originSessionId = state.activeSessionId;
+    const isStillOriginSession = () => state.activeSessionId === originSessionId;
     const isDsUi = false;
-    const isPure = !state.activePersona || state.activePersona.id === 'persona_deepseek_official';
 
     // 退出空对话居中态以便流式展示主动消息
     document.querySelector('.chat-stage')?.classList.remove('ds-empty-mode');
@@ -8589,7 +9994,7 @@
     if (welcomeHero) welcomeHero.remove();
 
     const liveRow = document.createElement('div');
-    liveRow.className = 'msg-row assistant';
+    liveRow.className = 'msg-row assistant awaiting-first-token';
 
     const avatarEl = document.createElement('div');
     avatarEl.className = 'msg-avatar';
@@ -8619,7 +10024,7 @@
 
     const proseEl = document.createElement('div');
     proseEl.className = 'assistant-prose streaming-cursor';
-    proseEl.innerHTML = '<p>…</p>';
+    proseEl.innerHTML = '<span class="streaming-await-pill">✦ 正在走近你…</span>';
 
     bodyEl.appendChild(thoughtDetails);
     bodyEl.appendChild(proseEl);
@@ -8631,6 +10036,8 @@
     const thoughtContentEl = thoughtDetails.querySelector('.thought-content');
     const abortController = new AbortController();
     state.streamingAbort = abortController;
+    state.streamingSessionId = originSessionId;
+    state.userStoppedStream = false;
     setStreamingUi(true);
 
     let accReasoning = '';
@@ -8641,7 +10048,7 @@
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          session_id: state.activeSessionId,
+          session_id: originSessionId,
           trigger_reason: triggerReason
         }),
         signal: abortController.signal
@@ -8657,11 +10064,12 @@
       let receivedDoneEvent = false;
 
       const handleSseBlock = (rawBlock) => {
+        if (!isStillOriginSession()) return;
         const lines = rawBlock.split(/\r?\n/);
         let eventName = 'message';
         let dataStr = '';
         for (const l of lines) {
-          if (l.startsWith(':')) continue; // 忽略 SSE keepalive 心跳注释帧
+          if (l.startsWith(':')) continue;
           if (l.startsWith('event:')) eventName = l.slice(6).trim();
           else if (l.startsWith('data:')) dataStr += l.slice(5).trim();
         }
@@ -8674,6 +10082,7 @@
         }
 
         if (eventName === 'reasoning') {
+          liveRow.classList.remove('awaiting-first-token');
           accReasoning += payload.delta || '';
           thoughtDetails.classList.remove('hidden');
           if (isDsUi) {
@@ -8683,6 +10092,7 @@
           }
           scrollToBottom();
         } else if (eventName === 'content') {
+          liveRow.classList.remove('awaiting-first-token');
           thoughtContentEl.classList.remove('streaming-cursor');
           accContent += payload.delta || '';
           proseEl.innerHTML = renderMessageMarkdown(accContent);
@@ -8711,6 +10121,7 @@
       };
 
       for await (const chunk of response.body) {
+        if (!isStillOriginSession()) break;
         buffer += decoder.decode(chunk, { stream: true });
         const events = buffer.split(/\r?\n\r?\n/);
         buffer = events.pop() || '';
@@ -8718,15 +10129,20 @@
           handleSseBlock(rawBlock);
         }
       }
-      buffer += decoder.decode();
-      if (buffer.trim() && !receivedDoneEvent) {
-        handleSseBlock(buffer);
+      if (isStillOriginSession()) {
+        buffer += decoder.decode();
+        if (buffer.trim() && !receivedDoneEvent) {
+          handleSseBlock(buffer);
+        }
       }
     } catch {
       liveRow.remove();
     } finally {
-      state.streamingAbort = null;
-      setStreamingUi(false);
+      if (state.streamingAbort === abortController) {
+        state.streamingAbort = null;
+        state.streamingSessionId = null;
+        setStreamingUi(false);
+      }
       state.lastInteractionAt = Date.now();
     }
   }
@@ -8841,6 +10257,7 @@
     } catch {}
     authGate.classList.add('hidden');
     appShell.classList.remove('hidden');
+    dismissBootSplash();
 
     const boot = await apiJson('/api/bootstrap');
     state.user = boot.user;
@@ -8860,6 +10277,16 @@
     }
 
     applyUiModeVisuals(state.uiMode);
+    // 桌面宽屏下恢复或默认展开恋庭右侧面板（展示 💞养成 / 🧠记忆 / 🎯设定，与陪伴立绘优雅共存）
+    try {
+      const isDesktopWide = window.matchMedia('(min-width: 1180px)').matches;
+      const savedRightPref = localStorage.getItem('right_panel_collapsed_v1');
+      if (state.uiMode === 'roleplay' && isDesktopWide && savedRightPref !== '1') {
+        openRightTab('nurture-tab', false);
+      } else if (savedRightPref === '0' && !window.matchMedia('(max-width: 860px)').matches) {
+        openRightTab(state.uiMode === 'roleplay' ? 'nurture-tab' : 'memory-tab', false);
+      }
+    } catch {}
     syncActiveScriptVisuals();
     renderUserAndMembership();
     if (state.wallet) renderWalletOverview();
@@ -8905,7 +10332,22 @@
       window.location.hash === '#demo' ||
       Boolean(window.__isStaticLiveDemo);
 
-    if (isLiveDemoEntry) {
+    // 新访客/新用户首次进入恋庭模式时自动启动 4 步贴心新手引导（支持随时跳过或在更多菜单重看）
+    if (
+      state.uiMode === 'roleplay' &&
+      state.user &&
+      !state.user.onboarding_done &&
+      !sessionStorage.getItem(`tour_shown_${state.user.id}`)
+    ) {
+      try {
+        sessionStorage.setItem(`tour_shown_${state.user.id}`, '1');
+      } catch {}
+      setTimeout(() => {
+        if (state.user && !state.user.onboarding_done && !state.tourActive) {
+          startOnboardingTour();
+        }
+      }, 450);
+    } else if (isLiveDemoEntry) {
       if (!sessionStorage.getItem('star_demo_welcomed')) {
         sessionStorage.setItem('star_demo_welcomed', '1');
         showToast('💖 欢迎来到星语恋庭 · 点击左侧任意角色即可开启沉浸对话与真声陪伴');
@@ -8914,6 +10356,8 @@
   }
 
   async function bootCheck() {
+    // 6 秒终极防白屏安全锁：任何极端情况下确保移除首屏遮罩
+    const safetySplashTimer = setTimeout(dismissBootSplash, 6000);
     let manualSwitch = false;
     try {
       manualSwitch = sessionStorage.getItem('manual_account_switch') === '1';
@@ -8942,6 +10386,9 @@
     } catch {
       resetClientWorkspaceState();
       showAuthScreen();
+    } finally {
+      clearTimeout(safetySplashTimer);
+      dismissBootSplash();
     }
   }
 

@@ -753,15 +753,26 @@ function buildThreeTierContext({ sessionId, expectedUserId = null, latestUserTex
     `${latestUserText || ''} ${recentSnippet}`
   );
 
-  let activeScriptRole = (STORY_SCRIPTS || []).find((s) => s.id === rawPersona.script_id)?.player_role || '';
-  if (!activeScriptRole && rawPersona.script_id) {
-    const customSc = db.prepare('SELECT player_role FROM user_scripts WHERE id = ?').get(rawPersona.script_id);
-    if (customSc?.player_role) activeScriptRole = customSc.player_role;
+  const isStandaloneUserPersona =
+    rawPersona.user_id &&
+    rawPersona.user_id !== 'system' &&
+    rawPersona.user_id !== 'system_ds' &&
+    !/【(?:共创剧本|所属剧本)/.test(String(rawPersona.backstory || ''));
+
+  let activeScriptRole = '';
+  if (!isStandaloneUserPersona) {
+    activeScriptRole = (STORY_SCRIPTS || []).find((s) => s.id === rawPersona.script_id)?.player_role || '';
+    if (!activeScriptRole && rawPersona.script_id) {
+      const customSc = db.prepare('SELECT player_role FROM user_scripts WHERE id = ?').get(rawPersona.script_id);
+      if (customSc?.player_role) activeScriptRole = customSc.player_role;
+    }
   }
   const rawUserRole = (userRow?.user_persona_role || '').trim();
   const effectiveUserRole =
     !rawUserRole || rawUserRole === '命中注定的重逢旅人'
-      ? activeScriptRole || '与你相遇的同行者'
+      ? isStandaloneUserPersona
+        ? '与你初次相遇的对话者'
+        : activeScriptRole || '与你相遇的同行者'
       : rawUserRole;
 
   const isCustomUserNick = Boolean(userNick && !/^星[语屿]旅人/.test(userNick));
@@ -855,10 +866,10 @@ function buildThreeTierContext({ sessionId, expectedUserId = null, latestUserTex
       renderedSessionPrompt
         ? `\n## 🎯 本对话专属独立设定 / 平行世界规则（仅当前存档独立生效，优先级高于通用背景）\n${renderedSessionPrompt}`
         : '',
-      `\n## 互动演绎与故事推进准则（参考 CLANNAD / 顶级视觉小说叙事节奏）`,
-      `1. 始终以「${persona.name}」的第一人称视角与「${userNick}」实时对话，语气亲疏程度契合当前关系养成阶段与本对话独立设定，牢记本对话长期记忆与前情摘要中的一切细节约定。`,
-      `2. 善用 *星号包裹的番剧分镜式细节描写*（如光影流转、微风声响、眼神停顿、手边器物触感）营造电影级代入感。`,
-      `3. **聊天推进剧情铁律（Story-Driven Progression）**：每一轮回复都必须实质性推动当前场景往前走半步，承接对方选择后自然引入新的事件线索或伏笔，并在结尾留出具体的行动抉择契机。`
+      `\n## 互动演绎与故事推进准则（参考顶级视觉小说叙事节奏）`,
+      `1. 始终以「${persona.name}」的第一人称视角与对方实时对话，语气亲疏程度契合当前关系阶段与本对话独立设定。`,
+      `2. **回复饱满度铁律（严禁极短敷衍句）**：每轮回复必须同时包含细腻自然的 \`*星号环境光影与神态动作描写*\` 以及 **2~4 句完整走心的角色口语对白**（单轮正文保持在 90~220 字左右）。**严禁只回“所以呢？”、“哦？”、“是吗”等两三个字的极短反问就戛然而止**——即便使用简短反问开场，也必须紧接着给出符合性格的行动细节、真实态度与推进下一步剧情的具体邀约。`,
+      `3. **🚫 严禁串戏与严禁编造记忆红线**：你只能引用本提示词中明确列出的【永久核心记忆】【前情浓缩摘要】及下方【真实对话历史】里实际聊过的内容！**绝对禁止无中生有编造对方“以前/上次/去年说过某句话或某种喜好”**（如严禁凭空捏造“你说过蜜桃乌龙太甜”、“你以前讨厌某食物”），也**绝对禁止串戏提及本角色设定以外的无关器物或身份**（如无关的钢琴、柠檬薄荷茶等）！`
     ]
       .filter(Boolean)
       .join('\n');

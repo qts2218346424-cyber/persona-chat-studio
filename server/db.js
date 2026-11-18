@@ -1573,9 +1573,9 @@ function createStarterSessionForUser(userId, nickname) {
 
   db.prepare(`
     INSERT INTO sessions (
-      id, user_id, persona_id, title, rolling_summary, summarized_until_msg_id,
+      id, user_id, persona_id, title, proactive_enabled, rolling_summary, summarized_until_msg_id,
       enable_inner_thought, enable_auto_memory, affection, trust, intimacy, current_mood, secret_diary, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, '', 0, 1, 1, 22, 26, 18, '温柔浅笑', ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, 0, '', 0, 1, 1, 22, 26, 18, '温柔浅笑', ?, ?, ?)
   `).run(sessionId, userId, firstPersona.id, '星夜初访白山茶钟楼', initialDiary, now, now);
 
   db.prepare(`
@@ -2055,6 +2055,16 @@ function buildMembershipSnapshot(row, now = Date.now()) {
     displayTierName = '🌙 普通旅人（卡已到期）';
   }
 
+  let realUserMsgCount = Number(row.total_used) || 0;
+  try {
+    realUserMsgCount =
+      db
+        .prepare(
+          "SELECT COUNT(*) AS cnt FROM messages m JOIN sessions s ON s.id = m.session_id WHERE s.user_id = ? AND m.role = 'user'"
+        )
+        .get(row.id)?.cnt ?? realUserMsgCount;
+  } catch {}
+
   return {
     tier: hasActiveCard ? row.tier : freeMode ? 'moon' : 'free',
     card_type: effectiveCardType,
@@ -2069,7 +2079,7 @@ function buildMembershipSnapshot(row, now = Date.now()) {
     online_credits: credits,
     points,
     total_points_earned: Math.max(points, Number(row.total_points_earned) || 0),
-    total_used: Number(row.total_used) || 0,
+    total_used: realUserMsgCount,
     expires_at: row.expires_at || null,
     remaining_text: hasActiveCard
       ? formatRemainingDuration(row.expires_at, now)
@@ -2481,7 +2491,15 @@ function getTasksProgressForUser(userId) {
     Boolean((userRow.user_persona_appearance && userRow.user_persona_appearance.trim()) || (userRow.user_persona_bio && userRow.user_persona_bio.trim()));
 
   const customPersonaCount = db
-    .prepare('SELECT COUNT(*) AS cnt FROM personas WHERE user_id = ?')
+    .prepare(`
+      SELECT COUNT(*) AS cnt
+      FROM personas p
+      WHERE p.user_id = ?
+        AND NOT EXISTS (
+          SELECT 1 FROM user_scripts us
+          WHERE us.id = p.script_id AND us.source_share_id IS NOT NULL
+        )
+    `)
     .get(userId).cnt;
 
   const customLoreCount = db
@@ -3417,7 +3435,7 @@ function getSafeClientSettings(userId) {
   let temperature = '0.85';
   let slidingWindow = '40';
   let maxRecall = '16';
-  let proactiveIdle = '60';
+  let proactiveIdle = '180';
   let ownKey = '';
   let ownModel = 'deepseek-flash';
   let ownBaseUrl = OFFICIAL_DEEPSEEK_CHAT_URL;

@@ -195,8 +195,8 @@ async function analyzeAndOptimizeScript({ filename = '', rawText = '', focusMode
     throw new Error('请先上传剧本文档，或在文本框里写下至少一句话的故事脑洞哦');
   }
 
-  // 若用户直接上传了结构化 JSON 剧本包，先提取其中的文本主体再优化
-  let sourceContent = cleanText.slice(0, 12000);
+  // 限制单次诊断输入长度，确保 5~8 秒极速完成
+  let sourceContent = cleanText.slice(0, 4800);
   const focusHint = FOCUS_INSTRUCTIONS[focusMode] || FOCUS_INSTRUCTIONS.balanced;
 
   // 获取可用推理端点（优先私人配置，其次本地 Antigravity 联动底座）
@@ -262,26 +262,32 @@ async function analyzeAndOptimizeScript({ filename = '', rawText = '', focusMode
       const modelToUse =
         cred.preferredModel === 'deepseek-reasoner' ? 'deepseek-flash' : cred.preferredModel || 'deepseek-flash';
 
+      const isSilicon = String(cred.chatUrl || '').includes('siliconflow.cn');
+      const reqBody = {
+        model: modelToUse,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          {
+            role: 'user',
+            content: `文件名：${filename || '未命名草稿'}\n\n用户上传的原始剧本/设定内容如下：\n${sourceContent}`
+          }
+        ],
+        temperature: 0.72,
+        max_tokens: 1500,
+        stream: false
+      };
+      if (isSilicon) {
+        reqBody.enable_thinking = false;
+      }
+
       const res = await fetch(cred.chatUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           ...cred.headers
         },
-        body: JSON.stringify({
-          model: modelToUse,
-          messages: [
-            { role: 'system', content: systemPrompt },
-            {
-              role: 'user',
-              content: `文件名：${filename || '未命名草稿'}\n\n用户上传的原始剧本/设定内容如下：\n${sourceContent}`
-            }
-          ],
-          temperature: 0.75,
-          max_tokens: 2800,
-          stream: false
-        }),
-        signal: AbortSignal.timeout(32000)
+        body: JSON.stringify(reqBody),
+        signal: AbortSignal.timeout(16000)
       });
 
       if (res.ok) {
@@ -289,11 +295,14 @@ async function analyzeAndOptimizeScript({ filename = '', rawText = '', focusMode
         const rawReply = data?.choices?.[0]?.message?.content || '';
         const parsed = extractJsonObject(rawReply);
         if (parsed && parsed.script && Array.isArray(parsed.personas) && parsed.personas.length > 0) {
+          const cleanCritique = (
+            Array.isArray(parsed.critique) && parsed.critique.length > 0
+              ? parsed.critique
+              : ['✨ 已完成剧本结构精修、四幕拆解与登场角色人设提取']
+          ).map((item) => String(item || '').replace(/\*\*/g, '').trim());
           return {
             engine: 'ai_director',
-            critique: Array.isArray(parsed.critique) && parsed.critique.length > 0
-              ? parsed.critique
-              : ['✨ 已完成剧本结构精修、四幕拆解与登场角色人设提取'],
+            critique: cleanCritique,
             script: {
               icon: String(parsed.script.icon || '📖').slice(0, 4),
               title: String(parsed.script.title || '原创互动剧本').trim(),
@@ -320,7 +329,11 @@ async function analyzeAndOptimizeScript({ filename = '', rawText = '', focusMode
     } catch {}
   }
 
-  return buildLocalSmartAnalysis({ filename, rawText: cleanText, focusMode });
+  const localRes = buildLocalSmartAnalysis({ filename, rawText: cleanText, focusMode });
+  if (Array.isArray(localRes.critique)) {
+    localRes.critique = localRes.critique.map((c) => String(c || '').replace(/\*\*/g, '').trim());
+  }
+  return localRes;
 }
 
 module.exports = {

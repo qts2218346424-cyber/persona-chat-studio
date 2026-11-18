@@ -420,7 +420,14 @@
 
   async function sendVoiceTurn(spokenText) {
     const sid = window.__activeSessionId;
-    if (!sid || isBusy) return;
+    if (!sid) {
+      updateCloudBubble('💡 请先选定角色', '请先在左侧点选一位角色进入对话，就能直接语音通话啦！');
+      return;
+    }
+    if (isBusy) {
+      updateCloudBubble('🎧 正在回应中', '上一句话正在录制真声回应，请稍等一秒哦～');
+      return;
+    }
 
     isBusy = true;
     stopCurrentAudio();
@@ -430,7 +437,10 @@
     quickInput.disabled = true;
     const prevPlaceholder = quickInput.placeholder;
     quickInput.placeholder = '🎧 正在录制声优真声…';
-    updateCloudBubble(`🎧 ${meta.short} · 酝酿呼吸中`, spokenText ? '正在贴近耳畔准备回应你…' : '正在轻声开口向你打招呼…');
+    updateCloudBubble(
+      `🎧 ${meta.short} · 真声回应中`,
+      spokenText ? `听到你说：「${spokenText.slice(0, 36)}」… 正在贴近耳畔回应你` : '正在轻声开口向你打招呼…'
+    );
 
     try {
       const resp = await fetch(`/api/sessions/${encodeURIComponent(sid)}/companion/voice-chat`, {

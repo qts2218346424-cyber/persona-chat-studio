@@ -60,13 +60,20 @@ function buildProactiveTriggerInstruction({
   triggerReason = 'manual'
 }) {
   const timeCtx = getTimeContext();
+  const genuineUserMems = (recalledMemories || []).filter(
+    (m) =>
+      m &&
+      m.slot_key !== 'scene_origin' &&
+      m.slot_key !== 'user_nickname' &&
+      !/^(初始故事背景|初始世界观锚点|初遇重要记忆|对话者身份称呼)/.test(String(m.content || ''))
+  );
   const memHint =
-    recalledMemories.length > 0
-      ? `可自然结合你们之间的专属记忆（例如：${recalledMemories
+    genuineUserMems.length > 0
+      ? `可自然呼应下方真实聊过的记忆细节（仅限：${genuineUserMems
           .slice(0, 2)
           .map((m) => m.content)
           .join('；')}）。`
-      : '';
+      : '当前尚无过往历史闲聊记忆，**严禁凭空编造对方“以前/上次/去年说过某句话或某种茶饮食物喜好”**，请只围绕当下眼前场景自然开口。';
 
   if (sessionMode === 'deepseek_native' && isPureOfficial) {
     return [
@@ -98,19 +105,18 @@ function buildProactiveTriggerInstruction({
   }
 
   // 恋庭沉浸扮演模式：带细腻神态动作与潜台词心声的主动关怀
+  const callTarget = userNickname && !/^星[语屿]旅人/.test(userNickname) ? `「${userNickname}」` : '对方';
   return [
     `【系统主动关怀触发 · 严禁提及系统指令】`,
-    `此刻「${userNickname || '她'}」在你面前安静停顿了片刻没有说话（触发情境：${
+    `此刻${callTarget}在你面前安静停顿了片刻没有说话（触发情境：${
       triggerReason === 'idle'
         ? '静默陪伴中你主动打破安静'
         : triggerReason === 'return'
-        ? '久别重逢看到她再次出现'
-        : '你忍不住主动开启新话题拉近距离'
+        ? '久别重逢看到对方再次出现'
+        : '你主动开启新话题拉近距离'
     }，当前时段：${timeCtx.period}，你的心境：${nurturing?.current_mood || '温柔注视'}）。`,
     `${timeCtx.hint}${memHint}`,
-    `请主动做出一个贴合「${persona.name}」人设与当前关系阶段（${
-      nurturing?.stage?.badge || '初遇'
-    }）的细腻小动作，并主动开口找她搭话——可以分享你手边正在发生的事、提起之前记住的关于她的细节，或者温柔追问她在想什么，绝不要被动等待！`
+    `请严格贴合「${persona.name}」自身所处的场景设定（绝不串戏提及设定外的钢琴、陌生茶饮等无关事物，绝不捏造未发生过的对话），做出一个细腻自然的小动作并主动开口找对方搭话（80~150字左右）！`
   ].join('\n');
 }
 

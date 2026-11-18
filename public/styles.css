@@ -609,6 +609,9 @@ body {
   min-width: 0;
   background: transparent;
   position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  z-index: 1;
 }
 
 .stage-topbar {
@@ -772,33 +775,37 @@ body {
   color: var(--text-primary);
 }
 
-/* 实时轻提示气泡 */
+/* 实时轻提示气泡（右下安全区，绝不遮挡顶栏标题与按钮，点击可立即关闭） */
 .memory-toast {
   position: absolute;
-  top: 68px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 25;
+  bottom: 92px;
+  right: 22px;
+  left: auto;
+  transform: none;
+  max-width: min(380px, calc(100% - 36px));
+  z-index: 38;
   background: var(--bg-composer);
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(236, 94, 167, 0.5);
+  backdrop-filter: blur(14px);
+  border: 1px solid rgba(236, 94, 167, 0.45);
   color: var(--text-primary);
-  padding: 8px 18px;
-  border-radius: var(--radius-pill);
+  padding: 8px 16px;
+  border-radius: 14px;
   font-size: 12.5px;
   font-weight: 500;
+  line-height: 1.45;
   box-shadow: var(--shadow-soft);
-  animation: fadeSlideDown 0.22s ease;
+  cursor: pointer;
+  animation: fadeSlideUpToast 0.2s ease;
 }
 
-@keyframes fadeSlideDown {
+@keyframes fadeSlideUpToast {
   from {
     opacity: 0;
-    transform: translate(-50%, -8px);
+    transform: translateY(8px);
   }
   to {
     opacity: 1;
-    transform: translate(-50%, 0);
+    transform: translateY(0);
   }
 }
 
@@ -1043,6 +1050,7 @@ body {
 
 /* 底部水晶输入舱 */
 .composer-dock {
+  position: relative;
   padding: 8px 20px 18px;
 }
 
@@ -1197,6 +1205,9 @@ body {
 
 /* 右侧人设与记忆匣面板 */
 .inspector-panel {
+  position: relative;
+  z-index: 30;
+  isolation: isolate;
   background: var(--bg-inspector);
   backdrop-filter: blur(18px);
   border-left: 1px solid var(--border-subtle);
@@ -2708,12 +2719,14 @@ progress.nurture-progress::-moz-progress-bar {
 .user-msg-tools {
   display: flex;
   gap: 6px;
-  margin-top: 4px;
+  margin-top: 2px;
+  min-height: 20px;
   opacity: 0;
   transition: opacity 0.15s ease;
 }
 
-.msg-row.user:hover .user-msg-tools {
+.msg-row.user:hover .user-msg-tools,
+.msg-row.user:focus-within .user-msg-tools {
   opacity: 1;
 }
 
@@ -4028,6 +4041,8 @@ details[open] > .ds-fold-summary::before,
   font-size: 11.5px;
   font-weight: 700;
   color: var(--accent-emerald);
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .ds-seg-hit { background: #10b981; }

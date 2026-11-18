@@ -17,6 +17,10 @@
         localStorage.setItem('ui_mode_v5', queryMode);
         return queryMode;
       }
+      if (params.get('demo') === '1' || params.get('demo') === 'true') {
+        localStorage.setItem('ui_mode_v5', 'roleplay');
+        return 'roleplay';
+      }
       const currentSaved = localStorage.getItem('ui_mode_v5');
       if (currentSaved === 'roleplay' || currentSaved === 'deepseek') {
         return currentSaved;
@@ -153,7 +157,7 @@
     compStyleBar.appendChild(closeCompBtn);
   }
 
-  // 3. 登录门扉与网页标题随模式动态同步
+  // 3. 登录门扉与网页标题随模式动态同步（始终保留「星语恋庭」品牌标识）
   function syncBrandAndTitleByMode(mode) {
     const isDs = mode === 'deepseek';
     document.documentElement.dataset.uiMode = isDs ? 'deepseek' : 'roleplay';
@@ -161,22 +165,20 @@
       document.body.dataset.uiMode = isDs ? 'deepseek' : 'roleplay';
     }
     document.title = isDs
-      ? 'DeepSeek · 智能对话与角色扮演工作台'
-      : '星语恋庭 · 互动剧本与角色扮演剧场';
+      ? '星语恋庭 · DeepSeek 原生助手模式'
+      : '星语恋庭 · 互动剧本与沉浸角色扮演馆';
 
     const authHeading = document.getElementById('auth-brand-heading');
     const authSub = document.getElementById('auth-brand-subtitle') || document.querySelector('.auth-hero p');
     const signinSubmit = document.querySelector('#signin-form .auth-submit-btn');
     if (authHeading) {
-      authHeading.textContent = isDs ? 'deepseek' : '星语恋庭';
+      authHeading.textContent = '星语恋庭';
     }
     if (authSub) {
-      authSub.textContent = isDs
-        ? '深度思考 · 智能搜索 · 沉浸角色扮演双栖工作台'
-        : '定制专属人设背景故事 · 镌刻不会遗忘的双向心动记忆';
+      authSub.textContent = '沉浸互动剧本 · 立体陪伴配音 · 长效记忆对话馆';
     }
     if (signinSubmit) {
-      signinSubmit.textContent = isDs ? '登录进入 DeepSeek 工作台' : '✨ 登录进入恋庭';
+      signinSubmit.textContent = '✨ 登录进入星语恋庭';
     }
   }
 
@@ -220,10 +222,10 @@
     if (internalSyncing) return;
     internalSyncing = true;
     try {
-      const curMode = appShell.dataset.uiMode || 'deepseek';
+      const curMode = appShell.dataset.uiMode || 'roleplay';
       syncBrandAndTitleByMode(curMode);
       try {
-        localStorage.setItem('ui_mode_v4', curMode);
+        localStorage.setItem('ui_mode_v5', curMode);
       } catch {}
 
       if (!isMobile()) {
@@ -293,8 +295,13 @@
       closeAllMobileDrawers();
     } else {
       backdrop.classList.add('hidden');
-      appShell.classList.remove('left-collapsed');
-      if (expandLeftBtn) expandLeftBtn.classList.add('hidden');
+      let savedLeftCollapsed = false;
+      try {
+        savedLeftCollapsed = localStorage.getItem('left_sidebar_collapsed_v1') === '1';
+      } catch {}
+      appShell.classList.toggle('left-collapsed', savedLeftCollapsed);
+      if (expandLeftBtn) expandLeftBtn.classList.toggle('hidden', !savedLeftCollapsed);
+      document.getElementById('collapsed-quick-nav')?.classList.toggle('hidden', !savedLeftCollapsed);
     }
   });
 

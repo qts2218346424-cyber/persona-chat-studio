@@ -260,14 +260,15 @@ body[data-ui-mode="deepseek"] .auth-gate .info-callout {
 }
 
 /* ==========================================================================
-   3. 移动端陪伴立绘（<=960px）改为精致悬浮全息卡片（不再静默 display:none）
+   3. 移动端陪伴立绘（<=860px）改为精致悬浮全息卡片（与抽屉断点 860px 严格对齐，绝不在桌面遮挡右侧面板）
    ========================================================================== */
-@media (max-width: 960px) {
-  .app-shell[data-ui-mode="roleplay"] .companion-stage.hidden {
+@media (max-width: 860px) {
+  .app-shell[data-ui-mode="roleplay"] .companion-stage.hidden,
+  .app-shell[data-ui-mode="roleplay"]:not(.right-collapsed) .companion-stage {
     display: none !important;
   }
 
-  .app-shell[data-ui-mode="roleplay"] .companion-stage:not(.hidden) {
+  .app-shell[data-ui-mode="roleplay"].right-collapsed .companion-stage:not(.hidden) {
     display: flex !important;
     position: fixed !important;
     right: max(10px, env(safe-area-inset-right, 0px));
@@ -1064,19 +1065,19 @@ body[data-ui-mode="deepseek"] .auth-gate .info-callout {
   z-index: 2 !important;
 }
 
-.app-shell[data-ui-mode="deepseek"] .composer-card,
-.composer-card {
-  width: min(100%, 750px) !important;
-  max-width: min(100%, 750px) !important;
-  box-sizing: border-box !important;
+@media (max-width: 860px) {
+  .app-shell[data-ui-mode="deepseek"] .composer-card,
+  .composer-card {
+    width: min(100%, 750px) !important;
+    max-width: min(100%, 750px) !important;
+    box-sizing: border-box !important;
+  }
 }
 
-/* 当右侧伴生面板展开且视口 <= 1520px 时，隐藏右侧面板内部已包含的重复快捷入口，释放顶栏对话标题空间 */
+/* 当右侧伴生面板展开且视口 <= 1520px 时，精简次要徽章释放顶栏对话标题空间，但保留导出与实时预览主按钮 */
 @media (max-width: 1520px) {
   .app-shell:not(.right-collapsed) #ds-model-pill,
-  .app-shell:not(.right-collapsed) #ds-share-session-btn,
   .app-shell:not(.right-collapsed) #open-ds-inspector-btn,
-  .app-shell:not(.right-collapsed) #open-ds-artifacts-btn,
   .app-shell:not(.right-collapsed) #ds-composer-api-chip,
   .app-shell:not(.right-collapsed) #composer-channel-badge {
     display: none !important;

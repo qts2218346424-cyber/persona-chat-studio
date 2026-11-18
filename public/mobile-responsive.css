@@ -933,3 +933,94 @@ body[data-ui-mode="deepseek"] .auth-gate .info-callout {
     font-size: 16px !important;
   }
 }
+
+/* ==========================================================================
+   6. 桌面与笔记本中等视口（含左右双侧栏同时展开态）防重叠与防溢出加固
+   ========================================================================== */
+
+.stage-topbar .topbar-left,
+.app-shell[data-ui-mode="deepseek"] .stage-topbar .topbar-left {
+  min-width: 0 !important;
+  overflow: hidden !important;
+}
+
+.ds-topbar-meta {
+  min-width: 0 !important;
+  overflow: hidden !important;
+  flex-wrap: nowrap !important;
+}
+
+.composer-toolbar {
+  flex-wrap: nowrap !important;
+  gap: 8px !important;
+  min-width: 0 !important;
+}
+
+.composer-actions {
+  flex-shrink: 0 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+}
+
+.composer-actions .send-btn,
+.composer-actions .stop-btn,
+.composer-actions .attach-icon-btn {
+  flex-shrink: 0 !important;
+}
+
+.inspector-tabs {
+  display: flex !important;
+  align-items: center !important;
+  gap: 4px !important;
+  overflow-x: auto !important;
+  scrollbar-width: none !important;
+}
+
+.inspector-tabs .tab-btn {
+  flex: 0 0 auto !important;
+  padding: 6px 9px !important;
+  font-size: 12.5px !important;
+  white-space: nowrap !important;
+}
+
+.inspector-tabs .close-inspector-btn {
+  margin-left: auto !important;
+  position: sticky !important;
+  right: 0 !important;
+  flex-shrink: 0 !important;
+  background: var(--bg-surface, #ffffff) !important;
+  z-index: 2 !important;
+}
+
+.app-shell[data-ui-mode="deepseek"] .composer-card,
+.composer-card {
+  width: min(100%, 750px) !important;
+  max-width: min(100%, 750px) !important;
+  box-sizing: border-box !important;
+}
+
+/* 当右侧伴生面板展开且视口 <= 1520px 时，隐藏右侧面板内部已包含的重复快捷入口，释放顶栏对话标题空间 */
+@media (max-width: 1520px) {
+  .app-shell:not(.right-collapsed) #ds-model-pill,
+  .app-shell:not(.right-collapsed) #ds-share-session-btn,
+  .app-shell:not(.right-collapsed) #open-ds-inspector-btn,
+  .app-shell:not(.right-collapsed) #open-ds-artifacts-btn,
+  .app-shell:not(.right-collapsed) #ds-composer-api-chip,
+  .app-shell:not(.right-collapsed) #composer-channel-badge {
+    display: none !important;
+  }
+
+  .app-shell:not(.right-collapsed) .stage-topbar .topbar-right > button {
+    padding: 5px 9px !important;
+    font-size: 12px !important;
+  }
+}
+
+@media (max-width: 1220px) {
+  #ds-composer-api-chip,
+  #composer-channel-badge,
+  #ds-model-pill {
+    display: none !important;
+  }
+}

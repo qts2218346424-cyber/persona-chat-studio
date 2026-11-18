@@ -10,26 +10,26 @@
       document.querySelector('meta[name="color-scheme"]').content = savedScheme;
       document.documentElement.style.colorScheme = savedScheme;
       const qMode = new URLSearchParams(window.location.search).get("mode");
-      const sMode = localStorage.getItem("ui_mode_v4");
+      const sMode = localStorage.getItem("ui_mode_v5");
       const initMode = (qMode === "roleplay" || qMode === "deepseek")
         ? qMode
-        : (sMode === "roleplay" || sMode === "deepseek") ? sMode : "deepseek";
+        : (sMode === "roleplay" || sMode === "deepseek") ? sMode : "roleplay";
       document.documentElement.dataset.uiMode = initMode;
     } catch {}
   </script>
-  <title>DeepSeek · 智能对话与角色扮演工作台</title>
+  <title>星语恋庭 · 沉浸剧本扮演与长效记忆馆</title>
   <link rel="icon" type="image/svg+xml" href="./assets/deepseek-whale.svg" />
-  <link rel="stylesheet" href="./styles.css?v=20261118m8" />
-  <link rel="stylesheet" href="./companion3d.css?v=20261118m8" />
-  <link rel="stylesheet" href="./clean-ui.css?v=20261118m8" />
-  <link rel="stylesheet" href="./mobile-responsive.css?v=20261118m8" />
+  <link rel="stylesheet" href="./styles.css?v=20261118v43" />
+  <link rel="stylesheet" href="./companion3d.css?v=20261118v43" />
+  <link rel="stylesheet" href="./clean-ui.css?v=20261118v43" />
+  <link rel="stylesheet" href="./mobile-responsive.css?v=20261118v43" />
   <script type="module">
     if (!Object.hasOwn(HTMLElement.prototype, "popover")) {
       import("https://unpkg.com/@oddbird/popover-polyfill@latest/dist/popover.min.js").catch(() => {});
     }
   </script>
 </head>
-<body data-ui-mode="deepseek">
+<body data-ui-mode="roleplay">
   <!-- 唯美二次元氛围星雾装饰层 -->
   <div class="ambient-aurora" aria-hidden="true">
     <span class="orb orb-sakura"></span>
@@ -200,7 +200,7 @@
   />
 
   <!-- ================= 主应用工作台 ================= -->
-  <div class="app-shell right-collapsed hidden" id="app-shell" data-ui-mode="deepseek">
+  <div class="app-shell right-collapsed hidden" id="app-shell" data-ui-mode="roleplay">
     <!-- 移动端抽屉半透明遮罩层（点击外侧自动收起侧栏/右侧抽屉） -->
     <div class="mobile-drawer-backdrop hidden" id="mobile-drawer-backdrop" aria-hidden="true"></div>
 
@@ -320,51 +320,39 @@
 
         <div id="ds-user-popover" popover="auto" class="anchored-popover ds-user-menu-popover">
           <div class="ds-menu-soul-box">
-            <label for="ds-soul-select">🎭 对话灵魂挂载（原生无模板聊角色）</label>
+            <label for="ds-soul-select">🎭 选一位角色直接开聊（或自由扮演）</label>
             <select id="ds-soul-select">
-              <option value="persona_deepseek_official">🐋 纯享 DeepSeek 官方助手</option>
+              <option value="persona_deepseek_official">✨ 自由剧本扮演（按你给的设定开演）</option>
             </select>
           </div>
           <hr class="ds-menu-sep" />
           <button type="button" class="popover-action-item hidden" id="ds-menu-admin-btn">
-            <span>🛡️ 站长管理后台（全站运营与网关）</span>
-          </button>
-          <a href="https://github.com/qts2218346424-cyber/persona-chat-studio/releases/latest" target="_blank" rel="noopener noreferrer" class="popover-action-item ds-apk-download-link">
-            <span>📱 下载 Android APK 安装包</span>
-          </a>
-          <button type="button" class="popover-action-item" id="ds-menu-own-api-quick-btn">
-            <span>🔑 接入个人 API（DeepSeek / 角色扮演通用）</span>
-          </button>
-          <button type="button" class="popover-action-item" id="ds-menu-theme-cycle-btn">
-            <span id="ds-menu-theme-label">🌗 切换外观主题（浅色 / 深色 / 跟随系统）</span>
-          </button>
-          <button type="button" class="popover-action-item" id="ds-menu-memory-btn">
-            <span>🧠 上下文与长期记忆库（置顶铁律）</span>
+            <span>🛡️ 站长管理后台</span>
           </button>
           <button type="button" class="popover-action-item" id="ds-menu-session-setting-btn">
-            <span>🎯 本对话独立附加设定</span>
+            <span>🎯 给当前对话写个专属设定</span>
           </button>
           <button type="button" class="popover-action-item" id="ds-menu-export-md-btn">
-            <span>📄 导出聊天与记忆档案 (.md)</span>
+            <span>📄 导出聊天与记忆 (.md)</span>
           </button>
           <button type="button" class="popover-action-item" id="ds-menu-import-md-btn">
-            <span>📥 导入记忆 / 聊天记录 (.md)</span>
+            <span>📥 导入 .md 记忆到此对话</span>
           </button>
-          <button type="button" class="popover-action-item" id="ds-menu-share-btn">
-            <span>📤 分享对话长图与更多格式</span>
-          </button>
-          <button type="button" class="popover-action-item" id="ds-menu-api-btn">
-            <span>🌸 对话畅玩与智能工具状态</span>
-          </button>
-          <button type="button" class="popover-action-item" id="ds-menu-wallet-btn">
-            <span>👑 会员福利 · 每日签到与积分兑换</span>
+          <button type="button" class="popover-action-item" id="ds-menu-own-api-quick-btn">
+            <span>🔑 绑定我的 DeepSeek 官方 API</span>
           </button>
           <button type="button" class="popover-action-item" id="ds-menu-switch-rp-btn">
-            <span>🌸 切换至「星语恋庭」沉浸模式</span>
+            <span>🌸 切换至「星语恋庭」番剧剧场</span>
           </button>
+          <!-- 收纳冗余技术项保持菜单清爽易懂 -->
+          <button type="button" class="popover-action-item hidden" id="ds-menu-theme-cycle-btn"><span id="ds-menu-theme-label"></span></button>
+          <button type="button" class="popover-action-item hidden" id="ds-menu-memory-btn"></button>
+          <button type="button" class="popover-action-item hidden" id="ds-menu-share-btn"></button>
+          <button type="button" class="popover-action-item hidden" id="ds-menu-api-btn"></button>
+          <button type="button" class="popover-action-item hidden" id="ds-menu-wallet-btn"></button>
           <hr class="ds-menu-sep" />
           <button type="button" class="popover-action-item" id="ds-menu-settings-btn">
-            <span>⚙️ 聊天偏好与外观设置</span>
+            <span>⚙️ 外观与个人 API 设置</span>
           </button>
           <button type="button" class="popover-action-item" id="ds-menu-logout-btn">
             <span>🔄 切换账号 / 退出登录</span>
@@ -420,7 +408,7 @@
           <!-- 原生 DeepSeek 模式顶栏信息 -->
           <div class="ds-topbar-meta ds-only-flex">
             <span class="ds-topbar-title" id="ds-topbar-title">新对话</span>
-            <span class="ds-model-badge" id="ds-model-pill">deepseek-reasoner · R1</span>
+            <span class="ds-model-badge" id="ds-model-pill">DeepSeek-V4.1-Flash · 深度思考</span>
             <span class="ds-soul-pill hidden" id="ds-soul-active-pill">🎭 挂载人设中</span>
             <span class="ds-soul-pill hidden" id="ds-session-setting-pill">🎯 独立设定</span>
           </div>
@@ -462,18 +450,18 @@
             👋 让 TA 开口
           </button>
 
-          <!-- 原生 DeepSeek 模式主快捷入口（去除冗余补写按钮，聚焦长效记忆与实时预览） -->
-          <button type="button" class="soft-tool-btn ds-only-inline" id="open-ds-artifacts-btn" title="打开右侧伴生实时预览视窗 (HTML / SVG / Canvas)">
+          <!-- 原生 DeepSeek 模式主快捷入口（极简去噪：默认即适合扮演剧本，隐藏小白不懂的极客工具） -->
+          <button type="button" class="soft-tool-btn hidden" id="open-ds-artifacts-btn">
             <span>🖥️ 实时预览</span>
             <span class="ds-artifact-dot hidden" id="ds-artifacts-count-dot"></span>
           </button>
-          <button type="button" class="soft-tool-btn ds-only-inline" id="ds-open-memory-setting-btn" title="查看/置顶本对话长期记忆锚点、前情浓缩摘要与独立设定">
-            🧠 设定与记忆
+          <button type="button" class="soft-tool-btn ds-only-inline" id="ds-open-memory-setting-btn" title="给当前对话写专属设定或查看独立记忆">
+            🎭 设定与记忆
           </button>
-          <button type="button" class="ds-inspector-btn ds-only-inline" id="open-ds-inspector-btn" title="查看长效记忆缓存命中率与智能引擎状态">
+          <button type="button" class="ds-inspector-btn hidden" id="open-ds-inspector-btn">
             ⚡ 引擎状态
           </button>
-          <button type="button" class="soft-tool-btn ds-only-inline" id="ds-share-session-btn" title="导出当前对话记录与记忆 (.md)，或生成分享长图">
+          <button type="button" class="soft-tool-btn ds-only-inline" id="ds-share-session-btn" title="导出当前对话记录与记忆 (.md)，方便导入其他对话">
             📤 导出 .md
           </button>
           <button type="button" class="soft-tool-btn ds-only-inline" id="ds-quick-theme-btn" title="切换浅色 / 深色外观模式" aria-label="切换浅色或深色外观">
@@ -512,7 +500,7 @@
               <span>✨ 灵感补写小助手（卡文救星）</span>
             </button>
             <button type="button" class="popover-action-item" id="more-open-own-api-btn">
-              <span>🔑 接入个人 API（免费开放 · 双模式通用）</span>
+              <span>⚙️ 聊天设置 / 绑定我的密钥</span>
             </button>
             <button type="button" class="popover-action-item rp-only-flex" id="more-open-vip-btn">
               <span>👑 会员福利与每日签到中心</span>
@@ -639,12 +627,12 @@
           </svg>
         </button>
 
-        <!-- 原生 DeepSeek 空对话居中问候标题行（1:1 复刻官方大鲸鱼 + 「欢迎回来，随时开始吧」） -->
+        <!-- 原生 DeepSeek 空对话居中问候标题行（开箱即适合扮演剧本，零门槛亲切引导） -->
         <div class="ds-home-greeting ds-only-flex" id="ds-home-greeting">
           <svg class="ds-greeting-whale" width="38" height="38" viewBox="0 0 24 24" fill="none" aria-hidden="true">
             <path fill="#4D6BFE" fill-rule="evenodd" clip-rule="evenodd" d="M23.748 4.482c-.254-.124-.364.113-.512.234-.051.039-.094.09-.137.136-.372.397-.806.657-1.373.626-.829-.046-1.537.214-2.163.848-.133-.782-.575-1.248-1.247-1.548-.352-.156-.708-.311-.955-.65-.172-.241-.219-.51-.305-.774-.055-.16-.11-.323-.293-.35-.2-.031-.278.136-.356.276-.313.572-.434 1.202-.422 1.84.027 1.436.633 2.58 1.838 3.393.137.093.172.187.129.323-.082.28-.18.552-.266.833-.055.179-.137.217-.329.14a5.526 5.526 0 0 1-1.736-1.18c-.857-.828-1.631-1.742-2.597-2.458a11.365 11.365 0 0 0-.689-.471c-.985-.957.13-1.743.388-1.836.27-.098.093-.432-.779-.428-.872.004-1.67.295-2.687.684a3.055 3.055 0 0 1-.465.137 9.597 9.597 0 0 0-2.883-.102c-1.885.21-3.39 1.102-4.497 2.623C.082 8.606-.231 10.684.152 12.85c.403 2.284 1.569 4.175 3.36 5.653 1.858 1.533 3.997 2.284 6.438 2.14 1.482-.085 3.133-.284 4.994-1.86.47.234.962.327 1.78.397.63.059 1.236-.03 1.705-.128.735-.156.684-.837.419-.961-2.155-1.004-1.682-.595-2.113-.926 1.096-1.296 2.746-2.642 3.392-7.003.05-.347.007-.565 0-.845-.004-.17.035-.237.23-.256a4.173 4.173 0 0 0 1.545-.475c1.396-.763 1.96-2.015 2.093-3.517.02-.23-.004-.467-.247-.588zM11.581 18c-2.089-1.642-3.102-2.183-3.52-2.16-.392.024-.321.471-.235.763.09.288.207.486.371.739.114.167.192.416-.113.603-.673.416-1.842-.14-1.897-.167-1.361-.802-2.5-1.86-3.301-3.307-.774-1.393-1.224-2.887-1.298-4.482-.02-.386.093-.522.477-.592a4.696 4.696 0 0 1 1.529-.039c2.132.312 3.946 1.265 5.468 2.774.868.86 1.525 1.887 2.202 2.891.72 1.066 1.494 2.082 2.48 2.914.348.292.625.514.891.677-.802.09-2.14.11-3.054-.614zm1-6.44a.306.306 0 0 1 .415-.287.302.302 0 0 1 .2.288.306.306 0 0 1-.31.307.303.303 0 0 1-.304-.308zm3.11 1.596c-.2.081-.399.151-.59.16a1.245 1.245 0 0 1-.798-.254c-.274-.23-.47-.358-.552-.758a1.73 1.73 0 0 1 .129-.933c.27-.611.832-1.047 1.411-1.428.16-.106.321-.219.493-.309.223-.117.434-.055.536.18.114.262.149.544.157.828.019.805-.285 1.487-.876 2.026z"/>
           </svg>
-          <span class="ds-greeting-title" id="ds-greeting-title">欢迎回来，随时开始吧</span>
+          <span class="ds-greeting-title" id="ds-greeting-title">想聊一段什么故事？直接发台词或设定即可开演</span>
         </div>
 
         <!-- 快捷灵感改为按需弹出的原生 Popover 面板，消除输入框头顶常驻刷屏 -->
@@ -778,11 +766,11 @@
                   <path d="M21.44 11.05l-8.49 8.49a5.5 5.5 0 0 1-7.78-7.78l9.19-9.19a3.5 3.5 0 0 1 4.95 4.95l-9.2 9.19a1.5 1.5 0 0 1-2.12-2.12l8.49-8.48"></path>
                 </svg>
               </button>
-              <button type="button" class="channel-quota-chip rp-only-inline" id="composer-channel-badge" title="点击自由接入个人 API 或切换对话引擎">
-                🔑 接入个人 API · 全免费
+              <button type="button" class="channel-quota-chip rp-only-inline" id="composer-channel-badge" title="点击打开聊天设置或绑定自己的密钥">
+                ✨ 免费畅聊 · 设置
               </button>
-              <button type="button" class="ds-api-status-chip ds-only-inline" id="ds-composer-api-chip" title="点击自由接入您自己的 DeepSeek / 兼容 API">
-                🔑 接入个人 API
+              <button type="button" class="ds-api-status-chip ds-only-inline" id="ds-composer-api-chip" title="点击打开聊天设置或连接 DeepSeek V4.1 Flash 密钥">
+                ⚙️ 聊天设置
               </button>
               <button type="button" class="stop-btn hidden" id="stop-stream-btn" title="停止生成">
                 <span class="stop-square"></span>
@@ -798,49 +786,46 @@
           </div>
         </form>
 
-        <!-- 原生 DeepSeek 空对话场景快捷胶囊（仅在无消息居中欢迎态展示，一键体验官网全特性） -->
-        <div class="ds-welcome-chips ds-only-flex" id="ds-welcome-chips" aria-label="快捷功能体验示例">
-          <button type="button" class="ds-quick-scene-pill" data-ds-scene="math">
-            <span>🧮</span><span>数理公式推导</span>
+        <!-- 原生 DeepSeek 空对话零门槛剧本快捷胶囊（告别复杂配置，点一下立即开演） -->
+        <div class="ds-welcome-chips ds-only-flex" id="ds-welcome-chips" aria-label="剧本开演快捷入口">
+          <button type="button" class="ds-quick-scene-pill" data-ds-scene="story-opener">
+            <span>🎬</span><span>随机生成一段心动开场</span>
           </button>
-          <button type="button" class="ds-quick-scene-pill" data-ds-scene="html">
-            <span>💻</span><span>写网页右侧实时预览</span>
+          <button type="button" class="ds-quick-scene-pill" data-ds-scene="custom-setting">
+            <span>🌌</span><span>给本对话写个专属新设定</span>
           </button>
-          <button type="button" class="ds-quick-scene-pill" data-ds-scene="search">
-            <span>🌐</span><span>联网搜索引用溯源</span>
+          <button type="button" class="ds-quick-scene-pill" data-ds-scene="pick-persona">
+            <span>🎭</span><span>挑一位剧本角色开聊</span>
           </button>
-          <button type="button" class="ds-quick-scene-pill" data-ds-scene="url">
-            <span>🔗</span><span>粘贴链接自动阅读</span>
-          </button>
-          <button type="button" class="ds-quick-scene-pill" data-ds-scene="upload">
-            <span>📎</span><span>上传文档或粘贴截图</span>
+          <button type="button" class="ds-quick-scene-pill" data-ds-scene="import-md">
+            <span>📥</span><span>导入 .md 记忆接着演</span>
           </button>
         </div>
 
-        <!-- 底部官方极简辅助提示行 -->
+        <!-- 底部极简提示行 -->
         <div class="ds-disclaimer-note ds-only-block">
-          内容由 AI 生成，请仔细甄别 · Enter 发送 / Shift+Enter 换行 / Ctrl+V 粘贴图片 / Ctrl+K 搜索对话
+          不同对话框拥有各自独立的记忆与设定 · 随时可导出 .md 记忆档案跨对话继承
         </div>
       </div>
     </main>
 
-    <!-- 右侧抽屉：养成手账、艾宾浩斯记忆世界书、角色设定书、DeepSeek 引擎状态与 Artifacts 伴生预览 -->
-    <aside class="inspector-panel" id="right-panel" aria-label="右侧伴生工具与实时预览">
+    <!-- 右侧抽屉：仅展示清晰好懂的养成、记忆与设定（隐藏极客预览与状态页签） -->
+    <aside class="inspector-panel" id="right-panel" aria-label="角色设定与独立记忆面板">
       <div class="inspector-tabs" role="tablist">
         <button type="button" class="tab-btn rp-only-inline active" data-tab="nurture-tab" role="tab" aria-selected="true">
-          💞 养成手账
+          💞 养成
         </button>
-        <button type="button" class="tab-btn ds-only-inline" data-tab="ds-artifacts-tab" role="tab" aria-selected="false">
-          🖥️ 实时预览
+        <button type="button" class="tab-btn hidden" data-tab="ds-artifacts-tab" role="tab" aria-selected="false">
+          🖥️ 预览
         </button>
-        <button type="button" class="tab-btn ds-only-inline" data-tab="ds-suite-tab" role="tab" aria-selected="false">
-          ⚡ 引擎状态
+        <button type="button" class="tab-btn hidden" data-tab="ds-suite-tab" role="tab" aria-selected="false">
+          ⚡ 状态
         </button>
         <button type="button" class="tab-btn" data-tab="memory-tab" role="tab" aria-selected="false">
-          💫 本对话记忆
+          🧠 记忆
         </button>
         <button type="button" class="tab-btn" data-tab="persona-tab" role="tab" aria-selected="false">
-          🎭 本对话设定
+          🎯 设定
         </button>
         <button type="button" class="icon-btn close-inspector-btn" id="close-right-btn" title="收起面板" aria-label="收起右侧面板">
           ✕
@@ -917,8 +902,8 @@
           </div>
         </div>
 
-        <!-- SillyTavern 风格世界书关键词动态触发 -->
-        <div class="memory-block">
+        <!-- SillyTavern 风格世界书关键词动态触发（仅恋庭角色扮演模式展示） -->
+        <div class="memory-block rp-only-block">
           <div class="block-title-row">
             <span>📖 世界书隐藏词条（提及关键词即触发）</span>
             <span class="muted-count" id="lorebook-count-label">0 条</span>
@@ -1073,49 +1058,49 @@
         </form>
       </div>
 
-      <!-- 页签 4：🌸 智能引擎畅玩状态（纯净用户视图，不含任何密钥或余额探针） -->
+      <!-- 页签 4：🌸 智能引擎畅玩状态（纯净用户视图，通俗大白话说明） -->
       <div class="inspector-body hidden" id="ds-suite-tab">
         <div class="ds-suite-card zero-config-hero-card">
           <div class="block-title-row">
-            <span>🧠 三层长效记忆与稳态引擎</span>
-            <span class="ds-cache-pill">抗断流守护</span>
+            <span>🧠 自动长记性保护</span>
+            <span class="ds-cache-pill">防丢字保护</span>
           </div>
           <p class="ds-suite-desc">
-            已自动开启超长滑动窗口原话保留、4800 字早期前情自动浓缩与置顶铁律永久锚定，内置连接抖动自动重连与半截回复落库保护。
+            已自动帮您记住近期聊过的完整内容与重点约定，聊很久也不容易忘事；网络波动时会自动重连并保存已生成的文字。
           </p>
           <button type="button" class="primary-btn full-width" id="inspector-open-memory-btn" style="margin-top:4px;">
-            🧠 查看 / 置顶本对话长期记忆
+            🧠 查看 / 置顶重要记忆
           </button>
         </div>
 
         <div class="ds-suite-card member-own-api-mini-card" id="ds-suite-own-api-card">
           <div class="block-title-row">
-            <span>🔑 个人 API 直连（双模式通用）</span>
-            <span class="ds-cache-pill" id="ds-suite-own-api-badge">🔓 全免费开放</span>
+            <span>🔑 绑定我自己的密钥（V4.1 Flash）</span>
+            <span class="ds-cache-pill" id="ds-suite-own-api-badge">免费开放</span>
           </div>
           <p class="ds-suite-desc" id="ds-suite-own-api-desc">
-            当前全免费开放！可随时绑定您自己的 DeepSeek 官方或兼容 API，在「原生 DeepSeek」与「角色扮演」中同时畅享直连。
+            不填任何东西也能直接免费聊！如果您有自己的 DeepSeek 或硅基流动密钥，粘贴后即可直连最新 DeepSeek V4.1 Flash。
           </p>
           <button type="button" class="secondary-btn full-width" id="ds-suite-own-api-btn" style="margin-top:4px;">
-            🔑 立即接入 / 管理我的个人 API
+            ⚙️ 打开聊天设置 / 绑定密钥
           </button>
         </div>
 
         <div class="ds-suite-card">
           <div class="block-title-row">
-            <span>⚡ 多轮对话上下文加速统计</span>
-            <span class="ds-cache-pill" id="ds-cache-rate-badge">命中率 0%</span>
+            <span>⚡ 长对话提速统计</span>
+            <span class="ds-cache-pill" id="ds-cache-rate-badge">提速 0%</span>
           </div>
           <p class="ds-suite-desc">
-            多轮长对话时自动复用前文记忆，让回复更连贯流畅。
+            连续多轮聊天时自动复用前文记忆，让回答更快、更连贯。
           </p>
           <div class="tier-bar" aria-hidden="true">
             <div class="tier-seg ds-seg-hit" id="bar-ds-hit" style="width: 75%"></div>
             <div class="tier-seg ds-seg-miss" id="bar-ds-miss" style="width: 25%"></div>
           </div>
           <div class="tier-legend">
-            <span><i class="dot ds-dot-hit"></i>加速命中 <b id="val-ds-hit">0</b></span>
-            <span><i class="dot ds-dot-miss"></i>新内容 <b id="val-ds-miss">0</b></span>
+            <span><i class="dot ds-dot-hit"></i>前文复用 <b id="val-ds-hit">0</b></span>
+            <span><i class="dot ds-dot-miss"></i>新聊内容 <b id="val-ds-miss">0</b></span>
             <span><i class="dot dot-2"></i>思考字数 <b id="val-ds-reason">0</b></span>
           </div>
         </div>
@@ -1123,8 +1108,8 @@
         <div class="ds-suite-card">
           <label class="ds-tool-switch-row" for="ds-tools-enable-chk">
             <div>
-              <strong>🔧 自动调用时间与计算小工具</strong>
-              <p>需要看时间、算数或整理数据时自动辅助完成</p>
+              <strong>🔧 自动看时间与算数小助手</strong>
+              <p>问日期时间或复杂计算时自动帮您算准</p>
             </div>
             <input type="checkbox" id="ds-tools-enable-chk" checked />
           </label>
@@ -1533,46 +1518,46 @@
     </div>
   </dialog>
 
-  <!-- 模态弹窗 4：个人 API 自由接入 · 聊天偏好与外观设置 -->
+  <!-- 模态弹窗 4：零黑话小白友好的聊天设置与密钥绑定面板 -->
   <dialog id="settings-dialog" class="modal-dialog" closedby="any" aria-labelledby="settings-dialog-title">
     <div class="modal-inner">
       <div class="modal-header">
-        <h2 id="settings-dialog-title">⚙️ 个人 API 接入与聊天偏好设置</h2>
+        <h2 id="settings-dialog-title">⚙️ 聊天设置</h2>
         <button type="button" class="icon-btn" id="close-settings-dialog" aria-label="关闭设置窗口">✕</button>
       </div>
 
-      <form id="settings-form" class="stack-form">
+      <form id="settings-form" class="stack-form" novalidate>
         <div class="field-group">
-          <label for="st-provider">🌟 选择对话引擎通道（全免费开放切换）</label>
+          <label for="st-provider">💬 你想怎么聊天？</label>
           <select id="st-provider" name="provider">
-            <option value="demo">🌸 梦境轻语内置通道（免配 Key · 开箱即用无限畅聊）</option>
-            <option value="own_deepseek" id="st-opt-own-deepseek">🔑 个人 API 自由直连（DeepSeek 原生 &amp; 角色扮演双模式通用）</option>
-            <option value="online">💎 平台星耀在线通道（全免费畅玩体验 · 免扣次数）</option>
+            <option value="demo">✨ 直接免费聊（推荐 · 不用填任何东西）</option>
+            <option value="own_deepseek" id="st-opt-own-deepseek">🔑 用我自己的密钥（连接最新 DeepSeek V4.1 Flash）</option>
+            <option value="online">💎 站内高速专线（免费畅聊 · 不用填密钥）</option>
           </select>
         </div>
 
         <div class="provider-pane" id="pane-demo">
           <div class="info-callout">
-            🌸 当前使用<strong>梦境轻语内置免费通道</strong>，无需填写密钥即可无限畅玩；您也可随时在下方填入自己的 API Key 直连满血大模型！
+            ✨ <strong>现在直接就能免费聊天，不用填任何配置！</strong>如果您自己买了 DeepSeek 或硅基流动的密钥，也可以在下面粘贴使用。
           </div>
         </div>
 
         <div class="provider-pane hidden" id="pane-online">
           <div class="vip-gate-notice" id="settings-vip-notice-ds">
-            🎉 <strong>平台星耀在线通道</strong>：当前全站已开启全免费畅玩体验，在「🐋 原生 DeepSeek」与「🌸 恋庭角色扮演」中均免扣次数免费使用！
+            🎉 <strong>已开启站内高速专线</strong>：不用填密钥，直接关掉窗口就能在「DeepSeek 对话」与「角色扮演」里免费畅聊！
           </div>
         </div>
 
-        <!-- 🔑 全免费开放：自由接入个人 API（同时生效于 DeepSeek 原生对话与角色扮演剧场） -->
+        <!-- 🔑 零黑话两步法：用我自己的密钥（选填） -->
         <div class="member-own-api-box" id="member-own-api-box">
           <!-- 非会员锁定视图（仅在站长关闭免费模式且账户无会员时按需显示） -->
           <div class="own-api-locked-card hidden" id="own-api-locked-view">
             <div class="block-title-row">
-              <span>👑 会员特权：填写个人专属 API</span>
+              <span>👑 会员功能：绑定我自己的密钥</span>
               <span class="own-api-lock-pill">🔒 待解锁</span>
             </div>
             <p class="sub-sec-hint">
-              开通或使用签到积分免费兑换会员卡后，即可绑定您自己的 API Key 直连使用。
+              使用每日签到积分免费兑换会员卡后，即可绑定您自己的密钥直连使用。
             </p>
             <div class="inline-row" style="margin-top: 8px;">
               <button type="button" class="primary-btn full-width" id="goto-unlock-own-api-btn">
@@ -1581,170 +1566,217 @@
             </div>
           </div>
 
-          <!-- 个人 API 自由接入配置面板（默认直接开放） -->
+          <!-- 小白友好个人密钥配置面板（默认 DeepSeek 官网一站式三步引导） -->
           <div class="own-api-unlocked-card" id="own-api-unlocked-view">
             <div class="block-title-row">
-              <span>🔑 接入我自己的 API（DeepSeek / 角色扮演双模式通用）</span>
-              <span class="own-api-unlock-pill" id="own-api-mask-badge">🔓 全免费自由接入</span>
+              <span>🔑 用我自己的 DeepSeek 密钥（选填 · 没有可跳过）</span>
+              <span class="own-api-unlock-pill" id="own-api-mask-badge">免费开放</span>
             </div>
-            <p class="sub-sec-hint">
-              一次填写即可在<strong>「🐋 原生 DeepSeek」</strong>与<strong>「🌸 恋庭角色扮演」</strong>中同步生效！默认直连 DeepSeek 官方接口，也支持硅基流动、火山方舟、OpenRouter 等任意 OpenAI 兼容 API（密钥按账户独立加密掩码保存）。
-            </p>
 
-            <div class="inline-row" style="margin-top: 8px;">
-              <div class="field-group flex-1">
-                <label for="st-own-ds-key">您的 API Key（例如 <code>sk-...</code>）</label>
-                <div class="password-input-wrap">
-                  <input
-                    id="st-own-ds-key"
-                    name="own_deepseek_api_key"
-                    type="password"
-                    autocomplete="off"
-                    autocorrect="off"
-                    autocapitalize="none"
-                    spellcheck="false"
-                    placeholder="粘贴您的 sk-... 密钥（输入后自动切换至个人 API 直连）"
-                  />
-                  <button
-                    type="button"
-                    class="pwd-eye-btn"
-                    data-target="st-own-ds-key"
-                    aria-pressed="false"
-                    aria-label="显示或隐藏个人密钥"
-                  >
-                    显示
-                  </button>
-                </div>
+            <div class="builtin-env-ready-banner hidden" id="builtin-env-ready-banner"></div>
+
+            <!-- 零基础小白 3 步前往 DeepSeek 官网获取密钥向导 -->
+            <div class="ds-official-guide-card">
+              <div class="ds-guide-steps">
+                <p class="ds-guide-title">🐋 还没有密钥？跟着下面 3 步，1 分钟就能配好：</p>
+                <ol class="ds-guide-list">
+                  <li>
+                    点击下方按钮打开 DeepSeek 官网后台，登录后<strong>充值一点余额</strong>（充几块钱就能聊很久），再点网页左侧「<strong>API keys</strong>」创建密钥并复制；
+                  </li>
+                  <li>把复制好的密钥<strong>粘贴到下面输入框</strong>里（官网接口地址与最新 V4.1 Flash 模型已默认帮您填好）；</li>
+                  <li>点右下角「<strong>✨ 保存设置</strong>」就全部配置好啦！</li>
+                </ol>
               </div>
-              <div class="field-group" style="min-width: 195px;">
-                <label for="st-own-ds-model">模型名称（可选或自定义）</label>
+              <a
+                href="https://platform.deepseek.com/usage"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="ds-official-guide-btn"
+              >
+                👉 点此前往 DeepSeek 官网充值与获取密钥 (platform.deepseek.com/usage) ↗
+              </a>
+            </div>
+
+            <div class="field-group" style="margin-top: 10px;">
+              <label for="st-own-ds-key">粘贴您的 DeepSeek 密钥（以 <code>sk-</code> 开头的一串字符）</label>
+              <div class="password-input-wrap">
                 <input
-                  id="st-own-ds-model"
-                  name="own_deepseek_model"
-                  type="text"
-                  list="own-model-presets"
+                  id="st-own-ds-key"
+                  name="own_deepseek_api_key"
+                  type="password"
+                  autocomplete="off"
                   autocorrect="off"
                   autocapitalize="none"
                   spellcheck="false"
-                  value="deepseek-chat"
-                  placeholder="deepseek-chat"
+                  placeholder="把从 DeepSeek 官网复制来的 sk-... 密钥粘贴到这里，点保存就配好了"
                 />
-                <datalist id="own-model-presets">
-                  <option value="deepseek-chat">DeepSeek-V3 官方快速对话</option>
-                  <option value="deepseek-reasoner">DeepSeek-R1 官方深度思考</option>
-                  <option value="deepseek-ai/DeepSeek-V3">硅基流动 DeepSeek-V3</option>
-                  <option value="deepseek-ai/DeepSeek-R1">硅基流动 DeepSeek-R1</option>
-                  <option value="gpt-4o-mini">OpenAI / 兼容网关 gpt-4o-mini</option>
-                </datalist>
+                <button
+                  type="button"
+                  class="pwd-eye-btn"
+                  data-target="st-own-ds-key"
+                  aria-pressed="false"
+                  aria-label="显示或隐藏个人密钥"
+                >
+                  显示
+                </button>
               </div>
             </div>
 
-            <details class="tts-settings-fold" id="own-api-custom-url-fold" style="margin-top: 8px;">
+            <div class="preset-friendly-tip" id="preset-friendly-tip">
+              ✓ 已默认填好 DeepSeek 官网地址 (api.deepseek.com) 与最新 V4.1 Flash 模型，粘贴密钥点保存即可！
+            </div>
+
+            <div class="inline-row" style="margin-top: 8px; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
+              <button type="button" class="secondary-btn" id="verify-own-ds-key-btn">
+                ⚡ 测试连接并查看官网余额
+              </button>
+              <label class="pin-check-label hidden" id="clear-own-ds-key-wrap" title="勾选后点击下方保存即可删除已保存的密钥">
+                <input type="checkbox" id="st-clear-own-ds-key" />
+                <span>删除已保存的密钥</span>
+              </label>
+            </div>
+
+            <details class="tts-settings-fold" id="own-api-custom-url-fold" style="margin-top: 10px;">
               <summary class="tts-fold-summary" style="padding: 6px 10px; font-size: 12px;">
-                <span>🌐 自定义兼容 API 接口地址（选填，留空默认 DeepSeek 官方 <code>api.deepseek.com</code>）</span>
+                <span>🛠️ 高级选项：切换其他平台或修改接口地址（用 DeepSeek 官网不用点，已默认配好）</span>
                 <span class="fold-caret" aria-hidden="true">▾</span>
               </summary>
               <div class="tts-fold-body stack-form" style="padding-top: 8px;">
                 <div class="field-group">
-                  <label for="st-own-api-url">API 接口地址（支持完整 <code>/v1/chat/completions</code> 或根域名）</label>
+                  <label>快捷切换 API 平台（默认已是 DeepSeek 官网）</label>
+                  <div class="api-preset-bar" id="api-preset-bar" role="group" aria-label="选择密钥申请平台">
+                    <button
+                      type="button"
+                      class="api-preset-chip active"
+                      data-preset="deepseek"
+                      data-url="https://api.deepseek.com/v1/chat/completions"
+                      data-model="deepseek-flash"
+                      data-tip="✓ 已默认填好 DeepSeek 官网地址 (api.deepseek.com) 与最新 V4.1 Flash 模型，粘贴密钥点保存即可！"
+                    >
+                      🐋 DeepSeek 官网（默认）
+                    </button>
+                    <button
+                      type="button"
+                      class="api-preset-chip"
+                      data-preset="siliconflow"
+                      data-url="https://api.siliconflow.cn/v1/chat/completions"
+                      data-model="deepseek-ai/DeepSeek-V4.1-Flash"
+                      data-tip="✓ 已切换为「硅基流动 · DeepSeek V4.1 Flash」（同时附赠男女配音与语音输入）"
+                    >
+                      🔥 硅基流动（送配音）
+                    </button>
+                    <button
+                      type="button"
+                      class="api-preset-chip"
+                      data-preset="dashscope"
+                      data-url="https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
+                      data-model="deepseek-v4.1-flash"
+                      data-tip="✓ 已切换为「阿里云百炼 · DeepSeek V4.1 Flash」（同时附赠男女配音）"
+                    >
+                      🌟 阿里云百炼（送配音）
+                    </button>
+                    <button
+                      type="button"
+                      class="api-preset-chip"
+                      data-preset="openrouter"
+                      data-url="https://openrouter.ai/api/v1/chat/completions"
+                      data-model="deepseek/deepseek-v4.1-flash"
+                      data-tip="✓ 已切换为「OpenRouter · DeepSeek V4.1 Flash」"
+                    >
+                      🌐 OpenRouter
+                    </button>
+                  </div>
+                </div>
+                <div class="field-group">
+                  <label for="st-own-api-url">API 接口地址（已默认填好 DeepSeek 官网地址）</label>
                   <input
                     id="st-own-api-url"
                     name="own_api_base_url"
-                    type="url"
+                    type="text"
+                    inputmode="url"
                     autocorrect="off"
                     autocapitalize="none"
                     spellcheck="false"
+                    value="https://api.deepseek.com/v1/chat/completions"
                     placeholder="https://api.deepseek.com/v1/chat/completions"
                   />
                 </div>
+                <div class="field-group">
+                  <label for="st-own-ds-model">模型代号（已默认填好最新 DeepSeek V4.1 Flash）</label>
+                  <input
+                    id="st-own-ds-model"
+                    name="own_deepseek_model"
+                    type="text"
+                    list="own-model-presets"
+                    autocorrect="off"
+                    autocapitalize="none"
+                    spellcheck="false"
+                    value="deepseek-flash"
+                    placeholder="deepseek-flash"
+                  />
+                  <datalist id="own-model-presets">
+                    <option value="deepseek-flash">DeepSeek 官网 · DeepSeek V4.1 Flash（最新默认）</option>
+                    <option value="deepseek-ai/DeepSeek-V4.1-Flash">硅基流动 · DeepSeek V4.1 Flash</option>
+                    <option value="deepseek-v4.1-flash">阿里云百炼 · DeepSeek V4.1 Flash</option>
+                    <option value="deepseek/deepseek-v4.1-flash">OpenRouter · DeepSeek V4.1 Flash</option>
+                    <option value="deepseek-reasoner">DeepSeek 官网 · R1 推理模型</option>
+                    <option value="deepseek-chat">DeepSeek 官网 · V3 模型</option>
+                    <option value="Qwen/Qwen3-235B-A22B">硅基流动 · 通义千问 Qwen3-235B</option>
+                    <option value="qwen-plus">阿里云百炼 · 通义千问 Plus</option>
+                  </datalist>
+                </div>
               </div>
             </details>
-
-            <div class="inline-row" style="margin-top: 8px; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
-              <button type="button" class="secondary-btn" id="verify-own-ds-key-btn">
-                ⚡ 测试连接 / 查询官方余额
-              </button>
-              <label class="pin-check-label hidden" id="clear-own-ds-key-wrap" title="勾选后点击下方保存即可解绑并删除服务端保存的个人密钥">
-                <input type="checkbox" id="st-clear-own-ds-key" />
-                <span>解绑清空已存密钥</span>
-              </label>
-            </div>
           </div>
         </div>
 
         <fieldset class="theme-fieldset">
-          <legend>🎨 界面昼夜氛围配色</legend>
+          <legend>🎨 画面颜色</legend>
           <div class="theme-radio-group">
             <label class="theme-option">
               <input type="radio" name="theme-scheme" value="system" checked />
-              <span id="theme-system-label">跟随系统</span>
+              <span id="theme-system-label">跟随手机/电脑</span>
             </label>
             <label class="theme-option">
               <input type="radio" name="theme-scheme" value="light" />
-              <span>🌸 朝雾樱白</span>
+              <span>☀️ 明亮浅色</span>
             </label>
             <label class="theme-option">
               <input type="radio" name="theme-scheme" value="dark" />
-              <span>🌙 星夜鸢尾</span>
+              <span>🌙 护眼深色</span>
             </label>
           </div>
         </fieldset>
 
-        <fieldset class="theme-fieldset">
-          <legend>🧠 上下文记忆容量与回复风格（点一下自动配好）</legend>
+        <div class="info-callout">
+          ✨ <strong>零配置省心模式已开启</strong>：剧本长效记忆容量、情感文采温度与防崩人设均已在后台自动锁定为最佳扮演状态，无需手动调节复杂参数。
+        </div>
+
+        <!-- 原技术参数控件隐藏保留默认值（48轮原话 / 20条动态记忆 / 0.9剧本黄金温度），彻底免除小白调参烦恼 -->
+        <fieldset class="theme-fieldset hidden">
+          <legend>💭 AI 记性与说话风格</legend>
           <div class="easy-vibe-grid" id="easy-vibe-grid">
-            <button type="button" class="easy-vibe-card active" data-vibe="balanced" data-win="40" data-rec="16" data-temp="0.7">
-              <strong>⚖️ 稳健长记忆（推荐）</strong>
-              <span>保留 40 条完整原话 + 16 条长期记忆，兼顾精准与流畅</span>
-            </button>
-            <button type="button" class="easy-vibe-card" data-vibe="dramatic" data-win="56" data-rec="22" data-temp="1.0">
-              <strong>✨ 灵动深聊</strong>
-              <span>保留 56 条原话，表达更富创造力与情感细节</span>
-            </button>
-            <button type="button" class="easy-vibe-card" data-vibe="deep_memory" data-win="96" data-rec="32" data-temp="0.6">
-              <strong>📖 超长铁血记忆</strong>
-              <span>保留近百条完整原话与 32 条锚点，长篇项目绝不遗忘</span>
-            </button>
+            <button type="button" class="easy-vibe-card active" data-vibe="dramatic" data-win="48" data-rec="20" data-temp="0.9"></button>
           </div>
         </fieldset>
 
-        <details class="tts-settings-fold" id="advanced-tech-settings-fold">
-          <summary class="tts-fold-summary">
-            <span>🔧 高级微调：近期原话保留上限、长期记忆条数 &amp; 声线试听</span>
-            <span class="fold-caret" aria-hidden="true">▾</span>
-          </summary>
-
+        <details class="tts-settings-fold hidden" id="advanced-tech-settings-fold">
+          <summary class="tts-fold-summary"><span>高级微调</span></summary>
           <div class="tts-fold-body stack-form">
-            <div class="inline-row">
-              <div class="field-group flex-1">
-                <label for="st-window">近期完整原话保留条数 (6~120)</label>
-                <input id="st-window" type="number" min="6" max="120" value="40" />
-              </div>
-              <div class="field-group flex-1">
-                <label for="st-recall">每轮唤醒动态记忆条数 (4~40，置顶不限额)</label>
-                <input id="st-recall" type="number" min="4" max="40" value="16" />
-              </div>
-              <div class="field-group avatar-field">
-                <label for="st-temp">采样温度</label>
-                <input id="st-temp" type="number" step="0.05" min="0.1" max="1.4" value="0.7" />
-              </div>
-            </div>
-
-            <div class="inline-row">
-              <button type="button" class="secondary-btn full-width" id="play-otome-demo-sample-btn">
-                🎧 试听国乙男主贴耳气声样片
-              </button>
-            </div>
+            <input id="st-window" type="number" min="4" max="120" value="48" />
+            <input id="st-recall" type="number" min="2" max="40" value="20" />
+            <input id="st-temp" type="number" step="any" min="0.1" max="2.0" value="0.9" />
+            <button type="button" class="secondary-btn full-width" id="play-otome-demo-sample-btn">🎧 试听</button>
           </div>
         </details>
 
         <div class="test-result-box hidden" id="test-result-box" role="status"></div>
 
-        <div class="modal-actions split-actions">
-          <span class="muted-count">✨ 个人偏好按账户独立保存</span>
+        <div class="modal-actions split-actions settings-sticky-actions">
+          <span class="muted-count">✨ 设置会自动保存在您的账号里</span>
           <div class="right-btns">
             <button type="button" class="secondary-btn" id="cancel-settings-dialog">取消</button>
-            <button type="submit" class="primary-btn">✨ 保存设置</button>
+            <button type="submit" class="primary-btn" id="save-settings-submit-btn">✨ 保存设置</button>
           </div>
         </div>
       </form>
@@ -2308,10 +2340,11 @@
   <!-- 站长管理后台专属模态容器（静态 HTML 保持空白，仅在服务端认证 is_admin === true 时动态渲染） -->
   <dialog id="admin-console-dialog" class="modal-dialog modal-wide wallet-modal" closedby="any" aria-label="站长管理后台"></dialog>
 
-  <script src="./standaloneAdapter.js?v=20261118m8"></script>
-  <script src="./mobileAdapter.js?v=20261118m8"></script>
-  <script src="./app.js?v=20261118m8"></script>
-  <script src="./companion3d.js?v=20261118m8"></script>
-  <script src="./companionVoice.js?v=20261118m8"></script>
+  <script src="./standaloneAdapter.js?v=20261118v43"></script>
+  <script src="./mobileAdapter.js?v=20261118v43"></script>
+  <script src="./plugins/deepseekUsageMonitor.js?v=20261118v43"></script>
+  <script src="./app.js?v=20261118v43"></script>
+  <script src="./companion3d.js?v=20261118v43"></script>
+  <script src="./companionVoice.js?v=20261118v43"></script>
 </body>
 </html>

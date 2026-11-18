@@ -242,11 +242,19 @@ function extractFactsFromUserTurn(sessionId, userMessage) {
   const strippedCode = rawFull.replace(/```[\s\S]*?```/g, ' ').trim();
   if (!strippedCode) return [];
 
-  const segments = strippedCode
+  const fullSentences = strippedCode
+    .split(/[。！？!?\n；;]+/)
+    .map((s) => s.trim())
+    .filter((s) => s.length >= 4)
+    .slice(0, 12);
+
+  const subClauses = strippedCode
     .split(/[，,。！？!?\n；;]+/)
     .map((s) => s.trim())
     .filter((s) => s.length >= 3)
     .slice(0, 24);
+
+  const segments = [...new Set([...fullSentences, ...subClauses])];
 
   const isInterrogativeSegment = (seg, fullMsg) => {
     const hasExplicitPinDirective = /(?:请记住|你要记住|牢牢记住|帮我记住|记一下|设定补充|背景补充)/.test(seg);
@@ -341,9 +349,11 @@ function extractFactsFromUserTurn(sessionId, userMessage) {
   `);
 
   for (const seg of segments) {
+    if (isInterrogativeSegment(seg, strippedCode)) continue;
     for (const rule of patterns) {
       const match = seg.match(rule.regex);
       if (!match) continue;
+      if (typeof rule.validate === 'function' && !rule.validate(match)) continue;
 
       const factText = rule.format(match);
       const isPinned = rule.pinned ? 1 : 0;
@@ -741,43 +751,33 @@ function buildThreeTierContext({ sessionId, expectedUserId = null, latestUserTex
     : '';
 
   let tier1PersonaBlock = '';
+  let dynamicTailStatusBlock = '';
+
   if (isNativeMode && isPureOfficial) {
     tier1PersonaBlock = [
-      `你是 DeepSeek，由深度求索（DeepSeek）研发的智能助手。请严格遵循正版 DeepSeek 官方（DeepSeek-V3 / DeepSeek-R1）标志性的回答格式、严谨上下文一致性与语言风格：`,
+      `你是 DeepSeek，当前运行在「极简沉浸剧本与智能对话双栖模式」（开箱即适配剧本扮演、平行设定推演与日常对谈，无需用户手动配置参数）：`,
       renderedSessionPrompt
-        ? `\n## 🎯 本对话专属独立设定与规则（最高优先级，仅在当前对话框内生效）\n${renderedSessionPrompt}`
+        ? `\n## 🎯 本对话专属独立设定与剧本规则（最高优先级，仅在当前对话框内生效）\n${renderedSessionPrompt}`
         : '',
       renderedDirectorNote
-        ? `\n## 🎬 当前对话补充背景指令\n${renderedDirectorNote}`
+        ? `\n## 🎬 当前对话场景氛围与补充指令\n${renderedDirectorNote}`
         : '',
       ``,
-      `## 一、核心文风与破题准则`,
-      `1. **直击本质，拒绝客套废话**：严禁使用“好的，没问题！”、“这是一个非常好的问题！”、“我很乐意为您解答”等机械寒暄套话。面对知识、技术、分析或方案类提问，首段直接用 1~3 句凝练通透的话给出**核心结论、定性判断或一句话本质定义**（关键定性词使用 \`**加粗**\` 标出），随后再展开逻辑细节。（若上方「本对话专属独立设定」指定了特定身份、世界观或语气风格，请优先遵循该专属设定！）`,
-      `2. **强上下文连续性与记忆牢靠铁律**：严密结合当前对话独立的前文多轮记录、前情摘要与已归档的记忆锚点（不同对话框拥有各自独立的记忆与设定），前后术语、身份称呼、设定背景保持 100% 连贯一致，绝不遗忘或自相矛盾。`,
-      `3. **干净克制，严禁花哨 Emoji 轰炸**：保持正版 DeepSeek 纯净清爽的阅读视觉，正文与各级标题中**不要**随意穿插装饰性 Emoji，除非本对话专属设定另有要求。`,
-      ``,
-      `## 二、正版 DeepSeek 动态排版格式规范`,
-      `1. **按问题体量动态适配（拒绝强套八股文）**：`,
-      `   - 若用户只是简短打招呼、日常闲聊或询问单一简单事实，请直接用 1~3 个自然短段落平实作答，**不要**强行拆分大标题和长列表。`,
-      `   - 若涉及技术实现、原理科普、深度推演、多维分析或方案规划，请采用层次分明的结构化 Markdown 排版。`,
-      `2. **标题、分割线与列表规范**：`,
-      `   - 章节划分优先使用 \`### 一、...\` 或 \`### 1. ...\`（三级标题 \`###\`），重大逻辑板块切换时适度使用 \`---\` 水平分割线拉开呼吸感。`,
-      `   - 要点陈述优先采用 \`- **核心词/分论点**：具体机制、原因或实操说明\` 的紧凑格式；凡涉及**概念对比、方案选型、优缺点权衡或参数对照**，主动给出结构工整的 Markdown 表格。`,
-      `3. **代码与数理公式规范**：`,
-      `   - 代码块必须标注准确的语言标识（如 \`\`\`python、\`\`\`javascript、\`\`\`html、\`\`\`bash、\`\`\`sql），代码完整可直接运行且关键逻辑附简明中文注释。`,
-      `   - 数学与科学公式严格使用行内 \`$...$\` 与独占一行的块级 \`$$...$$\`，符号定义与推导脉络清晰。`,
-      `4. **收尾干脆有力**：严禁以“综上所述，希望以上回答对您有帮助”等机械套话收尾；若答案已完整则干净停笔。`
+      `## 一、默认剧本扮演优先准则（零配置自动生效）`,
+      `1. **遇到故事、设定或对白立即沉浸开演**：只要用户给出了角色/世界观设定、写下故事开场白、导入了过往记忆，或以对话台词/动作与你互动，请**立即以高代入感的沉浸式剧本笔触回应**——自然融合细腻克制的 \`*星号环境光影与神态动作细节*\` 与鲜活立体的人物台词，拒绝跳戏、拒绝AI客服腔，每轮自然推进半步剧情并留出互动契机。`,
+      `2. **一对话一设定、一对话一记忆**：严格遵循当前对话框独立的专属设定、长期记忆锚点与前情浓缩摘要，前后人设性格、称呼与伏笔保持 100% 连贯一致。`,
+      `3. **兼顾日常交流**：仅当用户未设定任何剧本背景、单纯询问日常客观问题时，采用干净平实、直击本质的自然段落作答，拒绝空洞套话与多余寒暄。`
     ]
       .filter(Boolean)
       .join('\n');
   } else if (isNativeMode) {
     tier1PersonaBlock = [
-      `# 原生 DeepSeek 对话模式 · 本对话专属灵魂与设定（正版极简纯文本质感）`,
+      `# DeepSeek 极简界面 · 角色剧本沉浸扮演核心设定（最高优先级，严禁跳戏）`,
       `- **你的身份**：${persona.name}${persona.tagline ? `（${persona.tagline}）` : ''}`,
-      persona.personality ? `- **性格底色**：${persona.personality}` : '',
-      persona.backstory ? `- **人物过往与世界观**：\n${persona.backstory}` : '',
-      persona.speaking_style ? `- **说话语气基调**：${persona.speaking_style}` : '',
-      `\n## 对话对象信息`,
+      persona.personality ? `- **性格特质**：${persona.personality}` : '',
+      persona.backstory ? `- **世界观与背景故事**：\n${persona.backstory}` : '',
+      persona.speaking_style ? `- **语言风格与神态基调**：${persona.speaking_style}` : '',
+      `\n## 站在你面前的对话者（主控人设）`,
       ...userPersonaLines,
       renderedSessionPrompt
         ? `\n## 🎯 本对话专属独立设定与平行世界规则（最高优先级，仅当前对话生效）\n${renderedSessionPrompt}`
@@ -785,13 +785,14 @@ function buildThreeTierContext({ sessionId, expectedUserId = null, latestUserTex
       renderedDirectorNote
         ? `\n## 🎬 当前对话场景补充指引\n${renderedDirectorNote}`
         : '',
-      `\n## 原生模式回答格式与记忆一致性铁律（最高优先级）`,
-      `1. **正版 DeepSeek 纯净文本风格**：摒弃浮夸矫情的剧本腔，**严禁**使用泛滥的 \`*星号动作神态旁白*\` 和花哨 Emoji 刷屏。像该角色本人在简洁干净的现代文字界面里与对方专注对谈，分段简短自然（每段 1~3 句）。`,
-      `2. **牢记本对话独立记忆与设定**：严格遵循当前对话专属的长期记忆条目、前情摘要与独立设定中的约定、称呼与事实细节，保持前后逻辑严密连贯。`
+      `\n## 剧本演绎与记忆一致性准则`,
+      `1. **沉浸式剧本代入感**：始终以「${persona.name}」的第一人称视角实时演绎，贴合性格底色与人物弧光，适度运用细腻自然的 \`*星号神态与环境分镜描写*\` 营造真实故事氛围，每轮回复实质性推进当前剧情。`,
+      `2. **牢记本对话独立记忆与设定**：严格呼应当前对话框专属的长期记忆条目、前情摘要与独立设定中的约定、称呼与伏笔，绝不遗忘或串戏。`
     ]
       .filter(Boolean)
       .join('\n');
   } else {
+    // 静态核心人设放在最前部，保持第 0 Token 起的系统前缀完全稳定，最大化 DeepSeek 官方硬盘缓存 (Context Caching) 命中率！
     tier1PersonaBlock = [
       `# 角色扮演核心设定（最高优先级，严禁跳戏或暴露AI身份）`,
       `- **角色姓名**：${persona.name}`,
@@ -804,70 +805,58 @@ function buildThreeTierContext({ sessionId, expectedUserId = null, latestUserTex
       renderedSessionPrompt
         ? `\n## 🎯 本对话专属独立设定 / 平行世界规则（仅当前存档独立生效，优先级高于通用背景）\n${renderedSessionPrompt}`
         : '',
-      `\n## 实时情感状态机与养成阶段演绎指令`,
-      `- **此刻实时心境**：${nurturing.current_mood}（心动值 ${nurturing.affection}/100 · 信任度 ${nurturing.trust}/100 · 默契度 ${nurturing.intimacy}/100）`,
-      `- ${nurturing.stage.promptDirective}`,
-      renderedDirectorNote
-        ? `\n## 🎭 当下番外小剧场 / 导演氛围控制（本轮强力生效）\n${renderedDirectorNote}`
-        : '',
       `\n## 互动演绎与故事推进准则（参考 CLANNAD / 顶级视觉小说叙事节奏）`,
-      `1. 始终以「${persona.name}」的第一人称视角与「${userNick}」实时对话，语气亲疏程度严格契合当前关系养成阶段、本对话独立设定与此刻心境，牢记本对话长期记忆与前情摘要中的一切细节约定。`,
+      `1. 始终以「${persona.name}」的第一人称视角与「${userNick}」实时对话，语气亲疏程度契合当前关系养成阶段与本对话独立设定，牢记本对话长期记忆与前情摘要中的一切细节约定。`,
       `2. 善用 *星号包裹的番剧分镜式细节描写*（如光影流转、微风声响、眼神停顿、手边器物触感）营造电影级代入感。`,
       `3. **聊天推进剧情铁律（Story-Driven Progression）**：每一轮回复都必须实质性推动当前场景往前走半步，承接对方选择后自然引入新的事件线索或伏笔，并在结尾留出具体的行动抉择契机。`
     ]
       .filter(Boolean)
       .join('\n');
+
+    dynamicTailStatusBlock = [
+      `## 实时关系阶段与场景心境指引`,
+      `- ${nurturing.stage.promptDirective}`,
+      `- 此刻心境基调：${nurturing.current_mood}`,
+      renderedDirectorNote ? `- 当下场景导演提示：${renderedDirectorNote}` : ''
+    ]
+      .filter(Boolean)
+      .join('\n');
   }
 
-  // 第二层：全模式贯通的会话级独立长期记忆锚点 + 分层滚动前情摘要 + 世界书词条
-  const tier2Parts = [];
-  if (triggeredLorebooks.length > 0) {
-    const loreLines = triggeredLorebooks.map((l) => `- 【${l.title}】${l.content}`);
-    tier2Parts.push(`## 本轮关键词触发的深层世界书设定\n${loreLines.join('\n')}`);
-  }
-  if (rollingSummary && rollingSummary.trim()) {
-    const summaryHeading = isPureOfficial
-      ? `## 早期多轮对话前情脉络摘要（用于保持超长会话上下文严密衔接）`
-      : `## 阶段前情摘要`;
-    tier2Parts.push(`${summaryHeading}\n${rollingSummary.trim()}`);
-  }
-  if (recalledMemories.length > 0) {
-    if (isPureOfficial) {
-      const memLines = recalledMemories.map((m) => {
-        const tagMap = {
-          Pinned: '[置顶铁律]',
-          relation: '[用户称呼]',
-          fact: '[背景/技术栈]',
-          event: '[关键目标/约定]'
-        };
-        return `- ${tagMap[m.category] || '[核心记忆]'} ${m.content}`;
-      });
-      tier2Parts.push(
-        `## 跨轮次长期记忆锚点与用户约束（请牢牢记住并严格贯彻，自然融入作答，勿机械背诵列表）\n${memLines.join('\n')}`
-      );
-    } else {
-      const memLines = recalledMemories.map((m) => {
-        const tagMap = {
-          Pinned: '[刻骨锚点]',
-          relation: '[专属称呼]',
-          fact: '[已知心意]',
-          event: '[共同回忆]'
-        };
-        return `- ${tagMap[m.category] || '[记忆]'} (鲜活度 ${m.retention_pct}%) ${m.content}`;
-      });
-      tier2Parts.push(`## 当前唤醒的长期记忆条目（请自然呼应，保持前后一致）\n${memLines.join('\n')}`);
-    }
-  }
-  const tier2MemoryBlock = tier2Parts.join('\n\n');
-
+  // 固定输出协议置于静态前缀后紧接位置，防止因动态记忆增减导致前缀漂移
   const enableThought = isNativeMode ? session.ds_thinking === 1 : session.enable_inner_thought === 1;
   const thoughtProtocolBlock = isNativeMode
     ? ''
     : enableThought
-    ? `\n## 角色心声独白输出协议\n在正式开口回复前，若模型未单独返回 reasoning_content，请先在最开头使用 \`<think>...</think>\` 标签写一段简短的第一人称角色心声独白（50~110字，结合此刻心境「${nurturing.current_mood}」、唤醒的记忆及内心潜台词），然后再在 \`</think>\` 之后输出正式台词与神态描写。`
-    : `\n## 输出格式要求\n请直接输出角色台词与神态描写，不要输出 \`<think>\` 标签。`;
+    ? `## 角色心声独白输出协议\n在正式开口回复前，若模型未单独返回 reasoning_content，请先在最开头使用 \`<think>...</think>\` 标签写一段简短的第一人称角色心声独白（50~110字，结合当前关系心境、唤醒的记忆及内心潜台词），然后再在 \`</think>\` 之后输出正式台词与神态描写。`
+    : `## 输出格式要求\n请直接输出角色台词与神态描写，不要输出 \`<think>\` 标签。`;
 
-  const fullSystemPrompt = [tier1PersonaBlock, tier2MemoryBlock, thoughtProtocolBlock]
+  // 第二层：会话级独立长期记忆锚点 + 分层滚动前情摘要 + 世界书词条（去除每轮浮动的鲜活度百分比数字以稳定缓存前缀）
+  const tier2Parts = [];
+  const pinnedMems = recalledMemories.filter((m) => m.pinned === 1);
+  const dynamicMems = recalledMemories.filter((m) => m.pinned !== 1);
+
+  if (pinnedMems.length > 0) {
+    const pinLines = pinnedMems.map((m) => `- [核心记忆] ${m.content}`);
+    tier2Parts.push(`## 本对话永久核心记忆锚点（最高一致性，自然融入演绎）\n${pinLines.join('\n')}`);
+  }
+  if (rollingSummary && rollingSummary.trim()) {
+    tier2Parts.push(`## 阶段前情浓缩摘要\n${rollingSummary.trim()}`);
+  }
+  if (triggeredLorebooks.length > 0) {
+    const loreLines = triggeredLorebooks.map((l) => `- 【${l.title}】${l.content}`);
+    tier2Parts.push(`## 本轮触发的世界书隐藏设定\n${loreLines.join('\n')}`);
+  }
+  if (dynamicMems.length > 0) {
+    const dynLines = dynamicMems.map((m) => `- [关联记忆] ${m.content}`);
+    tier2Parts.push(`## 本轮唤醒的过往记忆细节\n${dynLines.join('\n')}`);
+  }
+  if (dynamicTailStatusBlock) {
+    tier2Parts.push(dynamicTailStatusBlock);
+  }
+  const tier2MemoryBlock = tier2Parts.join('\n\n');
+
+  const fullSystemPrompt = [tier1PersonaBlock, thoughtProtocolBlock, tier2MemoryBlock]
     .filter(Boolean)
     .join('\n\n');
 

@@ -12,43 +12,79 @@
 
   if (!stageEl || !pokeArea) return;
 
-  // 乙游四大男主原型 & AI 漫剧声线矩阵
+  // 国乙六大男主「一人一专属 CV 声纹」 & 二次元女主声线矩阵
   const VOICE_ORDER = [
     {
       id: 'otome_boss',
       style: 'cool',
       isMale: true,
-      bassDb: 5.0,
-      short: '🖤 漫剧霸总低音',
-      btnHint: '🎙️ 漫剧霸总男音',
-      sample: '呵……离我这么近，是想听清我的心跳么？过来，别乱动。'
+      bassDb: 4.5,
+      short: '🖤 暗夜低音霸总',
+      btnHint: '🎙️ 陆沉系低音炮',
+      sample: '这么晚还没睡？把手伸过来……在我的视线里，不用勉强自己。'
+    },
+    {
+      id: 'otome_gentle',
+      style: 'cool',
+      isMale: true,
+      bassDb: 2.8,
+      short: '✨ 乙游温柔骑士',
+      btnHint: '🎙️ 温柔星光男音',
+      sample: '星光有点凉，先把我的外袍披好，不管多久我都会在这里守着你。'
     },
     {
       id: 'otome_cool',
       style: 'cool',
       isMale: true,
-      bassDb: 3.8,
-      short: '❄️ 乙游清冷禁欲',
-      btnHint: '🎙️ 乙游清冷男音',
+      bassDb: 3.4,
+      short: '❄️ 乙游清冷剑尊',
+      btnHint: '🎙️ 清冷禁欲男音',
       sample: '夜深露重……手怎么这么凉？伸过来，我替你捂着。'
     },
     {
       id: 'otome_fox',
       style: 'cool',
       isMale: true,
-      bassDb: 3.5,
-      short: '🪭 漫剧腹黑微撩',
-      btnHint: '🎙️ 漫剧微撩男音',
-      sample: '刚刚盯着我看了这么久……现在反倒害羞不敢开口了，嗯？'
+      bassDb: 3.2,
+      short: '🪭 漫剧腹黑公子',
+      btnHint: '🎙️ 风流微撩男音',
+      sample: '小没良心的，来茶楼听戏也不叫上本侯……嗯？'
+    },
+    {
+      id: 'otome_daddy',
+      style: 'cool',
+      isMale: true,
+      bassDb: 4.0,
+      short: '🥂 京圈矜贵家主',
+      btnHint: '🎙️ 沉稳绅士男音',
+      sample: '外头起风了，我让司机绕去南城买了你念叨的板栗酥，过来趁热吃两块。'
     },
     {
       id: 'otome_sunny',
       style: 'cute',
       isMale: true,
-      bassDb: 2.4,
-      short: '🐾 乙游年下少年',
+      bassDb: 2.0,
+      short: '🐾 阳光电竞少年',
       btnHint: '🎙️ 阳光少年男音',
-      sample: '只要你叫我一声，不管在哪儿我都会第一时间奔向你的！'
+      sample: '手腕一点都不疼啦！只要姐姐在台下看着我，我就能一直赢下去！'
+    },
+    {
+      id: 'otome_queen',
+      style: 'cool',
+      isMale: false,
+      bassDb: 1.2,
+      short: '👠 高冷清艳御姐',
+      btnHint: '🎙️ 高冷御姐女音',
+      sample: '外头风这么大还跑过来……手伸出来，坐到我身边暖一暖。'
+    },
+    {
+      id: 'cute_sweet',
+      style: 'cute',
+      isMale: false,
+      bassDb: 0.6,
+      short: '🍓 甜美元气学妹',
+      btnHint: '🎙️ 元气甜妹女音',
+      sample: '前辈前辈！刚买的热草莓牛乳给你留着第一口呢，今天也要超开心哦！'
     },
     {
       id: 'cute_mochi',
@@ -136,17 +172,28 @@
     return VOICE_ORDER.find((v) => v.id === mapped) || VOICE_ORDER[1];
   }
 
+  let currentIsFemale = false;
+
   function syncVoiceUiFromCompanion(comp) {
     if (comp) {
+      currentIsFemale = Boolean(
+        comp.isFemale || comp.skinKey === 'cool_lady' || comp.skinKey === 'cute_girl'
+      );
       const mapped = LEGACY_MAP[comp.voiceId] || comp.voiceId;
       if (mapped && VOICE_ORDER.some((v) => v.id === mapped)) {
         currentVoiceId = mapped;
+      } else if (comp.skinKey === 'cool_lady') {
+        currentVoiceId = 'otome_queen';
+      } else if (comp.skinKey === 'cute_girl') {
+        currentVoiceId = 'cute_sweet';
       } else if (comp.skinKey === 'cool_dark') {
         currentVoiceId = 'otome_boss';
       } else if (comp.skinKey === 'cute_boy') {
         currentVoiceId = 'otome_sunny';
       } else if (comp.skinKey === 'cute_chibi') {
         currentVoiceId = 'cute_mochi';
+      } else if (currentIsFemale) {
+        currentVoiceId = comp.mode === 'cute' ? 'cute_sweet' : 'otome_queen';
       } else {
         currentVoiceId = comp.mode === 'cute' ? 'otome_sunny' : 'otome_cool';
       }
@@ -434,22 +481,28 @@
   const ttsGearBtn = document.getElementById('cv-open-tts-cfg-btn');
   function syncAdminGearVisibility() {
     if (!ttsGearBtn) return;
-    ttsGearBtn.classList.toggle('hidden', !window.__isAdminUser);
+    ttsGearBtn.classList.remove('hidden');
+    ttsGearBtn.title = window.__isAdminUser
+      ? '配置全站商业漫剧音源或个人一钥双通 API'
+      : '一键绑定硅基流动 / 阿里云百炼 API 解锁商业真声配音';
   }
   syncAdminGearVisibility();
   window.addEventListener('user-role-changed', syncAdminGearVisibility);
 
   ttsGearBtn?.addEventListener('click', () => {
-    if (!window.__isAdminUser) return;
     if (typeof window.__openCommercialTtsSettings === 'function') {
       window.__openCommercialTtsSettings();
     }
   });
 
-  // 循环切换 5 档乙游男主 / AI 漫剧声线并实时试听代表台词
+  // 按角色性别智能轮换专属声线（女主优先轮换御姐/甜妹/团子，男主优先轮换四大乙游男音）
   switchVoiceBtn.addEventListener('click', async () => {
-    const idx = VOICE_ORDER.findIndex((v) => v.id === currentVoiceId);
-    const nextMeta = VOICE_ORDER[(idx + 1) % VOICE_ORDER.length];
+    const pool = currentIsFemale
+      ? VOICE_ORDER.filter((v) => !v.isMale)
+      : VOICE_ORDER.filter((v) => v.isMale || v.id === 'cute_mochi');
+    const activePool = pool.length > 0 ? pool : VOICE_ORDER;
+    const idx = activePool.findIndex((v) => v.id === currentVoiceId);
+    const nextMeta = activePool[(idx + 1) % activePool.length];
     currentVoiceId = nextMeta.id;
     openLabel.textContent = nextMeta.btnHint;
     switchVoiceBtn.textContent = `${nextMeta.short} ▾`;
@@ -654,7 +707,21 @@
 
   const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
   let recognition = null;
+  let mediaRecorder = null;
+  let mediaChunks = [];
+  let activeMicStream = null;
   let isListening = false;
+
+  function stopMicStreamTracks() {
+    if (activeMicStream) {
+      activeMicStream.getTracks().forEach((t) => {
+        try {
+          t.stop();
+        } catch {}
+      });
+      activeMicStream = null;
+    }
+  }
 
   function stopMicRecognition() {
     isListening = false;
@@ -663,18 +730,96 @@
       try {
         recognition.stop();
       } catch {}
+      recognition = null;
+    }
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+      try {
+        mediaRecorder.stop();
+      } catch {}
+    }
+  }
+
+  async function startCloudAsrRecording() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      quickInput.placeholder = '当前环境未开放麦克风权限，可直接打字回车对话…';
+      quickInput.focus();
+      return;
+    }
+    try {
+      stopCurrentAudio();
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      activeMicStream = stream;
+      mediaChunks = [];
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus'
+        : 'audio/webm';
+      mediaRecorder = new MediaRecorder(stream, { mimeType });
+      isListening = true;
+      micBtn.classList.add('recording');
+      quickInput.placeholder = '🎙️ 正在录音（再点🎙️结束并识别）…';
+
+      mediaRecorder.ondataavailable = (ev) => {
+        if (ev.data && ev.data.size > 0) mediaChunks.push(ev.data);
+      };
+
+      mediaRecorder.onstop = async () => {
+        stopMicStreamTracks();
+        isListening = false;
+        micBtn.classList.remove('recording');
+        if (!mediaChunks.length) {
+          quickInput.placeholder = '点🎙️开口说，或打字回车…';
+          return;
+        }
+        quickInput.placeholder = '⏳ Qwen3-ASR 正在识别语音…';
+        try {
+          const blob = new Blob(mediaChunks, { type: mimeType });
+          const dataUrl = await new Promise((resolve, reject) => {
+            const r = new FileReader();
+            r.onload = () => resolve(String(r.result || ''));
+            r.onerror = reject;
+            r.readAsDataURL(blob);
+          });
+          const resp = await fetch('/api/asr/transcribe', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ audio_data_url: dataUrl })
+          });
+          const data = await resp.json();
+          quickInput.placeholder = '点🎙️开口说，或打字回车…';
+          if (resp.ok && data.text) {
+            sendVoiceTurn(data.text);
+          } else {
+            quickInput.placeholder = data.error || '请绑定硅基流动Key启用云端识别，或直接打字回车…';
+          }
+        } catch {
+          quickInput.placeholder = '语音识别未就绪，可直接打字回车…';
+        }
+      };
+
+      mediaRecorder.start();
+      // 最长自动录 15 秒防忘关
+      setTimeout(() => {
+        if (mediaRecorder && mediaRecorder.state === 'recording') {
+          stopMicRecognition();
+        }
+      }, 15000);
+    } catch {
+      stopMicStreamTracks();
+      isListening = false;
+      micBtn.classList.remove('recording');
+      quickInput.placeholder = '麦克风未授权，可直接打字回车对话…';
     }
   }
 
   micBtn.addEventListener('click', () => {
-    if (!SpeechRec) {
-      quickInput.placeholder = '当前浏览器不支持麦克风识别，可直接打字回车对话…';
-      quickInput.focus();
+    if (isListening) {
+      stopMicRecognition();
       return;
     }
 
-    if (isListening) {
-      stopMicRecognition();
+    // 若已配置硅基流动内置/个人 API，或浏览器不支持原生识别，优先走高精度 Qwen3-ASR-1.7B 云端识别
+    if (!SpeechRec || window.__preferCloudAsr) {
+      startCloudAsrRecording();
       return;
     }
 
@@ -714,9 +859,15 @@
       }
     };
 
-    recognition.onerror = () => {
+    recognition.onerror = (ev) => {
       isListening = false;
       micBtn.classList.remove('recording');
+      // 国内网络下 Chrome WebSpeech 若遇 network 错误，自动标记切换至 Qwen3-ASR-1.7B 云端识别
+      if (ev && ev.error === 'network') {
+        window.__preferCloudAsr = true;
+        startCloudAsrRecording();
+        return;
+      }
       quickInput.placeholder = '未听到声音，可重试🎙️或直接打字回车…';
     };
 
@@ -724,6 +875,7 @@
       recognition.start();
     } catch {
       stopMicRecognition();
+      startCloudAsrRecording();
     }
   });
 })();

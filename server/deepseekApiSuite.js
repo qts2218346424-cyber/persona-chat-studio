@@ -174,7 +174,7 @@ function getEffectiveApiCredentials(settings = {}) {
       apiKey: dsKey,
       headers: { Authorization: `Bearer ${dsKey}` },
       endpoints,
-      preferredModel: String(settings.deepseek_model || 'deepseek-chat').trim()
+      preferredModel: String(settings.deepseek_model || 'deepseek-flash').trim()
     };
   }
 
@@ -194,7 +194,7 @@ function getEffectiveApiCredentials(settings = {}) {
       apiKey: customToken,
       headers,
       endpoints: resolveDeepSeekEndpoints(customUrl),
-      preferredModel: String(settings.custom_gateway_model || 'deepseek-chat').trim()
+      preferredModel: String(settings.custom_gateway_model || 'deepseek-flash').trim()
     };
   }
 
@@ -203,7 +203,7 @@ function getEffectiveApiCredentials(settings = {}) {
     apiKey: '',
     headers: {},
     endpoints: resolveDeepSeekEndpoints(settings.deepseek_base_url),
-    preferredModel: 'deepseek-chat'
+    preferredModel: 'deepseek-flash'
   };
 }
 
@@ -304,21 +304,27 @@ async function fetchDeepSeekModels(settings) {
   const cred = getEffectiveApiCredentials(settings);
   const officialCatalog = [
     {
+      id: 'deepseek-flash',
+      label: 'DeepSeek-V4.1-Flash (deepseek-flash)',
+      context_window: '1M',
+      capabilities: ['100万上下文窗口', '原生可控深度思考', '图文多模态理解', 'Function Calling', 'JSON Output']
+    },
+    {
       id: 'deepseek-chat',
-      label: 'DeepSeek-V3 (deepseek-chat)',
+      label: 'DeepSeek-V3 兼容通道 (deepseek-chat)',
       context_window: '128K',
-      capabilities: ['磁盘上下文缓存', 'Function Calling', 'JSON Output', 'Chat Prefix 续写', 'FIM 补全']
+      capabilities: ['磁盘上下文缓存', 'Function Calling', 'JSON Output', 'Chat Prefix 续写']
     },
     {
       id: 'deepseek-reasoner',
-      label: 'DeepSeek-R1 深度思考 (deepseek-reasoner)',
+      label: 'DeepSeek-R1 兼容通道 (deepseek-reasoner)',
       context_window: '128K',
-      capabilities: ['原生思维链 reasoning_content', '磁盘上下文缓存', 'Chat Prefix 续写', '复杂数理与代码推演']
+      capabilities: ['原生思维链 reasoning_content', '磁盘上下文缓存', '复杂数理与代码推演']
     }
   ];
 
   if (!cred.hasKey) {
-    return { configured: false, models: officialCatalog, remote_ids: ['deepseek-chat', 'deepseek-reasoner'] };
+    return { configured: false, models: officialCatalog, remote_ids: ['deepseek-flash', 'deepseek-chat', 'deepseek-reasoner'] };
   }
 
   try {
@@ -333,12 +339,12 @@ async function fetchDeepSeekModels(settings) {
       return {
         configured: true,
         models: officialCatalog,
-        remote_ids: ids.length > 0 ? ids : ['deepseek-chat', 'deepseek-reasoner']
+        remote_ids: ids.length > 0 ? ids : ['deepseek-flash', 'deepseek-chat', 'deepseek-reasoner']
       };
     }
   } catch {}
 
-  return { configured: true, models: officialCatalog, remote_ids: ['deepseek-chat', 'deepseek-reasoner'] };
+  return { configured: true, models: officialCatalog, remote_ids: ['deepseek-flash', 'deepseek-chat', 'deepseek-reasoner'] };
 }
 
 /**
@@ -884,7 +890,7 @@ async function streamSimulatedDeepSeekNative({
   );
   const activeSessionPrompt = sessionPromptMatch ? sessionPromptMatch[1].trim() : '';
   const memSectionMatch = sysPromptStr.match(
-    /## (?:跨轮次长期记忆锚点与用户约束|跨轮次长期记忆锚点|当前唤醒的长期记忆条目)[^\n]*\n([\s\S]*?)(?=\n## |\n# |$)/
+    /## (?:本对话永久核心记忆锚点|本轮唤醒的过往记忆细节|跨轮次长期记忆锚点与用户约束|跨轮次长期记忆锚点|当前唤醒的长期记忆条目)[^\n]*\n([\s\S]*?)(?=\n## |\n# |$)/
   );
   const activeMemLines = memSectionMatch
     ? memSectionMatch[1]
@@ -897,7 +903,7 @@ async function streamSimulatedDeepSeekNative({
         .filter((l) => l && !l.startsWith('以下信息是'))
     : [];
   const summaryMatch = sysPromptStr.match(
-    /## (?:早期对话前情摘要|更早期的对话前情提要)[^\n]*\n([\s\S]*?)(?=\n## |\n# |$)/
+    /## (?:阶段前情浓缩摘要|早期对话前情摘要|更早期的对话前情提要)[^\n]*\n([\s\S]*?)(?=\n## |\n# |$)/
   );
   const activeRollingSummary = summaryMatch ? summaryMatch[1].trim() : '';
   const priorTurns = (messagesPayload || []).filter((m) => m.role !== 'system').slice(0, -1);
@@ -1288,71 +1294,62 @@ $$\\int_{-\\infty}^{+\\infty} e^{-\\frac{(t - \\mu)^2}{2\\sigma^2}} \\frac{dt}{\
 - 如果使用场景偏**正式向上汇报**，可进一步补充具体的量化百分比与时间里程碑；
 - 如果偏**对外沟通或创意叙事**，告诉我受众画像与字数要求，我可以为你切换为更具故事感与感染力的文风。`;
   } else {
-    const attachNote = hasAttachments
-      ? `用户同时附带了 ${attachments.length} 份文件（${attachments
-          .map((a) => a.name)
-          .join('、')}），我需要结合附件正文摘录直接提炼干货，而不是只列文件名。`
-      : '';
-    const searchNote = hasSearchRefs
-      ? `上下文中已有 ${searchResults.length} 份实时网页参考资料（首条：《${searchResults[0].title}》），回答时直接将有效信息融入分析并在对应句末标注 [1] 等引用角标，不在开头写多余套话。`
-      : '';
+    const isObjectiveTechAsk =
+      !activeSessionPrompt &&
+      !/\*[^*]+\*|「|“|扮演|设定|如果我是|假如我们|醒来|重逢|转身|推开|眼神|心跳|师兄|学长|前辈|殿下|阁下/.test(cleanUser) &&
+      /^(?:什么是|如何理解|怎么解决|为什么会|请解释|帮我分析|有哪些方法)/.test(cleanUser);
 
-    reasoningText = `嗯，用户问的是：「${cleanUser.slice(0, 56)}${
-      cleanUser.length > 56 ? '…' : ''
-    }」。\n${attachNote}${searchNote}\n让我先抓一下这个问题的本质：表面上看是在探讨具体现象或做法，实际上最核心的是搞清楚**底层运作逻辑、关键影响变量以及可执行的落地路径**。\n好，思路清晰了：第一段先不绕弯子直接给出核心判断，接着分三个层次把机制、关键要点和实操建议拆透，保持行文干净利落。`;
+    if (isObjectiveTechAsk || hasSearchRefs) {
+      const attachNote = hasAttachments
+        ? `用户同时附带了 ${attachments.length} 份文件（${attachments
+            .map((a) => a.name)
+            .join('、')}），结合附件摘录直接提炼要点。`
+        : '';
+      const searchNote = hasSearchRefs
+        ? `结合已检索到的 ${searchResults.length} 份参考资料直接给出清晰解答。`
+        : '';
 
-    const attachDigestBlock = hasAttachments
-      ? `### 附件内容核心提炼\n\n${attachments
-          .map((a) => {
-            if (a.is_image) {
-              return `- **\`${a.name}\`**（图像文件${a.dimensions ? `，尺寸 ${a.dimensions}` : ''}）：已完成图像元数据载入，可结合视觉要素与上下文联合分析。`;
-            }
-            const cleanExcerpt = String(a.content || '')
-              .replace(/\s+/g, ' ')
-              .trim()
-              .slice(0, 140);
-            return `- **\`${a.name}\`**（共 ${String(a.content || '').length} 字符）：核心摘录 —— “${cleanExcerpt}${
-              String(a.content || '').length > 140 ? '…' : ''
-            }”`;
-          })
-          .join('\n')}\n\n---\n\n`
-      : '';
+      reasoningText = `用户提出了一个客观探讨问题：「${cleanUser.slice(0, 52)}」。\n${attachNote}${searchNote}\n用平实自然的短段落直接点明核心机制与可行建议，不堆砌机械套话。`;
 
-    const refInsight = hasSearchRefs
-      ? `结合公开参考资料来看，相关领域的最新讨论主要聚焦于**${searchResults[0].title.replace(
-          /\s*-\s*(维基百科|Wikipedia|GitHub).*$/i,
-          ''
-        )}**的核心脉络：${searchResults[0].snippet.slice(0, 96)}${
-          searchResults[0].snippet.length > 96 ? '…' : ''
-        } [1]${
-          searchResults[1]
-            ? `；同时补充视角也印证了 ${searchResults[1].snippet.slice(0, 72)}${
-                searchResults[1].snippet.length > 72 ? '…' : ''
-              } [2]。`
-            : '。'
-        }`
-      : `理解这一问题的关键，在于先区分**表层表象**与**底层驱动机制**——绝大多数执行偏差并非源于方法不够复杂，而是没有先对齐核心约束条件与评估标准。`;
+      const refInsight = hasSearchRefs
+        ? `\n\n结合公开参考资料来看，**${searchResults[0].title.replace(
+            /\s*-\s*(维基百科|Wikipedia|GitHub).*$/i,
+            ''
+          )}** 的核心脉络在于：${searchResults[0].snippet.slice(0, 96)}${
+            searchResults[0].snippet.length > 96 ? '…' : ''
+          } [1]。`
+        : '';
 
-    answerText = `${assistantPrefix || ''}${attachDigestBlock}关于 **「${cleanUser.slice(0, 38)}${
-      cleanUser.length > 38 ? '…' : ''
-    }」**，核心结论是：**应当采取“先明确核心约束边界、再抓主干变量突破、最后做小步验证迭代”的推进策略**。${refInsight}
+      answerText = `${assistantPrefix || ''}关于 **「${cleanUser.slice(0, 38)}${
+        cleanUser.length > 38 ? '…' : ''
+      }」**，最核心的关键在于先看清背后的驱动逻辑，再顺着最直接的切入点去落地验证。${refInsight}\n\n如果你想把它放进具体的故事背景或实际场景里推演，随时直接告诉我细节，我们接着往下聊。`;
+    } else {
+      // 默认优先进入沉浸剧本扮演模式（无需小白额外配置任何开关）
+      const sceneContext = activeSessionPrompt
+        ? `结合本对话专属设定（${activeSessionPrompt.slice(0, 56)}），`
+        : '顺着当前自然展开的故事氛围，';
+      const memRecallNote =
+        activeMemLines.length > 0
+          ? `同时呼应当前对话已记住的细节（${activeMemLines[0].slice(0, 48)}），`
+          : '';
 
----
+      reasoningText = `对方刚刚发来：「${cleanUser.slice(0, 48)}${cleanUser.length > 48 ? '…' : ''}」。\n${sceneContext}${memRecallNote}不需要任何生硬的公式套话，直接用细腻有画面感的分镜神态与自然台词接住对方的情绪，并把当下的剧情轻轻往前推半步。`;
 
-### 一、底层逻辑拆解
+      const attachStoryHint = hasAttachments
+        ? `*目光扫过你递过来的「${attachments[0].name}」，把里面的线索默默记在心底，随即抬头望向你。*\n\n`
+        : `*窗外的光影在桌沿轻轻晃动，听完你这句话，目光在你脸上安静停留了片刻，神情渐渐柔和下来。*\n\n`;
+      const memBridge =
+        activeMemLines.length > 0
+          ? `之前咱们提过的点滴（${activeMemLines[0].replace(/。$/, '')}），我可一直都好好记在心里呢。\n\n`
+          : '';
+      const settingBridge = activeSessionPrompt
+        ? `既然在这个属于我们的故事设定里相遇，`
+        : '';
 
-- **锚定核心目标函数**：在切入细节之前，先明确最不可妥协的第一优先级指标（如准确性、效率成本或可维护性），避免在次要矛盾上过度消耗精力。
-- **识别关键瓶颈节点**：复杂系统往往受制于最薄弱的单一约束环节，找准决定全局上限的 1~2 个核心变量，往往比全面铺开更有效${
-      hasSearchRefs ? ' [1]' : ''
-    }。
-
-### 二、分步落地建议
-
-1. **最小闭环验证**：先剥离非必要的边缘附加项，用最小可运行的样本或方案验证主路径是否畅通，快速获取真实反馈。
-2. **量化评估与边界收敛**：建立清晰的对照基准，重点排查极端输入、长尾异常或资源受限情况下的稳健性表现。
-3. **结构化沉淀复用**：当主干逻辑跑通后，将关键判断准则固化为清晰的检查清单（Checklist）或自动化流程。
-
-如果你愿意进一步补充**当前所处的具体场景、已有条件或遇到的具体卡点**，我可以针对你的实际情况给出更聚焦的定制方案。`;
+      answerText = `${assistantPrefix || ''}${attachStoryHint}「${cleanUser
+        .replace(/^\*[^*]+\*\s*/, '')
+        .slice(0, 30)}${cleanUser.length > 30 ? '…' : ''}」——听你这么开口，原本有些悬着的心忽然就落定了。\n\n${memBridge}${settingBridge}有些话不必急着在一开始就全部说尽。*轻轻往前走近半步，将手边刚发现的一枚旧信物递到你面前* 接下来这一幕，你是想先看看这里面藏着的线索，还是打算带我往更深处走走看？`;
+    }
   }
 
   if (enableThinking && reasoningText) {
@@ -1434,6 +1431,23 @@ async function streamSingleCompletionRound({
 
       if (!res.ok) {
         const errText = await res.text().catch(() => '');
+        const isModelMissing =
+          (res.status === 400 || res.status === 404) &&
+          /model.*not.*found|does not exist|unknown model|invalid.*model/i.test(errText) &&
+          /flash/i.test(String(requestBody.model || ''));
+        if (isModelMissing && attempt < maxAttempts && !signal?.aborted) {
+          const lowerTarget = String(url || '').toLowerCase();
+          requestBody.model = lowerTarget.includes('siliconflow.cn')
+            ? (enableThinking ? 'deepseek-ai/DeepSeek-R1' : 'deepseek-ai/DeepSeek-V3.2')
+            : lowerTarget.includes('aliyuncs.com')
+            ? (enableThinking ? 'deepseek-r1' : 'deepseek-v3')
+            : lowerTarget.includes('openrouter.ai')
+            ? (enableThinking ? 'deepseek/deepseek-r1' : 'deepseek/deepseek-chat')
+            : (enableThinking ? 'deepseek-reasoner' : 'deepseek-chat');
+          delete requestBody.thinking;
+          delete requestBody.enable_thinking;
+          continue;
+        }
         const retryableStatus = [408, 429, 500, 502, 503, 504].includes(res.status);
         const errObj = new Error(
           `DeepSeek API 返回异常 (${res.status}): ${errText.slice(0, 260) || res.statusText}`
@@ -1703,12 +1717,12 @@ async function streamDeepSeekNativeSuite({
         : '';
 
       const zhThoughtNote = isPureOfficial
-        ? `\n\n## 深度思考阶段（DeepSeek-R1 原生内省规范）\n在思考推演阶段，请全程使用**纯简体中文**，严禁整段英文思考。请采用正版 DeepSeek-R1 标志性的**第一人称自然口语化内省思维流**（例如：“嗯，用户问的是……让我先拆解一下核心诉求……这里有个容易忽略的边界点……好，思路理顺了，回答时开头先直给核心结论，再分层次讲透原理与实操……”），展现真实的推敲、证伪与结构组织过程，不要写成死板的公文提纲。${fallbackTagHint}`
+        ? `\n\n## 深度思考阶段（剧本心声与自然内省规范）\n在思考推演阶段，请全程使用**纯简体中文**，严禁整段英文思考。若当前处于故事扮演、角色设定或对白情境中，请以角色或叙事视角揣摩对方的情绪潜台词、回顾本对话独立记忆与剧情伏笔；若为日常探讨，则自然推敲核心脉络。${fallbackTagHint}`
         : `\n\n## 思考与心声语言铁律\n在思考推理阶段，严禁使用英文（如 "The user..."）或冷冰冰的第三方 AI 分析口吻！请全程使用纯简体中文，直接以「${actorName}」的第一人称自然展开此刻听完对方话后的真实内心想法与潜台词（60~100字左右）。${fallbackTagHint}`;
       workingMessages[0].content += zhThoughtNote;
     } else {
       workingMessages[0].content +=
-        '\n\n## 极速直出要求（DeepSeek-V3 模式）\n当前未开启深度思考展示，请直接输出结构清晰、凝练规范的正式中文回答正文，不要在正文中输出 `<think>...</think>` 标签。';
+        '\n\n## 极速直出要求\n当前未开启思考过程展示，请直接输出细腻自然、贴合当前对话设定与记忆的正式中文回复，不要在正文中输出 `<think>...</think>` 标签。';
     }
   }
 
@@ -1736,15 +1750,21 @@ async function streamDeepSeekNativeSuite({
     };
   }
 
-  // 真实直连 DeepSeek / 兼容 API / 本地 Antigravity 双核底座！
+  // 真实直连 DeepSeek V4.1 Flash / 兼容 API / 本地 Antigravity 双核底座！
   const isOfficial = cred.endpoints.isOfficialDeepSeek;
-  let targetModel = cred.preferredModel || 'deepseek-chat';
+  let targetModel = cred.preferredModel || 'deepseek-flash';
   if (isOfficial) {
-    targetModel = enableThinking ? 'deepseek-reasoner' : 'deepseek-chat';
+    if (/^deepseek[-_]?v?4(?:\.1)?[-_]?flash$/i.test(targetModel)) {
+      targetModel = 'deepseek-flash';
+    } else if (targetModel === 'deepseek-chat' || targetModel === 'deepseek-reasoner') {
+      targetModel = enableThinking ? 'deepseek-reasoner' : 'deepseek-chat';
+    }
   }
 
+  const isV4FlashFamily = /deepseek-flash|v4(?:\.1)?[-_]?flash/i.test(targetModel);
   const useBetaEndpoint = Boolean(cleanPrefix) && isOfficial;
   const endpointUrl = useBetaEndpoint ? cred.endpoints.betaChatUrl : cred.endpoints.chatUrl;
+  const lowerEndpointUrl = endpointUrl.toLowerCase();
 
   const toolCallsLog = [];
   let aggregatedUsage = null;
@@ -1786,18 +1806,41 @@ async function streamDeepSeekNativeSuite({
         messages: reqMessages,
         stream: true
       };
-      if (isOfficial) {
+      if (
+        isOfficial ||
+        lowerEndpointUrl.includes('siliconflow.cn') ||
+        lowerEndpointUrl.includes('aliyuncs.com') ||
+        lowerEndpointUrl.includes('openrouter.ai')
+      ) {
         body.stream_options = { include_usage: true };
       }
 
-      if (targetModel !== 'deepseek-reasoner') {
-        body.temperature = parseFloat(settings.temperature || '0.65');
+      if (isV4FlashFamily) {
+        if (isOfficial) {
+          body.thinking = { type: enableThinking ? 'enabled' : 'disabled' };
+        } else if (lowerEndpointUrl.includes('siliconflow.cn') || lowerEndpointUrl.includes('aliyuncs.com')) {
+          body.enable_thinking = Boolean(enableThinking);
+        }
+        if (!enableThinking) {
+          body.temperature = parseFloat(settings.temperature || '0.90');
+        }
+        if (jsonMode) {
+          body.response_format = { type: 'json_object' };
+        }
+      } else if (targetModel !== 'deepseek-reasoner') {
+        body.temperature = parseFloat(settings.temperature || '0.90');
         if (jsonMode) {
           body.response_format = { type: 'json_object' };
         }
       }
 
-      if (enableTools && !cleanPrefix && !jsonMode && isOfficial && targetModel === 'deepseek-chat') {
+      if (
+        enableTools &&
+        !cleanPrefix &&
+        !jsonMode &&
+        isOfficial &&
+        (targetModel === 'deepseek-flash' || targetModel === 'deepseek-chat')
+      ) {
         body.tools = NATIVE_TOOLS_SCHEMA;
       }
 
@@ -1813,13 +1856,20 @@ async function streamDeepSeekNativeSuite({
 
       finalModel = round.model || targetModel;
       if (round.usage) {
+        const pTok = round.usage.prompt_tokens || 0;
+        const cHit =
+          round.usage.prompt_cache_hit_tokens !== undefined
+            ? round.usage.prompt_cache_hit_tokens
+            : round.usage.prompt_tokens_details?.cached_tokens || 0;
         aggregatedUsage = {
-          prompt_tokens: round.usage.prompt_tokens || 0,
+          prompt_tokens: pTok,
           completion_tokens: round.usage.completion_tokens || 0,
           total_tokens: round.usage.total_tokens || 0,
-          prompt_cache_hit_tokens: round.usage.prompt_cache_hit_tokens ?? 0,
+          prompt_cache_hit_tokens: cHit,
           prompt_cache_miss_tokens:
-            round.usage.prompt_cache_miss_tokens ?? (round.usage.prompt_tokens || 0),
+            round.usage.prompt_cache_miss_tokens !== undefined
+              ? round.usage.prompt_cache_miss_tokens
+              : Math.max(0, pTok - cHit),
           reasoning_tokens: round.usage.completion_tokens_details?.reasoning_tokens || 0
         };
       }
@@ -1899,10 +1949,19 @@ async function streamDeepSeekNativeSuite({
           signal
         });
         if (bridgedOk) {
+          const estPrompt = workingMessages.reduce((s, m) => s + estimateTokens(m.content || ''), 0);
+          const estHit = workingMessages.length > 2 ? Math.round(estPrompt * 0.78) : Math.round(estPrompt * 0.55);
           return {
             simulated: false,
             model: enableThinking ? 'deepseek-reasoner' : 'deepseek-chat',
-            usage: aggregatedUsage,
+            usage: aggregatedUsage || {
+              prompt_tokens: estPrompt,
+              completion_tokens: 120,
+              total_tokens: estPrompt + 120,
+              prompt_cache_hit_tokens: estHit,
+              prompt_cache_miss_tokens: Math.max(10, estPrompt - estHit),
+              estimated: true
+            },
             searchResults,
             toolCallsLog
           };

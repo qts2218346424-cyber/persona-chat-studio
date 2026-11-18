@@ -208,7 +208,7 @@ async function analyzeAndOptimizeScript({ filename = '', rawText = '', focusMode
         hasKey: true,
         chatUrl: bridge.chatUrl,
         headers: bridge.headers,
-        preferredModel: bridge.preferredModel || 'deepseek-chat'
+        preferredModel: bridge.preferredModel || 'deepseek-flash'
       };
     }
   } else {
@@ -216,7 +216,7 @@ async function analyzeAndOptimizeScript({ filename = '', rawText = '', focusMode
       hasKey: true,
       chatUrl: cred.endpoints.chatUrl,
       headers: cred.headers,
-      preferredModel: cred.preferredModel || 'deepseek-chat'
+      preferredModel: cred.preferredModel || 'deepseek-flash'
     };
   }
 
@@ -260,7 +260,7 @@ async function analyzeAndOptimizeScript({ filename = '', rawText = '', focusMode
       ].join('\n');
 
       const modelToUse =
-        cred.preferredModel === 'deepseek-reasoner' ? 'deepseek-chat' : cred.preferredModel || 'deepseek-chat';
+        cred.preferredModel === 'deepseek-reasoner' ? 'deepseek-flash' : cred.preferredModel || 'deepseek-flash';
 
       const res = await fetch(cred.chatUrl, {
         method: 'POST',

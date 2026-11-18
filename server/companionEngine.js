@@ -121,13 +121,43 @@ function resolveOrGenerateCompanion({
   } ${persona?.backstory || ''}`;
   const isFemale = detectFemalePersona(persona);
 
-  // 1. 决定高冷 (cool) 还是可爱 (cute)
+  // 1. 决定高冷/成熟 (cool) 还是元气可爱 (cute)
+  const KNOWN_CUTE_IDS = new Set([
+    'persona_jiran',
+    'persona_stark_fer',
+    'persona_xia_ningmeng',
+    'persona_nagisa_sakura',
+    'persona_asagiri_mio'
+  ]);
+  const KNOWN_COOL_IDS = new Set([
+    'persona_shenxinghui',
+    'persona_luchen',
+    'persona_xieqingyan',
+    'persona_jiangyubai',
+    'persona_guxiuyuan',
+    'persona_hodgins_landon',
+    'persona_frieren_shuer',
+    'persona_suwanqing',
+    'persona_yunzhiyao',
+    'persona_yan_feiyu',
+    'persona_makise_sei',
+    'persona_violet_eve'
+  ]);
+  const pidForMode = String(persona?.id || '').trim();
   let mode = requestedMode || currentConfig?.mode || '';
   if (mode !== 'cool' && mode !== 'cute') {
-    const isNaturallyCute = /少年|学弟|学妹|双马尾|甜妹|小狼狗|撒娇|可爱|活泼|阳光|甜|元气|奶|小梨涡/.test(
-      combinedText
-    );
-    mode = isNaturallyCute ? 'cute' : 'cool';
+    if (KNOWN_COOL_IDS.has(pidForMode)) {
+      mode = 'cool';
+    } else if (KNOWN_CUTE_IDS.has(pidForMode)) {
+      mode = 'cute';
+    } else {
+      const traitText = `${persona?.name || ''} ${persona?.category_tag || ''} ${persona?.tagline || ''} ${
+        persona?.personality || ''
+      }`;
+      const isMatureCool = /家主|掌权者|执政官|剑尊|师尊|师姐|神女|侯爷|歌姬|爹系|沉稳|禁欲|高冷|清冷/.test(traitText);
+      const isNaturallyCute = /少年|学弟|学妹|双马尾|甜妹|小狼狗|撒娇|可爱|活泼|阳光|元气|小梨涡/.test(traitText);
+      mode = !isMatureCool && isNaturallyCute ? 'cute' : 'cool';
+    }
   }
 
   // 2. 决定具体皮肤（严格贴合角色性别，除非玩家显式手动切换指定皮肤）
@@ -157,16 +187,52 @@ function resolveOrGenerateCompanion({
   const baseSkin = COMPANION_SKINS[skinKey] || (isFemale ? COMPANION_SKINS.cool_lady : COMPANION_SKINS.cool_silver);
   const finalImg = customImg !== undefined ? customImg : currentConfig?.customImg || '';
 
-  // 3. 决定专属商业声线（男主低音/清冷/微撩/少年 + 女主高冷御姐/元气甜妹/软萌团子）
-  const isFox = /腹黑|狐狸|公子|折扇|调侃|谢清晏|风流/.test(combinedText);
+  // 3. 决定专属商业声线（6大男主「一人一专属 CV 声纹」+ 女主高冷御姐/元气甜妹/软萌团子）
+  const PERSONA_EXCLUSIVE_VOICE = {
+    persona_shenxinghui: 'otome_gentle',
+    persona_frieren_shuer: 'otome_gentle',
+    persona_luchen: 'otome_boss',
+    persona_jiangyubai: 'otome_cool',
+    persona_xieqingyan: 'otome_fox',
+    persona_jiran: 'otome_sunny',
+    persona_stark_fer: 'otome_sunny',
+    persona_guxiuyuan: 'otome_daddy',
+    persona_hodgins_landon: 'otome_daddy',
+    persona_suwanqing: 'otome_queen',
+    persona_yunzhiyao: 'otome_queen',
+    persona_yan_feiyu: 'otome_queen',
+    persona_xia_ningmeng: 'cute_sweet'
+  };
+
+  const pid = String(persona?.id || '').trim();
+  const isFox = /腹黑|狐狸|公子|折扇|调侃|谢清晏|风流|小侯爷/.test(combinedText);
+  const isDaddy = /爹系|家主|联姻|叔|沉稳|顾修远|局长|霍金斯/.test(combinedText);
+  const isGentle = /温柔|骑士|星轨|白月光|沈星回|治愈|竹马/.test(combinedText);
+
+  let inferredMaleCoolVoice = 'otome_cool';
+  if (isFox) inferredMaleCoolVoice = 'otome_fox';
+  else if (isDaddy) inferredMaleCoolVoice = 'otome_daddy';
+  else if (isGentle) inferredMaleCoolVoice = 'otome_gentle';
+  else if (baseSkin.key === 'cool_dark') inferredMaleCoolVoice = 'otome_boss';
+
   const defaultSkinVoice = {
-    cool_silver: isFox ? 'otome_fox' : 'otome_cool',
-    cool_dark: 'otome_boss',
+    cool_silver:
+      PERSONA_EXCLUSIVE_VOICE[pid] && !isFemale
+        ? PERSONA_EXCLUSIVE_VOICE[pid]
+        : inferredMaleCoolVoice,
+    cool_dark:
+      PERSONA_EXCLUSIVE_VOICE[pid] && !isFemale
+        ? PERSONA_EXCLUSIVE_VOICE[pid]
+        : isFox
+        ? 'otome_fox'
+        : isDaddy
+        ? 'otome_daddy'
+        : 'otome_boss',
     cool_lady: 'otome_queen',
     cute_boy: 'otome_sunny',
     cute_girl: 'cute_sweet',
     cute_chibi: 'cute_mochi'
-  }[baseSkin.key] || (isFemale ? 'otome_queen' : 'otome_cool');
+  }[baseSkin.key] || (isFemale ? 'otome_queen' : PERSONA_EXCLUSIVE_VOICE[pid] || 'otome_cool');
 
   let voiceId = requestedVoice || '';
   if (!voiceId) {
@@ -174,8 +240,14 @@ function resolveOrGenerateCompanion({
       voiceId = defaultSkinVoice;
     } else {
       const savedVoice = currentConfig?.voiceId || '';
-      const isSavedMaleVoice = ['otome_boss', 'otome_cool', 'otome_fox', 'otome_sunny'].includes(savedVoice);
-      const isSavedFemaleVoice = ['otome_queen', 'cute_sweet', 'cute_mochi'].includes(savedVoice);
+      const isSavedMaleVoice = [
+        'otome_boss',
+        'otome_gentle',
+        'otome_cool',
+        'otome_fox',
+        'otome_daddy',
+        'otome_sunny'
+      ].includes(savedVoice);
       // 防止切换角色时性别声线错位
       if ((isFemale && isSavedMaleVoice) || (!isFemale && (savedVoice === 'otome_queen' || savedVoice === 'cute_sweet'))) {
         voiceId = defaultSkinVoice;

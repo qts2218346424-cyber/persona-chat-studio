@@ -92,7 +92,7 @@
     const relSrc = String(rawSrc).replace(/^\/assets\//, './assets/');
     // 自动将旧版矩形 .jpg 路径无缝映射至高精度透明抠图 _cutout.png
     return relSrc.replace(
-      /(?:\.?\/)?assets\/companions\/(cool_silver|cool_dark|cute_boy|cute_chibi)\.jpg$/i,
+      /(?:\.?\/)?assets\/companions\/(cool_silver|cool_dark|cool_lady|cute_boy|cute_girl|cute_chibi)\.jpg$/i,
       './assets/companions/$1_cutout.png'
     );
   }

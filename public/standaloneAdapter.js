@@ -567,7 +567,7 @@
       settings: {
         provider: 'demo',
         deepseek_base_url: 'https://api.deepseek.com/v1/chat/completions',
-        deepseek_model: 'deepseek-chat',
+        deepseek_model: 'deepseek-flash',
         deepseek_api_key: '',
         custom_gateway_url: '',
         custom_gateway_model: '',
@@ -1089,7 +1089,7 @@
       return jsonResponse({ scope: 'session', persona: { ...baseP, ...overrideObj }, sessions: decorateSessions(dbObj) });
     }
 
-    if (pathname === '/api/settings' && method === 'PUT') {
+    if (pathname === '/api/settings' && (method === 'PUT' || method === 'POST')) {
       if (bodyObj?.clear_own_deepseek_key) {
         dbObj.settings.deepseek_api_key = '';
       } else if (bodyObj?.own_deepseek_api_key) {
@@ -1128,7 +1128,7 @@
       }
       const rawBase = String(bodyObj?.own_api_base_url || dbObj.settings.deepseek_base_url || '').trim();
       const ep = resolveEndpoints(rawBase || 'https://api.deepseek.com/v1/chat/completions');
-      const targetModel = String(bodyObj?.own_deepseek_model || dbObj.settings.deepseek_model || 'deepseek-chat').trim();
+      const targetModel = String(bodyObj?.own_deepseek_model || dbObj.settings.deepseek_model || 'deepseek-flash').trim();
       try {
         if (ep.chatUrl.includes('deepseek.com')) {
           const r = await originalFetch(ep.balanceUrl, {
@@ -1140,8 +1140,8 @@
             return jsonResponse({
               ok: true,
               message: b0
-                ? `✅ DeepSeek 官方密钥验证通过！可用余额：¥${b0.total_balance}`
-                : '✅ DeepSeek 官方密钥验证通过！'
+                ? `✅ 连接成功！您的 DeepSeek 官网密钥可用（已接入最新 DeepSeek V4.1 Flash，余额：¥${b0.total_balance}）`
+                : '✅ 连接成功！您的 DeepSeek 密钥已准备就绪！'
             });
           }
         }
@@ -1164,6 +1164,50 @@
 
     if (pathname === '/api/settings/test') {
       return jsonResponse({ ok: true, message: '🌐 在线展示与直连引擎已就绪' });
+    }
+
+    if (pathname === '/api/deepseek/my-balance' && method === 'GET') {
+      const apiKey = (dbObj.settings.deepseek_api_key || '').trim();
+      const usingOwn = dbObj.settings.provider === 'own_deepseek' && Boolean(apiKey);
+      if (!usingOwn) {
+        return jsonResponse({ enabled: false, reason: 'not_using_own_key' });
+      }
+      const rawBase = String(dbObj.settings.deepseek_base_url || 'https://api.deepseek.com/v1/chat/completions');
+      const modelName = dbObj.settings.deepseek_model || 'deepseek-chat';
+      if (rawBase.includes('deepseek.com')) {
+        try {
+          const ep = resolveEndpoints(rawBase);
+          const r = await originalFetch(ep.balanceUrl, {
+            headers: { Authorization: `Bearer ${apiKey}` }
+          });
+          if (r.ok) {
+            const data = await r.json();
+            const infos = Array.isArray(data.balance_infos) ? data.balance_infos : [];
+            const cny = infos.find((x) => x.currency === 'CNY') || infos[0] || null;
+            return jsonResponse({
+              enabled: true,
+              provider_label: 'DeepSeek 官方 API',
+              is_official_deepseek: true,
+              balance_supported: Boolean(cny),
+              is_available: data.is_available !== false,
+              currency: cny?.currency || 'CNY',
+              symbol: cny?.currency === 'USD' ? '$' : '¥',
+              total_balance: cny ? String(cny.total_balance ?? '0.00') : null,
+              granted_balance: cny ? String(cny.granted_balance ?? '0.00') : '0.00',
+              topped_up_balance: cny ? String(cny.topped_up_balance ?? '0.00') : '0.00',
+              model: modelName
+            });
+          }
+        } catch {}
+      }
+      return jsonResponse({
+        enabled: true,
+        provider_label: '个人兼容 API',
+        is_official_deepseek: false,
+        balance_supported: false,
+        is_available: true,
+        model: modelName
+      });
     }
 
     if (pathname === '/api/deepseek/balance') {
@@ -1222,7 +1266,7 @@
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
           body: JSON.stringify({
-            model: 'deepseek-chat',
+            model: 'deepseek-flash',
             messages: [
               {
                 role: 'system',
@@ -1782,10 +1826,11 @@
         if (apiKey) {
           const ep = resolveEndpoints(dbObj.settings.deepseek_base_url);
           const isOfficialDs = ep.chatUrl.includes('deepseek.com');
-          const savedModel = (dbObj.settings.deepseek_model || 'deepseek-chat').trim();
-          const model = isOfficialDs && isNative
-            ? (enableThink ? 'deepseek-reasoner' : 'deepseek-chat')
-            : savedModel;
+          const savedModel = (dbObj.settings.deepseek_model || 'deepseek-flash').trim();
+          const model =
+            isOfficialDs && (savedModel === 'deepseek-chat' || savedModel === 'deepseek-reasoner')
+              ? (enableThink ? 'deepseek-reasoner' : 'deepseek-chat')
+              : savedModel || 'deepseek-flash';
           const memHint = (dbObj.memories[sid] || []).map((m) => `- ${m.content}`).join('\n');
           const sessPromptHint = sess.session_prompt && sess.session_prompt.trim()
             ? `\n【本对话专属独立设定】：\n${sess.session_prompt.trim()}\n`
@@ -1846,6 +1891,13 @@
             stream: true,
             stream_options: { include_usage: true }
           };
+          if (/deepseek-flash|v4(?:\.1)?[-_]?flash/i.test(model)) {
+            if (isOfficialDs) {
+              reqBody.thinking = { type: enableThink ? 'enabled' : 'disabled' };
+            } else if (ep.chatUrl.includes('siliconflow.cn') || ep.chatUrl.includes('aliyuncs.com')) {
+              reqBody.enable_thinking = Boolean(enableThink);
+            }
+          }
           if (model !== 'deepseek-reasoner' && sess.ds_json_mode === 1) {
             reqBody.response_format = { type: 'json_object' };
           }

@@ -105,11 +105,15 @@ def build_otome_blended_presets(kokoro, available_voices: set) -> dict:
     if {"zm_yunjian", "zm_yunxi", "zm_yunyang", "zm_yunxia"}.issubset(available_voices):
         # 1. 漫剧低音霸总音（重胸腔磁性 + 沉稳青叔压迫感）
         presets["otome_boss"] = 0.76 * get_v("zm_yunjian") + 0.24 * get_v("zm_yunyang")
-        # 2. 乙游清冷禁欲音（清透公子底色 + 三分低沉克制苏感）
+        # 2. 乙游温柔骑士音（清润温柔白月光）
+        presets["otome_gentle"] = 0.80 * get_v("zm_yunxi") + 0.20 * get_v("zm_yunyang")
+        # 3. 乙游清冷禁欲音（清透公子底色 + 三分低沉克制苏感）
         presets["otome_cool"] = 0.66 * get_v("zm_yunxi") + 0.34 * get_v("zm_yunjian")
-        # 3. 漫剧腹黑狐狸音（温润公子 + 慵懒微撩尾韵）
+        # 4. 漫剧腹黑狐狸音（温润公子 + 慵懒微撩尾韵）
         presets["otome_fox"] = 0.54 * get_v("zm_yunxi") + 0.26 * get_v("zm_yunyang") + 0.20 * get_v("zm_yunjian")
-        # 4. 乙游阳光奶狗音（清朗少年男音，兼具活力与温柔苏感）
+        # 5. 京圈矜贵家主音（成熟沉稳绅士叔系）
+        presets["otome_daddy"] = 0.60 * get_v("zm_yunyang") + 0.40 * get_v("zm_yunjian")
+        # 6. 乙游阳光奶狗音（清朗少年男音，兼具活力与温柔苏感）
         presets["otome_sunny"] = 0.70 * get_v("zm_yunxia") + 0.30 * get_v("zm_yunxi")
 
     if {"zf_xiaoyi", "zf_xiaoxiao"}.issubset(available_voices):

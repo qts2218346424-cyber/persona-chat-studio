@@ -393,9 +393,9 @@ const DEFAULT_SETTINGS = {
   custom_gateway_model: 'gpt-4o-mini',
   custom_gateway_token: '',
   custom_gateway_headers: '{}',
-  temperature: '0.85',
-  sliding_window_turns: '40',
-  max_recalled_memories: '16',
+  temperature: '0.90',
+  sliding_window_turns: '48',
+  max_recalled_memories: '20',
   proactive_idle_sec: '60',
   tts_provider: 'qwen3_otome',
   tts_api_key: '',
@@ -421,7 +421,7 @@ const PLATFORM_CONFIG_DEFAULTS = {
   register_gift_days: '30', // 新用户注册赠送会员天数（默认 30 天星月月卡会员）
   online_provider_type: 'deepseek', // 'deepseek' | 'custom_gateway'
   deepseek_base_url: 'https://api.deepseek.com/v1/chat/completions',
-  deepseek_model: 'deepseek-chat',
+  deepseek_model: 'deepseek-flash',
   deepseek_api_key: '',
   custom_gateway_url: 'https://api.openai.com/v1/chat/completions',
   custom_gateway_model: 'gpt-4o-mini',
@@ -3151,14 +3151,17 @@ function validateOfficialDeepSeekApiKey(rawKey) {
 }
 
 function validateSafeUserApiBaseUrl(rawUrl) {
-  const str = String(rawUrl || '').trim();
+  let str = String(rawUrl || '').trim();
   if (!str) return OFFICIAL_DEEPSEEK_CHAT_URL;
+  if (!/^https?:\/\//i.test(str) && /^[a-z0-9.-]+\.[a-z]{2,}(?:\/.*)?$/i.test(str)) {
+    str = `https://${str}`;
+  }
 
   let parsed;
   try {
     parsed = new URL(str);
   } catch {
-    const err = new Error('自定义 API 接口地址格式不正确（需以 https:// 开头）');
+    const err = new Error('自定义 API 接口地址格式不正确（需为合法的 https:// 域名地址）');
     err.statusCode = 400;
     throw err;
   }
@@ -3191,8 +3194,20 @@ function validateSafeUserApiBaseUrl(rawUrl) {
   }
 
   const cleanPath = parsed.pathname.replace(/\/+$/, '');
+  // 防呆智能纠偏：若小白误把 DeepSeek 官网控制台网页地址 (platform.deepseek.com/usage 或 api_keys) 填入接口框，自动转为官方 API 调用地址
+  if (
+    host === 'platform.deepseek.com' ||
+    (host === 'api.deepseek.com' && /^\/(?:usage|api_keys|sign_in)/i.test(cleanPath))
+  ) {
+    return OFFICIAL_DEEPSEEK_CHAT_URL;
+  }
   if (!cleanPath || cleanPath === '') {
     return `${parsed.origin}/v1/chat/completions`;
+  }
+  // 防呆智能纠偏：若用户误将同平台音频端点 (/v1/audio/transcriptions 或 /v1/audio/speech) 填入对话接口框，自动归一化为 /v1/chat/completions
+  const audioSubMatch = cleanPath.match(/^(\/v\d+)\/(?:audio|uploads)\/.+$/i);
+  if (audioSubMatch) {
+    return `${parsed.origin}${audioSubMatch[1]}/chat/completions`;
   }
   if (/\/v\d+$/i.test(cleanPath)) {
     return `${parsed.origin}${cleanPath}/chat/completions`;
@@ -3202,11 +3217,50 @@ function validateSafeUserApiBaseUrl(rawUrl) {
 
 function sanitizeUserModelName(rawModel) {
   const clean = String(rawModel || '').trim();
-  if (!clean) return 'deepseek-chat';
+  if (!clean) return 'deepseek-flash';
   if (!/^[A-Za-z0-9._:@/-]{2,100}$/.test(clean)) {
-    return 'deepseek-chat';
+    return 'deepseek-flash';
   }
   return clean;
+}
+
+/**
+ * 根据目标接口域名智能纠偏 DeepSeek V4.1 Flash 模型标识（让小白无需关心不同平台的模型代号写法差异）
+ */
+function normalizeModelForEndpoint(rawModel, rawBaseUrl = '') {
+  const m = sanitizeUserModelName(rawModel);
+  const lowerUrl = String(rawBaseUrl || '').toLowerCase();
+  const isGenericFlashAlias =
+    /^deepseek[-_]?v?4(?:\.1)?[-_]?flash$/i.test(m) || m.toLowerCase() === 'deepseek-flash';
+
+  if (!lowerUrl || lowerUrl.includes('deepseek.com')) {
+    if (isGenericFlashAlias) return 'deepseek-flash';
+    return m;
+  }
+  if (lowerUrl.includes('siliconflow.cn')) {
+    if (
+      isGenericFlashAlias ||
+      m === 'deepseek-chat' ||
+      m === 'deepseek-ai/DeepSeek-V3' ||
+      m === 'deepseek-ai/DeepSeek-V3.2'
+    ) {
+      return 'deepseek-ai/DeepSeek-V4.1-Flash';
+    }
+    return m;
+  }
+  if (lowerUrl.includes('aliyuncs.com')) {
+    if (isGenericFlashAlias || m === 'deepseek-chat' || m === 'deepseek-v3') {
+      return 'deepseek-v4.1-flash';
+    }
+    return m;
+  }
+  if (lowerUrl.includes('openrouter.ai')) {
+    if (isGenericFlashAlias || m === 'deepseek-chat' || m === 'deepseek/deepseek-chat') {
+      return 'deepseek/deepseek-v4.1-flash';
+    }
+    return m;
+  }
+  return m;
 }
 
 /**
@@ -3228,7 +3282,7 @@ function canUserBindOwnDeepSeekKey(userId) {
 function getRawUserOwnDeepSeekConfig(userId) {
   const unlocked = canUserBindOwnDeepSeekKey(userId);
   let apiKey = '';
-  let model = 'deepseek-chat';
+  let model = 'deepseek-flash';
   let baseUrl = OFFICIAL_DEEPSEEK_CHAT_URL;
   if (userId) {
     const rows = db
@@ -3250,6 +3304,7 @@ function getRawUserOwnDeepSeekConfig(userId) {
       }
     }
   }
+  model = normalizeModelForEndpoint(model, baseUrl);
   return {
     unlocked,
     hasKey: Boolean(apiKey),
@@ -3269,7 +3324,7 @@ function getSafeClientSettings(userId) {
   let maxRecall = '16';
   let proactiveIdle = '60';
   let ownKey = '';
-  let ownModel = 'deepseek-chat';
+  let ownModel = 'deepseek-flash';
   let ownBaseUrl = OFFICIAL_DEEPSEEK_CHAT_URL;
 
   const unlocked = canUserBindOwnDeepSeekKey(userId);
@@ -3305,6 +3360,10 @@ function getSafeClientSettings(userId) {
     if (map.max_recalled_memories) maxRecall = map.max_recalled_memories;
     if (map.proactive_idle_sec) proactiveIdle = map.proactive_idle_sec;
   }
+  if (!ownKey && ownModel === 'deepseek-chat') {
+    ownModel = 'deepseek-flash';
+  }
+  ownModel = normalizeModelForEndpoint(ownModel, ownBaseUrl);
 
   // 若用户在 .env 或后台内置了 API Key，且尚未手动锁死 demo，自动默认激活在线通道开箱畅玩
   if (!explicitProviderSaved && !ownKey && platformRaw._builtin_chat_ready) {
@@ -3366,14 +3425,15 @@ function updateSafeClientSettings(userId, patch = {}) {
   }
 
   // 2. 自定义 API 接口地址（留空自动恢复为 DeepSeek 官方端点）
+  let effectiveBaseUrl = existingOwn.baseUrl || OFFICIAL_DEEPSEEK_CHAT_URL;
   if (patch.own_api_base_url !== undefined) {
-    const cleanUrl = validateSafeUserApiBaseUrl(patch.own_api_base_url);
-    stmt.run(userId, 'own_api_base_url', cleanUrl, now);
+    effectiveBaseUrl = validateSafeUserApiBaseUrl(patch.own_api_base_url);
+    stmt.run(userId, 'own_api_base_url', effectiveBaseUrl, now);
   }
 
-  // 3. 个人 API 模型标识（支持官方 deepseek-chat / deepseek-reasoner 及第三方兼容模型名）
+  // 3. 个人 API 模型标识（自动适配各平台 DeepSeek V4.1 Flash 模型代号）
   if (patch.own_deepseek_model !== undefined) {
-    const cleanModel = sanitizeUserModelName(patch.own_deepseek_model);
+    const cleanModel = normalizeModelForEndpoint(patch.own_deepseek_model, effectiveBaseUrl);
     stmt.run(userId, 'own_deepseek_model', cleanModel, now);
   }
 
@@ -3478,7 +3538,7 @@ function getExecutionSettingsForUser(userId, options = {}) {
         ...autoTtsBridge,
         provider: 'deepseek',
         deepseek_base_url: targetUrl,
-        deepseek_model: ownCfg.model || 'deepseek-chat',
+        deepseek_model: ownCfg.model || 'deepseek-flash',
         deepseek_api_key: ownCfg.apiKey,
         custom_gateway_token: '',
         _using_member_own_key: true,
@@ -4279,6 +4339,7 @@ module.exports = {
   validateOfficialDeepSeekApiKey,
   validateSafeUserApiBaseUrl,
   sanitizeUserModelName,
+  normalizeModelForEndpoint,
   isFreeExperienceMode,
   getRegisterGiftConfig,
   OFFICIAL_DEEPSEEK_CHAT_URL,

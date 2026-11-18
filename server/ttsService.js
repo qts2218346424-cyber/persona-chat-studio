@@ -13,15 +13,16 @@ try {
   fs.mkdirSync(CACHE_DIR, { recursive: true });
 } catch {}
 
-// 乙游四大黄金男主原型 & AI 漫剧爆款声线矩阵
+// 国乙六大黄金男主「一人一专属 CV 声纹」 & 二次元女主商业声优矩阵
 const VOICE_CATALOG = {
   otome_boss: {
     id: 'otome_boss',
     style: 'cool',
     isMale: true,
-    label: '🖤 漫剧低音霸总',
-    desc: '暗夜上位者 · 重度胸腔共鸣低音炮与耳畔拉丝气声',
-    defaultSpeed: 0.9,
+    label: '🖤 暗夜低音霸总',
+    desc: '陆沉专属 · 重度胸腔共鸣微哑低音炮与耳畔轻叹气声',
+    defaultSpeed: 0.94,
+    siliconCustomUri: 'speech:otome-boss-luchen:d7fa8mk50mis73ak5h0g:oetqsrvslkagnlovbrtm',
     minimaxVoice: 'male-qn-badao',
     minimaxPitch: -2,
     minimaxSpeed: 0.92,
@@ -31,19 +32,37 @@ const VOICE_CATALOG = {
     openaiVoice: 'ash',
     cosyPrompt: '用AI漫剧霸道深情男主角、极低沉磁性的胸腔共鸣低音炮，带着克制的耳畔呼吸气声与宠溺拉丝尾音缓慢说'
   },
+  otome_gentle: {
+    id: 'otome_gentle',
+    style: 'cool',
+    isMale: true,
+    label: '✨ 乙游温柔骑士',
+    desc: '沈星回/修尔专属 · 清润温软白月光男神音，松弛治愈守护感',
+    defaultSpeed: 0.95,
+    siliconCustomUri: 'speech:otome-gentle-shen:d7fa8mk50mis73ak5h0g:hhjfedybsbunhlkrutoq',
+    minimaxVoice: 'male-qn-qingse',
+    minimaxPitch: 0,
+    minimaxSpeed: 0.95,
+    dashscopeVoice: 'Moon',
+    volcVoice: 'zh_male_taocheng_uranus_bigtts',
+    siliconVoice: 'alex',
+    openaiVoice: 'echo',
+    cosyPrompt: '用温柔治愈、清润松弛又充满坚定守护感的乙女游戏白月光骑士男主语气轻声说'
+  },
   otome_cool: {
     id: 'otome_cool',
     style: 'cool',
     isMale: true,
-    label: '❄️ 乙游清冷禁欲',
-    desc: '高岭之花师尊/医生 · 清润疏离却暗藏护短宠溺',
-    defaultSpeed: 0.93,
+    label: '❄️ 乙游清冷剑尊',
+    desc: '江逾白专属 · 高岭之花清冽禁欲男神音，外冷内热暗藏护短',
+    defaultSpeed: 0.94,
+    siliconCustomUri: 'speech:otome-cool-master:d7fa8mk50mis73ak5h0g:kaqffehuvzgalnmhhtwc',
     minimaxVoice: 'male-qn-jingying',
     minimaxPitch: -1,
     minimaxSpeed: 0.94,
     dashscopeVoice: 'Moon',
     volcVoice: 'zh_male_taocheng_uranus_bigtts',
-    siliconVoice: 'charles',
+    siliconVoice: 'alex',
     openaiVoice: 'echo',
     cosyPrompt: '用乙女游戏高冷禁欲男主角、清润克制却暗藏温柔纵容的清冷公子声优语气轻声说'
   },
@@ -51,9 +70,10 @@ const VOICE_CATALOG = {
     id: 'otome_fox',
     style: 'cool',
     isMale: true,
-    label: '🪭 漫剧腹黑微撩',
-    desc: '慵懒贵公子/少帅 · 似笑非笑、尾音微挑带钩子',
+    label: '🪭 漫剧腹黑公子',
+    desc: '谢清晏专属 · 慵懒华丽风流小侯爷，似笑非笑尾音带钩子',
     defaultSpeed: 0.95,
+    siliconCustomUri: 'speech:otome-fox-xie-v2:d7fa8mk50mis73ak5h0g:tdkboprigjxhixrbpxou',
     minimaxVoice: 'male-qn-qingse',
     minimaxPitch: -1,
     minimaxSpeed: 0.95,
@@ -61,15 +81,33 @@ const VOICE_CATALOG = {
     volcVoice: 'zh_male_m191_uranus_bigtts',
     siliconVoice: 'alex',
     openaiVoice: 'echo',
-    cosyPrompt: '用AI漫剧慵懒腹黑贵公子、似笑非笑带着三分漫不经心撩拨与温柔笑意的声优语气说'
+    cosyPrompt: '用慵懒磁性、似笑非笑带着三分漫不经心撩拨笑意的贵公子语气轻声说'
+  },
+  otome_daddy: {
+    id: 'otome_daddy',
+    style: 'cool',
+    isMale: true,
+    label: '🥂 京圈矜贵家主',
+    desc: '顾修远/霍金斯专属 · 醇厚沉稳爹系引导型熟男音，安全感拉满',
+    defaultSpeed: 0.94,
+    siliconCustomUri: 'speech:otome-daddy-gu-v2:d7fa8mk50mis73ak5h0g:ydodavvcdoksqzxecesa',
+    minimaxVoice: 'male-qn-badao',
+    minimaxPitch: -1,
+    minimaxSpeed: 0.94,
+    dashscopeVoice: 'Kai',
+    volcVoice: 'BV107_streaming',
+    siliconVoice: 'benjamin',
+    openaiVoice: 'ash',
+    cosyPrompt: '用成熟稳重、温和低醇充满包容安全感的京圈绅士家主语气从容温柔地说'
   },
   otome_sunny: {
     id: 'otome_sunny',
     style: 'cute',
     isMale: true,
-    label: '🐾 乙游阳光奶狗',
-    desc: '元气年下学弟/竹马 · 清朗干净少年男音，直球热烈',
+    label: '🐾 阳光电竞少年',
+    desc: '季燃/菲尔专属 · 19岁清朗干净年下小狼狗，直球热烈少年音',
     defaultSpeed: 1.01,
+    siliconCustomUri: 'speech:otome-boy-jiran-v2:d7fa8mk50mis73ak5h0g:kidbwpwdvczudodlonxu',
     minimaxVoice: 'male-qn-daxuesheng',
     minimaxPitch: 0,
     minimaxSpeed: 1.02,
@@ -542,34 +580,48 @@ async function callCommercialCloudTts({ text, voiceMeta, settings = {}, strictTh
     if (provider === 'siliconflow') {
       const url = (settings.tts_endpoint || '').trim() || 'https://api.siliconflow.cn/v1/audio/speech';
       const model = (settings.tts_model || '').trim() || 'FunAudioLLM/CosyVoice2-0.5B';
-      let chosenVoice = customVoiceOverride;
-      if (!chosenVoice) {
-        chosenVoice = `${model}:${voiceMeta.siliconVoice || 'benjamin'}`;
-      } else if (!chosenVoice.includes(':') && !chosenVoice.startsWith('speech:')) {
-        chosenVoice = `${model}:${chosenVoice}`;
+
+      const requestSiliconAudio = async (targetVoice, useInstructPrompt) => {
+        let finalInput = text;
+        if (
+          useInstructPrompt &&
+          !targetVoice.startsWith('speech:') &&
+          model.toLowerCase().includes('cosyvoice2') &&
+          !text.includes('<|endofprompt|>')
+        ) {
+          finalInput = `${voiceMeta.cosyPrompt}<|endofprompt|>${text}`;
+        }
+        return fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${apiKey}`
+          },
+          body: JSON.stringify({
+            model,
+            input: finalInput,
+            voice: targetVoice,
+            response_format: 'mp3',
+            sample_rate: 32000,
+            speed: voiceMeta.defaultSpeed || 0.95
+          }),
+          signal: AbortSignal.timeout(15000)
+        });
+      };
+
+      let primaryVoice = customVoiceOverride;
+      if (!primaryVoice) {
+        primaryVoice = voiceMeta.siliconCustomUri || `${model}:${voiceMeta.siliconVoice || 'alex'}`;
+      } else if (!primaryVoice.includes(':') && !primaryVoice.startsWith('speech:')) {
+        primaryVoice = `${model}:${primaryVoice}`;
       }
 
-      let finalInput = text;
-      if (model.toLowerCase().includes('cosyvoice2') && !text.includes('<|endofprompt|>')) {
-        finalInput = `${voiceMeta.cosyPrompt}<|endofprompt|>${text}`;
+      let resp = await requestSiliconAudio(primaryVoice, !primaryVoice.startsWith('speech:'));
+      // 若其他用户使用了非本账号的 API Key 导致专属 speech: URI 无权限，自动平滑降级到官方预置音色
+      if (!resp.ok && !customVoiceOverride && primaryVoice.startsWith('speech:')) {
+        const fallbackSysVoice = `${model}:${voiceMeta.siliconVoice || 'alex'}`;
+        resp = await requestSiliconAudio(fallbackSysVoice, true);
       }
-
-      const resp = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${apiKey}`
-        },
-        body: JSON.stringify({
-          model,
-          input: finalInput,
-          voice: chosenVoice,
-          response_format: 'mp3',
-          sample_rate: 32000,
-          speed: voiceMeta.defaultSpeed || 0.95
-        }),
-        signal: AbortSignal.timeout(14000)
-      });
 
       if (!resp.ok) {
         const errTxt = await resp.text().catch(() => '');
@@ -773,7 +825,7 @@ async function synthesizeNeuralSpeech({ text, voiceId = 'otome_cool', speed, set
   }
 
   const provider = settings.tts_provider || 'qwen3_otome';
-  const cacheKey = `v2:${provider}:${settings.tts_model || ''}:${settings.tts_cool_voice || ''}:${settings.tts_cute_voice || ''}:${settings.tts_ref_text || ''}:${meta.id}:${cleanedText}`;
+  const cacheKey = `v3:${provider}:${settings.tts_model || ''}:${settings.tts_cool_voice || ''}:${settings.tts_cute_voice || ''}:${settings.tts_ref_text || ''}:${meta.id}:${cleanedText}`;
 
   if (!strictCommercial) {
     const diskHit = readDiskCache(cacheKey);

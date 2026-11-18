@@ -4707,8 +4707,9 @@ body[data-ui-mode="deepseek"] .ambient-aurora,
 
 /* 输入框卡片：自适应纯白圆角卡 / 深灰极客悬浮卡 */
 .app-shell[data-ui-mode="deepseek"] .composer-card {
-  width: min(92vw, 750px) !important;
-  max-width: 750px !important;
+  width: min(100%, 750px) !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
   background: var(--bg-composer) !important;
   border: 1px solid var(--border-strong) !important;
   border-radius: 24px !important;

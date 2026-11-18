@@ -93,20 +93,20 @@ function resolveBuiltinEnvConfig() {
     }
   };
 
-  // 1. 内置对话大模型优先级：自定义直连 > DeepSeek官网 > 硅基流动 > 阿里云百炼
+  // 1. 内置对话大模型优先级：自定义直连 > DeepSeek官网 > 硅基流动 > 阿里云百炼（全面默认 DeepSeek V4.1 Flash）
   if (customChatKey && customChatUrl) {
     result.hasBuiltinChatKey = true;
-    result.builtinChatLabel = `内置自定义网关 (${customChatModel || 'deepseek-chat'})`;
+    result.builtinChatLabel = `内置直连通道 (${customChatModel || 'DeepSeek-V4.1-Flash'})`;
     result.chatPatch = {
       online_provider_type: 'deepseek',
       deepseek_base_url: customChatUrl,
-      deepseek_model: customChatModel || 'deepseek-chat',
+      deepseek_model: customChatModel || 'deepseek-flash',
       deepseek_api_key: customChatKey
     };
   } else if (deepseekKey) {
-    const model = getEnvVal('DEEPSEEK_MODEL') || 'deepseek-chat';
+    const model = getEnvVal('DEEPSEEK_MODEL') || 'deepseek-flash';
     result.hasBuiltinChatKey = true;
-    result.builtinChatLabel = `DeepSeek 官方直连 (${model})`;
+    result.builtinChatLabel = `DeepSeek 官网直连 (V4.1 Flash)`;
     result.chatPatch = {
       online_provider_type: 'deepseek',
       deepseek_base_url: getEnvVal('DEEPSEEK_BASE_URL') || 'https://api.deepseek.com/v1/chat/completions',
@@ -114,9 +114,9 @@ function resolveBuiltinEnvConfig() {
       deepseek_api_key: deepseekKey
     };
   } else if (siliconKey) {
-    const model = getEnvVal('SILICONFLOW_MODEL') || 'deepseek-ai/DeepSeek-V3';
+    const model = getEnvVal('SILICONFLOW_MODEL') || 'deepseek-ai/DeepSeek-V4.1-Flash';
     result.hasBuiltinChatKey = true;
-    result.builtinChatLabel = `硅基流动内置直连 (${model.split('/').pop()})`;
+    result.builtinChatLabel = `硅基流动高速直连 (${model.split('/').pop()})`;
     result.chatPatch = {
       online_provider_type: 'deepseek',
       deepseek_base_url:
@@ -125,9 +125,9 @@ function resolveBuiltinEnvConfig() {
       deepseek_api_key: siliconKey
     };
   } else if (dashscopeKey) {
-    const model = getEnvVal('DASHSCOPE_MODEL') || 'deepseek-v3';
+    const model = getEnvVal('DASHSCOPE_MODEL') || 'deepseek-v4.1-flash';
     result.hasBuiltinChatKey = true;
-    result.builtinChatLabel = `阿里云百炼内置直连 (${model})`;
+    result.builtinChatLabel = `阿里云百炼高速直连 (${model})`;
     result.chatPatch = {
       online_provider_type: 'deepseek',
       deepseek_base_url:

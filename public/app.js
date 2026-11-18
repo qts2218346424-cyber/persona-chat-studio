@@ -1,9 +1,14 @@
 (() => {
-  let initialUiMode = 'deepseek';
+  let initialUiMode = 'roleplay';
   let initialScriptId = 'script_clannad';
   try {
-    const savedMode = localStorage.getItem('ui_mode_v3');
-    if (savedMode === 'roleplay' || savedMode === 'deepseek') initialUiMode = savedMode;
+    const qMode = new URLSearchParams(window.location.search).get('mode');
+    const savedMode = localStorage.getItem('ui_mode_v5');
+    if (qMode === 'roleplay' || qMode === 'deepseek') {
+      initialUiMode = qMode;
+    } else if (savedMode === 'roleplay' || savedMode === 'deepseek') {
+      initialUiMode = savedMode;
+    }
     const savedSc = localStorage.getItem('active_script_id');
     if (savedSc) initialScriptId = savedSc;
   } catch {}
@@ -1429,19 +1434,21 @@
       isFreeMode || isAdmin || m.has_active_card || m.can_bind_own_api || state.settings.vip_own_api_unlocked
     );
     const hasOwnKey = Boolean(state.settings.has_own_deepseek_key);
-    const shortModel = (state.settings.own_deepseek_model || 'deepseek-chat').split('/').pop();
+    const rawOwnModel = state.settings.own_deepseek_model || 'deepseek-flash';
+    const rawLeaf = rawOwnModel.split('/').pop();
+    const shortModel = /^deepseek[-_]?flash$/i.test(rawLeaf) ? 'V4.1-Flash' : rawLeaf;
     const dsComposerChip = document.getElementById('ds-composer-api-chip');
     if (dsComposerChip) {
       if (p === 'own_deepseek' && ownApiUnlocked && hasOwnKey) {
-        dsComposerChip.textContent = `🔑 个人 API 直连 (${shortModel})`;
+        dsComposerChip.textContent = `🔑 我的密钥 (${shortModel})`;
       } else if (hasOwnKey) {
-        dsComposerChip.textContent = '🔑 切回个人 API';
+        dsComposerChip.textContent = '🔑 切回我的密钥';
       } else {
-        dsComposerChip.textContent = '🔑 接入个人 API · 免费';
+        dsComposerChip.textContent = '⚙️ 聊天设置';
       }
     }
 
-    // 同步原生右侧抽屉「🔑 个人 API 直连」状态卡片
+    // 同步原生右侧抽屉「🔑 绑定我自己的密钥」状态卡片
     const dsOwnBadge = document.getElementById('ds-suite-own-api-badge');
     const dsOwnDesc = document.getElementById('ds-suite-own-api-desc');
     const dsOwnBtn = document.getElementById('ds-suite-own-api-btn');
@@ -1449,20 +1456,18 @@
       if (ownApiUnlocked) {
         dsOwnBadge.textContent = hasOwnKey
           ? p === 'own_deepseek'
-            ? '✅ 直连生效中'
-            : '🔓 已绑定密钥'
-          : '🔓 全免费开放';
+            ? '✅ 正在使用'
+            : '🔓 已存密钥'
+          : '免费开放';
         dsOwnDesc.textContent = hasOwnKey
-          ? `已加密保存您的个人 API（${state.settings.own_deepseek_key_masked || 'sk-••••'} · 模型 ${
-              state.settings.own_deepseek_model || 'deepseek-chat'
-            }），DeepSeek 与角色扮演双模式同步可用！`
-          : '当前全免费开放！随时粘贴您自己的 DeepSeek 或兼容 API Key，即可在 DeepSeek 原生对话与角色扮演剧场中直连畅聊！';
+          ? `已安全保存您的密钥（${state.settings.own_deepseek_key_masked || 'sk-••••'} · 当前模型 ${shortModel}），DeepSeek 与角色扮演都能直接用！`
+          : '不填任何东西也能直接免费聊！如果您有自己的 DeepSeek 或硅基流动密钥，粘贴后即可直连最新 DeepSeek V4.1 Flash。';
         dsOwnBtn.textContent = hasOwnKey
-          ? '🔑 管理我的个人 API 配置'
-          : '🔑 立即免费接入我的个人 API';
+          ? '⚙️ 修改或更换我的密钥'
+          : '⚙️ 打开聊天设置 / 绑定密钥';
       } else {
         dsOwnBadge.textContent = '🔒 会员专属';
-        dsOwnDesc.textContent = '使用签到积分兑换会员卡后，即可绑定您自己的 API Key 直连使用。';
+        dsOwnDesc.textContent = '使用每日签到积分免费兑换会员卡后，即可绑定您自己的密钥直连使用。';
         dsOwnBtn.textContent = '👑 前往积分兑卡解锁 ▸';
       }
     }
@@ -1485,7 +1490,12 @@
 
     if (dsTitleEl) dsTitleEl.textContent = state.activeSession?.title || '新对话';
     if (dsModelPill) {
-      dsModelPill.textContent = dsThinkOn ? 'deepseek-reasoner · R1' : 'deepseek-chat · V3';
+      const isCustomThirdModel =
+        p === 'own_deepseek' &&
+        hasOwnKey &&
+        !/deepseek|flash/i.test(rawOwnModel);
+      const basePillName = isCustomThirdModel ? shortModel : 'DeepSeek-V4.1-Flash';
+      dsModelPill.textContent = dsThinkOn ? `${basePillName} · 深度思考` : basePillName;
     }
     if (dsSoulPill) {
       const isPure = !state.activePersona || state.activePersona.id === 'persona_deepseek_official';
@@ -1514,22 +1524,22 @@
     if (chkDsTools) chkDsTools.checked = dsToolsOn;
 
     if (p === 'demo') {
-      gatewaySummaryText.textContent = '梦境轻语 · 免费畅玩（可接入个人API）';
+      gatewaySummaryText.textContent = '免费畅聊模式（可绑定个人密钥）';
       composerChannelBadge.textContent = hasOwnKey
-        ? '🌸 内置免费（点此切个人API）'
-        : '🔑 接入个人 API · 全免费';
+        ? '✨ 免费畅聊（点此切我的密钥）'
+        : '✨ 免费畅聊 · 设置';
     } else if (p === 'own_deepseek') {
       if (ownApiUnlocked && hasOwnKey) {
-        gatewaySummaryText.textContent = `个人 API 直连 (${shortModel})`;
-        composerChannelBadge.textContent = `🔑 个人 API 直连 (${shortModel})`;
+        gatewaySummaryText.textContent = `我的密钥 (${shortModel})`;
+        composerChannelBadge.textContent = `🔑 我的密钥 (${shortModel})`;
         composerChannelBadge.classList.add('online-ready');
       } else if (!ownApiUnlocked) {
-        gatewaySummaryText.textContent = '需会员解锁个人 API';
-        composerChannelBadge.textContent = '🔒 解锁个人 API';
+        gatewaySummaryText.textContent = '需会员解锁个人密钥';
+        composerChannelBadge.textContent = '🔒 解锁个人密钥';
         composerChannelBadge.classList.add('online-locked');
       } else {
-        gatewaySummaryText.textContent = '待填写个人 API Key';
-        composerChannelBadge.textContent = '🔑 点此填写个人 API';
+        gatewaySummaryText.textContent = '待粘贴我的密钥';
+        composerChannelBadge.textContent = '🔑 点此粘贴密钥';
         composerChannelBadge.classList.add('online-locked');
       }
     } else {
@@ -2373,7 +2383,7 @@
                         </div>
                         <div class="field-group flex-1">
                           <label for="adm-ds-model">默认模型标识</label>
-                          <input id="adm-ds-model" type="text" placeholder="deepseek-chat" />
+                          <input id="adm-ds-model" type="text" placeholder="deepseek-flash" />
                         </div>
                       </div>
                       <div class="field-group">
@@ -3289,15 +3299,15 @@
       personaListEl.appendChild(item);
     }
 
-    // 同步原生 DeepSeek 侧栏灵魂挂载下拉框
+    // 同步原生 DeepSeek 侧栏角色切换下拉框（面向小白直观文案）
     const soulSelect = document.getElementById('ds-soul-select');
     if (soulSelect) {
       const currentPid = state.activePersona?.id || 'persona_deepseek_official';
       soulSelect.innerHTML = [
-        '<option value="persona_deepseek_official">🐋 纯享 DeepSeek 官方助手</option>',
+        '<option value="persona_deepseek_official">✨ 自由剧本扮演（按本对话设定开演）</option>',
         ...allRoleplayPersonas.map(
           (p) =>
-            `<option value="${escapeHtml(p.id)}">🎭 原生无模板 · ${escapeHtml(
+            `<option value="${escapeHtml(p.id)}">🎭 扮演角色 · ${escapeHtml(
               p.name.split(/[·\s]/)[0]
             )}</option>`
         )
@@ -4579,8 +4589,17 @@
     if (state.streamingAbort) state.streamingAbort.abort();
   });
 
-  async function sendStreamMessage(text, regenerate = false, editMessageId = 0) {
-    if (state.isStreaming || !state.activeSessionId) return;
+  async function sendStreamMessage(text, regenerate = false, editMessageId = 0, _retried404 = false) {
+    if (state.isStreaming) return;
+    if (!state.activeSessionId) {
+      if (state.uiMode === 'deepseek') {
+        await startNativeDeepSeekSession('persona_deepseek_official');
+      } else {
+        const firstRp = state.personas.find((p) => p.id !== 'persona_deepseek_official');
+        if (firstRp) await startSessionWithPersona(firstRp.id);
+      }
+      if (!state.activeSessionId) return;
+    }
     const isDsUi = state.uiMode === 'deepseek';
     let trimmed = (text || '').trim();
     const stagedFiles = !regenerate && !editMessageId ? [...state.pendingAttachments] : [];
@@ -4714,6 +4733,23 @@
         const errObj = await response.json().catch(() => ({}));
         if (response.status === 401) {
           showAuthScreen();
+          return;
+        }
+        if (response.status === 404 && !_retried404 && !regenerate && !editMessageId) {
+          clearInterval(thinkTimer);
+          state.streamingAbort = null;
+          setStreamingUi(false);
+          liveRow.remove();
+          state.pendingAttachments = stagedFiles;
+          if (isDsUi) {
+            await startNativeDeepSeekSession('persona_deepseek_official');
+          } else {
+            const firstRp = state.personas.find((p) => p.id !== 'persona_deepseek_official');
+            if (firstRp) await startSessionWithPersona(firstRp.id);
+          }
+          if (state.activeSessionId) {
+            await sendStreamMessage(trimmed, false, 0, true);
+          }
           return;
         }
         if (errObj.membership) {
@@ -4890,6 +4926,11 @@
             renderLorebooks();
             renderTelemetryAndMemories();
             renderDeepSeekSuiteTelemetry();
+            window.DeepSeekMonitorPlugin?.sync({
+              settings: state.settings,
+              messages: state.messages,
+              forceBalanceRefresh: true
+            });
             renderMessages();
           } else if (eventName === 'error') {
             throw new Error(payload.message || '流式推演中断');
@@ -5686,8 +5727,8 @@
     const maskBadge = document.getElementById('own-api-mask-badge');
     if (maskBadge) {
       maskBadge.textContent = hasSavedKey
-        ? `✅ 已加密保存 (${s.own_deepseek_key_masked || 'sk-••••'})`
-        : '🔓 全免费自由接入';
+        ? `✅ 已保存密钥 (${s.own_deepseek_key_masked || 'sk-••••'})`
+        : '免费开放';
     }
 
     const clearWrap = document.getElementById('clear-own-ds-key-wrap');
@@ -5705,29 +5746,77 @@
         eyeBtn.setAttribute('aria-pressed', 'false');
       }
       keyInp.placeholder = hasSavedKey
-        ? `已绑定 ${s.own_deepseek_key_masked}（留空保持不变，输入新密钥则覆盖更新）`
-        : '粘贴您的 API Key（例如 sk-...，输入后自动切换至直连通道）';
+        ? `当前已保存 ${s.own_deepseek_key_masked}（不改请留空，粘贴新密钥则自动替换）`
+        : '把从 DeepSeek 官网复制来的 sk-... 密钥粘贴到这里，点保存就配好了';
     }
 
     const modelInp = document.getElementById('st-own-ds-model');
     if (modelInp) {
-      modelInp.value = s.own_deepseek_model || 'deepseek-chat';
+      modelInp.value = s.own_deepseek_model || 'deepseek-flash';
     }
 
     const urlInp = document.getElementById('st-own-api-url');
     const urlFold = document.getElementById('own-api-custom-url-fold');
     const defaultOfficialUrl = 'https://api.deepseek.com/v1/chat/completions';
+    const savedUrl = s.own_api_base_url || defaultOfficialUrl;
     if (urlInp) {
-      const savedUrl = s.own_api_base_url || defaultOfficialUrl;
-      urlInp.value = savedUrl === defaultOfficialUrl ? '' : savedUrl;
-      if (urlFold) {
-        urlFold.open = Boolean(savedUrl && savedUrl !== defaultOfficialUrl);
+      urlInp.value = savedUrl;
+    }
+
+    // 站内已配好免填密钥时的温和提示（不暴露 .env 等程序员术语）
+    const envBanner = document.getElementById('builtin-env-ready-banner');
+    if (envBanner) {
+      if (s.builtin_api_ready || s.builtin_tts_ready) {
+        envBanner.textContent = '✅ 本站已为您配好免填密钥的对话与语音服务，不填下面这项也能直接免费畅聊！';
+        envBanner.classList.remove('hidden');
+      } else {
+        envBanner.classList.add('hidden');
       }
     }
+
+    const lowerSavedUrl = savedUrl.toLowerCase();
+    let matchedPreset = 'custom';
+    if (!s.own_api_base_url || lowerSavedUrl.includes('deepseek.com')) matchedPreset = 'deepseek';
+    else if (lowerSavedUrl.includes('siliconflow.cn')) matchedPreset = 'siliconflow';
+    else if (lowerSavedUrl.includes('aliyuncs.com')) matchedPreset = 'dashscope';
+    else if (lowerSavedUrl.includes('openrouter.ai')) matchedPreset = 'openrouter';
+
+    // 仅当用户自定义了非四大主流平台的中转站网址时才展开高级选项，保证小白界面干净清爽
+    if (urlFold) {
+      urlFold.open = matchedPreset === 'custom';
+    }
+
+    const tipEl = document.getElementById('preset-friendly-tip');
+    document.querySelectorAll('.api-preset-chip').forEach((chip) => {
+      const isMatch = chip.dataset.preset === matchedPreset;
+      chip.classList.toggle('active', isMatch);
+      if (isMatch && tipEl && chip.dataset.tip) {
+        tipEl.textContent = chip.dataset.tip;
+      }
+    });
+    if (matchedPreset === 'custom' && tipEl) {
+      tipEl.textContent = `✓ 当前使用自定义中转站网址（模型：${modelInp?.value || 'deepseek-flash'}）`;
+    }
+    window.__preferCloudAsr =
+      lowerSavedUrl.includes('siliconflow.cn') ||
+      String(s.builtin_chat_label || '').includes('硅基流动');
+  }
+
+  function normalizeSettingsUrlInput(rawUrl) {
+    const clean = String(rawUrl || '').trim();
+    if (!clean) return '';
+    if (!/^https?:\/\//i.test(clean) && /^[a-z0-9.-]+\.[a-z]{2,}(?:\/.*)?$/i.test(clean)) {
+      return `https://${clean}`;
+    }
+    return clean;
   }
 
   function collectSettingsPayload() {
     const unlocked = isMemberOwnApiUnlocked();
+    const safeWin = Math.min(120, Math.max(4, parseInt(document.getElementById('st-window')?.value || '40', 10) || 40));
+    const safeRec = Math.min(40, Math.max(2, parseInt(document.getElementById('st-recall')?.value || '16', 10) || 16));
+    const safeTemp = Math.min(2.0, Math.max(0.1, parseFloat(document.getElementById('st-temp')?.value || '0.7') || 0.7));
+
     const payload = {
       provider:
         providerSelect.value === 'own_deepseek' && unlocked
@@ -5735,9 +5824,9 @@
           : providerSelect.value === 'online'
           ? 'online'
           : 'demo',
-      sliding_window_turns: document.getElementById('st-window').value,
-      max_recalled_memories: document.getElementById('st-recall').value,
-      temperature: document.getElementById('st-temp').value
+      sliding_window_turns: String(safeWin),
+      max_recalled_memories: String(safeRec),
+      temperature: String(Number(safeTemp.toFixed(2)))
     };
 
     const clearOwn = Boolean(document.getElementById('st-clear-own-ds-key')?.checked);
@@ -5750,12 +5839,15 @@
       const ownKeyVal = document.getElementById('st-own-ds-key')?.value.trim() || '';
       if (ownKeyVal) {
         payload.own_deepseek_api_key = ownKeyVal;
+        payload.provider = 'own_deepseek';
       }
       const ownModelVal = document.getElementById('st-own-ds-model')?.value.trim();
       if (ownModelVal !== undefined) {
-        payload.own_deepseek_model = ownModelVal || 'deepseek-chat';
+        payload.own_deepseek_model = ownModelVal || 'deepseek-flash';
       }
-      const ownUrlVal = document.getElementById('st-own-api-url')?.value.trim() ?? '';
+      const ownUrlVal =
+        normalizeSettingsUrlInput(document.getElementById('st-own-api-url')?.value) ||
+        'https://api.deepseek.com/v1/chat/completions';
       payload.own_api_base_url = ownUrlVal;
     }
     return payload;
@@ -5765,7 +5857,7 @@
     const win = String(document.getElementById('st-window')?.value || '40');
     const tempNum = parseFloat(document.getElementById('st-temp')?.value || '0.7');
     let activeKey = 'balanced';
-    if (Number(win) >= 72) {
+    if (Number(win) >= 72 || Number(win) === 24) {
       activeKey = 'deep_memory';
     } else if (tempNum >= 0.95) {
       activeKey = 'dramatic';
@@ -5787,6 +5879,9 @@
   function openSettingsModal(focusOwnApi = false) {
     const s = state.settings || {};
     const unlocked = isMemberOwnApiUnlocked();
+    const settingsFormEl = document.getElementById('settings-form');
+    if (settingsFormEl) settingsFormEl.noValidate = true;
+    testResultBox?.classList.add('hidden');
     syncOwnApiPrivilegeUi();
 
     if (s.provider === 'own_deepseek' && unlocked) {
@@ -5797,9 +5892,25 @@
       providerSelect.value = 'demo';
     }
 
-    document.getElementById('st-window').value = s.sliding_window_turns || '40';
-    document.getElementById('st-recall').value = s.max_recalled_memories || '16';
-    document.getElementById('st-temp').value = s.temperature || '0.7';
+    const winEl = document.getElementById('st-window');
+    const recEl = document.getElementById('st-recall');
+    const tmpEl = document.getElementById('st-temp');
+    if (winEl) {
+      winEl.min = '4';
+      winEl.max = '120';
+      winEl.value = String(Math.min(120, Math.max(4, parseInt(s.sliding_window_turns || '40', 10) || 40)));
+    }
+    if (recEl) {
+      recEl.min = '2';
+      recEl.max = '40';
+      recEl.value = String(Math.min(40, Math.max(2, parseInt(s.max_recalled_memories || '16', 10) || 16)));
+    }
+    if (tmpEl) {
+      tmpEl.step = 'any';
+      tmpEl.min = '0.1';
+      tmpEl.max = '2.0';
+      tmpEl.value = String(Math.min(2.0, Math.max(0.1, parseFloat(s.temperature || '0.7') || 0.7)));
+    }
     syncEasyVibeSelection();
 
     const advFold = document.getElementById('advanced-tech-settings-fold');
@@ -5833,12 +5944,14 @@
     const btn = e.currentTarget;
     const origText = btn.textContent;
     btn.disabled = true;
-    btn.textContent = '⏳ 正在测试 API 连通性…';
+    btn.textContent = '⏳ 正在帮您测试连接…';
     testResultBox?.classList.add('hidden');
     try {
       const draftKey = document.getElementById('st-own-ds-key')?.value.trim() || '';
-      const draftUrl = document.getElementById('st-own-api-url')?.value.trim() || '';
-      const draftModel = document.getElementById('st-own-ds-model')?.value.trim() || 'deepseek-chat';
+      const draftUrl =
+        document.getElementById('st-own-api-url')?.value.trim() ||
+        'https://api.deepseek.com/v1/chat/completions';
+      const draftModel = document.getElementById('st-own-ds-model')?.value.trim() || 'deepseek-flash';
       const res = await apiJson('/api/settings/verify-own-key', {
         method: 'POST',
         body: JSON.stringify({
@@ -5868,9 +5981,37 @@
     }
   });
 
+  // 绑定个人密钥平台一键按钮（点击自动填好平台网址与最新 V4.1 Flash 模型，小白只需粘贴密钥）
+  document.querySelectorAll('.api-preset-chip').forEach((chip) => {
+    chip.addEventListener('click', () => {
+      document.querySelectorAll('.api-preset-chip').forEach((c) => c.classList.toggle('active', c === chip));
+      const urlInp = document.getElementById('st-own-api-url');
+      const modelInp = document.getElementById('st-own-ds-model');
+      const keyInp = document.getElementById('st-own-ds-key');
+      const tipEl = document.getElementById('preset-friendly-tip');
+      if (urlInp) urlInp.value = chip.dataset.url || 'https://api.deepseek.com/v1/chat/completions';
+      if (modelInp) modelInp.value = chip.dataset.model || 'deepseek-flash';
+      if (tipEl && chip.dataset.tip) tipEl.textContent = chip.dataset.tip;
+      if (isMemberOwnApiUnlocked() && keyInp) {
+        keyInp.focus();
+      }
+    });
+  });
+
+  // 小白粘贴密钥后自动将上方连接方式切到「🔑 用我自己的密钥」，无需手动再改下拉框
+  document.getElementById('st-own-ds-key')?.addEventListener('input', (e) => {
+    const val = e.target.value.trim();
+    if (val && isMemberOwnApiUnlocked() && providerSelect.value !== 'own_deepseek') {
+      providerSelect.value = 'own_deepseek';
+      switchProviderPane('own_deepseek');
+    }
+  });
+
   window.__openCommercialTtsSettings = () => {
     if (state.user?.is_admin) {
       openAdminConsoleModal('atab-gateway');
+    } else {
+      openSettingsModal(true);
     }
   };
   window.__collectSettingsDraft = collectSettingsPayload;
@@ -5879,34 +6020,74 @@
   document.getElementById('close-settings-dialog').addEventListener('click', () => settingsDialog.close());
   document.getElementById('cancel-settings-dialog').addEventListener('click', () => settingsDialog.close());
 
-  document.getElementById('settings-form').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    try {
-      const res = await apiJson('/api/settings', {
-        method: 'PUT',
-        body: JSON.stringify(collectSettingsPayload())
-      });
-      state.settings = res.settings;
-      renderUserAndMembership();
-      settingsDialog.close();
-      if (state.activeSessionId) {
-        await loadSession(state.activeSessionId);
+  const settingsFormNode = document.getElementById('settings-form');
+  if (settingsFormNode) {
+    settingsFormNode.noValidate = true;
+    settingsFormNode.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const submitBtn =
+        document.getElementById('save-settings-submit-btn') ||
+        settingsFormNode.querySelector('button[type="submit"]');
+      const origBtnLabel = submitBtn ? submitBtn.textContent : '✨ 保存设置';
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = '⏳ 正在保存…';
       }
-      if (res.settings.provider === 'own_deepseek') {
-        showToast('🔑 您的个人 API 直连已保存生效！DeepSeek 原生对话与角色扮演剧场均可直连畅聊！');
-      } else {
-        showToast('✨ 对话通道与聊天偏好设置已保存');
+      testResultBox?.classList.add('hidden');
+
+      try {
+        const draftPayload = collectSettingsPayload();
+        const abortCtrl = new AbortController();
+        const timeoutId = setTimeout(() => abortCtrl.abort(), 12000);
+        let res;
+        try {
+          res = await apiJson('/api/settings', {
+            method: 'POST',
+            body: JSON.stringify(draftPayload),
+            signal: abortCtrl.signal
+          });
+        } finally {
+          clearTimeout(timeoutId);
+        }
+
+        state.settings = res.settings;
+        renderUserAndMembership();
+        window.DeepSeekMonitorPlugin?.sync({
+          settings: state.settings,
+          messages: state.messages,
+          forceBalanceRefresh: true
+        });
+        settingsDialog.close();
+
+        if (res.settings.provider === 'own_deepseek') {
+          showToast('🔑 您的个人 API 直连已保存生效！DeepSeek 原生对话与角色扮演剧场均可直连畅聊！');
+        } else {
+          showToast('✨ 对话通道与聊天偏好设置已保存');
+        }
+
+        if (state.activeSessionId) {
+          loadSession(state.activeSessionId).catch(() => {});
+        }
+      } catch (err) {
+        const friendlyMsg =
+          err?.name === 'AbortError'
+            ? '保存请求超时，请检查网络连接后重试'
+            : err?.message || '保存设置失败';
+        if (testResultBox) {
+          testResultBox.className = 'test-result-box err';
+          testResultBox.textContent = `❌ ${friendlyMsg}`;
+          testResultBox.classList.remove('hidden');
+          testResultBox.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+        showToast(`⚠️ ${friendlyMsg}`);
+      } finally {
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = origBtnLabel;
+        }
       }
-    } catch (err) {
-      if (testResultBox) {
-        testResultBox.className = 'test-result-box err';
-        testResultBox.textContent = `❌ ${err.message}`;
-        testResultBox.classList.remove('hidden');
-      } else {
-        showToast(`⚠️ ${err.message}`);
-      }
-    }
-  });
+    });
+  }
 
   // ================= 12. 同类标杆增强模块：主控人设、角色广场、番外小剧场与心动语录签 =================
 
@@ -7206,14 +7387,18 @@
 
   document.getElementById('comp-cycle-skin').addEventListener('click', () => {
     const cur = state.companion || { mode: 'cool', skinKey: 'cool_silver' };
-    const nextSkin =
-      cur.mode === 'cool'
-        ? cur.skinKey === 'cool_silver'
-          ? 'cool_dark'
-          : 'cool_silver'
-        : cur.skinKey === 'cute_boy'
-        ? 'cute_chibi'
-        : 'cute_boy';
+    const isFemale = Boolean(
+      cur.isFemale || cur.skinKey === 'cool_lady' || cur.skinKey === 'cute_girl'
+    );
+    const coolOrder = isFemale
+      ? ['cool_lady', 'cool_silver', 'cool_dark']
+      : ['cool_silver', 'cool_dark', 'cool_lady'];
+    const cuteOrder = isFemale
+      ? ['cute_girl', 'cute_chibi', 'cute_boy']
+      : ['cute_boy', 'cute_chibi', 'cute_girl'];
+    const order = cur.mode === 'cool' ? coolOrder : cuteOrder;
+    const idx = order.indexOf(cur.skinKey);
+    const nextSkin = order[(idx + 1) % order.length];
     updateCompanionConfig({ mode: cur.mode, skinKey: nextSkin, customImg: '' });
   });
 
@@ -7288,7 +7473,7 @@
     const isDs = mode === 'deepseek';
     state.uiMode = isDs ? 'deepseek' : 'roleplay';
     try {
-      localStorage.setItem('ui_mode_v3', state.uiMode);
+      localStorage.setItem('ui_mode_v5', state.uiMode);
     } catch {}
 
     appShell.dataset.uiMode = state.uiMode;
@@ -7307,11 +7492,11 @@
       tabDs.setAttribute('aria-selected', String(isDs));
     }
     if (quickJumpBtn) {
-      quickJumpBtn.textContent = isDs ? '🌸 切换回恋庭沉浸扮演' : '🐋 切换至原生 DeepSeek';
+      quickJumpBtn.textContent = isDs ? '🌸 切换回恋庭沉浸扮演' : '🐋 切换至极简原生模式';
     }
 
     chatInput.placeholder = isDs
-      ? '给 DeepSeek 发送消息'
+      ? '直接写下你的开场白、故事设定或台词即可开演（支持不同对话独立设定与记忆）…'
       : '和他说点什么吧…（支持 *星号* 描写神态动作，Enter 发送）';
     syncComposerEmptyState();
 
@@ -7407,7 +7592,7 @@
     const next = state.activeSession?.ds_thinking === 0;
     patchActiveSessionFlag(
       { ds_thinking: next },
-      next ? '⚛️ 已开启 DeepSeek-R1 深度思考模式' : '⚡ 已切换为 DeepSeek-V3 极速直出模式'
+      next ? '⚛️ 已开启深度思考模式（DeepSeek V4.1 Flash）' : '⚡ 已切换为极速直出模式（DeepSeek V4.1 Flash）'
     );
   });
 
@@ -7778,31 +7963,47 @@
     if (state.lastSandboxCode) openCodeSandboxPreview(state.lastSandboxCode, true);
   });
 
-  // 空对话居中欢迎态 5 大官网场景胶囊一键体验
+  // 空对话居中欢迎态：4 大零门槛剧本开演快捷胶囊（无需小白配置，点一下立即开玩）
+  let storyOpenerCursor = 0;
+  const STORY_QUICK_OPENERS = [
+    '*推开街角旧书店挂着铜铃的木门，抖落伞尖的雨水抬头望向柜台后的你* 没想到这么大的雨，你居然真的还留着这盏灯等我。',
+    '【平行世界开局】在这个时空里，我们是表面互不相识、实则各自握有半块信物的搭档。*在晚宴露台与你擦肩而过时压低声音* 今晚十二点钟声响起前，你打算先亮底牌吗？',
+    '*将那封没有署名的旧信笺轻轻推到你桌前，托着腮观察你的神情* 别装作不记得啦，三年前在海边钟楼拉过勾的约定，现在还作数吗？'
+  ];
   document.querySelectorAll('.ds-quick-scene-pill').forEach((pill) => {
-    pill.addEventListener('click', async () => {
+    pill.addEventListener('click', () => {
       const sc = pill.dataset.dsScene;
-      if (sc === 'upload') {
-        dsAttachmentInput.click();
+      if (sc === 'story-opener') {
+        chatInput.value = STORY_QUICK_OPENERS[storyOpenerCursor % STORY_QUICK_OPENERS.length];
+        storyOpenerCursor += 1;
+        syncComposerEmptyState();
+        chatInput.focus();
         return;
       }
-      if (sc === 'math') {
-        if (state.activeSession?.ds_thinking === 0) {
-          await patchActiveSessionFlag({ ds_thinking: true });
-        }
-        chatInput.value = '请一步步推导无穷区间高斯积分公式与正态分布归一化常数，并给出工程意义';
-      } else if (sc === 'html') {
-        chatInput.value = '请帮我写一个单文件 HTML5 Canvas 星际粒子引力场交互网页，方便我在右侧实时预览';
-      } else if (sc === 'search') {
-        if (state.activeSession?.ds_search !== 1) {
-          await patchActiveSessionFlag({ ds_search: true }, '🌐 已自动点亮实时联网搜索');
-        }
-        chatInput.value = '帮我联网检索总结 DeepSeek R1 与盘古 Context Caching 技术架构的核心特点';
-      } else if (sc === 'url') {
-        chatInput.value = '请帮我自动抓取阅读这个网页的核心内容并提炼要点：https://zh.wikipedia.org/wiki/人工智能';
+      if (sc === 'custom-setting') {
+        openRightTab('persona-tab');
+        setTimeout(() => document.getElementById('session-prompt-input')?.focus(), 60);
+        return;
       }
-      syncComposerEmptyState();
-      chatInput.focus();
+      if (sc === 'pick-persona') {
+        const pop = document.getElementById('ds-user-popover');
+        try {
+          if (pop && typeof pop.showPopover === 'function') {
+            pop.showPopover();
+            setTimeout(() => document.getElementById('ds-soul-select')?.focus(), 50);
+            return;
+          }
+        } catch {}
+        openRightTab('persona-tab');
+        return;
+      }
+      if (sc === 'import-md') {
+        openImportHistoryModal();
+        return;
+      }
+      if (sc === 'upload') {
+        dsAttachmentInput.click();
+      }
     });
   });
 
@@ -8076,7 +8277,15 @@
     if (elHit) elHit.textContent = sumHit;
     if (elMiss) elMiss.textContent = sumMiss;
     if (elReason) elReason.textContent = sumReason;
+
+    window.DeepSeekMonitorPlugin?.sync({
+      settings: state.settings,
+      messages: state.messages,
+      forceBalanceRefresh: false
+    });
   }
+
+  window.__openOwnApiSettings = () => openSettingsModal(true);
 
   document.getElementById('open-ds-inspector-btn')?.addEventListener('click', () => {
     if (appShell.classList.contains('right-collapsed')) {

@@ -21,6 +21,7 @@ const {
   validateOfficialDeepSeekApiKey,
   validateSafeUserApiBaseUrl,
   sanitizeUserModelName,
+  normalizeModelForEndpoint,
   isFreeExperienceMode,
   OFFICIAL_DEEPSEEK_CHAT_URL,
   getRawPlatformConfigInternal,
@@ -1545,6 +1546,61 @@ async function handleApi(req, res, pathname, parsedUrl) {
     return;
   }
 
+  // 高精度语音转文字 (ASR) 接口：内置支持硅基流动 Qwen/Qwen3-ASR-1.7B 等兼容端点
+  if (method === 'POST' && pathname === '/api/asr/transcribe') {
+    const body = await readJsonBody(req, 8 * 1024 * 1024);
+    const dataUrl = String(body.audio_data_url || '').trim();
+    const match = dataUrl.match(/^data:(audio\/[^;]+)(?:;[^,]*)?;base64,(.+)$/i);
+    if (!match) {
+      return sendJson(res, 400, { ok: false, error: '未收到有效录音音频数据' });
+    }
+
+    const execSettings = getExecutionSettingsForUser(userId);
+    const asrCfg = execSettings._builtin_asr;
+    if (!asrCfg || !asrCfg.enabled || !asrCfg.apiKey) {
+      return sendJson(res, 400, {
+        ok: false,
+        error: '填入硅基流动 API Key 后即可自动启用 Qwen3-ASR-1.7B 语音识别'
+      });
+    }
+
+    try {
+      const mime = match[1].toLowerCase();
+      const ext = mime.includes('mp4') ? 'm4a' : mime.includes('wav') ? 'wav' : 'webm';
+      const audioBuf = Buffer.from(match[2], 'base64');
+      const form = new FormData();
+      form.append('model', asrCfg.model || 'Qwen/Qwen3-ASR-1.7B');
+      form.append('file', new Blob([audioBuf], { type: mime }), `voice_input.${ext}`);
+
+      const resp = await fetch(asrCfg.endpoint || 'https://api.siliconflow.cn/v1/audio/transcriptions', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${asrCfg.apiKey}`
+        },
+        body: form,
+        signal: AbortSignal.timeout(15000)
+      });
+
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        return sendJson(res, 400, {
+          ok: false,
+          error: sanitizePublicErrorMessage(new Error(data?.message || `语音识别返回异常 (${resp.status})`))
+        });
+      }
+      return sendJson(res, 200, {
+        ok: true,
+        text: String(data?.text || '').trim(),
+        model: asrCfg.model || 'Qwen/Qwen3-ASR-1.7B'
+      });
+    } catch (err) {
+      return sendJson(res, 400, {
+        ok: false,
+        error: sanitizePublicErrorMessage(err, '语音识别请求超时，请重试或直接打字')
+      });
+    }
+  }
+
   // 测试商业配音音源连通性并返回试听音频（严格限站长访问）
   if (method === 'POST' && pathname === '/api/tts/test') {
     if (!currentUser.is_admin) {
@@ -1710,7 +1766,7 @@ async function handleApi(req, res, pathname, parsedUrl) {
             ...(cred.headers || { Authorization: `Bearer ${cred.apiKey}` })
           },
           body: JSON.stringify({
-            model: cred.preferredModel || cred.chatModel || 'deepseek-chat',
+            model: cred.preferredModel || cred.chatModel || 'deepseek-flash',
             messages: [
               { role: 'system', content: sysPrompt },
               { role: 'user', content: userSpoken || '（轻轻开口叫了你一声）' }
@@ -2169,7 +2225,103 @@ async function handleApi(req, res, pathname, parsedUrl) {
     }
   }
 
-  // ========= 8. 网关配置、连通性测试与 DeepSeek 官网全家桶 API 端点（严格区分站长与普通用户） =========
+  // ========= 8. 网关配置、连通性测试与个人 DeepSeek 官方 API 余额探针（严格物理隔离） =========
+  if (method === 'GET' && pathname === '/api/deepseek/my-balance') {
+    const safePrefs = getSafeClientSettings(userId);
+    const savedOwn = getRawUserOwnDeepSeekConfig(userId);
+    const isUsingOwn = safePrefs.provider === 'own_deepseek' && Boolean(savedOwn.apiKey);
+    if (!isUsingOwn) {
+      return sendJson(res, 200, {
+        enabled: false,
+        reason: 'not_using_own_key'
+      });
+    }
+
+    const baseUrl = String(savedOwn.baseUrl || OFFICIAL_DEEPSEEK_CHAT_URL).trim();
+    const lowerBase = baseUrl.toLowerCase();
+    const modelName = savedOwn.model || 'deepseek-chat';
+
+    // 1) DeepSeek 官方 API 实时余额查询 (GET https://api.deepseek.com/user/balance)
+    if (lowerBase.includes('deepseek.com')) {
+      try {
+        const balData = await fetchDeepSeekBalance({
+          provider: 'deepseek',
+          deepseek_base_url: baseUrl,
+          deepseek_api_key: savedOwn.apiKey
+        });
+        const infos = Array.isArray(balData.balance_infos) ? balData.balance_infos : [];
+        const cnyInfo = infos.find((x) => x.currency === 'CNY') || infos[0] || null;
+        const currency = cnyInfo?.currency || 'CNY';
+        const symbol = currency === 'USD' ? '$' : '¥';
+        return sendJson(res, 200, {
+          enabled: true,
+          provider_label: 'DeepSeek 官方 API',
+          is_official_deepseek: true,
+          balance_supported: Boolean(cnyInfo && balData.source === 'live'),
+          is_available: balData.is_available !== false,
+          currency,
+          symbol,
+          total_balance: cnyInfo ? String(cnyInfo.total_balance ?? '0.00') : null,
+          granted_balance: cnyInfo ? String(cnyInfo.granted_balance ?? '0.00') : '0.00',
+          topped_up_balance: cnyInfo ? String(cnyInfo.topped_up_balance ?? '0.00') : '0.00',
+          model: modelName,
+          checked_at: Date.now()
+        });
+      } catch (err) {
+        return sendJson(res, 200, {
+          enabled: true,
+          provider_label: 'DeepSeek 官方 API',
+          is_official_deepseek: true,
+          balance_supported: false,
+          model: modelName,
+          error: sanitizePublicErrorMessage(err, '暂时无法读取余额')
+        });
+      }
+    }
+
+    // 2) 兼容硅基流动个人 API 余额查询 (GET https://api.siliconflow.cn/v1/user/info)
+    if (lowerBase.includes('siliconflow.cn')) {
+      try {
+        const sfRes = await fetch('https://api.siliconflow.cn/v1/user/info', {
+          headers: { Authorization: `Bearer ${savedOwn.apiKey}` },
+          signal: AbortSignal.timeout(8000)
+        });
+        if (sfRes.ok) {
+          const sfJson = await sfRes.json().catch(() => ({}));
+          const uData = sfJson?.data || {};
+          const totalBal = uData.totalBalance ?? uData.balance ?? null;
+          if (totalBal !== null && totalBal !== undefined) {
+            return sendJson(res, 200, {
+              enabled: true,
+              provider_label: 'SiliconFlow API',
+              is_official_deepseek: false,
+              balance_supported: true,
+              is_available: Number(totalBal) > 0,
+              currency: 'CNY',
+              symbol: '¥',
+              total_balance: Number(totalBal).toFixed(2),
+              granted_balance: uData.balance !== undefined ? Number(uData.balance).toFixed(2) : '0.00',
+              topped_up_balance: uData.chargeBalance !== undefined ? Number(uData.chargeBalance).toFixed(2) : '0.00',
+              model: modelName,
+              checked_at: Date.now()
+            });
+          }
+        }
+      } catch {}
+    }
+
+    // 3) 其他兼容网关：正常激活插件展示实时 Context Cache 缓冲命中率与 Token 统计
+    return sendJson(res, 200, {
+      enabled: true,
+      provider_label: '个人兼容 API',
+      is_official_deepseek: false,
+      balance_supported: false,
+      is_available: true,
+      model: modelName,
+      checked_at: Date.now()
+    });
+  }
+
   if (method === 'GET' && pathname === '/api/deepseek/balance') {
     if (!currentUser.is_admin) {
       return sendJson(res, 403, { error: '权限不足：平台 API 账户余额仅限站长查看' });
@@ -2212,7 +2364,7 @@ async function handleApi(req, res, pathname, parsedUrl) {
     }
   }
 
-  if (method === 'PUT' && pathname === '/api/settings') {
+  if ((method === 'PUT' || method === 'POST') && pathname === '/api/settings') {
     const body = await readJsonBody(req);
     try {
       const updated = updateSafeClientSettings(userId, body);
@@ -2245,13 +2397,12 @@ async function handleApi(req, res, pathname, parsedUrl) {
     if (!candidateKey) {
       return sendJson(res, 400, {
         ok: false,
-        error: '请先输入您的 API Key（例如以 sk- 开头的密钥）'
+        error: '请先把您的密钥粘贴到输入框里（一般是以 sk- 开头的一串字母数字）'
       });
     }
 
     let validKey;
     let targetBaseUrl = savedOwn.baseUrl || OFFICIAL_DEEPSEEK_CHAT_URL;
-    const targetModel = sanitizeUserModelName(body.own_deepseek_model || savedOwn.model || 'deepseek-chat');
     try {
       validKey = validateOfficialDeepSeekApiKey(candidateKey);
       if (body.own_api_base_url !== undefined) {
@@ -2260,6 +2411,10 @@ async function handleApi(req, res, pathname, parsedUrl) {
     } catch (err) {
       return sendJson(res, 400, { ok: false, error: err.message });
     }
+    const targetModel = normalizeModelForEndpoint(
+      sanitizeUserModelName(body.own_deepseek_model || savedOwn.model || 'deepseek-flash'),
+      targetBaseUrl
+    );
 
     const isOfficialDs = targetBaseUrl.includes('deepseek.com');
     try {
@@ -2278,52 +2433,70 @@ async function handleApi(req, res, pathname, parsedUrl) {
             is_available: Boolean(balData.is_available),
             balance_text: balText,
             message: firstInfo
-              ? `✅ DeepSeek 官方 API 验证通过！可用余额：${balText}（已在 DeepSeek 与角色扮演模式就绪）${
-                  balData.is_available ? '' : ' —— 提示：当前账户余额为 0，请前往官网充值'
+              ? `✅ 连接成功！您的 DeepSeek 官网密钥可以正常使用（已默认接入最新 DeepSeek V4.1 Flash，账户余额：${balText}）${
+                  balData.is_available ? '，点右下角「保存设置」就能开始聊天啦！' : ' —— 温馨提醒：当前账户余额为 0，去官网充一点点就能聊啦'
                 }`
-              : '✅ DeepSeek 官方 API Key 握手验证通过！'
+              : '✅ 连接成功！您的 DeepSeek 密钥已准备就绪，点右下角「保存设置」即可开始聊天！'
           });
         }
       }
 
-      // 通用对话端点握手探测（兼容官方及硅基流动/火山方舟/OpenRouter等任意 OpenAI 兼容网关）
+      // 通用对话端点握手探测（兼容官方及硅基流动/百炼/OpenRouter等任意平台）
       const t0 = Date.now();
+      const lowerProbeUrl = targetBaseUrl.toLowerCase();
+      const probeBody = {
+        model: targetModel,
+        messages: [{ role: 'user', content: '你好，请回复“已连接”三个字' }],
+        max_tokens: 16,
+        stream: false
+      };
+      if (isOfficialDs && targetModel.toLowerCase().includes('flash')) {
+        probeBody.thinking = { type: 'disabled' };
+      } else if ((lowerProbeUrl.includes('siliconflow.cn') || lowerProbeUrl.includes('aliyuncs.com')) && targetModel.toLowerCase().includes('flash')) {
+        probeBody.enable_thinking = false;
+      }
       const probeRes = await fetch(targetBaseUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${validKey}`
         },
-        body: JSON.stringify({
-          model: targetModel,
-          messages: [{ role: 'user', content: '你好，请回复“已连接”三个字' }],
-          max_tokens: 16,
-          stream: false
-        }),
+        body: JSON.stringify(probeBody),
         signal: AbortSignal.timeout(12000)
       });
 
       if (!probeRes.ok) {
         const errTxt = await probeRes.text().catch(() => '');
+        const isAuthFail = probeRes.status === 401 || probeRes.status === 403;
+        const isModelFail = /model.*not.*found|does not exist|invalid.*model/i.test(errTxt);
+        const friendlyErr = isAuthFail
+          ? '密钥好像填错啦，或者选错了购买平台（比如硅基流动的密钥要点上面的「硅基流动」按钮哦），请核对后再试'
+          : isModelFail
+          ? `密钥本身是对的，但该平台暂未开通模型「${targetModel}」，可展开下方「高级选项」更换模型名称`
+          : sanitizePublicErrorMessage(
+              new Error(`连接未成功 (${probeRes.status})：请检查密钥是否复制完整，或是否选对了平台按钮`)
+            );
         return sendJson(res, 400, {
           ok: false,
-          error: sanitizePublicErrorMessage(
-            new Error(`API 校验未通过 (${probeRes.status})：${errTxt.slice(0, 140) || '请检查 API Key、接口地址或模型名称是否正确'}`)
-          )
+          error: friendlyErr
         });
       }
 
-      const probeJson = await probeRes.json().catch(() => ({}));
-      const replyPreview = String(probeJson?.choices?.[0]?.message?.content || '握手成功').trim().slice(0, 30);
+      await probeRes.json().catch(() => ({}));
+      const voiceBonusTip = lowerProbeUrl.includes('siliconflow.cn')
+        ? '（同时已自动为您解锁男女语音朗读与语音输入！）'
+        : lowerProbeUrl.includes('aliyuncs.com')
+        ? '（同时已自动为您解锁男女语音朗读！）'
+        : '';
       return sendJson(res, 200, {
         ok: true,
         is_available: true,
-        message: `✅ 个人 API 连通验证成功（耗时 ${Date.now() - t0}ms，模型：${targetModel}，响应：${replyPreview}）！点击右下角「保存设置」即可在 DeepSeek 与角色扮演中自由畅聊！`
+        message: `✅ 连接成功！（用时 ${Date.now() - t0} 毫秒，当前模型：${targetModel}）${voiceBonusTip}记得点右下角「保存设置」生效哦！`
       });
     } catch (err) {
       return sendJson(res, 400, {
         ok: false,
-        error: sanitizePublicErrorMessage(err, '无法连接目标 API 接口，请检查地址与密钥是否正确')
+        error: sanitizePublicErrorMessage(err, '暂时连不上这个平台，请检查网络或确认是否选对了平台按钮')
       });
     }
   }
@@ -2699,7 +2872,7 @@ async function handleApi(req, res, pathname, parsedUrl) {
           signal: abortController.signal
         });
       } else {
-        await streamPersonaChat({
+        const rpStreamMeta = await streamPersonaChat({
           settings,
           contextBundle,
           latestUserText: userContent,
@@ -2713,6 +2886,9 @@ async function handleApi(req, res, pathname, parsedUrl) {
           },
           signal: abortController.signal
         });
+        if (rpStreamMeta && (rpStreamMeta.usage || rpStreamMeta.model)) {
+          nativeMeta = rpStreamMeta;
+        }
       }
 
       const durationMs = Date.now() - startedAt;
@@ -3150,9 +3326,11 @@ function serveStatic(req, res, pathname) {
 
     const ext = path.extname(resolvedPath).toLowerCase();
     const contentType = MIME_TYPES[ext] || 'application/octet-stream';
+    const cacheHeader =
+      ext === '.html' ? 'no-store, no-cache, must-revalidate' : 'no-cache';
     res.writeHead(200, {
       'Content-Type': contentType,
-      'Cache-Control': 'no-cache',
+      'Cache-Control': cacheHeader,
       ...SECURITY_HEADERS
     });
     const stream = fs.createReadStream(resolvedPath);

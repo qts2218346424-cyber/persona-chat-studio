@@ -333,13 +333,30 @@ async function streamHttpEndpoint({
   signal
 }) {
   const safeMessages = normalizeMessagesForStrictLLM(messagesPayload);
+  let resolvedModel = model || 'deepseek-flash';
+  const lowerUrl = String(url || '').toLowerCase();
+  if (lowerUrl.includes('deepseek.com') && /^deepseek[-_]?v?4(?:\.1)?[-_]?flash$/i.test(resolvedModel)) {
+    resolvedModel = 'deepseek-flash';
+  }
+  const isV4Flash = /deepseek-flash|v4(?:\.1)?[-_]?flash/i.test(resolvedModel);
+
   const reqBody = {
-    model,
+    model: resolvedModel,
     messages: safeMessages,
-    stream: true
+    stream: true,
+    stream_options: { include_usage: true }
   };
-  if (model !== 'deepseek-reasoner') {
-    reqBody.temperature = Number(temperature) || 0.85;
+  if (isV4Flash) {
+    if (lowerUrl.includes('deepseek.com')) {
+      reqBody.thinking = { type: enableThought ? 'enabled' : 'disabled' };
+    } else if (lowerUrl.includes('siliconflow.cn') || lowerUrl.includes('aliyuncs.com')) {
+      reqBody.enable_thinking = Boolean(enableThought);
+    }
+    if (!enableThought) {
+      reqBody.temperature = Number(temperature) || 0.9;
+    }
+  } else if (resolvedModel !== 'deepseek-reasoner') {
+    reqBody.temperature = Number(temperature) || 0.9;
   }
 
   let response = null;
@@ -369,6 +386,27 @@ async function streamHttpEndpoint({
 
       if (!res.ok) {
         const errText = await res.text().catch(() => '');
+        // 兼容不支持 stream_options 的第三方网关自动剥离重试
+        if (res.status === 400 && reqBody.stream_options && /stream_options/i.test(errText)) {
+          delete reqBody.stream_options;
+          continue;
+        }
+        const isModelMissing =
+          (res.status === 400 || res.status === 404) &&
+          /model.*not.*found|does not exist|unknown model|invalid.*model/i.test(errText) &&
+          /flash/i.test(String(reqBody.model || ''));
+        if (isModelMissing && attempt < maxAttempts && !signal?.aborted) {
+          reqBody.model = lowerUrl.includes('siliconflow.cn')
+            ? (enableThought ? 'deepseek-ai/DeepSeek-R1' : 'deepseek-ai/DeepSeek-V3.2')
+            : lowerUrl.includes('aliyuncs.com')
+            ? (enableThought ? 'deepseek-r1' : 'deepseek-v3')
+            : lowerUrl.includes('openrouter.ai')
+            ? (enableThought ? 'deepseek/deepseek-r1' : 'deepseek/deepseek-chat')
+            : (enableThought ? 'deepseek-reasoner' : 'deepseek-chat');
+          delete reqBody.thinking;
+          delete reqBody.enable_thinking;
+          continue;
+        }
         const retryable = [408, 429, 500, 502, 503, 504].includes(res.status);
         lastFetchErr = new Error(
           `在线模型网关返回异常 (${res.status}): ${errText.slice(0, 220) || res.statusText}`
@@ -406,6 +444,8 @@ async function streamHttpEndpoint({
   const splitter = new StreamThinkSplitter({ onReasoning, onContent, enableThought });
   const decoder = new TextDecoder('utf-8');
   let lineBuffer = '';
+  let capturedUsage = null;
+  let actualModel = resolvedModel;
 
   const processLine = (rawLine) => {
     const line = rawLine.trim();
@@ -416,6 +456,8 @@ async function streamHttpEndpoint({
       if (dataStr === '[DONE]') return;
       try {
         const parsed = JSON.parse(dataStr);
+        if (parsed.model) actualModel = parsed.model;
+        if (parsed.usage) capturedUsage = parsed.usage;
         const choice = parsed.choices && parsed.choices[0];
         const delta = (choice && (choice.delta || choice.message)) || {};
         if (delta.reasoning_content) {
@@ -428,6 +470,7 @@ async function streamHttpEndpoint({
     } else if (line.startsWith('{')) {
       try {
         const parsed = JSON.parse(line);
+        if (parsed.usage) capturedUsage = parsed.usage;
         if (parsed.choices && parsed.choices[0]?.message?.content) {
           splitter.feedContent(parsed.choices[0].message.content);
         }
@@ -453,6 +496,36 @@ async function streamHttpEndpoint({
   }
 
   splitter.flush();
+
+  let normalizedUsage = null;
+  if (capturedUsage && typeof capturedUsage === 'object') {
+    const promptTokens = Number(capturedUsage.prompt_tokens) || 0;
+    const completionTokens = Number(capturedUsage.completion_tokens) || 0;
+    const hitTokens =
+      capturedUsage.prompt_cache_hit_tokens !== undefined
+        ? Number(capturedUsage.prompt_cache_hit_tokens) || 0
+        : Number(capturedUsage.prompt_tokens_details?.cached_tokens) || 0;
+    const missTokens =
+      capturedUsage.prompt_cache_miss_tokens !== undefined
+        ? Number(capturedUsage.prompt_cache_miss_tokens) || 0
+        : Math.max(0, promptTokens - hitTokens);
+    const reasoningTokens =
+      Number(capturedUsage.reasoning_tokens ?? capturedUsage.completion_tokens_details?.reasoning_tokens) || 0;
+    normalizedUsage = {
+      prompt_tokens: promptTokens,
+      completion_tokens: completionTokens,
+      total_tokens: Number(capturedUsage.total_tokens) || promptTokens + completionTokens,
+      prompt_cache_hit_tokens: hitTokens,
+      prompt_cache_miss_tokens: missTokens,
+      reasoning_tokens: reasoningTokens
+    };
+  }
+
+  return {
+    model: actualModel,
+    simulated: false,
+    usage: normalizedUsage
+  };
 }
 
 async function streamPersonaChat({
@@ -540,7 +613,7 @@ async function streamPersonaChat({
       });
       return;
     }
-    await streamHttpEndpoint({
+    return await streamHttpEndpoint({
       url: (settings.deepseek_base_url || 'https://api.deepseek.com/v1/chat/completions').trim(),
       model: (settings.deepseek_model || 'deepseek-chat').trim(),
       headers: { Authorization: `Bearer ${effectiveKey}` },
@@ -551,7 +624,6 @@ async function streamPersonaChat({
       onContent,
       signal
     });
-    return;
   }
 
   if (provider === 'custom_gateway') {
@@ -608,7 +680,7 @@ async function streamPersonaChat({
         throw new Error('附加请求头 JSON 格式不正确，请检查网关设置。');
       }
     }
-    await streamHttpEndpoint({
+    return await streamHttpEndpoint({
       url,
       model: (settings.custom_gateway_model || 'default').trim(),
       headers,
@@ -619,7 +691,6 @@ async function streamPersonaChat({
       onContent,
       signal
     });
-    return;
   }
 
   throw new Error(`不支持的模型通道: ${provider}`);

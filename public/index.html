@@ -169,22 +169,22 @@
           </div>
 
           <div class="info-callout" style="margin: 2px 0 6px; padding: 8px 12px; font-size: 12.5px;">
-            🎁 <strong>新用户注册福利</strong>：注册即自动获赠 <strong>🌙 30 天星月月卡会员 + 100 积分 + 30 次永久额度</strong>！当前全站已开启<strong>全免费畅玩体验</strong>，支持免费自由接入您自己的 API 到 DeepSeek 与角色扮演中。
+            🎁 <strong>全站免费畅玩承诺</strong>：无需付费，所有角色扮演、真声配音与长记忆功能均<strong>免费开放无限畅聊</strong>，立赠 100 星光纪念积分；同时支持选填您自己的 DeepSeek API 密钥。
           </div>
 
           <button type="submit" class="primary-btn full-width auth-submit-btn">
-            🎁 创建专属账号（注册立赠 30 天星月会员 · 全免费畅玩）
+            🎁 创建专属账号（永久保存聊天与记忆 · 全免费）
           </button>
         </form>
 
-        <div class="auth-divider"><span>全免费开放体验 · 支持自由接入个人 API</span></div>
+        <div class="auth-divider"><span>全站免费畅玩 · 零门槛免注册直入</span></div>
 
         <div class="guest-auth-actions">
           <button type="button" class="demo-login-btn full-width" id="quick-demo-login-btn">
-            🎀 免注册 · 一键免费畅玩体验（同样享会员与接入个人 API）
+            🎀 免注册 · 直接进入免费畅玩
           </button>
-        <button type="button" class="ghost-link-btn full-width" id="fresh-guest-login-btn" title="创建一个全新的独立访客用户，方便同时开启多窗口测试多用户会话隔离">
-          ➕ 新开一个全新独立访客账户（多账号隔离体验）
+        <button type="button" class="ghost-link-btn full-width" id="fresh-guest-login-btn" title="在当前标签页新建一个全新的空白访客账号，和之前的聊天记录互不干扰">
+          ➕ 新开一个全新访客号（与旧记录互不干扰）
         </button>
       </div>
     </div>
@@ -288,11 +288,11 @@
       <!-- 第二层：登场角色列表 -->
       <section class="sidebar-section rp-only-block" id="tour-anchor-persona">
         <div class="section-heading-row">
-          <span class="section-label" id="persona-section-heading">🎭 选择聊天对象</span>
+          <span class="section-label" id="persona-section-heading">🎭 选择聊天角色</span>
           <div class="inline-mini-actions">
             <button type="button" class="text-action-btn hidden" id="quick-upload-persona-btn">上传</button>
             <button type="button" class="text-action-btn hidden" id="sidebar-open-workshop-btn">🪄 传剧本</button>
-            <button type="button" class="text-action-btn" id="create-persona-btn" title="创建属于你自己的新角色">+ 自建角色</button>
+            <button type="button" class="text-action-btn" id="create-persona-btn" title="创建属于你自己的新角色">+ 创建新角色</button>
           </div>
         </div>
         <div class="persona-list" id="persona-list" role="list"></div>
@@ -303,8 +303,8 @@
         <div class="section-heading-row rp-only-flex">
           <span class="section-label" id="session-list-heading">💬 聊天记录</span>
           <div class="inline-mini-actions">
-            <button type="button" class="text-action-btn hidden" id="sidebar-import-history-btn">导入</button>
-            <button type="button" class="text-action-btn" id="new-chat-btn" title="和当前角色开启一段新故事">+ 重开一局</button>
+            <button type="button" class="text-action-btn" id="sidebar-import-history-btn" title="导入 .md 或 JSON 聊天记录">导入</button>
+            <button type="button" class="text-action-btn" id="new-chat-btn" title="和当前角色开启一段全新的对话">+ 新对话</button>
           </div>
         </div>
         <div class="session-list" id="session-list" role="list"></div>
@@ -619,10 +619,10 @@
             <div class="comp-poke-hint">👆 戳一戳互动</div>
           </div>
 
-          <!-- 底部精简状态（暖心提醒已在后台默认自动开启） -->
+          <!-- 底部陪伴动作栏（求一句叮嘱 & 定时暖心提醒直接可见） -->
           <div class="companion-foot">
             <div class="comp-live-status" id="comp-live-status">✨ 正温柔守候在你身旁</div>
-            <div class="comp-foot-actions hidden">
+            <div class="comp-foot-actions">
               <button type="button" class="mini-btn" id="comp-ask-remind-btn">💌 求一句叮嘱</button>
               <label class="comp-auto-check">
                 <input type="checkbox" id="comp-auto-remind-chk" checked />

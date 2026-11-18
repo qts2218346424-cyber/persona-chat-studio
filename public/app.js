@@ -1,16 +1,19 @@
 (() => {
   let initialUiMode = 'roleplay';
-  let initialScriptId = 'script_clannad';
+  let initialScriptId = 'script_classic';
   try {
     const qMode = new URLSearchParams(window.location.search).get('mode');
-    const savedMode = localStorage.getItem('ui_mode_v5');
     if (qMode === 'roleplay' || qMode === 'deepseek') {
       initialUiMode = qMode;
-    } else if (savedMode === 'roleplay' || savedMode === 'deepseek') {
-      initialUiMode = savedMode;
     }
-    const savedSc = localStorage.getItem('active_script_id');
-    if (savedSc) initialScriptId = savedSc;
+    if (localStorage.getItem('simple_v6_upgraded') !== '1') {
+      localStorage.setItem('simple_v6_upgraded', '1');
+      localStorage.setItem('active_script_id', 'script_classic');
+      localStorage.setItem('ui_mode_v5', 'roleplay');
+    } else {
+      const savedSc = localStorage.getItem('active_script_id');
+      if (savedSc) initialScriptId = savedSc;
+    }
   } catch {}
 
   const state = {
@@ -966,6 +969,9 @@
   }
 
   async function performAccountLogout() {
+    try {
+      sessionStorage.setItem('manual_account_switch', '1');
+    } catch {}
     await apiJson('/api/auth/logout', { method: 'POST' }).catch(() => {});
     resetClientWorkspaceState();
     window.__starAuthStore?.clearTabSession(true);
@@ -4932,6 +4938,15 @@
               forceBalanceRefresh: true
             });
             renderMessages();
+            // 角色回复自动真声配音（零配置开箱即集成）
+            if (
+              !isDsUi &&
+              accContent.trim() &&
+              localStorage.getItem('auto_tts_reply') !== '0' &&
+              typeof window.playCompanionNeuralTts === 'function'
+            ) {
+              window.playCompanionNeuralTts(accContent, null);
+            }
           } else if (eventName === 'error') {
             throw new Error(payload.message || '流式推演中断');
           }
@@ -5918,6 +5933,14 @@
 
     switchProviderPane(providerSelect.value);
     syncThemeControls();
+    const autoTtsChk = document.getElementById('st-auto-tts-chk');
+    if (autoTtsChk) {
+      autoTtsChk.checked = localStorage.getItem('auto_tts_reply') !== '0';
+    }
+    const showCompChk = document.getElementById('st-show-companion-chk');
+    if (showCompChk && companionStageEl) {
+      showCompChk.checked = !companionStageEl.classList.contains('hidden');
+    }
     settingsDialog.showModal();
 
     if (focusOwnApi === true && unlocked) {
@@ -7373,8 +7396,36 @@
     }
   }
 
+  const topbarCompanionBtn = document.getElementById('topbar-companion-btn');
+  function setCompanionVisible(visible) {
+    if (!companionStageEl) return;
+    companionStageEl.classList.toggle('hidden', !visible);
+    topbarCompanionBtn?.classList.toggle('active', visible);
+    try {
+      localStorage.setItem('show_companion_stage', visible ? '1' : '0');
+    } catch {}
+  }
+
+  // 初始化恢复玩家的立绘显示偏好（默认开启展示）
+  try {
+    const savedVis = localStorage.getItem('show_companion_stage');
+    setCompanionVisible(savedVis !== '0');
+  } catch {}
+
   document.getElementById('toggle-companion-btn').addEventListener('click', () => {
-    companionStageEl.classList.toggle('hidden');
+    setCompanionVisible(companionStageEl.classList.contains('hidden'));
+  });
+  topbarCompanionBtn?.addEventListener('click', () => {
+    setCompanionVisible(companionStageEl.classList.contains('hidden'));
+  });
+
+  document.getElementById('st-auto-tts-chk')?.addEventListener('change', (e) => {
+    try {
+      localStorage.setItem('auto_tts_reply', e.target.checked ? '1' : '0');
+    } catch {}
+  });
+  document.getElementById('st-show-companion-chk')?.addEventListener('change', (e) => {
+    setCompanionVisible(Boolean(e.target.checked));
   });
 
   compModeCoolBtn.addEventListener('click', () => {
@@ -8768,6 +8819,9 @@
 
   // ================= 14. 进入工作台与首次登录检测 =================
   async function enterWorkspace() {
+    try {
+      sessionStorage.removeItem('manual_account_switch');
+    } catch {}
     authGate.classList.add('hidden');
     appShell.classList.remove('hidden');
 
@@ -8837,21 +8891,16 @@
     if (isLiveDemoEntry) {
       if (!sessionStorage.getItem('star_demo_welcomed')) {
         sessionStorage.setItem('star_demo_welcomed', '1');
-        showToast('🌐 在线展示 Demo 已就绪 · 免注册畅玩四大剧本，亦可在设置中绑定自有 DeepSeek Key');
+        showToast('💖 欢迎来到星语恋庭 · 点击左侧任意角色即可开启沉浸对话与真声陪伴');
       }
-    } else if (state.user && !state.user.onboarding_done && state.uiMode === 'roleplay') {
-      setTimeout(() => {
-        startOnboardingTour();
-      }, 450);
     }
   }
 
   async function bootCheck() {
-    const urlParams = new URLSearchParams(window.location.search);
-    const wantQuickDemo =
-      urlParams.get('demo') === '1' ||
-      urlParams.get('demo') === 'true' ||
-      window.location.hash === '#demo';
+    let manualSwitch = false;
+    try {
+      manualSwitch = sessionStorage.getItem('manual_account_switch') === '1';
+    } catch {}
 
     try {
       const me = await apiJson('/api/auth/me');
@@ -8860,7 +8909,8 @@
         await enterWorkspace();
         return;
       }
-      if (wantQuickDemo) {
+      // 小白零门槛直入：未主动点切换账号时，自动免注册静默进入游戏大厅！
+      if (!manualSwitch) {
         const savedGuestId = window.__starAuthStore?.getGuestUserId() || '';
         const demoRes = await apiJson('/api/auth/demo-login', {
           method: 'POST',

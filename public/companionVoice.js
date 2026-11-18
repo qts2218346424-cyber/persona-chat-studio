@@ -115,36 +115,37 @@
   const voiceWrap = document.createElement('div');
   voiceWrap.className = 'comp-voice-wrap';
   voiceWrap.innerHTML = `
-    <button type="button" class="comp-voice-call-pill" id="comp-voice-open-btn" title="开启与身旁角色的乙游/漫剧男音实时语音对谈">
+    <button type="button" class="comp-voice-call-pill" id="comp-voice-open-btn" title="开启与当前角色的实时真声语音通话">
       <span class="voice-dot-live" aria-hidden="true"></span>
-      <span id="comp-voice-open-label">🎙️ 乙游清冷男音</span>
+      <span id="comp-voice-open-label">🎙️ 语音通话</span>
     </button>
 
-    <div class="comp-voice-dock hidden" id="comp-voice-dock" role="region" aria-label="立绘实时语音对谈">
+    <div class="comp-voice-dock hidden" id="comp-voice-dock" role="region" aria-label="角色实时语音通话">
       <div class="cv-top-row">
-        <button type="button" class="cv-voice-switch" id="cv-voice-switch-btn" title="点击切换：漫剧霸总低音 / 乙游清冷禁欲 / 漫剧腹黑微撩 / 阳光年下少年 / 软萌团子">
-          ❄️ 乙游清冷禁欲 ▾
+        <span class="cv-live-title" id="cv-live-title">🎧 实时语音通话中</span>
+        <button type="button" class="cv-voice-switch hidden" id="cv-voice-switch-btn">
+          专属声线
         </button>
         <span class="cv-wave-bars" id="cv-wave-bars" aria-hidden="true">
           <i></i><i></i><i></i><i></i>
         </span>
         <div class="cv-right-icons">
-          <button type="button" class="cv-gear-btn hidden" id="cv-open-tts-cfg-btn" title="站长专属：配置全站商业漫剧音源或复刻声纹">
+          <button type="button" class="cv-gear-btn hidden" id="cv-open-tts-cfg-btn">
             🎚️音源
           </button>
-          <button type="button" class="cv-close-btn" id="cv-close-btn" title="结束语音对谈" aria-label="关闭语音对谈">✕</button>
+          <button type="button" class="cv-close-btn" id="cv-close-btn" title="挂断语音通话" aria-label="挂断语音通话">✕</button>
         </div>
       </div>
       <form class="cv-input-row" id="cv-voice-form">
-        <button type="button" class="cv-mic-btn" id="cv-mic-btn" title="点击用麦克风直接开口说话" aria-label="麦克风语音输入">
+        <button type="button" class="cv-mic-btn" id="cv-mic-btn" title="点击麦克风直接说话" aria-label="麦克风语音输入">
           🎙️
         </button>
-        <label for="cv-quick-input" class="visually-hidden">向身旁立绘说一句话</label>
+        <label for="cv-quick-input" class="visually-hidden">向角色说一句话</label>
         <input
           type="text"
           id="cv-quick-input"
           class="cv-quick-input"
-          placeholder="点🎙️开口说，或打字回车…"
+          placeholder="点🎙️说话，或打字回车…"
           autocomplete="off"
         />
       </form>
@@ -199,8 +200,8 @@
       }
     }
     const meta = getVoiceMeta(currentVoiceId);
-    openLabel.textContent = meta.btnHint;
-    switchVoiceBtn.textContent = `${meta.short} ▾`;
+    openLabel.textContent = '🎙️ 语音通话';
+    switchVoiceBtn.textContent = `${meta.short}`;
   }
 
   window.addEventListener('companion-updated', (e) => {
@@ -481,10 +482,8 @@
   const ttsGearBtn = document.getElementById('cv-open-tts-cfg-btn');
   function syncAdminGearVisibility() {
     if (!ttsGearBtn) return;
-    ttsGearBtn.classList.remove('hidden');
-    ttsGearBtn.title = window.__isAdminUser
-      ? '配置全站商业漫剧音源或个人一钥双通 API'
-      : '一键绑定硅基流动 / 阿里云百炼 API 解锁商业真声配音';
+    // 普通小白玩家零配置隐藏音源齿轮，仅站长管理时按需展示
+    ttsGearBtn.classList.toggle('hidden', !window.__isAdminUser);
   }
   syncAdminGearVisibility();
   window.addEventListener('user-role-changed', syncAdminGearVisibility);

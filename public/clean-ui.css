@@ -3666,6 +3666,52 @@ dialog::backdrop {
   color: light-dark(#065f46, #a7f3d0);
 }
 
+/* 极简小白玩家一行开关卡片 */
+.simple-pref-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: light-dark(rgba(255, 248, 252, 0.85), rgba(36, 29, 58, 0.65));
+  border: 1px solid light-dark(rgba(243, 220, 235, 0.8), rgba(65, 53, 102, 0.6));
+  cursor: pointer;
+}
+
+.simple-pref-row strong {
+  display: block;
+  font-size: 13.5px;
+  color: var(--text-primary);
+  margin-bottom: 2px;
+}
+
+.simple-pref-row small {
+  display: block;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.simple-pref-row input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--brand-primary);
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.cv-live-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--brand-primary);
+}
+
+#topbar-companion-btn.active {
+  background: light-dark(rgba(226, 85, 157, 0.12), rgba(226, 85, 157, 0.22));
+  color: var(--brand-primary);
+  border-color: rgba(226, 85, 157, 0.35);
+}
+
 /* 设置弹窗底部保存操作栏粘性常驻，防止长内容滚动遮挡保存按钮 */
 #settings-dialog .settings-sticky-actions {
   position: sticky;

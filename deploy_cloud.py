@@ -93,15 +93,45 @@ def main():
 
     sftp = ssh.open_sftp()
     sftp.put(tar_path, remote_tar, callback=progress_cb, confirm=False)
+    local_env = os.path.join(PROJECT_ROOT, '.env')
+    has_local_env = os.path.isfile(local_env)
+    if has_local_env:
+        sftp.put(local_env, '/root/.star_whisper_env_tmp', confirm=False)
     sftp.close()
     print('  上传完成！')
 
-    print('Step 3: 正在云端部署 /opt/star-whisper、挂载同机 AI 底座、签发子域名源站 SSL 证书并启动 PM2 + Nginx...')
+    print('Step 3: 正在云端部署 /opt/star-whisper、同步内置 API 配置并启动 PM2 + Nginx...')
     remote_cmd = f"""
 set -e
 mkdir -p /opt/star-whisper/data/tts_cache
 tar -xzf {remote_tar} -C /opt/star-whisper/
 rm -f {remote_tar}
+if [ -f /root/.star_whisper_env_tmp ]; then
+  mv -f /root/.star_whisper_env_tmp /opt/star-whisper/.env
+  chmod 600 /opt/star-whisper/.env
+fi
+rm -f /opt/star-whisper/data/tts_cache/*.bin /opt/star-whisper/data/tts_cache/*.json 2>/dev/null || true
+
+# 同步刷新云端 SQLite 中的内置 API 配置与存量角色专属声纹
+node -e '
+const {{ db, getRawPlatformConfigInternal, updateAdminPlatformConfig }} = require("/opt/star-whisper/server/db");
+db.prepare("UPDATE sessions SET companion_config = NULL").run();
+db.prepare("UPDATE user_settings SET value = \\x27online\\x27 WHERE key = \\x27provider\\x27 AND value = \\x27demo\\x27").run();
+const c = getRawPlatformConfigInternal();
+if (c.deepseek_api_key || c.tts_api_key) {{
+  updateAdminPlatformConfig({{
+    online_provider_type: "deepseek",
+    deepseek_base_url: c.deepseek_base_url,
+    deepseek_model: c.deepseek_model,
+    deepseek_api_key: c.deepseek_api_key,
+    tts_provider: c.tts_provider,
+    tts_api_key: c.tts_api_key,
+    tts_endpoint: c.tts_endpoint,
+    tts_model: c.tts_model
+  }});
+}}
+console.log("CLOUD_DB_SYNC_OK:", c.deepseek_model, c.tts_provider);
+'
 
 # 初始化或更新云端 Antigravity 桥接配置，自动联动同机 /opt/coreforge/server/config.json 密钥底座
 cat > /opt/star-whisper/data/antigravity_bridge.json << 'JSONEOF'

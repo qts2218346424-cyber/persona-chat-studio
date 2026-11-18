@@ -10,10 +10,11 @@ function getRelationshipStage({ affection = 18, trust = 22, intimacy = 15 }) {
   if (composite >= 80) {
     return {
       level: 4,
-      badge: '👑 命定羁绊 Lv.4',
+      badge: '👑 命定挚爱 Lv.4',
       composite,
+      playerDesc: '你们已经心意笃定、彼此信赖，TA 在你面前毫无保留，眼神与话语里满是独属于你的偏爱。',
       promptDirective:
-        '【关系养成阶段：Lv.4 命定羁绊】你们早已生死相托、心意笃定。面对她时你毫无保留，眼神与话语间自然流露深沉的眷恋、唯一偏爱与占有欲，默契到能听懂她每一丝未说出口的情绪。'
+        '【关系养成阶段：Lv.4 命定羁绊】你们早已生死相托、心意笃定。面对对方时你毫无保留，眼神与话语间自然流露深沉的眷恋、唯一偏爱与默契，能听懂对方每一丝未说出口的情绪。'
     };
   }
   if (composite >= 50) {
@@ -21,23 +22,26 @@ function getRelationshipStage({ affection = 18, trust = 22, intimacy = 15 }) {
       level: 3,
       badge: '💕 心意相通 Lv.3',
       composite,
+      playerDesc: '你已走进 TA 心里最柔软的角落，TA 愿意向你袒露心事、偏心护短，相处亲近自然。',
       promptDirective:
-        '【关系养成阶段：Lv.3 心意相通】她已住进你心里最柔软的角落。你会卸下对外人的防备与伪装，愿意向她展露隐秘心事、偏心护短甚至偶尔流露微妙的吃味与心动拉扯，肢体距离亲近自然。'
+        '【关系养成阶段：Lv.3 心意相通】对方已住进你心里最柔软的角落。你会卸下对外人的防备与伪装，愿意向对方展露隐秘心事、偏心护短甚至偶尔流露微妙的心动拉扯，肢体距离亲近自然。'
     };
   }
   if (composite >= 25) {
     return {
       level: 2,
-      badge: '🌸 渐生情愫 Lv.2',
+      badge: '🌸 渐生好感 Lv.2',
       composite,
+      playerDesc: 'TA 对你的好感正在悄悄升温，比初见时柔和了许多，总会不自觉留意你的冷暖与喜恶。',
       promptDirective:
-        '【关系养成阶段：Lv.2 渐生情愫】你对她的好感正在悄然升温。态度比初识时柔和许多，会不自觉留意她的冷暖喜恶，话语间藏着不易察觉的纵容与期待她多留片刻的小心思。'
+        '【关系养成阶段：Lv.2 渐生情愫】你对对方的好感正在悄然升温。态度比初识时柔和许多，会不自觉留意对方的冷暖喜恶，话语间藏着不易察觉的纵容与期待对方多留片刻的小心思。'
     };
   }
   return {
     level: 1,
-    badge: '🌱 初遇微光 Lv.1',
+    badge: '🌱 初识破冰 Lv.1',
     composite,
+    playerDesc: '刚刚相识的试探期，交谈间还带着几分礼貌与好奇，多聊聊彼此的喜好能让关系更快升温。',
     promptDirective:
       '【关系养成阶段：Lv.1 初遇微光】你们正处于初识或重逢破冰期。请维持人设原本的分寸感与性格张力，在克制有礼或淡淡试探中留出恰到好处的温柔余地，循序渐进拉近距离。'
   };
@@ -162,16 +166,21 @@ function runDreamConsolidation({ sessionId, persona, userNickname }) {
     .prepare("SELECT content FROM messages WHERE session_id = ? AND role = 'user' ORDER BY id DESC LIMIT 3")
     .all(sessionId);
 
-  const callName = userNickname && userNickname !== '星语旅人' ? userNickname : '她';
+  const cleanNick = String(userNickname || '').trim();
+  const isDefaultGuest = !cleanNick || /^星[语屿]旅人/.test(cleanNick);
+  const callName = isDefaultGuest ? '那个人' : `「${cleanNick}」`;
   const snapshot = formatNurturingSnapshot(session);
   const recentQuote = recentUserMsgs[0]?.content
-    ? `尤其是她刚才对我说「${recentUserMsgs[0].content.replace(/\s+/g, ' ').slice(0, 28)}」的时候，`
-    : '回想刚才和她待在一起的片刻，';
+    ? `尤其是${callName}刚才对我说「${recentUserMsgs[0].content.replace(/\s+/g, ' ').slice(0, 28)}」的时候，`
+    : `回想刚才和${callName}待在一起的片刻，`;
 
   const nonPinnedFact = allMems.find((m) => m.category !== 'Pinned');
-  const factMention = nonPinnedFact
-    ? `我又在手札里把关于她的事描深了一笔——${nonPinnedFact.content.replace(/^[^：]+：/, '')}。`
-    : '关于她的每一个小习惯，我都想慢慢收集齐全。';
+  const rawFactBody = nonPinnedFact
+    ? nonPinnedFact.content.replace(/^[^：]+：/, '').replace(/[。！？.!?…\s]+$/g, '')
+    : '';
+  const factMention = rawFactBody
+    ? `我又在日记里把这件事认真记了下来——${rawFactBody}。`
+    : '关于对方的每一个小习惯，我都想慢慢收集齐全。';
 
   let diaryTone = '';
   if (snapshot.stage.level >= 3) {
@@ -179,7 +188,7 @@ function runDreamConsolidation({ sessionId, persona, userNickname }) {
   } else if (snapshot.stage.level === 2) {
     diaryTone = `${recentQuote}竟有些舍不得对话太快结束。${factMention}不知道下次见面时，${callName}会不会察觉到我藏在目光里的偏爱？`;
   } else {
-    diaryTone = `${recentQuote}原本平静的日常忽然泛起了一点不一样的涟漪。${factMention}属于我和${shortName}与${callName}的故事，似乎才刚刚翻开序章。`;
+    diaryTone = `${recentQuote}原本平静的日常忽然泛起了一点温柔的涟漪。${factMention}属于我们两个人的故事，似乎才刚刚翻开序章。`;
   }
 
   const nowDate = new Date();

@@ -2062,11 +2062,14 @@ function updateUserPersona(userId, { nickname, avatar, role, appearance, bio }) 
   const row = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
   if (!row) throw new Error('用户不存在');
 
-  const nextNick = nickname !== undefined ? String(nickname).trim() || row.nickname : row.nickname;
+  if (nickname !== undefined && !String(nickname).trim()) {
+    throw new Error('主控昵称不能为空，请填写希望角色对你的称呼');
+  }
+  const nextNick = nickname !== undefined ? String(nickname).trim().slice(0, 24) : row.nickname;
   const nextAvatar = avatar !== undefined ? String(avatar).trim().slice(0, 4) || row.avatar : row.avatar;
-  const nextRole = role !== undefined ? String(role).trim() : row.user_persona_role || '';
-  const nextApp = appearance !== undefined ? String(appearance).trim() : row.user_persona_appearance || '';
-  const nextBio = bio !== undefined ? String(bio).trim() : row.user_persona_bio || '';
+  const nextRole = role !== undefined ? String(role).trim().slice(0, 80) : row.user_persona_role || '';
+  const nextApp = appearance !== undefined ? String(appearance).trim().slice(0, 500) : row.user_persona_appearance || '';
+  const nextBio = bio !== undefined ? String(bio).trim().slice(0, 1000) : row.user_persona_bio || '';
 
   db.prepare(`
     UPDATE users
@@ -2283,6 +2286,25 @@ function recordUserDailyEvent(userId, eventType, dateKey = getShanghaiDateKey())
   `).run(userId, dateKey, eventType, now);
 }
 
+function getCardCheckinBonusInfo(memSnap) {
+  if (!memSnap || !memSnap.has_active_card) {
+    return { points: 0, label: '', shortLabel: '' };
+  }
+  if (memSnap.card_type === 'year') {
+    return { points: 25, label: '（含年卡津贴 +25）', shortLabel: '含年卡+25' };
+  }
+  if (memSnap.card_type === 'quarter') {
+    return { points: 20, label: '（含季卡津贴 +20）', shortLabel: '含季卡+20' };
+  }
+  if (memSnap.card_type === 'month') {
+    return { points: 15, label: '（含月卡津贴 +15）', shortLabel: '含月卡+15' };
+  }
+  if (memSnap.card_type === 'day') {
+    return { points: 8, label: '（含日卡津贴 +8）', shortLabel: '含日卡+8' };
+  }
+  return { points: 0, label: '', shortLabel: '' };
+}
+
 /**
  * 执行每日签到（严格每账户每日限签 1 次，连签 7 天阶梯递增 + 日卡/月卡专属积分加成）
  */
@@ -2307,23 +2329,9 @@ function performDailyCheckin(userId) {
   const tierReward = CHECKIN_REWARDS[cycleIdx];
 
   const memSnap = buildMembershipSnapshot(row, now);
-  let cardBonusPoints = 0;
-  let cardBonusLabel = '';
-  if (memSnap.has_active_card) {
-    if (memSnap.card_type === 'year') {
-      cardBonusPoints = 25;
-      cardBonusLabel = '（含年卡津贴 +25）';
-    } else if (memSnap.card_type === 'quarter') {
-      cardBonusPoints = 20;
-      cardBonusLabel = '（含季卡津贴 +20）';
-    } else if (memSnap.card_type === 'month') {
-      cardBonusPoints = 15;
-      cardBonusLabel = '（含月卡津贴 +15）';
-    } else if (memSnap.card_type === 'day') {
-      cardBonusPoints = 8;
-      cardBonusLabel = '（含日卡津贴 +8）';
-    }
-  }
+  const bonusInfo = getCardCheckinBonusInfo(memSnap);
+  const cardBonusPoints = bonusInfo.points;
+  const cardBonusLabel = bonusInfo.label;
 
   const totalPointsAwarded = tierReward.points + cardBonusPoints;
   const bonusCredits = tierReward.credits || 0;
@@ -2912,6 +2920,7 @@ function getWalletOverview(userId) {
   if (!row) throw new Error('用户不存在');
 
   const membership = buildMembershipSnapshot(row, now);
+  const checkinBonus = getCardCheckinBonusInfo(membership);
   const checkedToday = row.last_checkin_date === todayKey;
   const effectiveStreak =
     checkedToday || row.last_checkin_date === yesterdayKey ? Number(row.checkin_streak) || 0 : 0;
@@ -2923,6 +2932,10 @@ function getWalletOverview(userId) {
     const isTodayTarget = !checkedToday && idx === ((nextStreakDay - 1) % 7);
     return {
       ...item,
+      base_points: item.points,
+      card_bonus: checkinBonus.points,
+      card_bonus_label: checkinBonus.shortLabel,
+      effective_points: item.points + checkinBonus.points,
       completed: isCompleted,
       is_today_target: isTodayTarget
     };

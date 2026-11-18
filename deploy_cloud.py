@@ -111,7 +111,10 @@ if [ -f /root/.star_whisper_env_tmp ]; then
   chmod 600 /opt/star-whisper/.env
 fi
 rm -f /opt/star-whisper/data/tts_cache/*.bin /opt/star-whisper/data/tts_cache/*.json 2>/dev/null || true
-python3 -m pip install --break-system-packages -q edge-tts >/dev/null 2>&1 || pip3 install -q edge-tts >/dev/null 2>&1 || true
+if ! python3 -c "import edge_tts" >/dev/null 2>&1; then
+  python3 -m pip install -i https://pypi.tuna.tsinghua.edu.cn/simple --timeout 20 --break-system-packages -q edge-tts >/dev/null 2>&1 || \
+  pip3 install -i https://pypi.tuna.tsinghua.edu.cn/simple --timeout 20 -q edge-tts >/dev/null 2>&1 || true
+fi
 
 # 同步刷新云端 SQLite 中的内置 API 配置与独立高清语音音源
 node -e '
@@ -193,7 +196,7 @@ curl -fsS http://127.0.0.1:3002/api/health
 echo ""
 """
 
-    _, stdout, stderr = ssh.exec_command(remote_cmd, timeout=60)
+    _, stdout, stderr = ssh.exec_command(remote_cmd, timeout=120)
     out = stdout.read().decode('utf-8', errors='replace')
     err = stderr.read().decode('utf-8', errors='replace')
     print('\n--- 云端执行输出 ---')

@@ -446,7 +446,12 @@ async function handleApi(req, res, pathname, parsedUrl) {
 
   if (method === 'PUT' && pathname === '/api/auth/user-persona') {
     const body = await readJsonBody(req);
-    const updatedUser = updateUserPersona(userId, body);
+    let updatedUser;
+    try {
+      updatedUser = updateUserPersona(userId, body);
+    } catch (err) {
+      return sendJson(res, 400, { error: err.message || '保存主控人设失败' });
+    }
     // 同步更新该用户名下所有会话的昵称记忆槽位
     if (updatedUser.nickname) {
       db.prepare(`
@@ -958,15 +963,22 @@ async function handleApi(req, res, pathname, parsedUrl) {
         return sendJson(res, 403, { error: '官方预设角色仅支持按对话独立覆盖设定，不可修改全局模板' });
       }
 
+      if (body.name !== undefined && !String(body.name).trim()) {
+        return sendJson(res, 400, { error: '角色名称不能为空' });
+      }
+
       const prompts = Array.isArray(body.starter_prompts)
         ? JSON.stringify(body.starter_prompts.filter((s) => s && s.trim()))
         : existing.starter_prompts;
+      const nextScriptId =
+        body.script_id !== undefined ? String(body.script_id).trim() || existing.script_id : existing.script_id;
 
       db.prepare(`
         UPDATE personas
-        SET name = ?, avatar = ?, tagline = ?, personality = ?, backstory = ?, speaking_style = ?, greeting = ?, starter_prompts = ?, updated_at = ?
+        SET script_id = ?, name = ?, avatar = ?, tagline = ?, personality = ?, backstory = ?, speaking_style = ?, greeting = ?, starter_prompts = ?, updated_at = ?
         WHERE id = ?
       `).run(
+        nextScriptId,
         (body.name ?? existing.name).trim() || existing.name,
         (body.avatar ?? existing.avatar).trim() || '🌸',
         (body.tagline ?? existing.tagline).trim(),
@@ -1003,11 +1015,19 @@ async function handleApi(req, res, pathname, parsedUrl) {
     }
 
     if (method === 'DELETE') {
-      if (existing.user_id === 'system') {
+      if (existing.user_id !== userId) {
         return sendJson(res, 400, { error: '官方基础角色卡不可删除' });
       }
+      const ownedSessions = db
+        .prepare('SELECT id FROM sessions WHERE persona_id = ? AND user_id = ?')
+        .all(personaId, userId);
+      for (const s of ownedSessions) {
+        db.prepare('DELETE FROM messages WHERE session_id = ?').run(s.id);
+        db.prepare('DELETE FROM memories WHERE session_id = ?').run(s.id);
+      }
+      db.prepare('DELETE FROM sessions WHERE persona_id = ? AND user_id = ?').run(personaId, userId);
       db.prepare('DELETE FROM personas WHERE id = ? AND user_id = ?').run(personaId, userId);
-      return sendJson(res, 200, { ok: true });
+      return sendJson(res, 200, { ok: true, sessions: listSessionsForUser(userId) });
     }
   }
 
@@ -1059,7 +1079,7 @@ async function handleApi(req, res, pathname, parsedUrl) {
         VALUES (?, 'assistant', ?, ?, 350, 1, ?)
       `).run(
         sessionId,
-        `已载入「${persona.name}」的性格羁绊与世界观设定，静候「${currentUser.nickname}」的第一句回应。`,
+        '',
         renderedGreeting,
         now
       );
@@ -2892,13 +2912,18 @@ async function handleApi(req, res, pathname, parsedUrl) {
       }
 
       const durationMs = Date.now() - startedAt;
-      if (!fullContent && abortController.signal.aborted) {
-        fullContent = isNativeMode ? '*(已停止生成)*' : '*（对话推演已轻声止步）*';
+      const wasAborted = Boolean(abortController.signal.aborted);
+      const substantiveContent = fullContent.replace(/^[\s*＊…—-]+$/g, '').trim();
+
+      if (wasAborted && !substantiveContent) {
+        fullContent = isNativeMode
+          ? '*(生成已中断)*'
+          : '*（生成已中断，可点击下方「继续生成」或「重演」继续推进）*';
       }
 
       let latestMembership = getMembership(userId);
       let billingInfo = null;
-      if (usingMemberOwnKey && fullContent.trim()) {
+      if (usingMemberOwnKey && substantiveContent) {
         db.prepare('UPDATE users SET total_used = total_used + 1, updated_at = ? WHERE id = ?').run(
           Date.now(),
           userId
@@ -2908,7 +2933,7 @@ async function handleApi(req, res, pathname, parsedUrl) {
           mode: 'member_own_key',
           desc: '🔑 个人 API 直连（免扣次畅聊）'
         };
-      } else if (isOnlineModel && fullContent.trim()) {
+      } else if (isOnlineModel && substantiveContent) {
         const resConsume = consumeOnlineCredit(userId);
         latestMembership = resConsume.membership;
         billingInfo = {
@@ -2917,24 +2942,41 @@ async function handleApi(req, res, pathname, parsedUrl) {
         };
       }
 
-      const followUps = generateFollowUpSuggestions({
-        sessionMode: session.session_mode || 'roleplay',
-        isPureOfficial,
-        userText: userContent,
-        assistantText: fullContent,
-        persona: contextBundle.persona,
-        nurturing: contextBundle.nurturing
-      });
+      const followUps = wasAborted
+        ? []
+        : generateFollowUpSuggestions({
+            sessionMode: session.session_mode || 'roleplay',
+            isPureOfficial,
+            userText: userContent,
+            assistantText: fullContent,
+            persona: contextBundle.persona,
+            nurturing: contextBundle.nurturing
+          });
 
       const now = Date.now();
       const fallbackReply = isNativeMode
         ? '*(生成已完成)*'
         : '*（对方温柔地注视着你，似乎在等待你的下一句话）*';
-      const finalAssistantContent = fullContent.trim() || fallbackReply;
+      const rawTrimmed = fullContent.trim();
+      const finalAssistantContent =
+        wasAborted && substantiveContent
+          ? `${rawTrimmed}\n\n*(生成已中断)*`
+          : substantiveContent
+          ? rawTrimmed
+          : wasAborted
+          ? rawTrimmed
+          : fallbackReply;
       const finalAssistantReasoning = fullReasoning.trim();
 
       const assistantMetaObj = {
         follow_ups: followUps,
+        ...(wasAborted
+          ? {
+              interrupted: true,
+              aborted_by_user: true,
+              partial_recovered: Boolean(substantiveContent)
+            }
+          : {}),
         ...(nativeMeta
           ? {
               model: nativeMeta.model,
@@ -3000,24 +3042,26 @@ async function handleApi(req, res, pathname, parsedUrl) {
         billing: billingInfo
       });
     } catch (err) {
-      // 稳定性兜底：若流传输中途发生网络闪断或客户端中断，但已接收了实质内容，自动抢救落库以防丢字及破坏 user/assistant 交替结构
-      if (fullContent.trim() || fullReasoning.trim()) {
+      // 稳定性兜底：若流传输中途发生网络闪断或客户端中断，自动抢救落库或写入明确中断标记以防丢字及孤立符号
+      const isUserAbort = Boolean(abortController.signal.aborted);
+      const rescuedSubstantive = fullContent.replace(/^[\s*＊…—-]+$/g, '').trim();
+      if (rescuedSubstantive || fullReasoning.trim() || isUserAbort) {
         try {
           const now = Date.now();
           const durationMs = now - startedAt;
-          const isUserAbort = Boolean(abortController.signal.aborted);
           const suffixNote = isUserAbort
-            ? '\n\n*(已停止生成)*'
+            ? '\n\n*(生成已中断)*'
             : '\n\n*(注：网络连接出现短暂波动，以上已生成内容已自动为你妥善保存；如需完整重答可点击「重新生成」)*';
-          const rescuedContent = fullContent.trim()
+          const rescuedContent = rescuedSubstantive
             ? `${fullContent.trim()}${suffixNote}`
             : isUserAbort
-            ? '*(思考过程中已停止生成)*'
+            ? '*（生成已中断，可点击下方「继续生成」或「重演」继续推进）*'
             : '*(深度思考已完成，正文传输时遇到网络波动，请点击「重新生成」重试)*';
           const rescuedReasoning = fullReasoning.trim();
           const recalledLen = contextBundle?.recalledMemories?.length || 0;
           const rescuedMeta = {
-            partial_recovered: true,
+            interrupted: true,
+            partial_recovered: Boolean(rescuedSubstantive),
             aborted_by_user: isUserAbort,
             ...(priorAssistantVersions.length > 0
               ? {

@@ -6,35 +6,51 @@ import asyncio
 sys.stdin.reconfigure(encoding="utf-8")
 sys.stdout.reconfigure(encoding="utf-8")
 
-# 9 档男女角色精细声优音源与韵律配置（24kHz 零底噪神经语音 API）
+# 10 档男女角色精细声优音源与韵律配置（独立 Microsoft Azure Edge 24kHz 零底噪神经语音云 API）
 EDGE_VOICE_PROFILES = {
-    # 男主矩阵
-    "otome_boss": {"voice": "zh-CN-YunjianNeural", "rate": "-7%", "pitch": "-5Hz"},
+    # 男主矩阵（6 款独立声线韵律）
+    "otome_boss": {"voice": "zh-CN-YunjianNeural", "rate": "-6%", "pitch": "-4Hz"},
     "otome_daddy": {"voice": "zh-CN-YunjianNeural", "rate": "-3%", "pitch": "-2Hz"},
-    "otome_gentle": {"voice": "zh-TW-YunJheNeural", "rate": "-4%", "pitch": "-2Hz"},
+    "otome_gentle": {"voice": "zh-CN-YunxiNeural", "rate": "-3%", "pitch": "+0Hz"},
     "otome_cool": {"voice": "zh-CN-YunxiNeural", "rate": "-6%", "pitch": "-5Hz"},
     "otome_fox": {"voice": "zh-CN-YunyangNeural", "rate": "-3%", "pitch": "-2Hz"},
     "otome_sunny": {"voice": "zh-CN-YunxiNeural", "rate": "+3%", "pitch": "+2Hz"},
-    # 女主矩阵
-    "otome_queen": {"voice": "zh-CN-XiaoxiaoNeural", "rate": "-5%", "pitch": "-3Hz"},
+    # 女主矩阵（4 款独立声线韵律）
+    "otome_queen": {"voice": "zh-CN-XiaoxiaoNeural", "rate": "-4%", "pitch": "-2Hz"},
     "otome_sister": {"voice": "zh-TW-HsiaoChenNeural", "rate": "-4%", "pitch": "+0Hz"},
-    "cute_sweet": {"voice": "zh-CN-XiaoyiNeural", "rate": "+3%", "pitch": "+2Hz"},
+    "cute_sweet": {"voice": "zh-CN-XiaoyiNeural", "rate": "+2%", "pitch": "+2Hz"},
     "cute_mochi": {"voice": "zh-CN-XiaoyiNeural", "rate": "+5%", "pitch": "+4Hz"},
 }
 
 
-async def synth_one(edge_tts, text: str, voice_key: str) -> bytes:
-    prof = EDGE_VOICE_PROFILES.get(voice_key, EDGE_VOICE_PROFILES["otome_cool"])
-    kwargs = {"rate": prof["rate"]}
-    if prof["pitch"] and prof["pitch"] != "+0Hz":
-        kwargs["pitch"] = prof["pitch"]
-
-    comm = edge_tts.Communicate(text, prof["voice"], **kwargs)
+async def _stream_once(edge_tts, text: str, voice_name: str, rate: str, pitch: str) -> bytes:
+    kwargs = {"rate": rate}
+    if pitch and pitch != "+0Hz":
+        kwargs["pitch"] = pitch
+    comm = edge_tts.Communicate(text, voice_name, **kwargs)
     chunks = []
     async for msg in comm.stream():
         if msg.get("type") == "audio" and msg.get("data"):
             chunks.append(msg["data"])
     return b"".join(chunks)
+
+
+async def synth_one(edge_tts, text: str, voice_key: str, is_female_fallback: bool = False) -> bytes:
+    prof = EDGE_VOICE_PROFILES.get(voice_key, EDGE_VOICE_PROFILES["otome_cool"])
+    try:
+        data = await _stream_once(edge_tts, text, prof["voice"], prof["rate"], prof["pitch"])
+        if data and len(data) >= 256:
+            return data
+    except Exception:
+        pass
+
+    # 二次兜底保底重试（去除 pitch 偏移并使用最稳健大陆主干声优）
+    fallback_voice = (
+        "zh-CN-XiaoxiaoNeural"
+        if voice_key in ("otome_queen", "otome_sister", "cute_sweet", "cute_mochi") or is_female_fallback
+        else "zh-CN-YunxiNeural"
+    )
+    return await _stream_once(edge_tts, text, fallback_voice, "+0%", "+0Hz")
 
 
 def main():

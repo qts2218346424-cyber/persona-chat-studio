@@ -86,20 +86,36 @@ const KNOWN_MALE_PERSONA_IDS = new Set([
 ]);
 
 function detectFemalePersona(persona) {
+  const explicitGender = String(persona?.gender || '').trim().toLowerCase();
+  if (explicitGender === 'female' || explicitGender === '女' || explicitGender === 'f') return true;
+  if (explicitGender === 'male' || explicitGender === '男' || explicitGender === 'm') return false;
+
   const pid = String(persona?.id || '').trim();
   if (KNOWN_FEMALE_PERSONA_IDS.has(pid)) return true;
   if (KNOWN_MALE_PERSONA_IDS.has(pid)) return false;
 
   const text = `${persona?.name || ''} ${persona?.category_tag || ''} ${persona?.tagline || ''} ${
     persona?.personality || ''
-  }`;
-  if (/女执政官|神女|师姐|学妹|学姐|御姐|甜妹|歌姬|大小姐|巫女|修女|女王|公主|名伶|女家主/.test(text)) {
+  } ${persona?.greeting || ''} ${persona?.backstory || ''}`;
+  const avatar = String(persona?.avatar || '');
+
+  if (/女执政官|神女|师姐|学妹|学姐|御姐|甜妹|歌姬|大小姐|巫女|修女|女王|公主|名伶|女家主|女生|女性|女主|闺蜜|青梅.*少女/.test(text)) {
     return true;
   }
-  if (/男主|学弟|小狼狗|少帅|公子|剑尊|师尊|竹马|爹系|联姻家主|少年/.test(text)) {
+  if (/男主|学弟|小狼狗|少帅|公子|剑尊|青年|竹马|爹系|联姻家主|少年|男生|男性|绅士|少年剑士|审信官|所长/.test(text)) {
     return false;
   }
-  if (/少女|女孩|女子|双马尾|红裙|流仙裙/.test(text)) {
+  if (/少女|女孩|女子|双马尾|红裙|流仙裙|长裙|裙角|裙摆/.test(text)) {
+    return true;
+  }
+  const sheCount = (text.match(/她/g) || []).length;
+  const heCount = (text.match(/他/g) || []).length;
+  if (sheCount > heCount) return true;
+  if (heCount > sheCount) return false;
+  if (/[👧👩💃👸🧚‍♀️🧜‍♀️👠🎀👙👚🌸🍓🌷🌺]/.test(avatar) && /[妍婷薇柔婉菲瑶晴柠汐琴奈澪琳樱雪莉娜茜媛妃姝娴]/.test(persona?.name || '')) {
+    return true;
+  }
+  if (/[妍婷薇柔婉菲瑶晴柠汐琴奈澪琳樱雪莉娜茜媛妃姝娴]/.test(persona?.name || '')) {
     return true;
   }
   return false;

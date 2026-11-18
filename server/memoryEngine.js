@@ -7,14 +7,42 @@ const FEMALE_PERSONA_IDS = new Set([
   'persona_ichinose_kotomi',
   'persona_makise_sei',
   'persona_asagiri_mio',
-  'persona_violet_eve'
+  'persona_violet_eve',
+  'persona_suwanqing',
+  'persona_yunzhiyao',
+  'persona_xia_ningmeng',
+  'persona_yan_feiyu'
+]);
+
+const MALE_PERSONA_IDS = new Set([
+  'persona_shenxinghui',
+  'persona_luchen',
+  'persona_xieqingyan',
+  'persona_jiangyubai',
+  'persona_jiran',
+  'persona_guxiuyuan',
+  'persona_shiraishi_rin',
+  'persona_hodgins_landon',
+  'persona_frieren_shuer',
+  'persona_stark_fer'
 ]);
 
 function inferPersonaPronoun(persona = {}) {
+  const explicitGender = String(persona.gender || '').trim().toLowerCase();
+  if (explicitGender === 'female' || explicitGender === '女' || explicitGender === 'f') return '她';
+  if (explicitGender === 'male' || explicitGender === '男' || explicitGender === 'm') return '他';
+
   const id = String(persona.id || '');
   if (FEMALE_PERSONA_IDS.has(id)) return '她';
-  const desc = `${persona.name || ''} ${persona.tagline || ''} ${persona.personality || ''}`;
-  if (/少女|学妹|女主|女生|女孩|姐姐|大小姐|王女|仙子|巫女/.test(desc) && !/少年|公子|先生|学弟|家主|剑士/.test(desc)) {
+  if (MALE_PERSONA_IDS.has(id)) return '他';
+  const desc = `${persona.name || ''} ${persona.category_tag || ''} ${persona.tagline || ''} ${persona.personality || ''} ${persona.greeting || ''}`;
+  if (/女执政官|神女|师姐|学妹|学姐|御姐|甜妹|歌姬|大小姐|巫女|修女|女王|公主|名伶|女家主|少女|女生|女孩|姐姐|仙子|双马尾/.test(desc) && !/少年|公子|先生|学弟|男主|剑尊/.test(desc)) {
+    return '她';
+  }
+  const sheCount = (desc.match(/她/g) || []).length;
+  const heCount = (desc.match(/他/g) || []).length;
+  if (sheCount > heCount) return '她';
+  if (/[妍婷薇柔婉菲瑶晴柠汐琴奈澪琳樱雪莉娜茜媛妃姝娴]/.test(persona.name || '') && heCount === 0) {
     return '她';
   }
   return '他';
@@ -505,7 +533,8 @@ function summarizeSingleMessageForRolling(msg, isNativeMode) {
 /**
  * 高保真分层滚动摘要压缩器（容量扩容至 4800 字，自动修复回溯游标，绝不粗暴丢弃关键脉络）
  */
-function compressOverflowHistorySync(sessionId, slidingWindowTurns = 40) {
+function compressOverflowHistorySync(sessionId, slidingWindowTurns = 40, options = {}) {
+  const forceManual = Boolean(options && options.forceManual);
   const session = db.prepare('SELECT * FROM sessions WHERE id = ?').get(sessionId);
   if (!session) return null;
 
@@ -526,22 +555,37 @@ function compressOverflowHistorySync(sessionId, slidingWindowTurns = 40) {
     db.prepare('UPDATE sessions SET summarized_until_msg_id = ? WHERE id = ?').run(safeCursor, sessionId);
   }
 
-  const keepCount = Math.max(8, Number(slidingWindowTurns) || 40);
-  if (allMessages.length <= keepCount + 2) {
-    return session.rolling_summary;
+  let overflowMessages = [];
+  if (forceManual) {
+    // 用户主动点击「一键总结前情」：直接将尚未总结的最新对话提炼为前情提要（不受 40 轮滑窗门槛限制）
+    if (allMessages.length < 2) {
+      return session.rolling_summary || '';
+    }
+    const unsummarized = allMessages.filter((m) => m.id > safeCursor);
+    overflowMessages = unsummarized.length > 0 ? unsummarized : allMessages.slice(-12);
+    if (unsummarized.length === 0) {
+      // 若全部已总结过，重新生成一份精炼完整版摘要供用户查看
+      safeCursor = 0;
+      overflowMessages = allMessages;
+    }
+  } else {
+    const keepCount = Math.max(8, Number(slidingWindowTurns) || 40);
+    if (allMessages.length <= keepCount + 2) {
+      return session.rolling_summary;
+    }
+
+    const cutoffIndex = allMessages.length - keepCount;
+    overflowMessages = allMessages
+      .slice(0, cutoffIndex)
+      .filter((m) => m.id > safeCursor);
+
+    if (overflowMessages.length < 2) {
+      return session.rolling_summary;
+    }
   }
 
-  const cutoffIndex = allMessages.length - keepCount;
-  const overflowMessages = allMessages
-    .slice(0, cutoffIndex)
-    .filter((m) => m.id > safeCursor);
-
-  if (overflowMessages.length < 2) {
-    return session.rolling_summary;
-  }
-
-  const userLabel = isNativeMode ? '用户' : '对方';
-  const aiLabel = isNativeMode ? 'DeepSeek' : '回复';
+  const userLabel = isNativeMode ? '用户' : '我';
+  const aiLabel = isNativeMode ? 'DeepSeek' : 'TA';
 
   const digestSnippets = [];
   for (const msg of overflowMessages) {
@@ -551,8 +595,8 @@ function compressOverflowHistorySync(sessionId, slidingWindowTurns = 40) {
     digestSnippets.push(`- ${speaker}：${summaryLine}`);
   }
 
-  const previousSummary = session.rolling_summary ? `${session.rolling_summary.trim()}\n` : '';
-  let mergedSummary = `${previousSummary}${digestSnippets.join('\n')}`.trim();
+  const basePrevious = forceManual && safeCursor === 0 ? '' : session.rolling_summary ? `${session.rolling_summary.trim()}\n` : '';
+  let mergedSummary = `${basePrevious}${digestSnippets.join('\n')}`.trim();
 
   // 容量从旧版 950 字大幅提升至 4800 字；超出时保留最早开篇锚点 + 高密度中段关键提问 + 完整近期摘要
   const MAX_SUMMARY_CHARS = 4800;
@@ -720,7 +764,13 @@ function buildThreeTierContext({ sessionId, expectedUserId = null, latestUserTex
       ? activeScriptRole || '与你相遇的同行者'
       : rawUserRole;
 
-  const userPersonaLines = [`- **对方称呼**：${userNick}`, `- **在本剧中的身份**：${effectiveUserRole}`];
+  const isCustomUserNick = Boolean(userNick && !/^星[语屿]旅人/.test(userNick));
+  const userPersonaLines = [
+    isCustomUserNick
+      ? `- **对方在故事里的名字（最高优先级，请直接这样称呼对方）**：「${userNick}」`
+      : `- **对方默认代称**：${userNick}（对方尚未改名时自然用“你”称呼即可）`,
+    `- **在本剧中的身份**：${effectiveUserRole}`
+  ];
   if (userRow?.user_persona_appearance) {
     userPersonaLines.push(`- **对方外貌与穿搭细节**：${userRow.user_persona_appearance}`);
   }
@@ -817,6 +867,9 @@ function buildThreeTierContext({ sessionId, expectedUserId = null, latestUserTex
       `## 实时关系阶段与场景心境指引`,
       `- ${nurturing.stage.promptDirective}`,
       `- 此刻心境基调：${nurturing.current_mood}`,
+      isCustomUserNick
+        ? `- ⚠️ 最新称呼提醒：对方现在的名字是「${userNick}」，请在回复中自然称呼对方为「${userNick}」（即使上文早期消息中曾出现过「星屿旅人」等旧称呼，也必须立即改口叫「${userNick}」！）`
+        : '',
       renderedDirectorNote ? `- 当下场景导演提示：${renderedDirectorNote}` : ''
     ]
       .filter(Boolean)
@@ -878,6 +931,7 @@ function buildThreeTierContext({ sessionId, expectedUserId = null, latestUserTex
   return {
     persona,
     session,
+    userNickname: userNick,
     nurturing,
     triggeredLorebooks,
     messagesPayload,

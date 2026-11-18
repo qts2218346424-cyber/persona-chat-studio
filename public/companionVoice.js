@@ -78,6 +78,15 @@
       sample: '外头风这么大还跑过来……手伸出来，坐到我身边暖一暖。'
     },
     {
+      id: 'otome_sister',
+      style: 'cool',
+      isMale: false,
+      bassDb: 0.9,
+      short: '🌙 清冷仙侠师姐',
+      btnHint: '🎙️ 清冷师姐女音',
+      sample: '山门风雪凉，站到我剑气屏障里来，有师姐护着你。'
+    },
+    {
       id: 'cute_sweet',
       style: 'cute',
       isMale: false,

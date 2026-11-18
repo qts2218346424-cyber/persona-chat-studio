@@ -184,6 +184,7 @@ function buildAnimeArcDemoTurn({ persona, pronoun, userText, greetingCall, histo
 
 async function streamSmartDemoEngine({
   persona,
+  userNickname = '',
   nurturing,
   directorNote,
   triggeredLorebooks,
@@ -203,11 +204,16 @@ async function streamSmartDemoEngine({
   const moodTag = nurturing?.current_mood || '✨ 专注倾听';
   const stageLevel = nurturing?.stage?.level || 1;
 
-  let rememberedUserName = '';
+  let rememberedUserName =
+    userNickname && !/^星[语屿]旅人/.test(String(userNickname).trim())
+      ? String(userNickname).trim()
+      : '';
   const nonPinnedFacts = [];
   for (const m of recalledMemories || []) {
-    const nameMatch = m.content.match(/对方自称「([^」]+)」/);
-    if (nameMatch) rememberedUserName = nameMatch[1];
+    const nameMatch = m.content.match(/对方(?:自称|现在的名字叫)「([^」]+)」/);
+    if (nameMatch && !rememberedUserName && !/^星[语屿]旅人/.test(nameMatch[1])) {
+      rememberedUserName = nameMatch[1];
+    }
     if (m.category !== 'Pinned') nonPinnedFacts.push(m.content);
   }
 
@@ -560,6 +566,7 @@ async function streamPersonaChat({
 
     await streamSmartDemoEngine({
       persona: contextBundle.persona,
+      userNickname: contextBundle.userNickname,
       nurturing: contextBundle.nurturing,
       directorNote: contextBundle.session.session_prompt || contextBundle.session.director_note,
       triggeredLorebooks: contextBundle.triggeredLorebooks,
@@ -598,6 +605,7 @@ async function streamPersonaChat({
 
       await streamSmartDemoEngine({
         persona: contextBundle.persona,
+        userNickname: contextBundle.userNickname,
         nurturing: contextBundle.nurturing,
         directorNote: contextBundle.session.session_prompt || contextBundle.session.director_note,
         triggeredLorebooks: contextBundle.triggeredLorebooks,
@@ -648,6 +656,7 @@ async function streamPersonaChat({
 
       await streamSmartDemoEngine({
         persona: contextBundle.persona,
+        userNickname: contextBundle.userNickname,
         nurturing: contextBundle.nurturing,
         directorNote: contextBundle.session.session_prompt || contextBundle.session.director_note,
         triggeredLorebooks: contextBundle.triggeredLorebooks,

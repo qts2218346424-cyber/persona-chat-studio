@@ -2570,12 +2570,30 @@ async function handleApi(req, res, pathname, parsedUrl) {
       }
     };
 
+    // 每 12 秒发送 SSE 注释心跳帧，防止 R1 深度思考期间被 Nginx / Cloudflare / 移动蜂窝网关空闲断流
+    const keepAliveTimer = setInterval(() => {
+      if (!res.writableEnded) {
+        try {
+          res.write(': keepalive\n\n');
+        } catch {
+          // ignore write error on closing socket
+        }
+      }
+    }, 12000);
+
     const abortController = new AbortController();
     res.on('close', () => {
+      clearInterval(keepAliveTimer);
       if (!res.writableEnded) {
         abortController.abort();
       }
     });
+
+    const startedAt = Date.now();
+    let fullReasoning = '';
+    let fullContent = '';
+    let contextBundle = null;
+    let nativeMeta = null;
 
     try {
       let hasCustomOv = false;
@@ -2605,7 +2623,7 @@ async function handleApi(req, res, pathname, parsedUrl) {
         }
       }
 
-      const contextBundle = buildThreeTierContext({
+      contextBundle = buildThreeTierContext({
         sessionId,
         expectedUserId: userId,
         latestUserText: userContent,
@@ -2639,11 +2657,6 @@ async function handleApi(req, res, pathname, parsedUrl) {
         provider: settings.provider,
         session_mode: session.session_mode
       });
-
-      const startedAt = Date.now();
-      let fullReasoning = '';
-      let fullContent = '';
-      let nativeMeta = null;
 
       if (isNativeMode) {
         const enableThinking =

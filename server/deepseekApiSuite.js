@@ -1393,7 +1393,7 @@ $$\\int_{-\\infty}^{+\\infty} e^{-\\frac{(t - \\mu)^2}{2\\sigma^2}} \\frac{dt}{\
 }
 
 /**
- * 6. 单轮流式请求解析器（支持 reasoning_content + <think> 标签自动拆流 + tool_calls + usage 磁盘缓存遥测）
+ * 6. 单轮流式请求解析器（含连接超时保护、指数退避重试、读流看门狗、尾部残行冲刷与 <think> 拆流）
  */
 async function streamSingleCompletionRound({
   url,
@@ -1404,23 +1404,74 @@ async function streamSingleCompletionRound({
   onContent,
   signal
 }) {
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...headers
-    },
-    body: JSON.stringify(requestBody),
-    signal
-  });
+  const maxAttempts = 3;
+  let response = null;
+  let lastConnectErr = null;
 
-  if (!response.ok) {
-    const errText = await response.text().catch(() => '');
-    throw new Error(`DeepSeek API 返回异常 (${response.status}): ${errText.slice(0, 260) || response.statusText}`);
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    if (signal?.aborted) {
+      throw new Error('请求已取消');
+    }
+    const connectAbort = new AbortController();
+    const connectTimer = setTimeout(() => connectAbort.abort(new Error('CONNECT_TIMEOUT')), 28000);
+    const onParentAbort = () => connectAbort.abort();
+    if (signal) {
+      signal.addEventListener('abort', onParentAbort, { once: true });
+    }
+
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...headers
+        },
+        body: JSON.stringify(requestBody),
+        signal: connectAbort.signal
+      });
+      clearTimeout(connectTimer);
+      if (signal) signal.removeEventListener('abort', onParentAbort);
+
+      if (!res.ok) {
+        const errText = await res.text().catch(() => '');
+        const retryableStatus = [408, 429, 500, 502, 503, 504].includes(res.status);
+        const errObj = new Error(
+          `DeepSeek API 返回异常 (${res.status}): ${errText.slice(0, 260) || res.statusText}`
+        );
+        if (retryableStatus && attempt < maxAttempts && !signal?.aborted) {
+          lastConnectErr = errObj;
+          await sleep(600 * Math.pow(2, attempt - 1));
+          continue;
+        }
+        throw errObj;
+      }
+
+      if (!res.body) {
+        throw new Error('DeepSeek API 未返回可读流');
+      }
+
+      response = res;
+      break;
+    } catch (err) {
+      clearTimeout(connectTimer);
+      if (signal) signal.removeEventListener('abort', onParentAbort);
+      if (signal?.aborted) throw err;
+
+      const msg = String(err?.message || '');
+      const isTransient =
+        msg.includes('CONNECT_TIMEOUT') ||
+        /fetch failed|ECONNRESET|ETIMEDOUT|EAI_AGAIN|socket hang up|network/i.test(msg);
+      if (isTransient && attempt < maxAttempts) {
+        lastConnectErr = err;
+        await sleep(600 * Math.pow(2, attempt - 1));
+        continue;
+      }
+      throw err;
+    }
   }
 
-  if (!response.body) {
-    throw new Error('DeepSeek API 未返回可读流');
+  if (!response || !response.body) {
+    throw lastConnectErr || new Error('DeepSeek API 连接失败');
   }
 
   const decoder = new TextDecoder('utf-8');
@@ -1443,61 +1494,103 @@ async function streamSingleCompletionRound({
     }
   });
 
-  for await (const chunk of response.body) {
-    if (signal?.aborted) break;
-    lineBuffer += decoder.decode(chunk, { stream: true });
-    const lines = lineBuffer.split(/\r?\n/);
-    lineBuffer = lines.pop() || '';
+  const processDataLine = (rawLine) => {
+    const line = rawLine.trim();
+    if (!line || !line.startsWith('data:')) return;
+    const dataStr = line.slice(5).trim();
+    if (!dataStr || dataStr === '[DONE]') return;
 
-    for (const rawLine of lines) {
-      const line = rawLine.trim();
-      if (!line || !line.startsWith('data:')) continue;
-      const dataStr = line.slice(5).trim();
-      if (dataStr === '[DONE]') continue;
+    let parsed;
+    try {
+      parsed = JSON.parse(dataStr);
+    } catch {
+      return;
+    }
 
-      let parsed;
-      try {
-        parsed = JSON.parse(dataStr);
-      } catch {
-        continue;
-      }
+    if (parsed.model) resolvedModel = parsed.model;
+    if (parsed.usage) {
+      usageData = parsed.usage;
+    }
 
-      if (parsed.model) resolvedModel = parsed.model;
-      if (parsed.usage) {
-        usageData = parsed.usage;
-      }
+    const choice = parsed.choices && parsed.choices[0];
+    if (!choice) return;
+    const delta = choice.delta || choice.message || {};
 
-      const choice = parsed.choices && parsed.choices[0];
-      if (!choice) continue;
-      const delta = choice.delta || choice.message || {};
+    if (delta.reasoning_content) {
+      splitter.feedNativeReasoning(delta.reasoning_content);
+    }
+    if (delta.content) {
+      splitter.feedContent(delta.content);
+    }
 
-      if (delta.reasoning_content) {
-        splitter.feedNativeReasoning(delta.reasoning_content);
-      }
-      if (delta.content) {
-        splitter.feedContent(delta.content);
-      }
-
-      if (Array.isArray(delta.tool_calls)) {
-        for (const tc of delta.tool_calls) {
-          const idx = tc.index ?? 0;
-          if (!toolCallsMap.has(idx)) {
-            toolCallsMap.set(idx, {
-              id: tc.id || `call_${idx}_${Date.now()}`,
-              type: 'function',
-              function: {
-                name: tc.function?.name || '',
-                arguments: tc.function?.arguments || ''
-              }
-            });
-          } else {
-            const existing = toolCallsMap.get(idx);
-            if (tc.id) existing.id = tc.id;
-            if (tc.function?.name) existing.function.name += tc.function.name;
-            if (tc.function?.arguments) existing.function.arguments += tc.function.arguments;
-          }
+    if (Array.isArray(delta.tool_calls)) {
+      for (const tc of delta.tool_calls) {
+        const idx = tc.index ?? 0;
+        if (!toolCallsMap.has(idx)) {
+          toolCallsMap.set(idx, {
+            id: tc.id || `call_${idx}_${Date.now()}`,
+            type: 'function',
+            function: {
+              name: tc.function?.name || '',
+              arguments: tc.function?.arguments || ''
+            }
+          });
+        } else {
+          const existing = toolCallsMap.get(idx);
+          if (tc.id) existing.id = tc.id;
+          if (tc.function?.name) existing.function.name += tc.function.name;
+          if (tc.function?.arguments) existing.function.arguments += tc.function.arguments;
         }
       }
+    }
+  };
+
+  // 使用带单块空闲超时看门狗的 Reader 读取流，防止上游 TCP 半开静默挂死导致前端永久转圈
+  const reader = response.body.getReader();
+  const CHUNK_STALL_TIMEOUT_MS = 65000;
+  try {
+    while (true) {
+      if (signal?.aborted) break;
+      let stallTimer = null;
+      const readPromise = reader.read();
+      const timeoutPromise = new Promise((_, reject) => {
+        stallTimer = setTimeout(
+          () => reject(new Error('上游流式传输超时中断（超过 65 秒无响应）')),
+          CHUNK_STALL_TIMEOUT_MS
+        );
+      });
+
+      let chunkRes;
+      try {
+        chunkRes = await Promise.race([readPromise, timeoutPromise]);
+      } finally {
+        if (stallTimer) clearTimeout(stallTimer);
+      }
+
+      const { done, value } = chunkRes;
+      if (done) break;
+      if (value) {
+        lineBuffer += decoder.decode(value, { stream: true });
+        const lines = lineBuffer.split(/\r?\n/);
+        lineBuffer = lines.pop() || '';
+        for (const rawLine of lines) {
+          processDataLine(rawLine);
+        }
+      }
+    }
+  } finally {
+    try {
+      reader.releaseLock();
+    } catch {
+      // ignore
+    }
+  }
+
+  const tailDecoded = decoder.decode();
+  if (tailDecoded) lineBuffer += tailDecoded;
+  if (lineBuffer.trim()) {
+    for (const rawLine of lineBuffer.split(/\r?\n/)) {
+      processDataLine(rawLine);
     }
   }
 
@@ -1564,14 +1657,11 @@ async function streamDeepSeekNativeSuite({
     }
   }
 
-  // 构建工作消息栈副本
-  const workingMessages = messagesPayload.map((m) => ({
-    role: m.role,
-    content: m.content
-  }));
+  // 构建工作消息栈副本并执行严格角色交替归一化（单一置顶 system + user/assistant 严格交替，保护 KV 前缀缓存与 R1 兼容性）
+  const workingMessages = normalizeMessagesForStrictLLM(messagesPayload);
 
-  // 注入联网搜索与网页 URL 正文参考上下文（严格模仿正版 DeepSeek 网页端：正文不写冗余检索前言，直接行内标注 [1]）
-  if (searchResults.length > 0) {
+  // 注入联网搜索与网页 URL 正文参考上下文（附加至最后一条 user 消息，避免插入第二条 system 消息破坏前缀缓存与兼容网关协议）
+  if (searchResults.length > 0 && workingMessages.length > 0) {
     const searchBlock = searchResults
       .map(
         (s) =>
@@ -1580,16 +1670,25 @@ async function streamDeepSeekNativeSuite({
           }`
       )
       .join('\n\n---\n\n');
-    workingMessages.splice(1, 0, {
-      role: 'system',
-      content: `以下是针对用户当前提问实时检索与读取的参考资料。请严格按正版 DeepSeek 联网回答规范处理：\n1. 直接将权威事实自然融入你的正式分析中，**不要**在回答开头机械罗列“我已搜索了以下网页”或重复堆砌来源标题列表（前端顶部已独立渲染网页折叠卡片）；\n2. 在引用对应事实的陈述句末尾紧贴标注方括号数字角标（如 [1]、[2]）。\n\n${searchBlock}`
-    });
+    let lastUserIdx = -1;
+    for (let i = workingMessages.length - 1; i >= 0; i--) {
+      if (workingMessages[i].role === 'user') {
+        lastUserIdx = i;
+        break;
+      }
+    }
+    const refAppendix = `<web_search_references>\n以下是针对当前提问实时检索与读取的参考资料。请严格按正版 DeepSeek 联网回答规范处理：\n1. 直接将权威事实自然融入你的正式分析中，**不要**在回答开头机械罗列“我已搜索了以下网页”或重复堆砌来源标题列表；\n2. 在引用对应事实的陈述句末尾紧贴标注方括号数字角标（如 [1]、[2]）。\n\n${searchBlock}\n</web_search_references>`;
+    if (lastUserIdx >= 0) {
+      workingMessages[lastUserIdx].content = `${workingMessages[lastUserIdx].content}\n\n${refAppendix}`;
+    } else if (workingMessages[0].role === 'system') {
+      workingMessages[0].content += `\n\n${refAppendix}`;
+    }
   }
 
   // 若开启 JSON Output 模式，按 DeepSeek API 强制要求确保提示词中包含 "json" 关键字
   if (jsonMode) {
     const hasJsonWord = workingMessages.some((m) => /json/i.test(m.content || ''));
-    if (!hasJsonWord) {
+    if (!hasJsonWord && workingMessages.length > 0) {
       workingMessages[0].content += '\n\n请务必以合法的 JSON (json object) 格式输出最终结果，不要包裹多余解释文字。';
     }
   }

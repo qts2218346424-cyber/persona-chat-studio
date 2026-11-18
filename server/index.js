@@ -64,7 +64,11 @@ const {
   runDreamConsolidation
 } = require('./nurturingEngine');
 const { streamPersonaChat } = require('./llmGateway');
-const { parsePersonaDocument, parseChatHistoryDocument } = require('./docImporter');
+const {
+  parsePersonaDocument,
+  parseChatHistoryDocument,
+  buildSessionMemoryMarkdown
+} = require('./docImporter');
 const {
   resolveOrGenerateCompanion,
   buildCompanionReminder,
@@ -292,7 +296,7 @@ function listPersonasForUser(userId) {
 }
 
 function listSessionsForUser(userId) {
-  return db
+  const rows = db
     .prepare(`
       SELECT s.*, p.name AS persona_name, p.avatar AS persona_avatar, p.script_id AS script_id,
              (SELECT COUNT(*) FROM messages m WHERE m.session_id = s.id) AS message_count,
@@ -303,6 +307,32 @@ function listSessionsForUser(userId) {
       ORDER BY COALESCE(s.pinned, 0) DESC, s.updated_at DESC
     `)
     .all(userId);
+
+  return rows.map((row) => {
+    let personaName = row.persona_name;
+    let personaAvatar = row.persona_avatar;
+    let hasOverride = false;
+    if (row.custom_persona_override) {
+      try {
+        const ov = JSON.parse(row.custom_persona_override);
+        if (ov && typeof ov === 'object') {
+          if (ov.name && String(ov.name).trim()) personaName = String(ov.name).trim();
+          if (ov.avatar && String(ov.avatar).trim()) personaAvatar = String(ov.avatar).trim();
+          hasOverride = Object.values(ov).some((v) => typeof v === 'string' && v.trim());
+        }
+      } catch {}
+    }
+    const hasSessionPrompt = Boolean(
+      (row.session_prompt && String(row.session_prompt).trim()) ||
+        (row.director_note && String(row.director_note).trim())
+    );
+    return {
+      ...row,
+      persona_name: personaName,
+      persona_avatar: personaAvatar,
+      has_custom_setting: Boolean(hasOverride || hasSessionPrompt)
+    };
+  });
 }
 
 function extractAuthToken(req) {
@@ -884,16 +914,18 @@ async function handleApi(req, res, pathname, parsedUrl) {
   if (personaMatch) {
     const personaId = decodeURIComponent(personaMatch[1]);
     const existing = db
-      .prepare("SELECT * FROM personas WHERE id = ? AND (user_id = ? OR user_id = 'system')")
+      .prepare("SELECT * FROM personas WHERE id = ? AND (user_id = ? OR user_id = 'system' OR user_id = 'system_ds')")
       .get(personaId, userId);
     if (!existing) return sendJson(res, 404, { error: '未找到该角色人设' });
 
     if (method === 'PUT') {
       const body = await readJsonBody(req);
       const now = Date.now();
+      const isSystemPersona = existing.user_id === 'system' || existing.user_id === 'system_ds';
+      const applyToGlobal = Boolean(body.apply_to_global) && !isSystemPersona && existing.user_id === userId;
 
-      // 若编辑的是公共预设角色且传入了 session_id，则作为该用户当前会话的专属设定覆盖，避免影响其他用户
-      if (existing.user_id === 'system' && body.session_id) {
+      // 默认按「会话级独立设定」保存至 sessions.custom_persona_override，确保不同对话框可拥有完全不同的设定而不互相污染
+      if (body.session_id && !applyToGlobal) {
         const overrideData = {
           avatar: (body.avatar ?? existing.avatar).trim() || '🌸',
           name: (body.name ?? existing.name).trim() || existing.name,
@@ -902,18 +934,27 @@ async function handleApi(req, res, pathname, parsedUrl) {
           backstory: (body.backstory ?? existing.backstory).trim(),
           speaking_style: (body.speaking_style ?? existing.speaking_style).trim()
         };
-        db.prepare(`
-          UPDATE sessions SET custom_persona_override = ?, updated_at = ?
-          WHERE id = ? AND user_id = ?
-        `).run(JSON.stringify(overrideData), now, body.session_id, userId);
+        if (body.session_prompt !== undefined) {
+          db.prepare(`
+            UPDATE sessions SET custom_persona_override = ?, session_prompt = ?, updated_at = ?
+            WHERE id = ? AND user_id = ?
+          `).run(JSON.stringify(overrideData), String(body.session_prompt || '').trim(), now, body.session_id, userId);
+        } else {
+          db.prepare(`
+            UPDATE sessions SET custom_persona_override = ?, updated_at = ?
+            WHERE id = ? AND user_id = ?
+          `).run(JSON.stringify(overrideData), now, body.session_id, userId);
+        }
 
         return sendJson(res, 200, {
-          persona: formatPersonaRow({ ...existing, ...overrideData })
+          scope: 'session',
+          persona: formatPersonaRow({ ...existing, ...overrideData }),
+          sessions: listSessionsForUser(userId)
         });
       }
 
-      if (existing.user_id !== userId && existing.user_id !== 'system') {
-        return sendJson(res, 403, { error: '无权修改他人创建的角色卡' });
+      if (existing.user_id !== userId) {
+        return sendJson(res, 403, { error: '官方预设角色仅支持按对话独立覆盖设定，不可修改全局模板' });
       }
 
       const prompts = Array.isArray(body.starter_prompts)
@@ -937,8 +978,27 @@ async function handleApi(req, res, pathname, parsedUrl) {
         personaId
       );
 
+      // 若在会话内同时勾选了「同步更新全局卡」，也清理或同步当前会话的覆盖并保存 session_prompt
+      if (body.session_id) {
+        if (body.session_prompt !== undefined) {
+          db.prepare(`
+            UPDATE sessions SET custom_persona_override = NULL, session_prompt = ?, updated_at = ?
+            WHERE id = ? AND user_id = ?
+          `).run(String(body.session_prompt || '').trim(), now, body.session_id, userId);
+        } else {
+          db.prepare(`
+            UPDATE sessions SET custom_persona_override = NULL, updated_at = ?
+            WHERE id = ? AND user_id = ?
+          `).run(now, body.session_id, userId);
+        }
+      }
+
       const updated = formatPersonaRow(db.prepare('SELECT * FROM personas WHERE id = ?').get(personaId));
-      return sendJson(res, 200, { persona: updated });
+      return sendJson(res, 200, {
+        scope: 'global',
+        persona: updated,
+        sessions: listSessionsForUser(userId)
+      });
     }
 
     if (method === 'DELETE') {
@@ -1043,7 +1103,7 @@ async function handleApi(req, res, pathname, parsedUrl) {
 
     try {
       const parsed = parseChatHistoryDocument(
-        body.filename || 'history.txt',
+        body.filename || 'history.md',
         body.content || '',
         persona.name
       );
@@ -1053,6 +1113,9 @@ async function handleApi(req, res, pathname, parsedUrl) {
         db.prepare("UPDATE sessions SET rolling_summary = '', summarized_until_msg_id = 0 WHERE id = ?").run(
           sessionId
         );
+        if (body.replace_memories) {
+          db.prepare('DELETE FROM memories WHERE session_id = ?').run(sessionId);
+        }
       }
 
       const now = Date.now();
@@ -1070,47 +1133,95 @@ async function handleApi(req, res, pathname, parsedUrl) {
         }
       });
 
+      let importedMemoriesCount = 0;
       if (Array.isArray(parsed.imported_memories) && parsed.imported_memories.length > 0) {
+        const existingMemContents = new Set(
+          db
+            .prepare('SELECT content FROM memories WHERE session_id = ?')
+            .all(sessionId)
+            .map((r) => String(r.content || '').trim())
+        );
         const insertMem = db.prepare(`
-          INSERT OR IGNORE INTO memories (id, session_id, category, content, pinned, importance, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          INSERT OR IGNORE INTO memories (id, session_id, category, content, pinned, importance, strength, recall_count, last_recalled_at, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
         `);
         for (const mem of parsed.imported_memories) {
-          if (mem && mem.content) {
+          const cleanContent = mem && mem.content ? String(mem.content).trim() : '';
+          if (cleanContent && !existingMemContents.has(cleanContent)) {
+            const isPinned = mem.pinned ? 1 : 0;
+            const imp = Math.min(5, Math.max(1, Number(mem.importance) || (isPinned ? 5 : 4)));
             insertMem.run(
               genId('mem'),
               sessionId,
-              mem.category || 'fact',
-              String(mem.content).trim(),
-              mem.pinned ? 1 : 0,
-              mem.importance || 4,
+              mem.category || (isPinned ? 'Pinned' : 'fact'),
+              cleanContent,
+              isPinned,
+              imp,
+              isPinned ? 8.0 : 4.5,
+              now,
               now,
               now
             );
+            existingMemContents.add(cleanContent);
+            importedMemoriesCount += 1;
           }
         }
       }
 
+      // 可选：同步将 .md / .json 记忆包里的「专属设定」应用到当前对话框（默认仅当勾选 import_setting 时生效，不污染其他对话）
+      let appliedSetting = false;
+      if (body.import_setting === true && parsed.imported_setting) {
+        const sObj = parsed.imported_setting;
+        let nextOverrideJson = session.custom_persona_override;
+        if (sObj.persona_override && typeof sObj.persona_override === 'object') {
+          let prevOv = {};
+          try {
+            if (session.custom_persona_override) prevOv = JSON.parse(session.custom_persona_override) || {};
+          } catch {}
+          nextOverrideJson = JSON.stringify({ ...prevOv, ...sObj.persona_override });
+          appliedSetting = true;
+        }
+        const nextSessionPrompt =
+          sObj.session_prompt ? sObj.session_prompt : session.session_prompt || '';
+        const nextDirectorNote =
+          sObj.director_note ? sObj.director_note : session.director_note || '';
+        if (sObj.session_prompt || sObj.director_note) appliedSetting = true;
+
+        if (appliedSetting) {
+          db.prepare(`
+            UPDATE sessions
+            SET custom_persona_override = ?, session_prompt = ?, director_note = ?, updated_at = ?
+            WHERE id = ? AND user_id = ?
+          `).run(nextOverrideJson, nextSessionPrompt, nextDirectorNote, now, sessionId, userId);
+        }
+      }
+
       if (parsed.imported_summary) {
+        const prevSum =
+          body.mode === 'append' && session.rolling_summary && session.rolling_summary.trim()
+            ? `${session.rolling_summary.trim()}\n${parsed.imported_summary.trim()}`
+            : parsed.imported_summary.trim();
         db.prepare('UPDATE sessions SET rolling_summary = ?, updated_at = ? WHERE id = ?').run(
-          parsed.imported_summary,
+          prevSum.slice(-4800),
           now,
           sessionId
         );
-      } else {
+      } else if (parsed.messages.length > 0) {
         const settings = getSafeClientSettings(userId);
-        compressOverflowHistorySync(sessionId, parseInt(settings.sliding_window_turns || '12', 10));
+        compressOverflowHistorySync(sessionId, parseInt(settings.sliding_window_turns || '40', 10));
       }
 
       db.prepare('UPDATE sessions SET updated_at = ? WHERE id = ?').run(Date.now(), sessionId);
 
       return sendJson(res, 200, {
         imported_count: parsed.messages.length,
-        extracted_memories: extractedCount,
+        imported_memories_count: importedMemoriesCount,
+        extracted_memories: extractedCount + importedMemoriesCount,
+        applied_setting: appliedSetting,
         sessions: listSessionsForUser(userId)
       });
     } catch (err) {
-      return sendJson(res, 400, { error: err.message || '历史对话导入失败' });
+      return sendJson(res, 400, { error: err.message || '历史对话或记忆导入失败' });
     }
   }
 
@@ -1127,16 +1238,54 @@ async function handleApi(req, res, pathname, parsedUrl) {
       .prepare('SELECT role, reasoning, content, created_at FROM messages WHERE session_id = ? ORDER BY id ASC')
       .all(sessionId);
     const memories = db
-      .prepare('SELECT category, content, pinned, importance FROM memories WHERE session_id = ?')
+      .prepare(
+        'SELECT category, content, pinned, importance FROM memories WHERE session_id = ? ORDER BY pinned DESC, importance DESC, updated_at DESC'
+      )
       .all(sessionId);
 
-    return sendJson(res, 200, {
-      title: session.title,
-      persona_name: persona.name,
-      rolling_summary: session.rolling_summary,
-      exported_at: new Date().toISOString(),
+    let personaOverrideObj = null;
+    if (session.custom_persona_override) {
+      try {
+        personaOverrideObj = JSON.parse(session.custom_persona_override);
+      } catch {}
+    }
+
+    const exportedAtIso = new Date().toISOString();
+    const exportedAtLocal = new Date().toLocaleString('zh-CN', { hour12: false });
+    const markdown = buildSessionMemoryMarkdown({
+      session,
+      persona,
       memories,
-      messages
+      messages,
+      exportedAt: exportedAtLocal
+    });
+
+    if (parsedUrl.searchParams.get('format') === 'md') {
+      const safeFileTitle = String(session.title || persona.name || '聊天记忆档案')
+        .replace(/[\\/:*?"<>|]/g, '_')
+        .slice(0, 40);
+      res.writeHead(200, {
+        'Content-Type': 'text/markdown; charset=utf-8',
+        'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(`${safeFileTitle}_记忆档案.md`)}`,
+        ...SECURITY_HEADERS
+      });
+      res.end(markdown);
+      return;
+    }
+
+    return sendJson(res, 200, {
+      session_id: session.id,
+      title: session.title,
+      session_mode: session.session_mode || 'roleplay',
+      persona_name: persona.name,
+      persona_override: personaOverrideObj,
+      session_prompt: session.session_prompt || '',
+      director_note: session.director_note || '',
+      rolling_summary: session.rolling_summary || '',
+      exported_at: exportedAtIso,
+      memories,
+      messages,
+      markdown
     });
   }
 
@@ -1679,6 +1828,11 @@ async function handleApi(req, res, pathname, parsedUrl) {
         body.rolling_summary !== undefined ? String(body.rolling_summary) : session.rolling_summary;
       const directorNote =
         body.director_note !== undefined ? String(body.director_note) : session.director_note || '';
+      const sessionPrompt =
+        body.session_prompt !== undefined ? String(body.session_prompt) : session.session_prompt || '';
+      const nextCustomOverride = body.clear_persona_override
+        ? null
+        : session.custom_persona_override;
       const enableThought =
         body.enable_inner_thought !== undefined
           ? body.enable_inner_thought
@@ -1744,7 +1898,7 @@ async function handleApi(req, res, pathname, parsedUrl) {
       db.prepare(`
         UPDATE sessions
         SET title = ?, title_locked = ?, pinned = ?, persona_id = ?, session_mode = ?, ds_thinking = ?, ds_search = ?, ds_json_mode = ?, ds_tools_enabled = ?,
-            proactive_enabled = ?, rolling_summary = ?, director_note = ?, enable_inner_thought = ?, enable_auto_memory = ?, updated_at = ?
+            proactive_enabled = ?, rolling_summary = ?, director_note = ?, session_prompt = ?, custom_persona_override = ?, enable_inner_thought = ?, enable_auto_memory = ?, updated_at = ?
         WHERE id = ? AND user_id = ?
       `).run(
         title,
@@ -1759,6 +1913,8 @@ async function handleApi(req, res, pathname, parsedUrl) {
         proactiveEnabled,
         rollingSummary,
         directorNote,
+        sessionPrompt,
+        nextCustomOverride,
         enableThought,
         enableAutoMem,
         nextUpdatedAt,
@@ -1805,8 +1961,8 @@ async function handleApi(req, res, pathname, parsedUrl) {
       INSERT INTO sessions (
         id, user_id, persona_id, title, session_mode, ds_thinking, ds_search, ds_json_mode, ds_tools_enabled, proactive_enabled,
         custom_persona_override, rolling_summary, summarized_until_msg_id,
-        enable_inner_thought, enable_auto_memory, affection, trust, intimacy, current_mood, secret_diary, director_note, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        enable_inner_thought, enable_auto_memory, affection, trust, intimacy, current_mood, secret_diary, director_note, session_prompt, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       newSessionId,
       userId,
@@ -1828,6 +1984,7 @@ async function handleApi(req, res, pathname, parsedUrl) {
       srcSession.current_mood || '温柔浅笑',
       srcSession.secret_diary || '[]',
       srcSession.director_note || '',
+      srcSession.session_prompt || '',
       now,
       now
     );
@@ -2421,19 +2578,26 @@ async function handleApi(req, res, pathname, parsedUrl) {
     });
 
     try {
+      let hasCustomOv = false;
+      if (session.custom_persona_override) {
+        try {
+          const ov = JSON.parse(session.custom_persona_override);
+          hasCustomOv = Boolean(ov && typeof ov === 'object' && Object.values(ov).some((v) => typeof v === 'string' && v.trim()));
+        } catch {}
+      }
       const personaObj = resolveEffectivePersona(session);
-      const isPureOfficial = personaObj.id === 'persona_deepseek_official';
+      const isPureOfficial = personaObj.id === 'persona_deepseek_official' && !hasCustomOv;
 
       let newlyExtracted = [];
       let nurturingRes = null;
-      if (!isRegenerate && !isPureOfficial) {
+      if (!isRegenerate) {
         if (session.enable_auto_memory === 1) {
           newlyExtracted = extractFactsFromUserTurn(sessionId, userContent);
           if (newlyExtracted.length > 0) {
             sendEvent('memory_extracted', { items: newlyExtracted });
           }
         }
-        if (!isNativeMode) {
+        if (!isPureOfficial && !isNativeMode) {
           nurturingRes = evaluateTurnNurturing(sessionId, userContent);
           if (nurturingRes) {
             sendEvent('nurturing_updated', nurturingRes);
@@ -2446,7 +2610,7 @@ async function handleApi(req, res, pathname, parsedUrl) {
         expectedUserId: userId,
         latestUserText: userContent,
         settings,
-        reinforceMemories: !isPureOfficial
+        reinforceMemories: true
       });
 
       // 若本轮包含上传附件，将附件内容结构化拼接到最后一条 user 消息载荷中供模型完整阅读

@@ -877,36 +877,34 @@ async function streamSimulatedDeepSeekNative({
   const isCacheAsk = /context caching|磁盘.*缓存|前缀缓存|kv\s*cache|降低.*成本/i.test(cleanUser);
   const isCompareReq = /区别|对比|差异|哪个好|优缺点|选型|\bvs\b|异同/i.test(cleanUser);
   const isWritingReq = /写一|起草|周报|邮件|润色|大纲|策划|总结报告|演讲稿|文案|古诗|故事构思/i.test(cleanUser);
-  const isMemoryRecallReq = /我是谁|我叫什么|还记得我|我的项目|我的技术栈|刚才说了什么|前面聊了什么|之前说的|总结一下刚才|你记得吗/i.test(
-    cleanUser
-  );
-
   // 从系统提示词与多轮消息栈中提取已锚定的跨轮记忆与近期历史，保障回退引擎同样拥有牢靠记忆
-  const sysContent = (messagesPayload && messagesPayload[0]?.role === 'system' ? messagesPayload[0].content : '') || '';
-  const memAnchorMatch = sysContent.match(/## 跨轮次长期记忆锚点[^\n]*\n([\s\S]*?)(?:\n\n## |\s*$)/);
-  const anchoredLines = memAnchorMatch
-    ? memAnchorMatch[1]
-        .split('\n')
-        .map((l) => l.replace(/^-\s*/, '').trim())
-        .filter(Boolean)
-    : [];
-  const priorTurns = (messagesPayload || []).filter((m) => m.role !== 'system').slice(0, -1);
-
   const sysPromptStr = String(messagesPayload?.[0]?.content || '');
   const sessionPromptMatch = sysPromptStr.match(
     /## 🎯 本对话专属独立设定[^\n]*\n([\s\S]*?)(?=\n## |\n# |$)/
   );
   const activeSessionPrompt = sessionPromptMatch ? sessionPromptMatch[1].trim() : '';
   const memSectionMatch = sysPromptStr.match(
-    /## (?:跨轮次长期记忆锚点与用户约束|当前唤醒的长期记忆条目)[^\n]*\n([\s\S]*?)(?=\n## |\n# |$)/
+    /## (?:跨轮次长期记忆锚点与用户约束|跨轮次长期记忆锚点|当前唤醒的长期记忆条目)[^\n]*\n([\s\S]*?)(?=\n## |\n# |$)/
   );
   const activeMemLines = memSectionMatch
     ? memSectionMatch[1]
         .split(/\r?\n/)
-        .map((l) => l.replace(/^-\s*(?:\[[^\]]+\]\s*)?(?:\(鲜活度\s*\d+%\)\s*)?/, '').trim())
-        .filter(Boolean)
+        .map((l) =>
+          l
+            .replace(/^-\s*(?:\[[^\]]+\]\s*)?(?:\(鲜活度\s*\d+%\)\s*)?/, '')
+            .trim()
+        )
+        .filter((l) => l && !l.startsWith('以下信息是'))
     : [];
-  const isMemoryCheckAsk = /记得|记忆|我是谁|我叫什么|约定|设定是什么|之前聊/i.test(cleanUser);
+  const summaryMatch = sysPromptStr.match(
+    /## (?:早期对话前情摘要|更早期的对话前情提要)[^\n]*\n([\s\S]*?)(?=\n## |\n# |$)/
+  );
+  const activeRollingSummary = summaryMatch ? summaryMatch[1].trim() : '';
+  const priorTurns = (messagesPayload || []).filter((m) => m.role !== 'system').slice(0, -1);
+  const isMemoryCheckAsk =
+    /记得|记忆|我是谁|我叫什么|我的名字|我的项目|我的技术栈|约定|设定是什么|刚才说了什么|前面聊了什么|之前说的|之前聊|总结一下刚才/i.test(
+      cleanUser
+    );
 
   let reasoningText = '';
   let answerText = '';
@@ -930,22 +928,40 @@ async function streamSimulatedDeepSeekNative({
       References: hasSearchRefs ? searchResults.slice(0, 3).map((s) => ({ index: s.index, title: s.title, url: s.url })) : []
     };
     answerText = JSON.stringify(sampleObj, null, 2);
-  } else if (isMemoryCheckAsk && (activeMemLines.length > 0 || activeSessionPrompt)) {
-    reasoningText = `用户正在核对当前对话框的独立记忆与专属设定：「${cleanUser.slice(0, 40)}」。\n让我核查当前隔离会话（Session）的上下文锚点：\n${
-      activeSessionPrompt ? `- 本对话专属设定：${activeSessionPrompt.slice(0, 90)}\n` : ''
+  } else if (
+    isMemoryCheckAsk &&
+    (activeMemLines.length > 0 || activeSessionPrompt || activeRollingSummary || priorTurns.length > 0)
+  ) {
+    const recentUserQuotes = priorTurns
+      .filter((m) => m.role === 'user')
+      .slice(-5)
+      .map((m, idx) => `${idx + 1}. 「${String(m.content || '').replace(/\s+/g, ' ').slice(0, 110)}」`);
+
+    reasoningText = `用户正在核对当前会话的上下文记忆与前文脉络：「${cleanUser.slice(0, 44)}」。\n让我检索当前会话的三层记忆栈：\n${
+      activeSessionPrompt ? `- 专属独立设定：${activeSessionPrompt.slice(0, 90)}\n` : ''
     }${
-      activeMemLines.length > 0 ? `- 已唤醒的独立记忆（共 ${activeMemLines.length} 条）：${activeMemLines.slice(0, 3).join('；')}\n` : ''
-    }各个对话框的记忆与设定相互独立不串台，直接清晰准确地回应即可。`;
+      activeMemLines.length > 0 ? `- 长期记忆锚点（共 ${activeMemLines.length} 条）：${activeMemLines.slice(0, 4).join('；')}\n` : ''
+    }${
+      recentUserQuotes.length > 0 ? `- 近期滑动窗口原话（最近 ${recentUserQuotes.length} 轮用户发言已完整保留）\n` : ''
+    }各维度上下文均完整在线，直接条理清晰地向用户汇报即可。`;
 
     const settingPart = activeSessionPrompt
-      ? `\n\n### 🎭 当前对话生效的独立设定\n- ${activeSessionPrompt.replace(/\r?\n+/g, '\n- ')}`
+      ? `\n\n### 🎯 当前对话独立设定\n- ${activeSessionPrompt.replace(/\r?\n+/g, '\n- ')}`
       : '';
     const memPart =
       activeMemLines.length > 0
-        ? `\n\n### 🧠 当前对话已记住的专属锚点\n${activeMemLines.map((m) => `- ${m}`).join('\n')}`
+        ? `\n\n### 🧠 长期记忆锚点与关键约束\n${activeMemLines.map((m) => `- ${m}`).join('\n')}`
+        : '';
+    const recentPart =
+      recentUserQuotes.length > 0
+        ? `\n\n### 💬 近期对话脉络回顾\n${recentUserQuotes.join('\n')}`
+        : '';
+    const summaryPart =
+      !recentPart && activeRollingSummary
+        ? `\n\n### 📜 早期前情提要\n${activeRollingSummary.slice(0, 500)}`
         : '';
 
-    answerText = `${assistantPrefix || ''}当然记得。在**当前这个独立对话框**中，我为你完整保留了以下专属背景与记忆（与其他对话框严格隔离、互不干扰）：${settingPart}${memPart}\n\n你可以随时通过导出 \`.md\` 将这份记忆迁移到其他对话，或继续沿着当前设定深入展开。`;
+    answerText = `${assistantPrefix || ''}当然记得。在**当前会话**中，我为你完整锚定了以下背景约束与对话脉络：${settingPart}${memPart}${recentPart}${summaryPart}\n\n你可以直接基于以上上下文继续提问，所有置顶铁律与近期完整原话都会在后续推理中持续生效。`;
   } else if (!isPureOfficial && persona) {
     const shortName = persona.name.split(/[·\s]/)[0] || persona.name;
     reasoningText = `对方刚刚对我说：「${cleanUser.slice(0, 42)}」。\n在这样安静纯粹的文字对话里，不需要刻意端着姿态，也不用套任何刻板的修饰。${

@@ -775,6 +775,49 @@ function parseChatHistoryDocument(filename, rawText, personaName = '') {
 
   flushCurrentMessage();
 
+  // 智能优化：若粘贴的是无显式「我：/角色：」前缀的多段普通 Markdown，避免把整篇文章硬压成一个大气泡！
+  if (!lockedMarkdownHeadingMode && messages.length === 1 && messages[0].role === 'user') {
+    const singleRaw = messages[0].content.trim();
+    const bulletMems = parseMarkdownMemoriesSection(singleRaw);
+    const nonBulletLines = singleRaw
+      .split('\n')
+      .map((l) => l.trim())
+      .filter((l) => l && !/^[-*•]\s+/.test(l) && !/^\d+[.)、]\s+/.test(l) && !/^#+\s+/.test(l));
+
+    // 情况 A：整段几乎全是 Markdown 要点列表（如粘贴的人物记忆清单），直接导入为独立记忆条目
+    if (bulletMems.length >= 2 && nonBulletLines.length === 0) {
+      messages.length = 0;
+      importedMemories.push(...bulletMems);
+    } else {
+      // 情况 B：按空行或二级标题分段的多段对话/故事文本，自动拆成多条清晰气泡
+      const blocks = singleRaw
+        .split(/\n\s*\n+|(?=^#{2,4}\s+)/m)
+        .map((b) => b.trim())
+        .filter(Boolean);
+      if (blocks.length >= 2) {
+        messages.length = 0;
+        blocks.forEach((blk, idx) => {
+          const cleanBlk = blk.replace(/^#{2,4}\s+/, '').trim();
+          if (!cleanBlk) return;
+          // 根据人称与角色名启发式判断归属，否则自然交替为 user / assistant
+          let role = idx % 2 === 0 ? 'user' : 'assistant';
+          if (shortPersona && cleanBlk.includes(shortPersona) && !/^我/.test(cleanBlk)) {
+            role = 'assistant';
+          } else if (/^(?:我|“我|「我|\*我)/.test(cleanBlk) && !(shortPersona && cleanBlk.startsWith(shortPersona))) {
+            role = 'user';
+          } else if (/^(?:\*?(?:他|她)|“|「)/.test(cleanBlk) && idx > 0 && messages[messages.length - 1]?.role === 'user') {
+            role = 'assistant';
+          }
+          messages.push({
+            role,
+            content: cleanBlk,
+            reasoning: ''
+          });
+        });
+      }
+    }
+  }
+
   // 若是用户自建的纯记忆笔记 .md（没有对话轮次，但包含要点列表），自动提取为长期记忆导入
   if (
     messages.length === 0 &&

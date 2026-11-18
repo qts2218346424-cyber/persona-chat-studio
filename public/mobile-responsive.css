@@ -482,6 +482,8 @@ body[data-ui-mode="deepseek"] .auth-gate .info-callout {
   }
 
   /* 移动端全尺寸（<=860px）统一隐藏顶栏极客监控与次级冗余图标，保持顶栏清爽不拥挤 */
+  #collapsed-quick-nav,
+  .expand-btn-label,
   .oss-ds-monitor-pill,
   .ds-desktop-tool,
   #open-ds-artifacts-btn,

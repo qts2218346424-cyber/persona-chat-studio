@@ -450,19 +450,47 @@ async function handleApi(req, res, pathname, parsedUrl) {
     try {
       updatedUser = updateUserPersona(userId, body);
     } catch (err) {
-      return sendJson(res, 400, { error: err.message || '保存主控人设失败' });
+      return sendJson(res, 400, { error: err.message || '保存个人名字与形象失败' });
     }
-    // 同步更新该用户名下所有会话的昵称记忆槽位
+    // 彻底同步该用户名下所有会话的称呼记忆槽位（包括清理旧版无 slot_key 的默认称呼记忆并补齐缺失记忆）
     if (updatedUser.nickname) {
-      db.prepare(`
+      const now = Date.now();
+      const newNick = updatedUser.nickname;
+      const newMemContent = `对话者身份称呼：对方现在的名字叫「${newNick}」，请直接亲切称呼对方为「${newNick}」。`;
+      const userSessions = db
+        .prepare("SELECT id, persona_id, session_mode FROM sessions WHERE user_id = ?")
+        .all(userId);
+
+      const findNickMems = db.prepare(`
+        SELECT id FROM memories
+        WHERE session_id = ?
+          AND (slot_key = 'user_nickname' OR content LIKE '对话者身份称呼：%' OR content LIKE '%对方自称「%')
+      `);
+      const updateNickMem = db.prepare(`
         UPDATE memories
-        SET content = ?, updated_at = ?
-        WHERE slot_key = 'user_nickname' AND session_id IN (SELECT id FROM sessions WHERE user_id = ?)
-      `).run(
-        `对话者身份称呼：对方希望被称呼为「${updatedUser.nickname}」（对方自称「${updatedUser.nickname}」）。`,
-        Date.now(),
-        userId
-      );
+        SET slot_key = 'user_nickname', category = 'relation', content = ?, pinned = 1, importance = 5, updated_at = ?
+        WHERE id = ?
+      `);
+      const deleteDupMem = db.prepare('DELETE FROM memories WHERE id = ?');
+      const insertNickMem = db.prepare(`
+        INSERT INTO memories (id, session_id, category, slot_key, content, pinned, importance, strength, recall_count, last_recalled_at, created_at, updated_at)
+        VALUES (?, ?, 'relation', 'user_nickname', ?, 1, 5, 8.0, 1, ?, ?, ?)
+      `);
+
+      for (const s of userSessions) {
+        if (s.session_mode === 'deepseek_native' && s.persona_id === 'persona_deepseek_official') {
+          continue;
+        }
+        const matched = findNickMems.all(s.id);
+        if (matched.length > 0) {
+          updateNickMem.run(newMemContent, now, matched[0].id);
+          for (let i = 1; i < matched.length; i++) {
+            deleteDupMem.run(matched[i].id);
+          }
+        } else if (!/^星[语屿]旅人/.test(newNick)) {
+          insertNickMem.run(genId('mem'), s.id, newMemContent, now, now, now);
+        }
+      }
     }
     return sendJson(res, 200, { user: updatedUser });
   }
@@ -891,17 +919,21 @@ async function handleApi(req, res, pathname, parsedUrl) {
     const prompts = Array.isArray(body.starter_prompts)
       ? body.starter_prompts.filter((s) => s && s.trim())
       : [];
+    const rawGender = String(body.gender || '').trim().toLowerCase();
+    const cleanGender = rawGender === 'female' || rawGender === 'male' ? rawGender : '';
+    const defaultAvatar = cleanGender === 'male' ? '✨' : '🌸';
 
     db.prepare(`
       INSERT INTO personas (
-        id, user_id, script_id, name, avatar, tagline, personality, backstory, speaking_style, greeting, starter_prompts, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        id, user_id, script_id, gender, name, avatar, tagline, personality, backstory, speaking_style, greeting, starter_prompts, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id,
       userId,
-      String(body.script_id || 'script_clannad').trim(),
+      String(body.script_id || 'script_classic').trim(),
+      cleanGender,
       name,
-      (body.avatar || '🌸').trim(),
+      (body.avatar || defaultAvatar).trim(),
       (body.tagline || '').trim(),
       (body.personality || '').trim(),
       (body.backstory || '').trim(),
@@ -912,6 +944,7 @@ async function handleApi(req, res, pathname, parsedUrl) {
       now
     );
 
+    recordUserDailyEvent(userId, 'persona_created');
     const created = formatPersonaRow(db.prepare('SELECT * FROM personas WHERE id = ?').get(id));
     return sendJson(res, 201, { persona: created });
   }
@@ -1086,21 +1119,26 @@ async function handleApi(req, res, pathname, parsedUrl) {
     }
 
     const insertMem = db.prepare(`
-      INSERT INTO memories (id, session_id, category, content, pinned, importance, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO memories (id, session_id, category, slot_key, content, pinned, importance, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     if (!isPureOfficial && (persona.tagline || persona.backstory)) {
-      const anchorSummary = (persona.tagline || persona.backstory.slice(0, 60)).trim();
-      insertMem.run(genId('mem'), sessionId, 'Pinned', `初始世界观锚点：${anchorSummary}`, 1, 5, now, now);
+      const anchorSummary = replaceRoleplayMacros(
+        (persona.tagline || persona.backstory.slice(0, 60)).trim(),
+        currentUser.nickname,
+        persona.name
+      );
+      insertMem.run(genId('mem'), sessionId, 'Pinned', 'scene_origin', `初始故事背景：${anchorSummary}`, 1, 5, now, now);
     }
 
-    if (!isPureOfficial && currentUser.nickname && currentUser.nickname !== '星语旅人') {
+    if (!isPureOfficial && currentUser.nickname && !/^星[语屿]旅人/.test(currentUser.nickname)) {
       insertMem.run(
         genId('mem'),
         sessionId,
         'relation',
-        `对话者身份称呼：对方自称「${currentUser.nickname}」。`,
+        'user_nickname',
+        `对话者身份称呼：对方现在的名字叫「${currentUser.nickname}」，请直接亲切称呼对方为「${currentUser.nickname}」。`,
         1,
         5,
         now,
@@ -1318,9 +1356,24 @@ async function handleApi(req, res, pathname, parsedUrl) {
       .get(sessionId, userId);
     if (!session) return sendJson(res, 404, { error: '会话不存在' });
 
-    const summary = compressOverflowHistorySync(sessionId, 4);
+    const msgCnt = db.prepare('SELECT COUNT(*) AS cnt FROM messages WHERE session_id = ?').get(sessionId).cnt;
+    if (msgCnt < 2) {
+      return sendJson(res, 200, {
+        rolling_summary: session.rolling_summary || '',
+        session,
+        condensed: false,
+        message: '先和角色聊上两句，就能一键总结前情提要啦～'
+      });
+    }
+
+    const summary = compressOverflowHistorySync(sessionId, 4, { forceManual: true });
     const updatedSession = db.prepare('SELECT * FROM sessions WHERE id = ?').get(sessionId);
-    return sendJson(res, 200, { rolling_summary: summary, session: updatedSession });
+    return sendJson(res, 200, {
+      rolling_summary: summary,
+      session: updatedSession,
+      condensed: true,
+      message: '✨ 已为您将近期对话整理进「前情提要」！'
+    });
   }
 
   // ========= 世界书词条 CRUD 与梦境记忆整理接口 =========
@@ -2734,11 +2787,18 @@ async function handleApi(req, res, pathname, parsedUrl) {
       `).run(sessionId, userContent, userMeta, now);
 
       if (userMsgCount === 0 && !session.title_locked) {
-        const cleanTitle = userContent
+        const strippedForTitle = userContent
+          .replace(/\*[^*]*\*/g, ' ')
           .replace(/https?:\/\/\S+/gi, '网页链接')
+          .replace(/^[“"「『（(\s]+|[”"」』）)\s]+$/g, '')
           .replace(/\s+/g, ' ')
-          .trim()
-          .slice(0, 22) || '新对话';
+          .trim();
+        const firstClause = (strippedForTitle.split(/[，。！？；,!?\n]/)[0] || strippedForTitle).trim();
+        const cleanTitle = firstClause
+          ? firstClause.length > 14
+            ? `${firstClause.slice(0, 14)}…`
+            : firstClause
+          : '新对话';
         db.prepare('UPDATE sessions SET title = ?, updated_at = ? WHERE id = ?').run(
           cleanTitle,
           now,
@@ -2916,9 +2976,7 @@ async function handleApi(req, res, pathname, parsedUrl) {
       const substantiveContent = fullContent.replace(/^[\s*＊…—-]+$/g, '').trim();
 
       if (wasAborted && !substantiveContent) {
-        fullContent = isNativeMode
-          ? '*(生成已中断)*'
-          : '*（生成已中断，可点击下方「继续生成」或「重演」继续推进）*';
+        fullContent = '（⏹ 已停止生成）';
       }
 
       let latestMembership = getMembership(userId);
@@ -2958,13 +3016,15 @@ async function handleApi(req, res, pathname, parsedUrl) {
         ? '*(生成已完成)*'
         : '*（对方温柔地注视着你，似乎在等待你的下一句话）*';
       const rawTrimmed = fullContent.trim();
+      const balancedTrimmed =
+        (rawTrimmed.match(/\*/g) || []).length % 2 === 1 ? `${rawTrimmed}*` : rawTrimmed;
       const finalAssistantContent =
         wasAborted && substantiveContent
-          ? `${rawTrimmed}\n\n*(生成已中断)*`
+          ? `${balancedTrimmed}\n\n（⏹ 已停止生成）`
           : substantiveContent
           ? rawTrimmed
           : wasAborted
-          ? rawTrimmed
+          ? '（⏹ 已停止生成）'
           : fallbackReply;
       const finalAssistantReasoning = fullReasoning.trim();
 
@@ -3050,13 +3110,16 @@ async function handleApi(req, res, pathname, parsedUrl) {
           const now = Date.now();
           const durationMs = now - startedAt;
           const suffixNote = isUserAbort
-            ? '\n\n*(生成已中断)*'
-            : '\n\n*(注：网络连接出现短暂波动，以上已生成内容已自动为你妥善保存；如需完整重答可点击「重新生成」)*';
+            ? '\n\n（⏹ 已停止生成）'
+            : '\n\n（注：网络连接出现短暂波动，以上已生成内容已自动为你妥善保存；如需完整重答可点击「重新生成」）';
+          const trimmedPartial = fullContent.trim();
+          const balancedPartial =
+            (trimmedPartial.match(/\*/g) || []).length % 2 === 1 ? `${trimmedPartial}*` : trimmedPartial;
           const rescuedContent = rescuedSubstantive
-            ? `${fullContent.trim()}${suffixNote}`
+            ? `${balancedPartial}${suffixNote}`
             : isUserAbort
-            ? '*（生成已中断，可点击下方「继续生成」或「重演」继续推进）*'
-            : '*(深度思考已完成，正文传输时遇到网络波动，请点击「重新生成」重试)*';
+            ? '（⏹ 已停止生成）'
+            : '（思考已完成，正文传输时遇到网络波动，请点击「重新生成」重试）';
           const rescuedReasoning = fullReasoning.trim();
           const recalledLen = contextBundle?.recalledMemories?.length || 0;
           const rescuedMeta = {

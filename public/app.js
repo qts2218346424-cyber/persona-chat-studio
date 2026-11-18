@@ -8370,6 +8370,10 @@
     hidePopoverSafe('topbar-more-popover');
     openSettingsModal(true);
   });
+  document.getElementById('more-open-prefs-btn')?.addEventListener('click', () => {
+    hidePopoverSafe('topbar-more-popover');
+    openSettingsModal(false);
+  });
 
   // ✨ 灵感补写小助手（面向纯小白的零门槛开箱即用剧情搭桥器）
   const fimPromptInput = document.getElementById('fim-prompt-input');

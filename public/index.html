@@ -19,10 +19,10 @@
   </script>
   <title>星语恋庭 · 沉浸剧本扮演与长效记忆馆</title>
   <link rel="icon" type="image/svg+xml" href="./assets/deepseek-whale.svg" />
-  <link rel="stylesheet" href="./styles.css?v=20261118v45" />
-  <link rel="stylesheet" href="./companion3d.css?v=20261118v45" />
-  <link rel="stylesheet" href="./clean-ui.css?v=20261118v45" />
-  <link rel="stylesheet" href="./mobile-responsive.css?v=20261118v45" />
+  <link rel="stylesheet" href="./styles.css?v=20261118v47" />
+  <link rel="stylesheet" href="./companion3d.css?v=20261118v47" />
+  <link rel="stylesheet" href="./clean-ui.css?v=20261118v47" />
+  <link rel="stylesheet" href="./mobile-responsive.css?v=20261118v47" />
   <script type="module">
     if (!Object.hasOwn(HTMLElement.prototype, "popover")) {
       import("https://unpkg.com/@oddbird/popover-polyfill@latest/dist/popover.min.js").catch(() => {});
@@ -47,8 +47,8 @@
             <path fill="#4D6BFE" fill-rule="evenodd" clip-rule="evenodd" d="M23.748 4.482c-.254-.124-.364.113-.512.234-.051.039-.094.09-.137.136-.372.397-.806.657-1.373.626-.829-.046-1.537.214-2.163.848-.133-.782-.575-1.248-1.247-1.548-.352-.156-.708-.311-.955-.65-.172-.241-.219-.51-.305-.774-.055-.16-.11-.323-.293-.35-.2-.031-.278.136-.356.276-.313.572-.434 1.202-.422 1.84.027 1.436.633 2.58 1.838 3.393.137.093.172.187.129.323-.082.28-.18.552-.266.833-.055.179-.137.217-.329.14a5.526 5.526 0 0 1-1.736-1.18c-.857-.828-1.631-1.742-2.597-2.458a11.365 11.365 0 0 0-.689-.471c-.985-.957.13-1.743.388-1.836.27-.098.093-.432-.779-.428-.872.004-1.67.295-2.687.684a3.055 3.055 0 0 1-.465.137 9.597 9.597 0 0 0-2.883-.102c-1.885.21-3.39 1.102-4.497 2.623C.082 8.606-.231 10.684.152 12.85c.403 2.284 1.569 4.175 3.36 5.653 1.858 1.533 3.997 2.284 6.438 2.14 1.482-.085 3.133-.284 4.994-1.86.47.234.962.327 1.78.397.63.059 1.236-.03 1.705-.128.735-.156.684-.837.419-.961-2.155-1.004-1.682-.595-2.113-.926 1.096-1.296 2.746-2.642 3.392-7.003.05-.347.007-.565 0-.845-.004-.17.035-.237.23-.256a4.173 4.173 0 0 0 1.545-.475c1.396-.763 1.96-2.015 2.093-3.517.02-.23-.004-.467-.247-.588zM11.581 18c-2.089-1.642-3.102-2.183-3.52-2.16-.392.024-.321.471-.235.763.09.288.207.486.371.739.114.167.192.416-.113.603-.673.416-1.842-.14-1.897-.167-1.361-.802-2.5-1.86-3.301-3.307-.774-1.393-1.224-2.887-1.298-4.482-.02-.386.093-.522.477-.592a4.696 4.696 0 0 1 1.529-.039c2.132.312 3.946 1.265 5.468 2.774.868.86 1.525 1.887 2.202 2.891.72 1.066 1.494 2.082 2.48 2.914.348.292.625.514.891.677-.802.09-2.14.11-3.054-.614zm1-6.44a.306.306 0 0 1 .415-.287.302.302 0 0 1 .2.288.306.306 0 0 1-.31.307.303.303 0 0 1-.304-.308zm3.11 1.596c-.2.081-.399.151-.59.16a1.245 1.245 0 0 1-.798-.254c-.274-.23-.47-.358-.552-.758a1.73 1.73 0 0 1 .129-.933c.27-.611.832-1.047 1.411-1.428.16-.106.321-.219.493-.309.223-.117.434-.055.536.18.114.262.149.544.157.828.019.805-.285 1.487-.876 2.026z"/>
           </svg>
         </span>
-        <h1 id="auth-brand-heading">deepseek</h1>
-        <p id="auth-brand-subtitle">深度思考 · 智能搜索 · 沉浸角色扮演双栖工作台</p>
+        <h1 id="auth-brand-heading">星语恋庭</h1>
+        <p id="auth-brand-subtitle">沉浸番剧剧情扮演 · 跨时空长效记忆星馆</p>
       </div>
 
       <div class="auth-tabs" role="tablist" aria-label="登录或注册切换">
@@ -65,7 +65,7 @@
       <!-- 独立登录表单（严格遵循 autofill-sign-in-form 规范） -->
       <form id="signin-form" class="auth-form">
         <div class="field-group">
-          <label for="signin-email">邮箱账号</label>
+          <label for="signin-email">邮箱账号 <span class="req-star" aria-hidden="true">*</span></label>
           <input
             type="email"
             id="signin-email"
@@ -79,7 +79,7 @@
         </div>
 
         <div class="field-group">
-          <label for="signin-password">登录密码</label>
+          <label for="signin-password">登录密码 <span class="req-star" aria-hidden="true">*</span></label>
           <div class="password-input-wrap">
             <input
               type="password"
@@ -111,17 +111,18 @@
       <form id="signup-form" class="auth-form hidden">
         <div class="inline-row">
           <div class="field-group avatar-field">
-            <label for="signup-avatar">头像徽记</label>
+            <label for="signup-avatar">头像徽记 <span class="req-star" aria-hidden="true">*</span></label>
             <input type="text" id="signup-avatar" name="avatar" value="🎀" maxlength="4" required />
           </div>
           <div class="field-group flex-1">
-            <label for="signup-name">你的专属昵称（角色会这样称呼你）</label>
+            <label for="signup-name">你的专属昵称（角色会这样称呼你） <span class="req-star" aria-hidden="true">*</span></label>
             <input
               type="text"
               id="signup-name"
               name="fullname"
               autocomplete="name"
               enterkeyhint="next"
+              maxlength="24"
               placeholder="例如：小栀、眠眠、星奈…"
               required
             />
@@ -129,7 +130,7 @@
         </div>
 
         <div class="field-group">
-          <label for="signup-email">邮箱账号</label>
+          <label for="signup-email">邮箱账号 <span class="req-star" aria-hidden="true">*</span></label>
           <input
             type="email"
             id="signup-email"
@@ -143,7 +144,7 @@
         </div>
 
         <div class="field-group">
-          <label for="signup-password">设置密码（至少 6 位，支持自动保存）</label>
+          <label for="signup-password">设置密码（至少 6 位，支持自动保存） <span class="req-star" aria-hidden="true">*</span></label>
           <div class="password-input-wrap">
             <input
               type="password"
@@ -227,11 +228,12 @@
               <line x1="20" y1="20" x2="16.2" y2="16.2"></line>
             </svg>
           </button>
-          <button type="button" class="icon-btn" id="toggle-left-btn" title="收起侧栏" aria-label="收起左侧边栏">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <button type="button" class="icon-btn sidebar-collapse-btn" id="toggle-left-btn" title="收起左侧导航栏" aria-label="收起左侧导航栏">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
               <rect x="3" y="4" width="18" height="16" rx="3"></rect>
               <line x1="9" y1="4" x2="9" y2="20"></line>
             </svg>
+            <span class="collapse-btn-label">收起</span>
           </button>
         </div>
       </div>
@@ -386,9 +388,18 @@
       <!-- 顶部状态栏（自适应恋庭沉浸模式 & 原生 DeepSeek 网页模式） -->
       <header class="stage-topbar">
         <div class="topbar-left">
-          <button type="button" class="icon-btn hidden" id="expand-left-btn" title="展开左侧边栏" aria-label="展开左侧边栏">
-            ☰
+          <button type="button" class="soft-tool-btn sidebar-expand-btn hidden" id="expand-left-btn" title="展开左侧角色与对话栏" aria-label="展开左侧边栏">
+            <span aria-hidden="true">☰</span>
+            <span class="expand-btn-label">侧栏</span>
           </button>
+
+          <!-- 左侧栏收起时的顶栏兜底快捷导航（确保收起侧栏后核心入口一个不少） -->
+          <div class="collapsed-quick-nav hidden" id="collapsed-quick-nav" aria-label="侧栏收起快捷入口">
+            <button type="button" class="mini-btn" id="topbar-collapsed-new-chat-btn" title="与当前角色重开一局新对话">+ 重开一局</button>
+            <button type="button" class="mini-btn rp-only-inline" id="topbar-collapsed-create-persona-btn" title="创建属于你自己的新角色">+ 自建角色</button>
+            <button type="button" class="mini-btn" id="topbar-collapsed-settings-btn" title="打开画面与语音偏好设置">⚙️ 设置</button>
+            <button type="button" class="mini-btn" id="topbar-collapsed-account-btn" title="切换账号或退出登录">🔄 账号</button>
+          </div>
 
           <!-- 恋庭模式顶栏信息 -->
           <div class="active-persona-chip rp-only-flex" id="topbar-persona-chip">
@@ -498,16 +509,22 @@
             <button type="button" class="popover-action-item rp-only-flex" id="more-open-nurture-btn">
               <span>💞 查看好感度与私密日记</span>
             </button>
-            <button type="button" class="popover-action-item rp-only-flex" id="more-open-vip-btn">
+            <button type="button" class="popover-action-item" id="more-open-vip-btn">
               <span>👑 每日签到与福利中心</span>
             </button>
             <button type="button" class="popover-action-item rp-only-flex" id="more-open-square-btn">
               <span>📖 切换剧本与角色广场</span>
             </button>
             <button type="button" class="popover-action-item rp-only-flex" id="more-open-workshop-btn">
-              <span>🪄 上传小说自动生成角色</span>
+              <span>🪄 AI 剧本与人设创作工坊</span>
             </button>
-            <button type="button" class="popover-action-item" id="more-open-own-api-btn">
+            <button type="button" class="popover-action-item" id="export-md-memory-btn">
+              <span>📄 导出聊天与记忆档案 (.md)</span>
+            </button>
+            <button type="button" class="popover-action-item" id="open-import-history-btn">
+              <span>📥 导入聊天与记忆档案</span>
+            </button>
+            <button type="button" class="popover-action-item" id="more-open-prefs-btn">
               <span>🎨 画面与语音偏好设置</span>
             </button>
             <button type="button" class="popover-action-item hidden" id="more-open-ds-memory-btn">
@@ -534,17 +551,11 @@
               <span class="pulse-ring"></span>
               <span id="memory-pill-text">唤醒记忆 0 条</span>
             </button>
-            <button type="button" class="popover-action-item hidden" id="export-md-memory-btn">
-              <span>📄 导出记录</span>
-            </button>
-            <button type="button" class="popover-action-item hidden" id="open-import-history-btn">
-              <span>📥 导入记录</span>
-            </button>
             <button type="button" class="popover-action-item hidden" id="export-history-btn">
               <span>📦 导出备份</span>
             </button>
-            <button type="button" class="popover-action-item hidden" id="start-tour-btn">
-              <span>🧭 新手引导</span>
+            <button type="button" class="popover-action-item" id="start-tour-btn">
+              <span>🧭 重新查看新手引导</span>
             </button>
           </div>
         </div>
@@ -694,7 +705,7 @@
           <label for="chat-input" class="visually-hidden">输入对话消息内容</label>
           <textarea
             id="chat-input"
-            placeholder="给 DeepSeek 发送消息"
+            placeholder="输入你想对 TA 说的话，或加上 *动作描写* 推进剧情…"
             rows="2"
           ></textarea>
 
@@ -990,7 +1001,7 @@
       <div class="inspector-body hidden" id="persona-tab">
         <div class="memory-block session-prompt-card">
           <div class="block-title-row">
-            <label for="session-prompt-input">🎯 本对话独立附加设定（平行世界 / 专属规则）</label>
+            <label for="session-prompt-input" class="compact-block-label">🎯 本对话独立附加设定</label>
             <span class="ds-cache-pill" id="session-prompt-status-badge">仅本对话生效</span>
           </div>
           <p class="ds-suite-desc">
@@ -1208,50 +1219,54 @@
       </div>
 
       <form id="create-persona-form" class="stack-form">
+        <input type="hidden" id="cp-editing-id" value="" />
         <div class="inline-row">
           <div class="field-group avatar-field">
-            <label for="cp-avatar">徽记</label>
+            <label for="cp-avatar">徽记 <span class="req-star" aria-hidden="true">*</span></label>
             <input id="cp-avatar" type="text" value="🌸" maxlength="4" required />
           </div>
           <div class="field-group flex-1">
-            <label for="cp-name">角色姓名与身份头衔</label>
-            <input id="cp-name" type="text" placeholder="例如：温叙白 · 雾凇歌剧院首席大提琴手" required />
+            <label for="cp-name">角色姓名与身份头衔 <span class="req-star" aria-hidden="true">*</span></label>
+            <input id="cp-name" type="text" maxlength="48" placeholder="例如：温叙白 · 雾凇歌剧院首席大提琴手" required />
           </div>
         </div>
 
         <div class="field-group">
           <label for="cp-tagline">心动标签 / 一句话简介</label>
-          <input id="cp-tagline" type="text" placeholder="例如：只为你一人奏响安可曲的清冷艺术家" />
+          <input id="cp-tagline" type="text" maxlength="100" placeholder="例如：只为你一人奏响安可曲的清冷艺术家" />
         </div>
 
         <div class="field-group">
           <label for="cp-personality">性格特质与反差萌点</label>
-          <textarea id="cp-personality" rows="2" placeholder="描述他的性格层次、情感态度与相处模式…"></textarea>
+          <textarea id="cp-personality" rows="2" maxlength="800" placeholder="描述他的性格层次、情感态度与相处模式…"></textarea>
         </div>
 
         <div class="field-group">
-          <label for="cp-backstory">世界观与详细背景故事</label>
-          <textarea id="cp-backstory" rows="4" placeholder="输入完整的过往故事、世界观设定与你们之间的羁绊起源…" required></textarea>
+          <div class="label-with-counter">
+            <label for="cp-backstory">世界观与序章背景故事 <span class="req-star" aria-hidden="true">*</span></label>
+            <span class="char-counter" id="cp-backstory-count">0 / 4000</span>
+          </div>
+          <textarea id="cp-backstory" rows="4" maxlength="4000" placeholder="输入完整的过往故事、世界观设定与你们之间的羁绊起源（上限 4000 字）…" required></textarea>
         </div>
 
         <div class="field-group">
           <label for="cp-style">说话口吻与神态习惯</label>
-          <input id="cp-style" type="text" placeholder="例如：温和优雅，常伴随琴弓轻点、替你暖手等细腻动作描写" />
+          <input id="cp-style" type="text" maxlength="300" placeholder="例如：温和优雅，常伴随琴弓轻点、替你暖手等细腻动作描写" />
         </div>
 
         <div class="field-group">
           <label for="cp-greeting">初遇第一句开场白</label>
-          <textarea id="cp-greeting" rows="3" placeholder="*排练厅的水晶壁灯只留了一盏，他放下大提琴弓，朝推门而入的你伸出手。*&#10;外头下雪了，手这么冰？过来坐，这首未命名的曲子正好写到了你的名字。"></textarea>
+          <textarea id="cp-greeting" rows="3" maxlength="1200" placeholder="*排练厅的水晶壁灯只留了一盏，他放下大提琴弓，朝推门而入的你伸出手。*&#10;外头下雪了，手这么冰？过来坐，这首未命名的曲子正好写到了你的名字。"></textarea>
         </div>
 
         <div class="field-group">
           <label for="cp-prompts">初遇互动选项（每行一条，可选）</label>
-          <textarea id="cp-prompts" rows="2" placeholder="这首曲子的旋律听起来好温柔，是什么时候开始写的？&#10;演出明明已经散场了，你一直在排练厅等我吗？"></textarea>
+          <textarea id="cp-prompts" rows="2" maxlength="600" placeholder="这首曲子的旋律听起来好温柔，是什么时候开始写的？&#10;演出明明已经散场了，你一直在排练厅等我吗？"></textarea>
         </div>
 
         <div class="modal-actions">
           <button type="button" class="secondary-btn" id="cancel-persona-dialog">取消</button>
-          <button type="submit" class="primary-btn">✨ 缔结角色并开启初遇</button>
+          <button type="submit" class="primary-btn" id="submit-persona-dialog-btn">✨ 缔结角色并开启初遇</button>
         </div>
       </form>
     </div>
@@ -1299,6 +1314,9 @@
               <input type="radio" name="import-mode" value="replace" />
               <span>🔄 覆盖当前对话历史消息</span>
             </label>
+          </div>
+          <div class="import-danger-warning hidden" id="import-replace-warning" role="alert">
+            ⚠️ <strong>高风险覆盖警告：</strong>此操作将<strong>永久清空当前对话已有的全部聊天记录</strong>并替换为导入内容，不可撤销！如只需补充记忆或延续上文，请切换为「追加」模式。
           </div>
           <div class="import-extra-checks">
             <label class="session-scope-check">
@@ -1526,6 +1544,10 @@
           </div>
         </div>
       </div>
+
+      <div class="modal-actions wallet-footer-actions">
+        <button type="button" class="secondary-btn" id="cancel-vip-dialog">取消 / 关闭</button>
+      </div>
     </div>
   </dialog>
 
@@ -1619,8 +1641,8 @@
         <div class="modal-actions split-actions settings-sticky-actions">
           <span class="muted-count">✨ 对话大模型、专属声纹与长效记忆已自动集成就绪</span>
           <div class="right-btns">
-            <button type="button" class="secondary-btn" id="cancel-settings-dialog">关闭</button>
-            <button type="submit" class="primary-btn" id="save-settings-submit-btn">✨ 完成</button>
+            <button type="button" class="secondary-btn" id="cancel-settings-dialog">取消</button>
+            <button type="submit" class="primary-btn" id="save-settings-submit-btn">💾 保存设置</button>
           </div>
         </div>
       </form>
@@ -1640,12 +1662,12 @@
       <form id="user-persona-form" class="stack-form">
         <div class="inline-row">
           <div class="field-group avatar-field">
-            <label for="up-avatar">头像徽记</label>
+            <label for="up-avatar">头像徽记 <span class="req-star" aria-hidden="true">*</span></label>
             <input id="up-avatar" type="text" maxlength="4" value="🎀" required />
           </div>
           <div class="field-group flex-1">
-            <label for="up-nickname">主控昵称（他平时对你的称呼）</label>
-            <input id="up-nickname" type="text" placeholder="例如：小栀、眠眠、大小姐…" required />
+            <label for="up-nickname">主控昵称（他平时对你的称呼） <span class="req-star" aria-hidden="true">*</span></label>
+            <input id="up-nickname" type="text" maxlength="24" placeholder="例如：小栀、眠眠、大小姐…" required />
           </div>
         </div>
 
@@ -1959,6 +1981,10 @@
           </div>
         </div>
       </div>
+
+      <div class="modal-actions hub-footer-actions">
+        <button type="button" class="secondary-btn" id="cancel-plaza-dialog">取消 / 关闭</button>
+      </div>
     </div>
   </dialog>
 
@@ -2172,6 +2198,7 @@
       <div class="modal-actions split-actions">
         <span class="muted-count" id="ds-share-meta-hint">导出的 .md 含本对话独立设定、长期记忆与完整对话，可导入任意其他对话</span>
         <div class="right-btns">
+          <button type="button" class="secondary-btn" id="cancel-ds-share-dialog">取消</button>
           <button type="button" class="secondary-btn" id="ds-copy-markdown-btn">📋 复制记忆 .md</button>
           <button type="button" class="secondary-btn" id="ds-export-json-file-btn">📦 备份 .json</button>
           <button type="button" class="primary-btn" id="ds-export-md-file-btn">📄 下载 .md 记忆档案</button>
@@ -2181,14 +2208,29 @@
     </div>
   </dialog>
 
+  <!-- 模态弹窗 13：通用高风险操作二次确认弹窗（防误删对话、误回溯、误扣积分、误清空长文本） -->
+  <dialog id="confirm-action-dialog" class="modal-dialog confirm-modal" closedby="any" aria-labelledby="confirm-dialog-title">
+    <div class="modal-inner">
+      <div class="modal-header">
+        <h2 id="confirm-dialog-title">⚠️ 请确认本次操作</h2>
+        <button type="button" class="icon-btn" id="close-confirm-dialog" aria-label="取消并关闭确认窗">✕</button>
+      </div>
+      <p class="confirm-dialog-message" id="confirm-dialog-message"></p>
+      <div class="modal-actions">
+        <button type="button" class="secondary-btn" id="cancel-confirm-dialog">取消</button>
+        <button type="button" class="primary-btn danger-confirm-btn" id="ok-confirm-dialog">确认执行</button>
+      </div>
+    </div>
+  </dialog>
+
   <!-- 站长管理后台专属模态容器（静态 HTML 保持空白，仅在服务端认证 is_admin === true 时动态渲染） -->
   <dialog id="admin-console-dialog" class="modal-dialog modal-wide wallet-modal" closedby="any" aria-label="站长管理后台"></dialog>
 
-  <script src="./standaloneAdapter.js?v=20261118v45"></script>
-  <script src="./mobileAdapter.js?v=20261118v45"></script>
-  <script src="./plugins/deepseekUsageMonitor.js?v=20261118v45"></script>
-  <script src="./app.js?v=20261118v45"></script>
-  <script src="./companion3d.js?v=20261118v45"></script>
-  <script src="./companionVoice.js?v=20261118v45"></script>
+  <script src="./standaloneAdapter.js?v=20261118v47"></script>
+  <script src="./mobileAdapter.js?v=20261118v47"></script>
+  <script src="./plugins/deepseekUsageMonitor.js?v=20261118v47"></script>
+  <script src="./app.js?v=20261118v47"></script>
+  <script src="./companion3d.js?v=20261118v47"></script>
+  <script src="./companionVoice.js?v=20261118v47"></script>
 </body>
 </html>

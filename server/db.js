@@ -304,6 +304,7 @@ function ensureColumn(table, column, definition) {
 ensureColumn('personas', 'user_id', "TEXT DEFAULT 'system'");
 ensureColumn('personas', 'category_tag', "TEXT NOT NULL DEFAULT '温柔治愈'");
 ensureColumn('personas', 'script_id', "TEXT NOT NULL DEFAULT 'script_classic'");
+ensureColumn('personas', 'gender', "TEXT NOT NULL DEFAULT ''");
 ensureColumn('sessions', 'user_id', "TEXT DEFAULT 'user_demo'");
 ensureColumn('sessions', 'affection', 'INTEGER NOT NULL DEFAULT 18');
 ensureColumn('sessions', 'trust', 'INTEGER NOT NULL DEFAULT 22');
@@ -683,14 +684,58 @@ const POINTS_EXCHANGE_ITEMS = {
   }
 };
 
-// 任务配置清单（每日任务每日 00:00 刷新，成长任务每账户限领 1 次）
+// 免费畅玩模式下的纯粹星光纪念兑换目录（不含任何付费/扣次数概念，消除用户对收费的顾虑）
+const FREE_MODE_EXCHANGE_ITEMS = {
+  free_gift_sweet: {
+    key: 'free_gift_sweet',
+    name: '🍰 暖心甜点礼盒（当前角色好感 +10）',
+    desc: '用日常签到积分兑换一份心意小礼，让当前正在聊的角色好感度与默契悄然升温',
+    cost_points: 40,
+    add_credits: 0,
+    card_days: 0,
+    free_perk_affection: 10
+  },
+  free_gift_star: {
+    key: 'free_gift_star',
+    name: '🌟 星轨共鸣信物（当前角色信赖 +15）',
+    desc: '镌刻彼此约定的纪念信物，立即提升当前对话角色的信赖度与亲密度',
+    cost_points: 80,
+    add_credits: 0,
+    card_days: 0,
+    free_perk_trust: 15
+  },
+  free_badge_sakura: {
+    key: 'free_badge_sakura',
+    name: '🌸 「繁花挚友」专属纪念头衔',
+    desc: '纯活跃积分兑换限定纪念身份标识，永久点亮左上角专属繁花徽章',
+    cost_points: 180,
+    add_credits: 0,
+    card_days: 365,
+    tier: 'sakura',
+    card_type: 'quarter',
+    tier_name: '🌸 繁花挚友旅人'
+  },
+  free_badge_crown: {
+    key: 'free_badge_crown',
+    name: '👑 「星冕收藏家」传说纪念头衔',
+    desc: '满勤活跃终极纪念勋章，永久解锁鎏金星冕旅人头衔',
+    cost_points: 520,
+    add_credits: 0,
+    card_days: 3650,
+    tier: 'crown',
+    card_type: 'year',
+    tier_name: '👑 星冕传说旅人'
+  }
+};
+
+// 任务配置清单（每日任务每日 00:00 刷新，成长里程碑每账户限领 1 次，全白话易懂描述）
 const TASK_DEFINITIONS = [
   {
     key: 'daily_chat_1',
     type: 'daily',
     icon: '💬',
-    title: '今日初声问候',
-    desc: '今日与任意角色或 AI 助手发送 1 条对话消息',
+    title: '今日第一句问候',
+    desc: '今天和任意角色聊 1 句话',
     target: 1,
     reward_points: 15,
     reward_credits: 0
@@ -700,7 +745,7 @@ const TASK_DEFINITIONS = [
     type: 'daily',
     icon: '✨',
     title: '渐入佳境畅聊',
-    desc: '今日累计发送 5 条对话消息',
+    desc: '今天累计发送 5 条消息',
     target: 5,
     reward_points: 30,
     reward_credits: 0
@@ -710,7 +755,7 @@ const TASK_DEFINITIONS = [
     type: 'daily',
     icon: '🔥',
     title: '深夜走心长谈',
-    desc: '今日累计发送 15 条对话消息（额外赠对话次数）',
+    desc: '今天累计发送 15 条消息',
     target: 15,
     reward_points: 50,
     reward_credits: 1
@@ -719,8 +764,8 @@ const TASK_DEFINITIONS = [
     key: 'daily_memory_dream',
     type: 'daily',
     icon: '🌙',
-    title: '镌刻心动记忆',
-    desc: '今日新增 1 条专属记忆或执行 1 次梦境手账整理',
+    title: '记录重要小事或写日记',
+    desc: '在右侧面板手动记下 1 件事，或点一次「整理记忆并写日记」',
     target: 1,
     reward_points: 25,
     reward_credits: 0
@@ -728,9 +773,9 @@ const TASK_DEFINITIONS = [
   {
     key: 'daily_interactive',
     type: 'daily',
-    icon: '🎭',
-    title: '沉浸花房互动',
-    desc: '今日体验 1 次番外小剧场、平行分支或立绘陪伴互动',
+    icon: '🎬',
+    title: '体验场景切换或立绘互动',
+    desc: '切换 1 次故事场景、开启平行分支，或戳一戳陪伴立绘',
     target: 1,
     reward_points: 20,
     reward_credits: 0
@@ -739,8 +784,8 @@ const TASK_DEFINITIONS = [
     key: 'once_user_persona',
     type: 'growth',
     icon: '🎀',
-    title: '定制「我的主控人设」',
-    desc: '在左上角个人名片完善并保存一次主控身份与穿搭设定',
+    title: '设置我在故事里的名字',
+    desc: '点击左上角个人卡片，改一个你喜欢的名字并保存',
     target: 1,
     reward_points: 60,
     reward_credits: 2
@@ -749,8 +794,8 @@ const TASK_DEFINITIONS = [
     key: 'once_create_persona',
     type: 'growth',
     icon: '🌸',
-    title: '缔结专属原创角色',
-    desc: '自建或上传文档创建 1 位属于你自己的私有角色卡',
+    title: '创建一位新角色',
+    desc: '点击左侧「＋ 创建新角色」，新建一位属于你自己的角色',
     target: 1,
     reward_points: 80,
     reward_credits: 3
@@ -758,9 +803,9 @@ const TASK_DEFINITIONS = [
   {
     key: 'once_add_lorebook',
     type: 'growth',
-    icon: '📖',
-    title: '埋藏世界书秘闻',
-    desc: '在右侧记忆面板添加 1 条自定义世界书隐藏词条',
+    icon: '🔑',
+    title: '添加一条关键词设定',
+    desc: '在右侧「记忆」面板添加 1 条提到关键词就会触发的隐藏设定',
     target: 1,
     reward_points: 50,
     reward_credits: 0
@@ -769,8 +814,8 @@ const TASK_DEFINITIONS = [
     key: 'once_bond_lv2',
     type: 'growth',
     icon: '💗',
-    title: '情愫初绽 Lv.2',
-    desc: '在任意会话中与角色关系养成达到 Lv.2「渐生情愫」',
+    title: '好感升到 Lv.2「渐生好感」',
+    desc: '与任意角色多聊几句，让关系等级达到 Lv.2',
     target: 1,
     reward_points: 100,
     reward_credits: 5
@@ -1515,14 +1560,14 @@ function createStarterSessionForUser(userId, nickname) {
   const sessionId = genId('sess');
   const firstPersona = PRESET_PERSONAS.find((p) => p.id === 'persona_shenxinghui') || PRESET_PERSONAS[0];
 
+  const isCustomNick = Boolean(nickname && !/^星[语屿]旅人/.test(String(nickname).trim()));
+  const displayCall = isCustomNick ? `「${String(nickname).trim()}」` : '那个人';
   const initialDiary = JSON.stringify([
     {
       id: genId('diary'),
       date: '初遇之夜 · 星轨微明',
       mood: '💓 暗自欣喜',
-      content: `今晚钟楼的木门被推开时，我差点以为又是风声。看到${
-        nickname || '她'
-      }站在门口的那一刻，守候了这么久的星盘终于重新转了起来。希望那杯蜜桃乌龙的温度刚刚好，能让她以后常来花房躲懒。`
+      content: `今晚钟楼的木门被推开时，我差点以为又是风声。看到${displayCall}站在门口的那一刻，守候了这么久的星盘终于重新转了起来。希望那杯蜜桃乌龙的温度刚刚好，能让对方以后常来花房坐坐。`
     }
   ]);
 
@@ -1538,7 +1583,7 @@ function createStarterSessionForUser(userId, nickname) {
     VALUES (?, 'assistant', ?, ?, 360, 2, ?)
   `).run(
     sessionId,
-    `听见楼梯传来熟悉的轻快脚步声，星盘指针果然又轻轻偏转了半寸。先把花房窗户关小些免得${nickname || '她'}吹风着凉。`,
+    `听见楼梯传来轻快的脚步声，星盘指针果然又轻轻偏转了半寸。先把花房窗户关小些，免得刚进门的客人吹风着凉。`,
     firstPersona.greeting,
     now
   );
@@ -1553,7 +1598,7 @@ function createStarterSessionForUser(userId, nickname) {
     sessionId,
     'Pinned',
     'scene_origin',
-    '初遇羁绊锚点：星夜微凉，访客推开眠星钟楼的花房木门，沈星回替她披上外袍并奉上温热的蜜桃乌龙。',
+    '初遇重要记忆：星夜微凉，你推开眠星钟楼的花房木门，沈星回替你披上外袍并奉上温热的蜜桃乌龙。',
     1,
     5,
     8.0,
@@ -1563,13 +1608,13 @@ function createStarterSessionForUser(userId, nickname) {
     now
   );
 
-  if (nickname && nickname !== '星语旅人') {
+  if (isCustomNick) {
     insertMem.run(
       genId('mem'),
       sessionId,
       'relation',
       'user_nickname',
-      `对话者身份称呼：对方自称「${nickname}」。`,
+      `对话者身份称呼：对方现在的名字叫「${String(nickname).trim()}」，请直接亲切称呼对方为「${String(nickname).trim()}」。`,
       1,
       5,
       8.0,
@@ -2204,17 +2249,21 @@ function loginDemoAccount(preferredGuestId = '') {
   const shortTag = crypto.randomBytes(2).toString('hex').toUpperCase();
   const userId = `user_guest_${crypto.randomBytes(5).toString('hex')}`;
   const guestEmail = `guest_${shortTag.toLowerCase()}_${now.toString(36)}@guest.star.love`;
-  const guestNick = `星屿旅人·${shortTag}`;
+  const guestNick = '星屿旅人';
   const avatars = ['🎀', '🌸', '🍀', '🦋', '🌙', '🍓'];
   const pickedAvatar = avatars[now % avatars.length];
+  const freeMode = isFreeExperienceMode();
   const giftCfg = getRegisterGiftConfig();
-  const grantGuestVip = giftCfg.enabled || isFreeExperienceMode();
+  const grantGuestVip = giftCfg.enabled || freeMode;
   const initPoints = grantGuestVip ? 100 : 50;
   const initCredits = grantGuestVip ? 30 : 5;
   const initTier = grantGuestVip ? giftCfg.tier : 'free';
   const initCardType = grantGuestVip ? giftCfg.cardType : 'none';
-  const initTierName = grantGuestVip ? giftCfg.tierName : '普通旅人';
+  const initTierName = freeMode ? '🌟 全站免费畅玩旅人' : grantGuestVip ? giftCfg.tierName : '普通旅人';
   const initExpiresAt = grantGuestVip ? now + giftCfg.days * 86400 * 1000 : null;
+
+  // 访客临时账号无需密码登录，避免使用高耗时同步 scryptSync 阻塞并发首屏加载
+  const lockedGuestHash = `guest_locked_${crypto.randomBytes(16).toString('hex')}`;
 
   db.prepare(`
     INSERT INTO users (
@@ -2226,7 +2275,7 @@ function loginDemoAccount(preferredGuestId = '') {
     guestEmail,
     guestNick,
     pickedAvatar,
-    hashPassword(crypto.randomBytes(12).toString('hex')),
+    lockedGuestHash,
     initTier,
     initCardType,
     initTierName,
@@ -2241,10 +2290,12 @@ function loginDemoAccount(preferredGuestId = '') {
   appendLedgerEntry({
     userId,
     deltaPoints: initPoints,
-    deltaCredits: initCredits,
+    deltaCredits: freeMode ? 0 : initCredits,
     balanceAfter: initPoints,
     reasonType: 'welcome',
-    title: grantGuestVip
+    title: freeMode
+      ? `🎉 欢迎来到星语恋庭（全站免费无限畅玩 · 初遇星光积分 +${initPoints}）`
+      : grantGuestVip
       ? `🎉 独立访客开户畅享礼（立赠 ${giftCfg.days} 天会员体验 + ${initPoints}积分 + ${initCredits}次额度）`
       : '独立访客开户初遇礼（+50积分 / +5次对话额度）',
     now
@@ -2423,8 +2474,10 @@ function getTasksProgressForUser(userId) {
   const everSavedPersonaCount = db
     .prepare("SELECT SUM(count) AS total FROM user_daily_events WHERE user_id = ? AND event_type = 'user_persona_saved'")
     .get(userId).total || 0;
+  const hasRenamedNick = Boolean(userRow.nickname && !/^星[语屿]旅人/.test(String(userRow.nickname).trim()));
   const hasCustomUserPersona =
     everSavedPersonaCount > 0 ||
+    hasRenamedNick ||
     Boolean((userRow.user_persona_appearance && userRow.user_persona_appearance.trim()) || (userRow.user_persona_bio && userRow.user_persona_bio.trim()));
 
   const customPersonaCount = db
@@ -2667,7 +2720,8 @@ function activateMembershipPlan(userId, planKey, payChannel = 'wechat') {
  * 星光积分商城兑换（积分兑换对话次数、24小时日卡、30天月卡）
  */
 function exchangePointsItem(userId, itemKey) {
-  const item = POINTS_EXCHANGE_ITEMS[itemKey];
+  const freeMode = isFreeExperienceMode();
+  const item = (freeMode && FREE_MODE_EXCHANGE_ITEMS[itemKey]) || POINTS_EXCHANGE_ITEMS[itemKey];
   if (!item) throw new Error('未知的积分兑换项');
 
   const row = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
@@ -2675,7 +2729,7 @@ function exchangePointsItem(userId, itemKey) {
 
   const curPoints = Number(row.points) || 0;
   if (curPoints < item.cost_points) {
-    throw new Error(`星光积分不足（需要 ${item.cost_points} 积分，当前剩余 ${curPoints} 积分），快去签到或做任务获取吧`);
+    throw new Error(`星光积分不足（需要 ${item.cost_points} 积分，当前剩余 ${curPoints} 积分），快去签到或做互动任务获取吧`);
   }
 
   const now = Date.now();
@@ -2690,6 +2744,25 @@ function exchangePointsItem(userId, itemKey) {
       addPoints: -item.cost_points,
       now
     });
+
+    // 若兑换的是好感/信赖加成礼盒，自动为该用户最近活跃会话增加好感与信赖
+    if (item.free_perk_affection || item.free_perk_trust) {
+      const latestSess = db
+        .prepare("SELECT id FROM sessions WHERE user_id = ? AND session_mode != 'deepseek_native' ORDER BY updated_at DESC LIMIT 1")
+        .get(userId);
+      if (latestSess) {
+        const addAff = Number(item.free_perk_affection) || 0;
+        const addTru = Number(item.free_perk_trust) || 0;
+        db.prepare(`
+          UPDATE sessions
+          SET affection = MIN(100, affection + ?),
+              trust = MIN(100, trust + ?),
+              intimacy = MIN(100, intimacy + 5),
+              updated_at = ?
+          WHERE id = ?
+        `).run(addAff, addTru, now, latestSess.id);
+      }
+    }
 
     appendLedgerEntry({
       userId,
@@ -2963,9 +3036,13 @@ function getWalletOverview(userId) {
       streak_days: effectiveStreak,
       calendar
     },
-    tasks: getTasksProgressForUser(userId),
+    tasks: getTasksProgressForUser(userId).map((t) =>
+      freeMode ? { ...t, reward_credits: 0 } : t
+    ),
     products: freeMode ? [] : Object.values(RECHARGE_PRODUCTS),
-    exchange_items: Object.values(POINTS_EXCHANGE_ITEMS),
+    exchange_items: freeMode
+      ? Object.values(FREE_MODE_EXCHANGE_ITEMS)
+      : Object.values(POINTS_EXCHANGE_ITEMS),
     ledger,
     orders,
     redeem_logs: redeemLogs

@@ -22,3 +22,5 @@ data/tts_cache/
 # 系统与编辑器临时文件
 .DS_Store
 Thumbs.db
+*.tar.gz
+.deploy.local.json

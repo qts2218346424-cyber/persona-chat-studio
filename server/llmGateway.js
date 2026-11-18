@@ -7,7 +7,7 @@
  */
 
 const { tryStreamViaAntigravityBridge } = require('./antigravityBridge');
-const { inferPersonaPronoun } = require('./memoryEngine');
+const { inferPersonaPronoun, normalizeMessagesForStrictLLM } = require('./memoryEngine');
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -332,70 +332,123 @@ async function streamHttpEndpoint({
   onContent,
   signal
 }) {
+  const safeMessages = normalizeMessagesForStrictLLM(messagesPayload);
   const reqBody = {
     model,
-    messages: messagesPayload,
+    messages: safeMessages,
     stream: true
   };
   if (model !== 'deepseek-reasoner') {
     reqBody.temperature = Number(temperature) || 0.85;
   }
 
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...headers
-    },
-    body: JSON.stringify(reqBody),
-    signal
-  });
+  let response = null;
+  let lastFetchErr = null;
+  const maxAttempts = 3;
 
-  if (!response.ok) {
-    const errText = await response.text().catch(() => '');
-    throw new Error(`在线模型网关返回异常 (${response.status}): ${errText.slice(0, 220) || response.statusText}`);
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    if (signal?.aborted) throw new Error('请求已取消');
+    const connectAbort = new AbortController();
+    const onOuterAbort = () => connectAbort.abort();
+    signal?.addEventListener('abort', onOuterAbort, { once: true });
+    const connectTimer = setTimeout(() => connectAbort.abort(new Error('CONNECT_TIMEOUT')), 28000);
+
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...headers
+        },
+        body: JSON.stringify(reqBody),
+        signal: connectAbort.signal
+      });
+
+      clearTimeout(connectTimer);
+      signal?.removeEventListener('abort', onOuterAbort);
+
+      if (!res.ok) {
+        const errText = await res.text().catch(() => '');
+        const retryable = [408, 429, 500, 502, 503, 504].includes(res.status);
+        lastFetchErr = new Error(
+          `在线模型网关返回异常 (${res.status}): ${errText.slice(0, 220) || res.statusText}`
+        );
+        if (retryable && attempt < maxAttempts && !signal?.aborted) {
+          await sleep(600 * attempt);
+          continue;
+        }
+        throw lastFetchErr;
+      }
+
+      if (!res.body) {
+        throw new Error('在线网关未返回流式数据');
+      }
+
+      response = res;
+      break;
+    } catch (err) {
+      clearTimeout(connectTimer);
+      signal?.removeEventListener('abort', onOuterAbort);
+      if (signal?.aborted) throw err;
+      lastFetchErr = err;
+      if (attempt < maxAttempts && !/返回异常 \(40[0134]\)/.test(String(err.message || ''))) {
+        await sleep(650 * attempt);
+        continue;
+      }
+      throw err;
+    }
   }
 
-  if (!response.body) {
-    throw new Error('在线网关未返回流式数据');
+  if (!response || !response.body) {
+    throw lastFetchErr || new Error('在线网关连接失败');
   }
 
   const splitter = new StreamThinkSplitter({ onReasoning, onContent, enableThought });
   const decoder = new TextDecoder('utf-8');
   let lineBuffer = '';
 
+  const processLine = (rawLine) => {
+    const line = rawLine.trim();
+    if (!line) return;
+
+    if (line.startsWith('data:')) {
+      const dataStr = line.slice(5).trim();
+      if (dataStr === '[DONE]') return;
+      try {
+        const parsed = JSON.parse(dataStr);
+        const choice = parsed.choices && parsed.choices[0];
+        const delta = (choice && (choice.delta || choice.message)) || {};
+        if (delta.reasoning_content) {
+          splitter.feedNativeReasoning(delta.reasoning_content);
+        }
+        if (delta.content) {
+          splitter.feedContent(delta.content);
+        }
+      } catch {}
+    } else if (line.startsWith('{')) {
+      try {
+        const parsed = JSON.parse(line);
+        if (parsed.choices && parsed.choices[0]?.message?.content) {
+          splitter.feedContent(parsed.choices[0].message.content);
+        }
+      } catch {}
+    }
+  };
+
   for await (const chunk of response.body) {
     if (signal?.aborted) break;
     lineBuffer += decoder.decode(chunk, { stream: true });
     const lines = lineBuffer.split(/\r?\n/);
     lineBuffer = lines.pop() || '';
-
     for (const rawLine of lines) {
-      const line = rawLine.trim();
-      if (!line) continue;
+      processLine(rawLine);
+    }
+  }
 
-      if (line.startsWith('data:')) {
-        const dataStr = line.slice(5).trim();
-        if (dataStr === '[DONE]') continue;
-        try {
-          const parsed = JSON.parse(dataStr);
-          const choice = parsed.choices && parsed.choices[0];
-          const delta = (choice && (choice.delta || choice.message)) || {};
-          if (delta.reasoning_content) {
-            splitter.feedNativeReasoning(delta.reasoning_content);
-          }
-          if (delta.content) {
-            splitter.feedContent(delta.content);
-          }
-        } catch {}
-      } else if (line.startsWith('{')) {
-        try {
-          const parsed = JSON.parse(line);
-          if (parsed.choices && parsed.choices[0]?.message?.content) {
-            splitter.feedContent(parsed.choices[0].message.content);
-          }
-        } catch {}
-      }
+  lineBuffer += decoder.decode();
+  if (lineBuffer.trim()) {
+    for (const rawLine of lineBuffer.split(/\r?\n/)) {
+      processLine(rawLine);
     }
   }
 
@@ -435,7 +488,7 @@ async function streamPersonaChat({
     await streamSmartDemoEngine({
       persona: contextBundle.persona,
       nurturing: contextBundle.nurturing,
-      directorNote: contextBundle.session.director_note,
+      directorNote: contextBundle.session.session_prompt || contextBundle.session.director_note,
       triggeredLorebooks: contextBundle.triggeredLorebooks,
       recalledMemories: contextBundle.recalledMemories,
       rollingSummary: contextBundle.rollingSummary,
@@ -473,7 +526,7 @@ async function streamPersonaChat({
       await streamSmartDemoEngine({
         persona: contextBundle.persona,
         nurturing: contextBundle.nurturing,
-        directorNote: contextBundle.session.director_note,
+        directorNote: contextBundle.session.session_prompt || contextBundle.session.director_note,
         triggeredLorebooks: contextBundle.triggeredLorebooks,
         recalledMemories: contextBundle.recalledMemories,
         rollingSummary: contextBundle.rollingSummary,
@@ -524,7 +577,7 @@ async function streamPersonaChat({
       await streamSmartDemoEngine({
         persona: contextBundle.persona,
         nurturing: contextBundle.nurturing,
-        directorNote: contextBundle.session.director_note,
+        directorNote: contextBundle.session.session_prompt || contextBundle.session.director_note,
         triggeredLorebooks: contextBundle.triggeredLorebooks,
         recalledMemories: contextBundle.recalledMemories,
         rollingSummary: contextBundle.rollingSummary,

@@ -4189,18 +4189,21 @@ details[open] > .ds-fold-summary::before,
 
 
 /* =========================================================================
-   13. 1:1 像素级复刻新版 DeepSeek 纯白极简网页 / App 风格 (对照官方参考图)
+   13. 1:1 像素级复刻新版 DeepSeek 网页 / App 浅色纯白 × 极客深灰双主题设计系统
+   遵循 modern-web-guidance: dark-mode (light-dark() + prefers-color-scheme 回退)
    ========================================================================= */
 
+:root {
+  color-scheme: light dark;
+}
+
+html[data-ui-mode="deepseek"],
 body[data-ui-mode="deepseek"],
 .app-shell[data-ui-mode="deepseek"] {
-  /* 严格遵循 component-specific-light-dark-theme：锁定纯净浅色极简画布并重设全部继承颜色变量 */
-  color-scheme: only light;
   --ds-blue: #4d6bfe;
   --ds-blue-hover: #3b58e8;
-  --ds-blue-soft: #e0ecff;
-  --ds-blue-border: #c7ddff;
 
+  /* 渐进增强：先定义兼容老浏览器的明暗基础变量，再通过 light-dark() 响应手动或系统主题 */
   --bg-app: #ffffff;
   --bg-sidebar: #f9fafb;
   --bg-inspector: #f9fafb;
@@ -4209,22 +4212,62 @@ body[data-ui-mode="deepseek"],
   --bg-composer: #ffffff;
   --bg-user-bubble: #eff6ff;
   --bg-thought: #f8f9fb;
-
   --border-subtle: #eff0f3;
   --border-strong: #e5e7eb;
-
   --text-primary: #1f2329;
   --text-secondary: #4b5563;
   --text-muted: #8f959e;
   --text-action: #4d6bfe;
+  --ds-blue-soft: #e0ecff;
+  --ds-blue-border: #c7ddff;
+  --shadow-soft: 0 6px 28px rgba(15, 23, 42, 0.05);
+
+  @media (prefers-color-scheme: dark) {
+    --bg-app: #212327;
+    --bg-sidebar: #17181c;
+    --bg-inspector: #1b1c20;
+    --bg-surface: #292b31;
+    --bg-surface-hover: #32353d;
+    --bg-composer: #292a2d;
+    --bg-user-bubble: #2f333d;
+    --bg-thought: #1c1e23;
+    --border-subtle: #2d3038;
+    --border-strong: #3b3e48;
+    --text-primary: #ececf1;
+    --text-secondary: #a9aeb8;
+    --text-muted: #797f8c;
+    --text-action: #7d96ff;
+    --ds-blue-soft: rgba(77, 107, 254, 0.22);
+    --ds-blue-border: rgba(96, 130, 255, 0.48);
+    --shadow-soft: 0 8px 28px rgba(0, 0, 0, 0.36);
+  }
+
+  @supports (color: light-dark(white, black)) {
+    --bg-app: light-dark(#ffffff, #212327);
+    --bg-sidebar: light-dark(#f9fafb, #17181c);
+    --bg-inspector: light-dark(#f9fafb, #1b1c20);
+    --bg-surface: light-dark(#f3f4f6, #292b31);
+    --bg-surface-hover: light-dark(#eceef2, #32353d);
+    --bg-composer: light-dark(#ffffff, #292a2d);
+    --bg-user-bubble: light-dark(#eff6ff, #2f333d);
+    --bg-thought: light-dark(#f8f9fb, #1c1e23);
+    --border-subtle: light-dark(#eff0f3, #2d3038);
+    --border-strong: light-dark(#e5e7eb, #3b3e48);
+    --text-primary: light-dark(#1f2329, #ececf1);
+    --text-secondary: light-dark(#4b5563, #a9aeb8);
+    --text-muted: light-dark(#8f959e, #797f8c);
+    --text-action: light-dark(#4d6bfe, #7d96ff);
+    --ds-blue-soft: light-dark(#e0ecff, rgba(77, 107, 254, 0.22));
+    --ds-blue-border: light-dark(#c7ddff, rgba(96, 130, 255, 0.48));
+    --shadow-soft: light-dark(0 6px 28px rgba(15, 23, 42, 0.05), 0 8px 28px rgba(0, 0, 0, 0.36));
+  }
 
   --brand-accent-solid: #4d6bfe;
   --brand-primary: #4d6bfe;
-  --brand-soft: #e0ecff;
-  --shadow-soft: 0 6px 28px rgba(15, 23, 42, 0.05);
+  --brand-soft: var(--ds-blue-soft);
 
-  background: #ffffff;
-  color: #1f2329;
+  background: var(--bg-app);
+  color: var(--text-primary);
   accent-color: #4d6bfe;
 }
 
@@ -4235,7 +4278,15 @@ body[data-ui-mode="deepseek"] .ambient-aurora,
 
 .app-shell[data-ui-mode="deepseek"] {
   grid-template-columns: 260px minmax(0, 1fr) 340px !important;
-  background: #ffffff !important;
+  background: var(--bg-app) !important;
+}
+
+.app-shell[data-ui-mode="deepseek"].artifacts-wide:not(.right-collapsed) {
+  grid-template-columns: 240px minmax(0, 1fr) minmax(380px, 46vw) !important;
+}
+
+.app-shell[data-ui-mode="deepseek"].artifacts-wide.left-collapsed:not(.right-collapsed) {
+  grid-template-columns: 0px minmax(0, 1fr) minmax(400px, 48vw) !important;
 }
 
 .app-shell[data-ui-mode="deepseek"].right-collapsed {
@@ -4250,11 +4301,11 @@ body[data-ui-mode="deepseek"] .ambient-aurora,
   grid-template-columns: 0px minmax(0, 1fr) 0px !important;
 }
 
-/* 左侧栏：极浅灰纯白过渡，彻底覆盖恋庭粉色边框 */
+/* 左侧栏：自适应浅云灰 / 极客深黑侧栏，彻底覆盖恋庭粉色边框 */
 .app-shell[data-ui-mode="deepseek"] .sidebar {
-  background: #f9fafb !important;
+  background: var(--bg-sidebar) !important;
   backdrop-filter: none !important;
-  border-right: 1px solid #f2f3f5 !important;
+  border-right: 1px solid var(--border-subtle) !important;
 }
 
 .app-shell[data-ui-mode="deepseek"] .sidebar-header {
@@ -4271,7 +4322,7 @@ body[data-ui-mode="deepseek"] .ambient-aurora,
 .ds-logo-text {
   font-size: 21px;
   font-weight: 800;
-  color: #4d6bfe;
+  color: light-dark(#4d6bfe, #ececf1);
   letter-spacing: -0.03em;
   line-height: 1;
   font-family: "Inter", "HarmonyOS Sans SC", "PingFang SC", system-ui, sans-serif;
@@ -4286,16 +4337,16 @@ body[data-ui-mode="deepseek"] .ambient-aurora,
 .app-shell[data-ui-mode="deepseek"] .sidebar-head-icons .icon-btn {
   width: 30px;
   height: 30px;
-  color: #6b7280;
+  color: var(--text-secondary);
   border-radius: 8px;
 }
 
 .app-shell[data-ui-mode="deepseek"] .sidebar-head-icons .icon-btn:hover {
-  background: #eceef2;
-  color: #1f2329;
+  background: var(--bg-surface-hover);
+  color: var(--text-primary);
 }
 
-/* 开启新对话：纯白大圆角胶囊按钮 */
+/* 开启新对话：自适应圆角胶囊按钮 */
 .app-shell[data-ui-mode="deepseek"] .ds-sidebar-zone {
   padding: 2px 14px 8px;
   gap: 8px;
@@ -4305,9 +4356,9 @@ body[data-ui-mode="deepseek"] .ambient-aurora,
   height: 42px;
   padding: 0 16px;
   border-radius: 999px;
-  background: #ffffff;
-  border: 1px solid #e6e8ec;
-  color: #1f2329;
+  background: light-dark(#ffffff, #25272d);
+  border: 1px solid var(--border-strong);
+  color: var(--text-primary);
   font-size: 14px;
   font-weight: 500;
   box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
@@ -4315,19 +4366,19 @@ body[data-ui-mode="deepseek"] .ambient-aurora,
 }
 
 .app-shell[data-ui-mode="deepseek"] .ds-new-chat-btn:hover {
-  background: #ffffff;
-  color: #1f2329;
-  border-color: #d4d8e0;
-  box-shadow: 0 2px 6px rgba(16, 24, 40, 0.07);
+  background: var(--bg-surface-hover);
+  color: var(--text-primary);
+  border-color: var(--ds-blue-border);
+  box-shadow: 0 2px 6px rgba(16, 24, 40, 0.08);
 }
 
 .ds-session-search-wrap input {
   width: 100%;
   padding: 7px 12px;
   border-radius: 999px;
-  border: 1px solid #dcdfe6;
-  background: #ffffff;
-  color: #1f2329;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-app);
+  color: var(--text-primary);
   font-size: 13px;
   outline: none;
 }
@@ -4336,7 +4387,7 @@ body[data-ui-mode="deepseek"] .ambient-aurora,
   border-color: #4d6bfe;
 }
 
-/* 历史会话列表：年月小字标题、纯文本条目与底部白雾渐隐 */
+/* 历史会话列表：五级时间线小字标题、纯文本条目与底部雾化渐隐 */
 .app-shell[data-ui-mode="deepseek"] .sidebar-sessions-wrap {
   position: relative;
   padding: 4px 10px 0;
@@ -4348,8 +4399,8 @@ body[data-ui-mode="deepseek"] .ambient-aurora,
   left: 0;
   right: 0;
   bottom: 0;
-  height: 38px;
-  background: linear-gradient(to top, #f9fafb 15%, rgba(249, 250, 251, 0));
+  height: 36px;
+  background: linear-gradient(to top, var(--bg-sidebar) 15%, transparent);
   pointer-events: none;
 }
 
@@ -4362,33 +4413,34 @@ body[data-ui-mode="deepseek"] .ambient-aurora,
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-size: 12px;
-  font-weight: 500;
-  color: #8f959e;
-  padding: 14px 8px 6px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-muted);
+  padding: 12px 8px 5px;
 }
 
 .app-shell[data-ui-mode="deepseek"] .session-item {
   padding: 8px 10px !important;
   border-radius: 10px !important;
-  color: #262626 !important;
+  color: var(--text-primary) !important;
   font-weight: 400;
   background: transparent;
   border: none !important;
+  position: relative;
 }
 
 .app-shell[data-ui-mode="deepseek"] .session-item:hover {
-  background: #eef0f4 !important;
+  background: var(--bg-surface-hover) !important;
 }
 
 .app-shell[data-ui-mode="deepseek"] .session-item.active {
-  background: #eaecef !important;
-  color: #111827 !important;
+  background: light-dark(#e8ecf4, #2b2e37) !important;
+  color: var(--text-primary) !important;
   font-weight: 500;
 }
 
 .app-shell[data-ui-mode="deepseek"] .session-title-text {
-  font-size: 14px !important;
+  font-size: 13.5px !important;
   color: inherit !important;
 }
 
@@ -4407,7 +4459,7 @@ body[data-ui-mode="deepseek"] .ambient-aurora,
   align-items: center;
   justify-content: space-between;
   padding: 10px 14px 14px;
-  background: #f9fafb;
+  background: var(--bg-sidebar);
   position: relative;
 }
 
@@ -4420,14 +4472,14 @@ body[data-ui-mode="deepseek"] .ambient-aurora,
   padding: 4px 6px;
   border-radius: 10px;
   cursor: pointer;
-  color: #374151;
+  color: var(--text-primary);
   min-width: 0;
   flex: 1;
   text-align: left;
 }
 
 .ds-profile-left:hover {
-  background: #eef0f4;
+  background: var(--bg-surface-hover);
 }
 
 .ds-user-avatar {
@@ -4444,7 +4496,7 @@ body[data-ui-mode="deepseek"] .ambient-aurora,
 
 .ds-user-name {
   font-size: 13.5px;
-  color: #374151;
+  color: var(--text-primary);
   font-weight: 500;
   white-space: nowrap;
   overflow: hidden;
@@ -4457,7 +4509,7 @@ body[data-ui-mode="deepseek"] .ambient-aurora,
   border-radius: 8px;
   border: none;
   background: transparent;
-  color: #6b7280;
+  color: var(--text-secondary);
   font-size: 16px;
   letter-spacing: 1px;
   cursor: pointer;
@@ -4467,19 +4519,19 @@ body[data-ui-mode="deepseek"] .ambient-aurora,
 }
 
 .ds-dots-btn:hover {
-  background: #eef0f4;
-  color: #1f2329;
+  background: var(--bg-surface-hover);
+  color: var(--text-primary);
 }
 
 [popover].ds-user-menu-popover,
 [popover].ds-adv-popover-panel {
-  width: 252px;
+  width: 258px;
   padding: 10px;
   border-radius: 16px;
-  border: 1px solid #e5e7eb;
-  background: #ffffff;
-  color: #1f2329;
-  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.12);
+  border: 1px solid var(--border-strong);
+  background: var(--bg-composer);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-soft);
   inset: auto auto 62px 14px;
   margin: 0;
 }
@@ -4487,7 +4539,7 @@ body[data-ui-mode="deepseek"] .ambient-aurora,
 [popover].ds-adv-popover-panel {
   inset: auto auto 96px 50%;
   transform: translateX(-50%);
-  width: 236px;
+  width: 238px;
 }
 
 .ds-menu-soul-box {
@@ -4500,48 +4552,48 @@ body[data-ui-mode="deepseek"] .ambient-aurora,
 .ds-menu-soul-box label {
   font-size: 11px;
   font-weight: 600;
-  color: #6b7280;
+  color: var(--text-secondary);
 }
 
 .ds-menu-soul-box select {
   width: 100%;
   padding: 6px 8px;
   border-radius: 8px;
-  border: 1px solid #d1d5db;
-  background: #f9fafb;
-  color: #1f2329;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-surface);
+  color: var(--text-primary);
   font-size: 12.5px;
   outline: none;
 }
 
 .ds-menu-sep {
   border: none;
-  border-top: 1px solid #f1f2f5;
+  border-top: 1px solid var(--border-subtle);
   margin: 6px 0;
 }
 
 .ds-apk-download-link {
   text-decoration: none;
-  color: #2563eb !important;
+  color: var(--text-action) !important;
   font-weight: 600 !important;
 }
 
 /* 右侧主舞台：空状态极简无边框 + 垂直水平正居中！ */
 .app-shell[data-ui-mode="deepseek"] .chat-stage {
-  background: #ffffff !important;
+  background: var(--bg-app) !important;
 }
 
 .app-shell[data-ui-mode="deepseek"] .stage-topbar {
-  background: #ffffff !important;
+  background: var(--bg-app) !important;
   backdrop-filter: none !important;
-  border-bottom: 1px solid #f3f4f6 !important;
+  border-bottom: 1px solid var(--border-subtle) !important;
   padding: 10px 20px !important;
 }
 
-/* 空对话欢迎态：顶栏完全融入纯白背景，隐藏干扰元素，输入框与欢迎语正居中！ */
+/* 空对话欢迎态：顶栏完全融入主画布背景，输入框与欢迎语正居中！ */
 .app-shell[data-ui-mode="deepseek"] .chat-stage.ds-empty-mode .stage-topbar {
   border-bottom-color: transparent !important;
-  background: #ffffff !important;
+  background: var(--bg-app) !important;
 }
 
 .app-shell[data-ui-mode="deepseek"] .chat-stage.ds-empty-mode .ds-topbar-meta {
@@ -4549,7 +4601,7 @@ body[data-ui-mode="deepseek"] .ambient-aurora,
 }
 
 .app-shell[data-ui-mode="deepseek"] .chat-stage.ds-empty-mode .topbar-right {
-  opacity: 0;
+  opacity: 0.45;
   transition: opacity 0.18s ease;
 }
 
@@ -4559,8 +4611,8 @@ body[data-ui-mode="deepseek"] .ambient-aurora,
 }
 
 .app-shell[data-ui-mode="deepseek"] .messages-viewport {
-  padding: 28px 28px 16px !important;
-  background: #ffffff !important;
+  padding: 28px 28px 18px !important;
+  background: var(--bg-app) !important;
 }
 
 .app-shell[data-ui-mode="deepseek"] .messages-container {
@@ -4577,9 +4629,9 @@ body[data-ui-mode="deepseek"] .ambient-aurora,
 }
 
 .app-shell[data-ui-mode="deepseek"] .msg-row.assistant .msg-avatar.ds-svg-avatar {
-  background: #ffffff !important;
-  border: 1px solid #e5e7eb !important;
-  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05) !important;
+  background: light-dark(#ffffff, #2a2d35) !important;
+  border: 1px solid var(--border-strong) !important;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08) !important;
   width: 32px !important;
   height: 32px !important;
   border-radius: 50% !important;
@@ -4592,16 +4644,16 @@ body[data-ui-mode="deepseek"] .ambient-aurora,
 .app-shell[data-ui-mode="deepseek"] .topbar-right .soft-tool-btn,
 .app-shell[data-ui-mode="deepseek"] .topbar-right .ds-inspector-btn {
   background: transparent;
-  border: 1px solid #e5e7eb;
-  color: #4b5563;
+  border: 1px solid var(--border-strong);
+  color: var(--text-secondary);
   box-shadow: none;
   font-weight: 500;
 }
 
 .app-shell[data-ui-mode="deepseek"] .topbar-right button:hover {
-  background: #f3f4f6;
-  color: #1f2329;
-  border-color: #d1d5db;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  border-color: var(--border-strong);
   transform: none;
 }
 
@@ -4614,8 +4666,9 @@ body[data-ui-mode="deepseek"] .ambient-aurora,
 }
 
 .app-shell[data-ui-mode="deepseek"] .composer-dock {
-  padding: 6px 24px 20px !important;
-  background: #ffffff !important;
+  position: relative;
+  padding: 6px 24px 12px !important;
+  background: var(--bg-app) !important;
 }
 
 .app-shell[data-ui-mode="deepseek"] .chat-stage.ds-empty-mode .composer-dock {
@@ -4624,10 +4677,15 @@ body[data-ui-mode="deepseek"] .ambient-aurora,
   flex-direction: column !important;
   align-items: center !important;
   justify-content: center !important;
-  padding: 0 24px 11vh !important;
+  padding: 0 24px 8vh !important;
 }
 
-.app-shell[data-ui-mode="deepseek"] .chat-stage:not(.ds-empty-mode) .ds-home-greeting {
+.app-shell[data-ui-mode="deepseek"] .chat-stage:not(.ds-empty-mode) .ds-home-greeting,
+.app-shell[data-ui-mode="deepseek"] .chat-stage:not(.ds-empty-mode) .ds-welcome-chips {
+  display: none !important;
+}
+
+.app-shell[data-ui-mode="deepseek"] .chat-stage.ds-empty-mode .ds-disclaimer-note {
   display: none !important;
 }
 
@@ -4636,42 +4694,41 @@ body[data-ui-mode="deepseek"] .ambient-aurora,
   align-items: center;
   justify-content: center;
   gap: 12px;
-  margin-bottom: 28px;
+  margin-bottom: 26px;
   user-select: none;
 }
 
 .ds-greeting-title {
   font-size: 24px;
   font-weight: 700;
-  color: #111827;
+  color: var(--text-primary);
   letter-spacing: -0.01em;
 }
 
-/* 输入框卡片：1:1 复刻截图圆角白卡、柔和冷色阴影、双胶囊与右下角浅蓝圆箭头 */
+/* 输入框卡片：自适应纯白圆角卡 / 深灰极客悬浮卡 */
 .app-shell[data-ui-mode="deepseek"] .composer-card {
-  width: min(92vw, 740px) !important;
-  max-width: 740px !important;
-  background: #ffffff !important;
-  border: 1px solid #e5e7eb !important;
+  width: min(92vw, 750px) !important;
+  max-width: 750px !important;
+  background: var(--bg-composer) !important;
+  border: 1px solid var(--border-strong) !important;
   border-radius: 24px !important;
   padding: 16px 18px 12px !important;
-  box-shadow: 0 6px 24px rgba(15, 23, 42, 0.045) !important;
+  box-shadow: var(--shadow-soft) !important;
 }
 
 .app-shell[data-ui-mode="deepseek"] .composer-card:focus-within {
-  border-color: #d5d9e2 !important;
-  box-shadow: 0 8px 28px rgba(15, 23, 42, 0.065) !important;
+  border-color: var(--ds-blue-border) !important;
 }
 
 .app-shell[data-ui-mode="deepseek"] #chat-input {
   min-block-size: 3.1lh;
   font-size: 15px;
-  color: #1f2329;
+  color: var(--text-primary);
   padding: 0 2px 10px;
 }
 
 .app-shell[data-ui-mode="deepseek"] #chat-input::placeholder {
-  color: #9ca3af;
+  color: var(--text-muted);
 }
 
 .app-shell[data-ui-mode="deepseek"] .ds-pill-toggle {
@@ -4681,23 +4738,23 @@ body[data-ui-mode="deepseek"] .ambient-aurora,
   height: 32px;
   padding: 0 12px;
   border-radius: 999px;
-  border: 1px solid #e5e7eb;
-  background: #ffffff;
-  color: #374151;
+  border: 1px solid var(--border-strong);
+  background: light-dark(#ffffff, #32353e);
+  color: var(--text-secondary);
   font-size: 13px;
   font-weight: 500;
 }
 
 .app-shell[data-ui-mode="deepseek"] .ds-pill-toggle:hover {
-  background: #f9fafb;
-  border-color: #d1d5db;
-  color: #111827;
+  background: var(--bg-surface-hover);
+  border-color: var(--ds-blue-border);
+  color: var(--text-primary);
 }
 
 .app-shell[data-ui-mode="deepseek"] .ds-pill-toggle.active {
-  background: #e0ecff;
-  border-color: #cde0ff;
-  color: #2563eb;
+  background: var(--ds-blue-soft);
+  border-color: var(--ds-blue-border);
+  color: var(--text-action);
 }
 
 .ds-adv-icon-btn {
@@ -4706,7 +4763,7 @@ body[data-ui-mode="deepseek"] .ambient-aurora,
   border-radius: 50%;
   border: none;
   background: transparent;
-  color: #9ca3af;
+  color: var(--text-muted);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -4727,8 +4784,8 @@ body[data-ui-mode="deepseek"] .ambient-aurora,
 }
 
 .ds-adv-icon-btn:hover {
-  background: #f3f4f6;
-  color: #4b5563;
+  background: var(--bg-surface-hover);
+  color: var(--text-primary);
 }
 
 .app-shell[data-ui-mode="deepseek"] .attach-icon-btn {
@@ -4736,12 +4793,12 @@ body[data-ui-mode="deepseek"] .ambient-aurora,
   height: 32px;
   border: none;
   background: transparent;
-  color: #4b5563;
+  color: var(--text-secondary);
 }
 
 .app-shell[data-ui-mode="deepseek"] .attach-icon-btn:hover {
-  background: #f3f4f6;
-  color: #111827;
+  background: var(--bg-surface-hover);
+  color: var(--text-primary);
 }
 
 .app-shell[data-ui-mode="deepseek"] .send-btn {
@@ -4750,17 +4807,18 @@ body[data-ui-mode="deepseek"] .ambient-aurora,
   border-radius: 50%;
   background: #4d6bfe;
   box-shadow: none;
-  transition: background 0.15s ease;
+  transition: background 0.15s ease, opacity 0.15s ease;
 }
 
 .app-shell[data-ui-mode="deepseek"] .composer-card.input-empty .send-btn {
-  background: #9eb3ff;
+  background: light-dark(#9eb3ff, rgba(77, 107, 254, 0.42));
 }
 
 /* 手机端 / Android APK 响应式抽屉侧边栏体验优化 */
 @media (max-width: 780px) {
-  .app-shell[data-ui-mode="deepseek"] {
-    grid-template-columns: 0px minmax(0, 1fr) 0px;
+  .app-shell[data-ui-mode="deepseek"],
+  .app-shell[data-ui-mode="deepseek"].artifacts-wide:not(.right-collapsed) {
+    grid-template-columns: 0px minmax(0, 1fr) 0px !important;
   }
 
   .app-shell[data-ui-mode="deepseek"]:not(.left-collapsed) .sidebar {
@@ -4770,7 +4828,7 @@ body[data-ui-mode="deepseek"] .ambient-aurora,
     bottom: 0;
     width: 272px;
     z-index: 60;
-    box-shadow: 12px 0 36px rgba(0, 0, 0, 0.14);
+    box-shadow: 12px 0 36px rgba(0, 0, 0, 0.22);
   }
 
   .ds-greeting-title {
@@ -4778,8 +4836,8 @@ body[data-ui-mode="deepseek"] .ambient-aurora,
   }
 
   .app-shell[data-ui-mode="deepseek"] .composer-card {
-    width: 100%;
-    border-radius: 20px;
-    padding: 13px 14px 10px;
+    width: 100% !important;
+    border-radius: 20px !important;
+    padding: 13px 14px 10px !important;
   }
 }

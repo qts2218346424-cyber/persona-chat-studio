@@ -88,11 +88,12 @@
   const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 
   function normalizeCutoutSrc(rawSrc) {
-    if (!rawSrc) return '/assets/companions/cool_silver_cutout.png';
+    if (!rawSrc) return './assets/companions/cool_silver_cutout.png';
+    const relSrc = String(rawSrc).replace(/^\/assets\//, './assets/');
     // 自动将旧版矩形 .jpg 路径无缝映射至高精度透明抠图 _cutout.png
-    return rawSrc.replace(
-      /\/assets\/companions\/(cool_silver|cool_dark|cute_boy|cute_chibi)\.jpg$/i,
-      '/assets/companions/$1_cutout.png'
+    return relSrc.replace(
+      /(?:\.?\/)?assets\/companions\/(cool_silver|cool_dark|cute_boy|cute_chibi)\.jpg$/i,
+      './assets/companions/$1_cutout.png'
     );
   }
 

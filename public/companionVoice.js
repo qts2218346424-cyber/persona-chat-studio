@@ -532,7 +532,7 @@
     try {
       ensureAudioContext();
       stopCurrentAudio();
-      const resp = await fetch('/assets/voice_demos/otome_male_demo.wav');
+      const resp = await fetch('./assets/voice_demos/otome_male_demo.wav');
       const buf = await resp.arrayBuffer();
       if (resultBox) {
         resultBox.className = 'test-result-box ok';

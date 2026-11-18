@@ -20,7 +20,10 @@ const DEFAULT_BRIDGE_OPTIONS = {
   preferLocalOfflineServer: false,
   firstTokenTimeoutMs: 15000,
   defaultReasoningEffort: 'low',
-  knowledgeBaseConfigPaths: ['E:/知识库项目/obsidian-viz/server/config.json'],
+  knowledgeBaseConfigPaths: [
+    'E:/知识库项目/obsidian-viz/server/config.json',
+    '/opt/coreforge/server/config.json'
+  ],
   localServers: {
     ollamaBaseUrl: 'http://127.0.0.1:11434',
     lmStudioBaseUrl: 'http://127.0.0.1:1234'
@@ -468,7 +471,7 @@ async function streamViaAnthropicProtocol({
 
   const reqBody = {
     model,
-    max_tokens: 2048,
+    max_tokens: 8192,
     temperature: Number(temperature) || 0.85,
     stream: true,
     messages: chatMessages

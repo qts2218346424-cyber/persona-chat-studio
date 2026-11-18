@@ -114,13 +114,15 @@ function createJsonLineWorker(scriptPath, bootTimeoutMs = 20000) {
   const pending = new Map();
 
   function ensure() {
+    if (process.env.DISABLE_LOCAL_TTS_WORKERS === '1') return Promise.resolve(false);
     if (ready && proc) return Promise.resolve(true);
     if (failed) return Promise.resolve(false);
     if (initPromise) return initPromise;
 
     initPromise = new Promise((resolve) => {
       try {
-        const child = spawn('python', [scriptPath], {
+        const pythonBin = process.env.PYTHON_BIN || (process.platform === 'win32' ? 'python' : 'python3');
+        const child = spawn(pythonBin, [scriptPath], {
           stdio: ['pipe', 'pipe', 'pipe'],
           windowsHide: true
         });
@@ -799,6 +801,7 @@ async function synthesizeNeuralSpeech({ text, voiceId = 'otome_cool', speed, set
 
 // 启动后立即预连接 Qwen3-TTS 1.7B 云端声优通道，并后台预烘烤高频切换试听样音进磁盘缓存！
 function warmupTtsEngine() {
+  if (process.env.DISABLE_LOCAL_TTS_WORKERS === '1') return;
   setTimeout(() => {
     qwenWorker.ensure().catch(() => {});
   }, 800);

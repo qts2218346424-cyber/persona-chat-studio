@@ -2636,3 +2636,832 @@ dialog::backdrop {
     grid-template-columns: 1fr;
   }
 }
+
+
+/* ==========================================================================
+   14. DeepSeek 官网全特性深度复刻增强层 (chat.deepseek.com Full Feature Parity)
+   涵盖：置顶/重命名上下文菜单 · <1/2>多版本切换 · 联网引用角标 · 语法高亮与换行 ·
+   LaTeX数学公式 · 右侧伴生Artifacts实时预览 · 粘贴截图多模态预览 · 回到底部圆钮
+   ========================================================================== */
+
+/* 14.1 侧边栏会话置顶、重命名与 ··· 悬浮上下文菜单 */
+.session-item .ds-pin-glyph {
+  font-size: 11px;
+  margin-right: 4px;
+  opacity: 0.85;
+  flex-shrink: 0;
+}
+
+.session-row-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.ds-session-more-btn {
+  min-inline-size: 24px;
+  min-block-size: 24px;
+  padding: 0 5px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.14s ease, background-color 0.14s ease;
+}
+
+.session-item:hover .ds-session-more-btn,
+.session-item:focus-within .ds-session-more-btn,
+.session-item.menu-open .ds-session-more-btn {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .ds-session-more-btn {
+    opacity: 0.8;
+  }
+}
+
+.ds-session-more-btn:hover {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+}
+
+.ds-session-rename-input {
+  width: 100%;
+  padding: 2px 6px;
+  border-radius: 6px;
+  border: 1.5px solid #4d6bfe;
+  background: var(--bg-app);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 13px;
+  outline: none;
+}
+
+.ds-session-ctx-menu {
+  position: fixed;
+  z-index: 220;
+  min-width: 158px;
+  padding: 6px;
+  border-radius: 12px;
+  background: var(--bg-composer);
+  border: 1px solid var(--border-strong);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.18);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ds-ctx-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ds-ctx-item:hover {
+  background: var(--bg-surface-hover);
+}
+
+.ds-ctx-item.danger {
+  color: #ef4444;
+}
+
+.ds-ctx-item.danger:hover {
+  background: rgba(239, 68, 68, 0.1);
+}
+
+/* 14.2 空对话居中欢迎态快捷胶囊与底部微字提示 */
+.ds-welcome-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  max-width: 750px;
+  margin-top: 16px;
+}
+
+.ds-quick-scene-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 13px;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-composer);
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease, background-color 0.15s ease, transform 0.12s ease;
+}
+
+.ds-quick-scene-pill:hover {
+  border-color: var(--ds-blue-border);
+  background: var(--ds-blue-soft);
+  color: var(--text-action);
+  transform: translateY(-1px);
+}
+
+.ds-disclaimer-note {
+  margin-top: 7px;
+  text-align: center;
+  font-size: 11px;
+  color: var(--text-muted);
+  letter-spacing: 0.01em;
+  user-select: none;
+}
+
+/* 14.3 回到底部悬浮圆钮 */
+.ds-scroll-bottom-btn {
+  position: absolute;
+  top: -44px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-composer);
+  color: var(--text-secondary);
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.12);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 25;
+  transition: transform 0.16s ease, color 0.16s ease, border-color 0.16s ease;
+}
+
+.ds-scroll-bottom-btn:hover {
+  color: #4d6bfe;
+  border-color: var(--ds-blue-border);
+  transform: translateX(-50%) translateY(-2px);
+}
+
+/* 14.4 联网搜索引用数字角标 [1] 与 URL 阅读标签 */
+.ds-citation-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4.5px;
+  margin: 0 2px;
+  border-radius: 999px;
+  background: var(--ds-blue-soft);
+  border: 1px solid var(--ds-blue-border);
+  color: var(--text-action);
+  font-size: 10.5px;
+  font-weight: 700;
+  line-height: 1;
+  text-decoration: none;
+  vertical-align: super;
+  cursor: pointer;
+  transition: background-color 0.14s ease, color 0.14s ease, transform 0.12s ease;
+}
+
+.ds-citation-badge:hover {
+  background: #4d6bfe;
+  border-color: #4d6bfe;
+  color: #ffffff;
+  text-decoration: none;
+  transform: scale(1.08);
+}
+
+.ds-url-site-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: 5px;
+  background: var(--bg-surface);
+  color: var(--text-muted);
+  font-size: 10.5px;
+  font-weight: 600;
+  margin-left: 6px;
+}
+
+/* 14.5 代码块多语言语法高亮、自动换行与无障碍复制状态气泡 (遵循 copy-button) */
+.ds-code-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ds-code-lines-tag {
+  font-size: 11px;
+  color: #6b7280;
+  font-weight: 400;
+}
+
+.ds-code-block.wrap-lines pre,
+.ds-code-block.wrap-lines pre code {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.ds-code-btn.active {
+  border-color: #60a5fa;
+  color: #93c5fd;
+  background: rgba(96, 165, 250, 0.16);
+}
+
+.ds-copy-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.ds-copy-btn-std {
+  min-inline-size: 24px;
+  min-block-size: 24px;
+}
+
+.ds-copy-live-tip {
+  font-size: 11px;
+  font-weight: 600;
+  color: #34d399;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.16s ease;
+}
+
+.ds-copy-btn-std[data-copied] + .ds-copy-live-tip,
+.ds-copy-btn-std[data-failed] + .ds-copy-live-tip {
+  opacity: 1;
+}
+
+.ds-copy-btn-std[data-failed] + .ds-copy-live-tip {
+  color: #f87171;
+}
+
+/* 暗黑代码块内语法着色令牌 */
+.ds-code-block .tok-com { color: #7f848e; font-style: italic; }
+.ds-code-block .tok-str { color: #98c379; }
+.ds-code-block .tok-kw  { color: #c678dd; font-weight: 600; }
+.ds-code-block .tok-num { color: #d19a66; }
+.ds-code-block .tok-fn  { color: #61afef; }
+.ds-code-block .tok-tag { color: #e06c75; }
+.ds-code-block .tok-attr { color: #e5c07b; }
+
+/* 14.6 LaTeX 数学公式优雅排版与 GFM 扩展样式 */
+.ds-math-block {
+  margin: 14px 0;
+  padding: 12px 16px;
+  border-radius: 12px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  overflow-x: auto;
+  text-align: center;
+  font-family: "Cambria Math", "STIX Two Math", "Latin Modern Math", "Times New Roman", serif;
+  font-size: 1.08em;
+  line-height: 1.8;
+  color: var(--text-primary);
+}
+
+.ds-math-inline {
+  font-family: "Cambria Math", "STIX Two Math", "Latin Modern Math", "Times New Roman", serif;
+  font-size: 1.04em;
+  padding: 0 2px;
+  color: var(--text-primary);
+}
+
+.ds-math-frac {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  vertical-align: middle;
+  margin: 0 3px;
+  font-size: 0.92em;
+  line-height: 1.15;
+}
+
+.ds-math-num {
+  padding: 0 4px 2px;
+  border-bottom: 1px solid currentColor;
+}
+
+.ds-math-den {
+  padding: 2px 4px 0;
+}
+
+.ds-math-sqrt {
+  display: inline-flex;
+  align-items: baseline;
+}
+
+.ds-math-radicand {
+  border-top: 1px solid currentColor;
+  padding: 0 2px;
+}
+
+.ds-math-op {
+  font-size: 1.22em;
+  vertical-align: -0.06em;
+  margin: 0 2px;
+}
+
+.assistant-prose hr.ds-md-hr {
+  border: none;
+  border-top: 1px solid var(--border-strong);
+  margin: 16px 0;
+}
+
+.assistant-prose a.ds-md-link {
+  color: var(--text-action);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.assistant-prose li.ds-task-item {
+  list-style: none;
+  margin-left: -18px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+/* 14.7 消息底部官方线性图标栏 + < 1 / 2 > 多版本切换器 + 点赞点踩 */
+.app-shell[data-ui-mode="deepseek"] .msg-footer-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px !important;
+  margin-top: 8px !important;
+  opacity: 0.92;
+}
+
+.ds-version-switcher {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  margin-right: 4px;
+  border-radius: 999px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  user-select: none;
+}
+
+.ds-ver-nav-btn {
+  min-inline-size: 20px;
+  min-block-size: 20px;
+  padding: 0 3px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 12px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ds-ver-nav-btn:hover:not(:disabled) {
+  background: var(--bg-surface-hover);
+  color: #4d6bfe;
+}
+
+.ds-ver-nav-btn:disabled {
+  opacity: 0.32;
+  cursor: default;
+}
+
+.ds-icon-action-btn {
+  min-inline-size: 28px;
+  min-block-size: 28px;
+  padding: 4px 7px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background-color 0.14s ease, color 0.14s ease;
+}
+
+.ds-icon-action-btn:hover {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+}
+
+.ds-icon-action-btn.liked {
+  color: #10b981;
+  background: rgba(16, 185, 129, 0.12);
+}
+
+.ds-icon-action-btn.disliked {
+  color: #f59e0b;
+  background: rgba(245, 158, 11, 0.12);
+}
+
+/* 14.8 多模态图片缩略图芯片与附件预览器 */
+.attachment-chip.clickable-att {
+  cursor: pointer;
+  transition: border-color 0.14s ease, background-color 0.14s ease;
+}
+
+.attachment-chip.clickable-att:hover {
+  border-color: #4d6bfe;
+  background: var(--ds-blue-soft);
+}
+
+.att-thumb-img {
+  width: 26px;
+  height: 26px;
+  border-radius: 5px;
+  object-fit: cover;
+  flex-shrink: 0;
+  border: 1px solid var(--border-subtle);
+}
+
+.msg-user-images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+  justify-content: flex-end;
+}
+
+.msg-user-img-card {
+  max-width: 180px;
+  max-height: 140px;
+  border-radius: 12px;
+  object-fit: cover;
+  border: 1px solid var(--border-strong);
+  cursor: zoom-in;
+  transition: transform 0.15s ease;
+}
+
+.msg-user-img-card:hover {
+  transform: scale(1.02);
+}
+
+.ds-att-preview-body {
+  max-height: 64dvh;
+  overflow: auto;
+  border-radius: 12px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-strong);
+  padding: 14px;
+}
+
+.ds-att-preview-body img {
+  display: block;
+  max-width: 100%;
+  max-height: 58dvh;
+  margin: 0 auto;
+  border-radius: 10px;
+}
+
+.ds-att-preview-body pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: "JetBrains Mono", Consolas, monospace;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--text-primary);
+}
+
+/* 14.9 右侧伴生分栏 Artifacts 实时预览工作台 */
+.ds-artifact-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #4d6bfe;
+  display: inline-block;
+  margin-left: 3px;
+  box-shadow: 0 0 0 3px rgba(77, 107, 254, 0.22);
+}
+
+.ds-artifacts-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  height: calc(100dvh - 58px);
+  padding: 10px 12px 14px !important;
+}
+
+.ds-artifacts-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 6px 8px;
+  border-radius: 11px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+}
+
+.ds-art-seg-group {
+  display: inline-flex;
+  background: var(--bg-app);
+  padding: 2px;
+  border-radius: 8px;
+  border: 1px solid var(--border-subtle);
+}
+
+.ds-art-seg {
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  padding: 4px 10px;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.ds-art-seg.active {
+  background: #4d6bfe;
+  color: #ffffff;
+}
+
+.ds-art-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.ds-art-icon-btn {
+  min-inline-size: 28px;
+  min-block-size: 28px;
+  padding: 3px 8px;
+  border-radius: 7px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-app);
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.ds-art-icon-btn:hover {
+  border-color: #4d6bfe;
+  color: #4d6bfe;
+}
+
+.ds-artifacts-stage {
+  flex: 1;
+  min-height: 0;
+  border-radius: 14px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-app);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+.ds-artifacts-empty {
+  padding: 28px 22px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.ds-art-empty-icon {
+  font-size: 36px;
+}
+
+.ds-side-sandbox-iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+  background: #ffffff;
+  transition: width 0.22s ease, height 0.22s ease, border-radius 0.22s ease;
+}
+
+.ds-artifacts-stage.mobile-viewport {
+  background: var(--bg-surface);
+  padding: 14px;
+}
+
+.ds-artifacts-stage.mobile-viewport .ds-side-sandbox-iframe {
+  width: min(390px, 100%);
+  height: min(740px, 100%);
+  border-radius: 24px;
+  border: 4px solid #334155;
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.24);
+}
+
+.ds-side-source-pre {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 14px;
+  overflow: auto;
+  background: #181a20;
+  color: #e5e7eb;
+  font-family: "JetBrains Mono", Consolas, monospace;
+  font-size: 12.5px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* 14.10 DeepSeek 官方风对话分享预览卡片 */
+.ds-share-preview-card {
+  max-height: 58dvh;
+  overflow-y: auto;
+  padding: 20px 24px;
+  border-radius: 16px;
+  background: var(--bg-app);
+  border: 1px solid var(--border-strong);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.ds-share-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.ds-share-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 800;
+  font-size: 16px;
+  color: #4d6bfe;
+}
+
+.ds-share-turn {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ds-share-user-q {
+  align-self: flex-end;
+  background: var(--bg-user-bubble);
+  border: 1px solid var(--border-subtle);
+  padding: 9px 14px;
+  border-radius: 14px;
+  font-size: 13.5px;
+  color: var(--text-primary);
+  max-width: 88%;
+}
+
+.ds-share-ai-a {
+  font-size: 13.5px;
+  line-height: 1.68;
+  color: var(--text-primary);
+  padding-left: 10px;
+  border-left: 2.5px solid #4d6bfe;
+}
+
+.ds-share-thought-note {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+/* 14.11 正版 DeepSeek 官方回答排版与视觉细节精修（消除剧本粉色样式干扰） */
+.ds-inline-status-svg {
+  flex-shrink: 0;
+  color: currentColor;
+  opacity: 0.88;
+}
+
+.app-shell[data-ui-mode="deepseek"] .thought-content {
+  white-space: normal;
+}
+
+.app-shell[data-ui-mode="deepseek"] .thought-content .ds-thought-para {
+  margin: 0 0 8px;
+  font-size: 13.5px;
+  line-height: 1.68;
+  color: var(--text-muted);
+}
+
+.app-shell[data-ui-mode="deepseek"] .thought-content .ds-thought-para:last-child {
+  margin-bottom: 0;
+}
+
+.app-shell[data-ui-mode="deepseek"] .assistant-prose {
+  font-size: 15.5px;
+  line-height: 1.76;
+  letter-spacing: 0.005em;
+  color: light-dark(#1f2329, #e5e7eb);
+}
+
+.app-shell[data-ui-mode="deepseek"] .assistant-prose p {
+  margin: 0 0 12px;
+}
+
+.app-shell[data-ui-mode="deepseek"] .assistant-prose h1,
+.app-shell[data-ui-mode="deepseek"] .assistant-prose h2,
+.app-shell[data-ui-mode="deepseek"] .assistant-prose h3,
+.app-shell[data-ui-mode="deepseek"] .assistant-prose h4 {
+  font-weight: 600;
+  color: light-dark(#111827, #f3f4f6);
+  margin: 20px 0 10px;
+}
+
+.app-shell[data-ui-mode="deepseek"] .assistant-prose > :first-child {
+  margin-top: 0;
+}
+
+.app-shell[data-ui-mode="deepseek"] .assistant-prose h2 {
+  font-size: 18.5px;
+}
+
+.app-shell[data-ui-mode="deepseek"] .assistant-prose h3 {
+  font-size: 16.5px;
+}
+
+.app-shell[data-ui-mode="deepseek"] .assistant-prose ul,
+.app-shell[data-ui-mode="deepseek"] .assistant-prose ol {
+  margin: 8px 0 14px;
+  padding-left: 22px;
+}
+
+.app-shell[data-ui-mode="deepseek"] .assistant-prose li {
+  margin-bottom: 6px;
+  line-height: 1.74;
+}
+
+.app-shell[data-ui-mode="deepseek"] .assistant-prose li > ul,
+.app-shell[data-ui-mode="deepseek"] .assistant-prose li > ol {
+  margin: 6px 0 4px;
+}
+
+.app-shell[data-ui-mode="deepseek"] .assistant-prose :not(pre) > code {
+  font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+  font-size: 0.875em;
+  padding: 2px 6px;
+  margin: 0 1px;
+  border-radius: 6px;
+  background: light-dark(#f1f3f6, #2b2f3a);
+  color: light-dark(#1f2937, #e2e8f0);
+  border: 1px solid light-dark(rgba(15, 23, 42, 0.06), rgba(255, 255, 255, 0.08));
+}
+
+.app-shell[data-ui-mode="deepseek"] .assistant-prose blockquote {
+  margin: 12px 0;
+  padding: 8px 14px;
+  border-left: 3px solid light-dark(#cbd5e1, #475569);
+  background: light-dark(#f8fafc, rgba(255, 255, 255, 0.03));
+  border-radius: 0 8px 8px 0;
+  font-size: 14.5px;
+  line-height: 1.72;
+  color: var(--text-secondary);
+}
+
+.app-shell[data-ui-mode="deepseek"] .msg-footer-bar {
+  border-top: none !important;
+  padding-top: 2px !important;
+}
+
+.app-shell[data-ui-mode="deepseek"] .ds-cache-hit-tag {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  opacity: 0.72;
+}
+
+.app-shell[data-ui-mode="deepseek"] .followup-arrow {
+  color: #4d6bfe;
+  font-weight: 600;
+}

@@ -19,6 +19,9 @@ const {
   canUserBindOwnDeepSeekKey,
   getRawUserOwnDeepSeekConfig,
   validateOfficialDeepSeekApiKey,
+  validateSafeUserApiBaseUrl,
+  sanitizeUserModelName,
+  isFreeExperienceMode,
   OFFICIAL_DEEPSEEK_CHAT_URL,
   getRawPlatformConfigInternal,
   updateAdminPlatformConfig,
@@ -155,7 +158,20 @@ function checkRateLimit(bucketKey, maxHits, windowMs = 60000) {
 }
 
 function getClientIp(req) {
-  return String(req.socket?.remoteAddress || '127.0.0.1');
+  const socketIp = String(req.socket?.remoteAddress || '127.0.0.1');
+  const isTrustedLocalProxy =
+    socketIp === '127.0.0.1' ||
+    socketIp === '::1' ||
+    socketIp === '::ffff:127.0.0.1';
+  if (isTrustedLocalProxy) {
+    const cfIp = String(req.headers['cf-connecting-ip'] || '').trim();
+    if (cfIp) return cfIp;
+    const realIp = String(req.headers['x-real-ip'] || '').trim();
+    if (realIp) return realIp;
+    const xff = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+    if (xff) return xff;
+  }
+  return socketIp;
 }
 
 // 防 SSRF（服务端请求伪造）：校验站长配置的外部网关 URL 严禁指向内网/环回/云元数据地址
@@ -284,7 +300,7 @@ function listSessionsForUser(userId) {
       FROM sessions s
       LEFT JOIN personas p ON p.id = s.persona_id
       WHERE s.user_id = ?
-      ORDER BY s.updated_at DESC
+      ORDER BY COALESCE(s.pinned, 0) DESC, s.updated_at DESC
     `)
     .all(userId);
 }
@@ -304,6 +320,17 @@ async function handleApi(req, res, pathname, parsedUrl) {
   const currentToken = extractAuthToken(req);
   const currentUser = getUserByToken(currentToken);
 
+  // ========= 0. 服务健康探针公开接口 =========
+  if (method === 'GET' && pathname === '/api/health') {
+    return sendJson(res, 200, {
+      ok: true,
+      service: 'persona-chat-studio',
+      port: PORT,
+      uptime: Math.round(process.uptime()),
+      ts: Date.now()
+    });
+  }
+
   // ========= 1. 账号认证公开接口 =========
   if (method === 'GET' && pathname === '/api/auth/me') {
     if (!currentUser) {
@@ -319,13 +346,13 @@ async function handleApi(req, res, pathname, parsedUrl) {
     }
     const body = await readJsonBody(req, 32 * 1024);
     try {
-      const { user, token } = registerUser({
+      const { user, token, gifted_vip, gifted_days } = registerUser({
         email: body.email,
         nickname: body.nickname,
         password: body.password,
         avatar: body.avatar
       });
-      return sendJson(res, 201, { user, token }, { 'Set-Cookie': buildAuthCookie(token) });
+      return sendJson(res, 201, { user, token, gifted_vip, gifted_days }, { 'Set-Cookie': buildAuthCookie(token) });
     } catch (err) {
       return sendJson(res, 400, { error: err.message });
     }
@@ -581,6 +608,11 @@ async function handleApi(req, res, pathname, parsedUrl) {
   }
 
   if (method === 'POST' && pathname === '/api/wallet/recharge') {
+    if (isFreeExperienceMode()) {
+      return sendJson(res, 400, {
+        error: '🎉 当前全站已开启「全免费畅玩模式」，所有角色扮演、DeepSeek 原生对话与个人 API 接入均免费开放，无需任何充值付费！'
+      });
+    }
     const body = await readJsonBody(req);
     try {
       const resOrder = createAndFulfillRechargeOrder(
@@ -603,6 +635,11 @@ async function handleApi(req, res, pathname, parsedUrl) {
   }
 
   if (method === 'POST' && pathname === '/api/membership/subscribe') {
+    if (isFreeExperienceMode()) {
+      return sendJson(res, 400, {
+        error: '🎉 当前全站已开启「全免费畅玩模式」，所有会员权益与个人 API 接入均免费开放，无需充值付费！'
+      });
+    }
     const body = await readJsonBody(req);
     try {
       const resOrder = createAndFulfillRechargeOrder(
@@ -1496,13 +1533,12 @@ async function handleApi(req, res, pathname, parsedUrl) {
 
     let replyText = '';
     const safePrefs = getSafeClientSettings(userId);
+    const usingOwnKeyPref = safePrefs.provider === 'own_deepseek' && safePrefs.has_own_deepseek_key;
     const voiceOnlineCheck =
-      safePrefs.provider === 'online' || safePrefs.provider === 'own_deepseek'
+      safePrefs.provider === 'online'
         ? verifyOnlineChatAccess(userId)
-        : { allowed: false };
-    const allowCloudVoiceLlm = Boolean(
-      voiceOnlineCheck.allowed && (voiceOnlineCheck.mode === 'vip' || voiceOnlineCheck.mode === 'admin')
-    );
+        : { allowed: usingOwnKeyPref };
+    const allowCloudVoiceLlm = Boolean(usingOwnKeyPref || voiceOnlineCheck.allowed);
     const settings = getExecutionSettingsForUser(userId, { forceDemoLlm: !allowCloudVoiceLlm });
     const cred = getEffectiveApiCredentials(settings);
     recordUserDailyEvent(userId, 'companion_interacted');
@@ -1679,6 +1715,21 @@ async function handleApi(req, res, pathname, parsedUrl) {
             ? 1
             : 0
           : session.proactive_enabled ?? 1;
+      const pinned =
+        body.pinned !== undefined ? (body.pinned ? 1 : 0) : session.pinned ?? 0;
+      const titleLocked =
+        body.title_locked !== undefined
+          ? body.title_locked
+            ? 1
+            : 0
+          : body.title !== undefined && String(body.title).trim() && String(body.title).trim() !== '新对话'
+          ? 1
+          : session.title_locked ?? 0;
+
+      // 纯切换置顶/重命名时保留原 updated_at，避免取消置顶后打乱原有历史时间分组
+      const isMetaOnlyPatch =
+        Object.keys(body || {}).every((k) => k === 'pinned' || k === 'title' || k === 'title_locked');
+      const nextUpdatedAt = isMetaOnlyPatch ? session.updated_at : Date.now();
 
       let nextPersonaId = session.persona_id;
       if (body.persona_id) {
@@ -1692,11 +1743,13 @@ async function handleApi(req, res, pathname, parsedUrl) {
 
       db.prepare(`
         UPDATE sessions
-        SET title = ?, persona_id = ?, session_mode = ?, ds_thinking = ?, ds_search = ?, ds_json_mode = ?, ds_tools_enabled = ?,
+        SET title = ?, title_locked = ?, pinned = ?, persona_id = ?, session_mode = ?, ds_thinking = ?, ds_search = ?, ds_json_mode = ?, ds_tools_enabled = ?,
             proactive_enabled = ?, rolling_summary = ?, director_note = ?, enable_inner_thought = ?, enable_auto_memory = ?, updated_at = ?
         WHERE id = ? AND user_id = ?
       `).run(
         title,
+        titleLocked,
+        pinned,
         nextPersonaId,
         nextMode,
         dsThinking,
@@ -1708,7 +1761,7 @@ async function handleApi(req, res, pathname, parsedUrl) {
         directorNote,
         enableThought,
         enableAutoMem,
-        Date.now(),
+        nextUpdatedAt,
         sessionId,
         userId
       );
@@ -1858,11 +1911,63 @@ async function handleApi(req, res, pathname, parsedUrl) {
     if (!msgRow) return sendJson(res, 404, { error: '未找到该条消息' });
 
     const body = await readJsonBody(req);
-    const nextContent = String(body.content || '').trim();
-    if (!nextContent) return sendJson(res, 400, { error: '修改后的台词不能为空' });
+    let parsedMeta = {};
+    try {
+      parsedMeta = JSON.parse(msgRow.meta_json || '{}') || {};
+    } catch {
+      parsedMeta = {};
+    }
 
-    db.prepare('UPDATE messages SET content = ? WHERE id = ?').run(nextContent, msgId);
-    return sendJson(res, 200, { ok: true, content: nextContent });
+    let nextContent = msgRow.content;
+    let nextReasoning = msgRow.reasoning || '';
+    let nextDuration = msgRow.duration_ms || 0;
+
+    // 1) 支持切换多版本回答 (< 1 / 2 >)
+    if (body.active_version !== undefined && Array.isArray(parsedMeta.versions)) {
+      const idx = Number(body.active_version);
+      if (Number.isInteger(idx) && idx >= 0 && idx < parsedMeta.versions.length) {
+        const ver = parsedMeta.versions[idx];
+        parsedMeta.active_version = idx;
+        nextContent = ver.content || nextContent;
+        nextReasoning = ver.reasoning || '';
+        nextDuration = ver.duration_ms || 0;
+        if (Array.isArray(ver.search_results)) parsedMeta.search_results = ver.search_results;
+        if (Array.isArray(ver.tool_calls)) parsedMeta.tool_calls = ver.tool_calls;
+        if (ver.usage !== undefined) parsedMeta.usage = ver.usage;
+      }
+    }
+
+    // 2) 支持修改单条消息文本内容（同步更新当前激活版本）
+    if (body.content !== undefined) {
+      const trimmed = String(body.content || '').trim();
+      if (!trimmed) return sendJson(res, 400, { error: '修改后的内容不能为空' });
+      nextContent = trimmed;
+      if (Array.isArray(parsedMeta.versions)) {
+        const curIdx = parsedMeta.active_version ?? parsedMeta.versions.length - 1;
+        if (parsedMeta.versions[curIdx]) {
+          parsedMeta.versions[curIdx].content = trimmed;
+        }
+      }
+    }
+
+    // 3) 支持保存点赞/点踩质量反馈 ('up' | 'down' | '')
+    if (body.feedback !== undefined) {
+      const fb = String(body.feedback || '');
+      parsedMeta.feedback = fb === 'up' || fb === 'down' ? fb : '';
+    }
+
+    const nextMetaStr = Object.keys(parsedMeta).length > 0 ? JSON.stringify(parsedMeta) : null;
+    db.prepare(
+      'UPDATE messages SET content = ?, reasoning = ?, duration_ms = ?, meta_json = ? WHERE id = ?'
+    ).run(nextContent, nextReasoning, nextDuration, nextMetaStr, msgId);
+
+    return sendJson(res, 200, {
+      ok: true,
+      content: nextContent,
+      reasoning: nextReasoning,
+      duration_ms: nextDuration,
+      meta: parsedMeta
+    });
   }
 
   // ========= 7. 单条记忆更新与删除 =========
@@ -1927,13 +2032,12 @@ async function handleApi(req, res, pathname, parsedUrl) {
   if (method === 'POST' && pathname === '/api/deepseek/fim') {
     const body = await readJsonBody(req);
     const safePrefs = getSafeClientSettings(userId);
+    const usingOwnKeyPref = safePrefs.provider === 'own_deepseek' && safePrefs.has_own_deepseek_key;
     const fimAccess =
-      safePrefs.provider === 'online' || safePrefs.provider === 'own_deepseek'
+      safePrefs.provider === 'online'
         ? verifyOnlineChatAccess(userId)
-        : { allowed: false };
-    const allowCloudFim = Boolean(
-      fimAccess.allowed && (fimAccess.mode === 'vip' || fimAccess.mode === 'admin')
-    );
+        : { allowed: usingOwnKeyPref };
+    const allowCloudFim = Boolean(usingOwnKeyPref || fimAccess.allowed);
     try {
       const result = await runDeepSeekFimCompletion({
         settings: getExecutionSettingsForUser(userId, { forceDemoLlm: !allowCloudFim }),
@@ -1962,16 +2066,16 @@ async function handleApi(req, res, pathname, parsedUrl) {
     }
   }
 
-  // 会员专属：验证个人填写的 DeepSeek 官方 API Key 并查询会员个人官方余额（与站长平台 Key 100% 物理隔离）
+  // 验证个人填写的 API Key 与兼容网关连通性（与站长平台 Key 100% 物理隔离，DeepSeek 与角色扮演双模式通用）
   if (method === 'POST' && pathname === '/api/settings/verify-own-key') {
-    if (!checkRateLimit(`verify-own-key:${userId}`, 10, 60000)) {
+    if (!checkRateLimit(`verify-own-key:${userId}`, 12, 60000)) {
       return sendJson(res, 429, { ok: false, error: '验证请求过于频繁，请稍后再试' });
     }
     if (!canUserBindOwnDeepSeekKey(userId)) {
       return sendJson(res, 403, {
         ok: false,
         code: 'VIP_REQUIRED',
-        error: '👑 填写与验证个人 DeepSeek 官方 API 为会员专属特权，请先开通日卡/月卡或用积分兑换会员卡'
+        error: '👑 填写与验证个人 API 需要生效中的会员身份'
       });
     }
 
@@ -1984,47 +2088,85 @@ async function handleApi(req, res, pathname, parsedUrl) {
     if (!candidateKey) {
       return sendJson(res, 400, {
         ok: false,
-        error: '请先输入您的 DeepSeek 官方 API Key（以 sk- 开头）'
+        error: '请先输入您的 API Key（例如以 sk- 开头的密钥）'
       });
     }
 
     let validKey;
+    let targetBaseUrl = savedOwn.baseUrl || OFFICIAL_DEEPSEEK_CHAT_URL;
+    const targetModel = sanitizeUserModelName(body.own_deepseek_model || savedOwn.model || 'deepseek-chat');
     try {
       validKey = validateOfficialDeepSeekApiKey(candidateKey);
+      if (body.own_api_base_url !== undefined) {
+        targetBaseUrl = validateSafeUserApiBaseUrl(body.own_api_base_url);
+      }
     } catch (err) {
       return sendJson(res, 400, { ok: false, error: err.message });
     }
 
+    const isOfficialDs = targetBaseUrl.includes('deepseek.com');
     try {
-      // 强制仅使用 DeepSeek 官方域名与会员自己的 candidateKey，绝不读取站长 platform_config！
-      const balData = await fetchDeepSeekBalance({
-        provider: 'deepseek',
-        deepseek_base_url: OFFICIAL_DEEPSEEK_CHAT_URL,
-        deepseek_api_key: validKey
+      if (isOfficialDs) {
+        const balData = await fetchDeepSeekBalance({
+          provider: 'deepseek',
+          deepseek_base_url: targetBaseUrl,
+          deepseek_api_key: validKey
+        });
+        if (balData.source === 'live') {
+          const firstInfo = Array.isArray(balData.balance_infos) && balData.balance_infos[0];
+          const curSym = firstInfo?.currency === 'USD' ? '$' : '¥';
+          const balText = firstInfo ? `${curSym}${firstInfo.total_balance}` : '有效';
+          return sendJson(res, 200, {
+            ok: true,
+            is_available: Boolean(balData.is_available),
+            balance_text: balText,
+            message: firstInfo
+              ? `✅ DeepSeek 官方 API 验证通过！可用余额：${balText}（已在 DeepSeek 与角色扮演模式就绪）${
+                  balData.is_available ? '' : ' —— 提示：当前账户余额为 0，请前往官网充值'
+                }`
+              : '✅ DeepSeek 官方 API Key 握手验证通过！'
+          });
+        }
+      }
+
+      // 通用对话端点握手探测（兼容官方及硅基流动/火山方舟/OpenRouter等任意 OpenAI 兼容网关）
+      const t0 = Date.now();
+      const probeRes = await fetch(targetBaseUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${validKey}`
+        },
+        body: JSON.stringify({
+          model: targetModel,
+          messages: [{ role: 'user', content: '你好，请回复“已连接”三个字' }],
+          max_tokens: 16,
+          stream: false
+        }),
+        signal: AbortSignal.timeout(12000)
       });
-      if (balData.error) {
+
+      if (!probeRes.ok) {
+        const errTxt = await probeRes.text().catch(() => '');
         return sendJson(res, 400, {
           ok: false,
-          error: sanitizePublicErrorMessage(new Error(balData.error), 'DeepSeek 官方密钥校验未通过，请确认密钥有效')
+          error: sanitizePublicErrorMessage(
+            new Error(`API 校验未通过 (${probeRes.status})：${errTxt.slice(0, 140) || '请检查 API Key、接口地址或模型名称是否正确'}`)
+          )
         });
       }
-      const firstInfo = Array.isArray(balData.balance_infos) && balData.balance_infos[0];
-      const curSym = firstInfo?.currency === 'USD' ? '$' : '¥';
-      const balText = firstInfo ? `${curSym}${firstInfo.total_balance}` : '有效';
+
+      const probeJson = await probeRes.json().catch(() => ({}));
+      const replyPreview = String(probeJson?.choices?.[0]?.message?.content || '握手成功').trim().slice(0, 30);
       return sendJson(res, 200, {
         ok: true,
-        is_available: Boolean(balData.is_available),
-        balance_text: balText,
-        message: firstInfo
-          ? `✅ 个人 DeepSeek 官方密钥验证通过！您官方账户当前可用余额：${balText}${
-              balData.is_available ? '' : '（余额不足，请前往 DeepSeek 官网充值）'
-            }`
-          : '✅ 个人 DeepSeek 官方 API Key 握手验证通过！'
+        is_available: true,
+        message: `✅ 个人 API 连通验证成功（耗时 ${Date.now() - t0}ms，模型：${targetModel}，响应：${replyPreview}）！点击右下角「保存设置」即可在 DeepSeek 与角色扮演中自由畅聊！`
       });
     } catch (err) {
       return sendJson(res, 400, {
         ok: false,
-        error: sanitizePublicErrorMessage(err, '无法连接 DeepSeek 官方接口，请检查密钥是否正确')
+        error: sanitizePublicErrorMessage(err, '无法连接目标 API 接口，请检查地址与密钥是否正确')
       });
     }
   }
@@ -2098,14 +2240,19 @@ async function handleApi(req, res, pathname, parsedUrl) {
     const body = await readJsonBody(req, 6 * 1024 * 1024);
     const sessionId = body.session_id;
     const isRegenerate = Boolean(body.regenerate);
+    const editMessageId = Number(body.edit_message_id || 0);
     let userContent = (body.content || '').trim();
-    const rawAttachments = Array.isArray(body.attachments) ? body.attachments.slice(0, 5) : [];
+    const rawAttachments = Array.isArray(body.attachments) ? body.attachments.slice(0, 6) : [];
     const attachments = rawAttachments
-      .filter((a) => a && a.name && typeof a.content === 'string')
+      .filter((a) => a && a.name && (typeof a.content === 'string' || a.is_image))
       .map((a) => ({
         name: String(a.name).slice(0, 120),
-        size: Number(a.size) || a.content.length,
-        content: String(a.content).slice(0, 24000)
+        size: Number(a.size) || (a.content ? a.content.length : 0),
+        is_image: Boolean(a.is_image),
+        mime: a.mime ? String(a.mime).slice(0, 48) : '',
+        dimensions: a.dimensions ? String(a.dimensions).slice(0, 32) : '',
+        data_url: a.is_image && typeof a.data_url === 'string' ? a.data_url.slice(0, 380000) : '',
+        content: String(a.content || '').slice(0, 32000)
       }));
     const assistantPrefix = String(body.assistant_prefix || '');
 
@@ -2147,11 +2294,49 @@ async function handleApi(req, res, pathname, parsedUrl) {
     }
 
     let effectiveAttachments = attachments;
-    if (isRegenerate) {
+    let priorAssistantVersions = [];
+
+    if (editMessageId > 0) {
+      // 用户编辑历史提问并重新提交（复刻 DeepSeek 官网编辑重发能力）
+      const targetUserMsg = db
+        .prepare("SELECT * FROM messages WHERE id = ? AND session_id = ? AND role = 'user'")
+        .get(editMessageId, sessionId);
+      if (!targetUserMsg) {
+        return sendJson(res, 404, { error: '待编辑的原提问不存在' });
+      }
+      if (!userContent) {
+        return sendJson(res, 400, { error: '修改后的提问内容不能为空' });
+      }
+      try {
+        const uMeta = JSON.parse(targetUserMsg.meta_json || '{}');
+        if (Array.isArray(uMeta.attachments_full)) effectiveAttachments = uMeta.attachments_full;
+      } catch {}
+      db.prepare('UPDATE messages SET content = ? WHERE id = ?').run(userContent, editMessageId);
+      db.prepare('DELETE FROM messages WHERE session_id = ? AND id > ?').run(sessionId, editMessageId);
+      db.prepare('UPDATE sessions SET updated_at = ? WHERE id = ?').run(Date.now(), sessionId);
+    } else if (isRegenerate) {
       const lastMsg = db
         .prepare('SELECT * FROM messages WHERE session_id = ? ORDER BY id DESC LIMIT 1')
         .get(sessionId);
       if (lastMsg && lastMsg.role === 'assistant') {
+        try {
+          const oldMeta = JSON.parse(lastMsg.meta_json || '{}') || {};
+          if (Array.isArray(oldMeta.versions) && oldMeta.versions.length > 0) {
+            priorAssistantVersions = oldMeta.versions;
+          } else {
+            priorAssistantVersions = [
+              {
+                reasoning: lastMsg.reasoning || '',
+                content: lastMsg.content || '',
+                duration_ms: lastMsg.duration_ms || 0,
+                search_results: oldMeta.search_results || [],
+                tool_calls: oldMeta.tool_calls || [],
+                usage: oldMeta.usage || null,
+                created_at: lastMsg.created_at || Date.now()
+              }
+            ];
+          }
+        } catch {}
         db.prepare('DELETE FROM messages WHERE id = ?').run(lastMsg.id);
       }
       const lastUserMsg = db
@@ -2170,7 +2355,7 @@ async function handleApi(req, res, pathname, parsedUrl) {
         return sendJson(res, 400, { error: '发送内容或附件不能为空' });
       }
       if (!userContent && effectiveAttachments.length > 0) {
-        userContent = `请帮我详细解析并总结上传的文件：${effectiveAttachments.map((a) => a.name).join('、')}`;
+        userContent = `请帮我详细解析并总结上传的附件：${effectiveAttachments.map((a) => a.name).join('、')}`;
       }
 
       const userMsgCount = db
@@ -2181,7 +2366,14 @@ async function handleApi(req, res, pathname, parsedUrl) {
       const userMeta =
         effectiveAttachments.length > 0
           ? JSON.stringify({
-              attachments: effectiveAttachments.map((a) => ({ name: a.name, size: a.size })),
+              attachments: effectiveAttachments.map((a) => ({
+                name: a.name,
+                size: a.size,
+                is_image: Boolean(a.is_image),
+                mime: a.mime || '',
+                dimensions: a.dimensions || '',
+                data_url: a.is_image ? a.data_url || '' : ''
+              })),
               attachments_full: effectiveAttachments
             })
           : null;
@@ -2191,8 +2383,12 @@ async function handleApi(req, res, pathname, parsedUrl) {
         VALUES (?, 'user', '', ?, ?, 0, 0, ?)
       `).run(sessionId, userContent, userMeta, now);
 
-      if (userMsgCount === 0) {
-        const cleanTitle = userContent.replace(/\s+/g, ' ').slice(0, 20);
+      if (userMsgCount === 0 && !session.title_locked) {
+        const cleanTitle = userContent
+          .replace(/https?:\/\/\S+/gi, '网页链接')
+          .replace(/\s+/g, ' ')
+          .trim()
+          .slice(0, 22) || '新对话';
         db.prepare('UPDATE sessions SET title = ?, updated_at = ? WHERE id = ?').run(
           cleanTitle,
           now,
@@ -2258,7 +2454,13 @@ async function handleApi(req, res, pathname, parsedUrl) {
         const lastIdx = contextBundle.messagesPayload.length - 1;
         if (contextBundle.messagesPayload[lastIdx].role === 'user') {
           const fileBlocks = effectiveAttachments
-            .map((a) => `<attachment name="${a.name}">\n${a.content}\n</attachment>`)
+            .map((a) =>
+              a.is_image
+                ? `<image_attachment name="${a.name}" mime="${a.mime || 'image/png'}" dimensions="${
+                    a.dimensions || 'unknown'
+                  }">${a.content ? `\n${a.content}\n` : '（用户已上传图片附件）'}</image_attachment>`
+                : `<attachment name="${a.name}">\n${a.content}\n</attachment>`
+            )
             .join('\n\n');
           contextBundle.messagesPayload[lastIdx].content = `${fileBlocks}\n\n${contextBundle.messagesPayload[lastIdx].content}`;
         }
@@ -2351,7 +2553,7 @@ async function handleApi(req, res, pathname, parsedUrl) {
         latestMembership = getMembership(userId);
         billingInfo = {
           mode: 'member_own_key',
-          desc: '🔑 会员专属 · 个人 DeepSeek 官方 API 直连'
+          desc: '🔑 个人 API 直连（免扣次畅聊）'
         };
       } else if (isOnlineModel && fullContent.trim()) {
         const resConsume = consumeOnlineCredit(userId);
@@ -2371,6 +2573,13 @@ async function handleApi(req, res, pathname, parsedUrl) {
         nurturing: contextBundle.nurturing
       });
 
+      const now = Date.now();
+      const fallbackReply = isNativeMode
+        ? '*(生成已完成)*'
+        : '*（对方温柔地注视着你，似乎在等待你的下一句话）*';
+      const finalAssistantContent = fullContent.trim() || fallbackReply;
+      const finalAssistantReasoning = fullReasoning.trim();
+
       const assistantMetaObj = {
         follow_ups: followUps,
         ...(nativeMeta
@@ -2385,10 +2594,22 @@ async function handleApi(req, res, pathname, parsedUrl) {
           : {})
       };
 
-      const now = Date.now();
-      const fallbackReply = isNativeMode
-        ? '*(生成已完成)*'
-        : '*（对方温柔地注视着你，似乎在等待你的下一句话）*';
+      if (priorAssistantVersions.length > 0) {
+        const mergedVersions = [
+          ...priorAssistantVersions,
+          {
+            reasoning: finalAssistantReasoning,
+            content: finalAssistantContent,
+            duration_ms: durationMs,
+            search_results: assistantMetaObj.search_results || [],
+            tool_calls: assistantMetaObj.tool_calls || [],
+            usage: assistantMetaObj.usage || null,
+            created_at: now
+          }
+        ];
+        assistantMetaObj.versions = mergedVersions;
+        assistantMetaObj.active_version = mergedVersions.length - 1;
+      }
 
       const insertRes = db
         .prepare(`
@@ -2397,8 +2618,8 @@ async function handleApi(req, res, pathname, parsedUrl) {
         `)
         .run(
           sessionId,
-          fullReasoning.trim(),
-          fullContent.trim() || fallbackReply,
+          finalAssistantReasoning,
+          finalAssistantContent,
           JSON.stringify(assistantMetaObj),
           durationMs,
           contextBundle.recalledMemories.length,
@@ -2469,13 +2690,12 @@ async function handleApi(req, res, pathname, parsedUrl) {
 
     try {
       const safePrefs = getSafeClientSettings(userId);
+      const usingOwnKeyPref = safePrefs.provider === 'own_deepseek' && safePrefs.has_own_deepseek_key;
       const proactiveAccess =
-        safePrefs.provider === 'online' || safePrefs.provider === 'own_deepseek'
+        safePrefs.provider === 'online'
           ? verifyOnlineChatAccess(userId)
-          : { allowed: false };
-      const allowCloudProactive = Boolean(
-        proactiveAccess.allowed && (proactiveAccess.mode === 'vip' || proactiveAccess.mode === 'admin')
-      );
+          : { allowed: usingOwnKeyPref };
+      const allowCloudProactive = Boolean(usingOwnKeyPref || proactiveAccess.allowed);
       const settings = getExecutionSettingsForUser(userId, { forceDemoLlm: !allowCloudProactive });
       const cred = getEffectiveApiCredentials(settings);
       const contextBundle = buildThreeTierContext({
@@ -2723,7 +2943,8 @@ process.on('unhandledRejection', (reason) => {
   console.error('[ServerGuard] 捕获未处理 Promise 拒绝:', reason?.message || reason);
 });
 
-server.listen(PORT, '127.0.0.1', () => {
-  console.log(`[StarWhisperStudio] 星语恋庭（含多账号登录与新手向导）已启动: http://localhost:${PORT}`);
+const HOST = process.env.HOST || '127.0.0.1';
+server.listen(PORT, HOST, () => {
+  console.log(`[StarWhisperStudio] 星语恋庭（含多账号登录与新手向导）已启动: http://${HOST}:${PORT}`);
   warmupTtsEngine();
 });

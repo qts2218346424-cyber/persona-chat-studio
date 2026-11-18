@@ -1,5 +1,5 @@
 (() => {
-  let initialUiMode = 'roleplay';
+  let initialUiMode = 'deepseek';
   let initialScriptId = 'script_clannad';
   try {
     const savedMode = localStorage.getItem('ui_mode_v3');
@@ -141,6 +141,8 @@
   const quoteCardDialog = document.getElementById('quote-card-dialog');
   const fimDialog = document.getElementById('fim-dialog');
   const codePreviewDialog = document.getElementById('code-preview-dialog');
+  const attachmentPreviewDialog = document.getElementById('attachment-preview-dialog');
+  const dsShareDialog = document.getElementById('ds-share-dialog');
   const adminConsoleDialog = document.getElementById('admin-console-dialog');
 
   function escapeHtml(str) {
@@ -180,26 +182,173 @@
     return `<span class="ds-filename"><span>${escapeHtml(str)}</span></span>`;
   }
 
-  // 代码块内容注册池（用于一键复制与 HTML/SVG 沙盒实时预览）
+  // 代码块内容注册池（用于一键复制、下载文件与右侧 Artifacts 实时预览）
   const codeSnippetStore = new Map();
   let codeSeq = 0;
 
-  function renderNativeDeepSeekMarkdown(rawText) {
-    if (!rawText) return '';
-    const codeBlocks = [];
-    let safe = escapeHtml(rawText);
+  // 单遍零依赖代码语法着色引擎（先从源码切词再分别转义，杜绝 HTML 属性二次污染）
+  const CODE_KEYWORDS_SET = new Set([
+    'const', 'let', 'var', 'function', 'return', 'if', 'else', 'for', 'while', 'do', 'switch', 'case',
+    'break', 'continue', 'try', 'catch', 'finally', 'throw', 'async', 'await', 'class', 'extends', 'new',
+    'import', 'export', 'from', 'default', 'typeof', 'instanceof', 'in', 'of', 'true', 'false', 'null',
+    'undefined', 'def', 'elif', 'lambda', 'yield', 'with', 'as', 'pass', 'None', 'True', 'False', 'self',
+    'fn', 'pub', 'struct', 'enum', 'impl', 'match', 'mut', 'use', 'package', 'func', 'interface', 'type',
+    'select', 'where', 'insert', 'into', 'update', 'delete', 'create', 'table', 'join', 'order', 'by', 'group'
+  ]);
 
-    safe = safe.replace(/```([a-zA-Z0-9_+-]*)\r?\n([\s\S]*?)```/g, (_, langRaw, escapedCode) => {
-      const lang = (langRaw || 'code').trim().toLowerCase();
-      const rawCode = escapedCode
-        .replace(/&lt;/g, '<')
-        .replace(/&gt;/g, '>')
-        .replace(/&quot;/g, '"')
-        .replace(/&#39;/g, "'")
-        .replace(/&amp;/g, '&')
-        .trim();
+  function highlightCodeSyntax(rawCode, lang) {
+    const src = String(rawCode || '');
+    if (!src || src.length > 28000) return escapeHtml(src);
+
+    if (lang === 'html' || lang === 'htm' || lang === 'xml' || lang === 'svg' || lang === 'vue') {
+      const htmlTokRe = /(<!--[\s\S]*?-->)|(<\/?[a-zA-Z0-9:-]+)|(\s+[a-zA-Z_:][-a-zA-Z0-9_:.]*(?==))|("[^"]*"|'[^']*')/g;
+      let res = '';
+      let last = 0;
+      let m;
+      while ((m = htmlTokRe.exec(src)) !== null) {
+        if (m.index > last) res += escapeHtml(src.slice(last, m.index));
+        if (m[1]) res += `<span class="tok-com">${escapeHtml(m[1])}</span>`;
+        else if (m[2]) res += `<span class="tok-tag">${escapeHtml(m[2])}</span>`;
+        else if (m[3]) res += `<span class="tok-attr">${escapeHtml(m[3])}</span>`;
+        else if (m[4]) res += `<span class="tok-str">${escapeHtml(m[4])}</span>`;
+        last = htmlTokRe.lastIndex;
+      }
+      if (last < src.length) res += escapeHtml(src.slice(last));
+      return res;
+    }
+
+    const tokenRe =
+      /(\/\/[^\n]*|#[^\n]*|\/\*[\s\S]*?\*\/)|(`(?:\\[\s\S]|[^\\`])*`|"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*')|\b(\d+(?:\.\d+)?)\b|\b([a-zA-Z_$][\w$]*)(?=\s*\()|\b([a-zA-Z_]\w*)\b/g;
+    let out = '';
+    let lastIdx = 0;
+    let match;
+    while ((match = tokenRe.exec(src)) !== null) {
+      if (match.index > lastIdx) {
+        out += escapeHtml(src.slice(lastIdx, match.index));
+      }
+      const [full, com, str, num, fnName, word] = match;
+      if (com) {
+        out += `<span class="tok-com">${escapeHtml(com)}</span>`;
+      } else if (str) {
+        out += `<span class="tok-str">${escapeHtml(str)}</span>`;
+      } else if (num) {
+        out += `<span class="tok-num">${escapeHtml(num)}</span>`;
+      } else if (fnName) {
+        if (CODE_KEYWORDS_SET.has(fnName)) {
+          out += `<span class="tok-kw">${escapeHtml(fnName)}</span>`;
+        } else {
+          out += `<span class="tok-fn">${escapeHtml(fnName)}</span>`;
+        }
+      } else if (word && CODE_KEYWORDS_SET.has(word)) {
+        out += `<span class="tok-kw">${escapeHtml(word)}</span>`;
+      } else {
+        out += escapeHtml(full);
+      }
+      lastIdx = tokenRe.lastIndex;
+    }
+    if (lastIdx < src.length) out += escapeHtml(src.slice(lastIdx));
+    return out;
+  }
+
+  // 零依赖 LaTeX 数学公式转语义 HTML 排版引擎
+  const LATEX_SYMBOLS_MAP = {
+    '\\alpha': 'α', '\\beta': 'β', '\\gamma': 'γ', '\\delta': 'δ', '\\epsilon': 'ϵ', '\\varepsilon': 'ε',
+    '\\zeta': 'ζ', '\\eta': 'η', '\\theta': 'θ', '\\iota': 'ι', '\\kappa': 'κ', '\\lambda': 'λ',
+    '\\mu': 'μ', '\\nu': 'ν', '\\xi': 'ξ', '\\pi': 'π', '\\rho': 'ρ', '\\sigma': 'σ', '\\tau': 'τ',
+    '\\upsilon': 'υ', '\\phi': 'ϕ', '\\varphi': 'φ', '\\chi': 'χ', '\\psi': 'ψ', '\\omega': 'ω',
+    '\\Gamma': 'Γ', '\\Delta': 'Δ', '\\Theta': 'Θ', '\\Lambda': 'Λ', '\\Xi': 'Ξ', '\\Pi': 'Π',
+    '\\Sigma': 'Σ', '\\Phi': 'Φ', '\\Psi': 'Ψ', '\\Omega': 'Ω',
+    '\\infty': '∞', '\\partial': '∂', '\\nabla': '∇', '\\pm': '±', '\\mp': '∓', '\\times': '×',
+    '\\cdot': '·', '\\div': '÷', '\\neq': '≠', '\\ne': '≠', '\\leq': '≤', '\\le': '≤', '\\geq': '≥',
+    '\\ge': '≥', '\\approx': '≈', '\\equiv': '≡', '\\sim': '∼', '\\propto': '∝', '\\in': '∈',
+    '\\notin': '∉', '\\subset': '⊂', '\\subseteq': '⊆', '\\cup': '∪', '\\cap': '∩', '\\emptyset': '∅',
+    '\\forall': '∀', '\\exists': '∃', '\\rightarrow': '→', '\\to': '→', '\\leftarrow': '←',
+    '\\Rightarrow': '⇒', '\\implies': '⟹', '\\Leftrightarrow': '⇔', '\\iff': '⟺', '\\dots': '…',
+    '\\cdots': '⋯', '\\ldots': '…', '\\mathbb{R}': 'ℝ', '\\mathbb{N}': 'ℕ', '\\mathbb{Z}': 'ℤ',
+    '\\mathbb{Q}': 'ℚ', '\\mathbb{C}': 'ℂ', '\\mathbb{E}': '𝔼'
+  };
+
+  function renderLatexMathToHtml(rawTex, isBlock = false) {
+    let s = escapeHtml(String(rawTex || '').trim());
+    s = s
+      .replace(/\\left\s*([()[\]|])/g, '$1')
+      .replace(/\\right\s*([()[\]|])/g, '$1')
+      .replace(/\\left\\\{/g, '{')
+      .replace(/\\right\\\}/g, '}')
+      .replace(/\\,/g, '&thinsp;')
+      .replace(/\\;/g, '&ensp;')
+      .replace(/\\quad/g, '&emsp;')
+      .replace(/\\text\{([^{}]*)\}/g, '<span>$1</span>')
+      .replace(/\\mathbf\{([^{}]*)\}/g, '<strong>$1</strong>')
+      .replace(/\\mathrm\{([^{}]*)\}/g, '<span>$1</span>')
+      .replace(/\\mathcal\{([^{}]*)\}/g, '<i>$1</i>')
+      .replace(/\\operatorname\{([^{}]*)\}/g, '<span>$1</span>');
+
+    s = s
+      .replace(/\\sum\b/g, '<span class="ds-math-op">∑</span>')
+      .replace(/\\prod\b/g, '<span class="ds-math-op">∏</span>')
+      .replace(/\\iint\b/g, '<span class="ds-math-op">∬</span>')
+      .replace(/\\int\b/g, '<span class="ds-math-op">∫</span>');
+
+    for (const [cmd, glyph] of Object.entries(LATEX_SYMBOLS_MAP)) {
+      s = s.split(cmd).join(glyph);
+    }
+
+    for (let pass = 0; pass < 3; pass++) {
+      s = s.replace(
+        /\\frac\{([^{}]*)\}\{([^{}]*)\}/g,
+        '<span class="ds-math-frac"><span class="ds-math-num">$1</span><span class="ds-math-den">$2</span></span>'
+      );
+      s = s.replace(
+        /\\sqrt\[([^\]]+)\]\{([^{}]*)\}/g,
+        '<span class="ds-math-sqrt"><sup>$1</sup>√<span class="ds-math-radicand">$2</span></span>'
+      );
+      s = s.replace(
+        /\\sqrt\{([^{}]*)\}/g,
+        '<span class="ds-math-sqrt">√<span class="ds-math-radicand">$1</span></span>'
+      );
+    }
+
+    s = s
+      .replace(/\^\{([^{}]+)\}/g, '<sup>$1</sup>')
+      .replace(/_\{([^{}]+)\}/g, '<sub>$1</sub>')
+      .replace(/\^([a-zA-Z0-9+\-])/g, '<sup>$1</sup>')
+      .replace(/_([a-zA-Z0-9+\-])/g, '<sub>$1</sub>');
+
+    return isBlock
+      ? `<div class="ds-math-block" role="math">${s}</div>`
+      : `<span class="ds-math-inline" role="math">${s}</span>`;
+  }
+
+  function resolveCodeFileExt(lang) {
+    const map = {
+      javascript: 'js', js: 'js', typescript: 'ts', ts: 'ts', python: 'py', py: 'py',
+      html: 'html', htm: 'html', svg: 'svg', css: 'css', json: 'json', sql: 'sql',
+      bash: 'sh', sh: 'sh', shell: 'sh', cpp: 'cpp', c: 'c', java: 'java', go: 'go', rust: 'rs', markdown: 'md'
+    };
+    return map[lang] || 'txt';
+  }
+
+  function renderNativeDeepSeekMarkdown(rawText, searchResults = []) {
+    if (!rawText) return '';
+    let workingRaw = String(rawText);
+
+    // 流式输出过程中若围栏代码块尚未闭合，自动临时闭合以避免流式打字跳变
+    const fenceCount = (workingRaw.match(/```/g) || []).length;
+    if (fenceCount % 2 === 1) {
+      workingRaw += '\n```';
+    }
+
+    const codeBlocks = [];
+    const mathBlocks = [];
+
+    // 1) 保护围栏代码块（从源码走语法高亮，提供右侧预览/自动换行/下载/无障碍复制）
+    workingRaw = workingRaw.replace(/```([a-zA-Z0-9_+-]*)\r?\n?([\s\S]*?)```/g, (_, langRaw, rawCodeBody) => {
+      const lang = (langRaw || 'text').trim().toLowerCase();
+      const rawCode = String(rawCodeBody || '').replace(/\s+$/, '');
+      const lineCount = rawCode ? rawCode.split(/\r?\n/).length : 1;
       const codeId = `cb_${++codeSeq}`;
-      codeSnippetStore.set(codeId, rawCode);
+      codeSnippetStore.set(codeId, { code: rawCode, lang });
 
       const canPreview =
         lang === 'html' ||
@@ -207,35 +356,108 @@
         lang === 'svg' ||
         /<!doctype html>|<html|<canvas|<svg/i.test(rawCode);
 
+      const highlighted = highlightCodeSyntax(rawCode, lang);
       const idx = codeBlocks.length;
       codeBlocks.push(`
-        <div class="ds-code-block">
+        <div class="ds-code-block" data-block-id="${codeId}">
           <div class="ds-code-header">
-            <span class="ds-code-lang">${escapeHtml(lang || 'text')}</span>
+            <div class="ds-code-meta">
+              <span class="ds-code-lang">${escapeHtml(lang || 'text')}</span>
+              <span class="ds-code-lines-tag">${lineCount} 行</span>
+            </div>
             <div class="ds-code-actions">
               ${
                 canPreview
-                  ? `<button type="button" class="ds-code-btn run-btn" data-run-code="${codeId}">▶ 运行预览</button>`
+                  ? `<button type="button" class="ds-code-btn run-btn" data-run-code="${codeId}" title="在右侧伴生分栏实时运行预览">▶ 右侧预览</button>`
                   : ''
               }
-              <button type="button" class="ds-code-btn" data-copy-code="${codeId}">复制代码</button>
+              <button type="button" class="ds-code-btn" data-wrap-code="${codeId}" title="切换代码自动换行">换行</button>
+              <button type="button" class="ds-code-btn" data-dl-code="${codeId}" title="下载为本地代码文件">下载</button>
+              <span class="ds-copy-wrap">
+                <button type="button" class="ds-code-btn ds-copy-btn-std" data-copy-code="${codeId}">复制代码</button>
+                <span class="ds-copy-live-tip" role="status"></span>
+              </span>
             </div>
           </div>
-          <pre><code>${escapedCode.trim()}</code></pre>
+          <pre tabindex="0"><code>${highlighted}</code></pre>
         </div>
       `);
-      return `@@DSCODE_${idx}@@`;
+      return `\n@@DSCODE_${idx}@@\n`;
     });
 
-    // 行内样式处理（原生模式不把单星号转为粉色剧本斜体，保留原汁原味 DeepSeek 技术与日常排版）
-    const formatInline = (line) =>
-      line
-        .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-        .replace(/`([^`\n]+)`/g, '<code>$1</code>');
+    // 2) 提取块级公式 $$...$$ 与 \[...\]
+    workingRaw = workingRaw.replace(/\$\$([\s\S]+?)\$\$|\\\[([\s\S]+?)\\\]/g, (_, m1, m2) => {
+      const idx = mathBlocks.length;
+      mathBlocks.push(renderLatexMathToHtml(m1 || m2, true));
+      return `\n@@DSMATHB_${idx}@@\n`;
+    });
 
-    const lines = safe.split(/\r?\n/);
+    // 3) 提取行内公式 $...$ 与 \(...\)
+    const inlineMathList = [];
+    workingRaw = workingRaw.replace(/\\\(([^\n]+?)\\\)|\$(?!\s)([^\n$]+?)(?<!\s)\$/g, (full, p1, p2) => {
+      const expr = p1 !== undefined ? p1 : p2;
+      if (!expr || /^\d+(?:[.,]\d+)?$/.test(expr.trim())) return full;
+      const idx = inlineMathList.length;
+      inlineMathList.push(renderLatexMathToHtml(expr, false));
+      return `@@DSMATHI_${idx}@@`;
+    });
+
+    let safe = escapeHtml(workingRaw);
+
+    const refMap = new Map();
+    if (Array.isArray(searchResults)) {
+      for (const sr of searchResults) {
+        if (sr && sr.index && sr.url) refMap.set(Number(sr.index), sr);
+      }
+    }
+
+    const formatInline = (line) => {
+      const inlineCodes = [];
+      let str = line.replace(/`([^`\n]+)`/g, (_, c) => {
+        const ci = inlineCodes.length;
+        inlineCodes.push(`<code>${c}</code>`);
+        return `@@DSIC_${ci}@@`;
+      });
+
+      str = str.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/gi, (_, label, url) => {
+        const cleanUrl = url.replace(/&amp;/g, '&');
+        return `<a class="ds-md-link" href="${escapeHtml(cleanUrl)}" target="_blank" rel="noopener noreferrer">${label}</a>`;
+      });
+
+      str = str
+        .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+        .replace(/(^|[^*])\*([^*\s][^*\n]*?)\*(?!\*)/g, '$1<em>$2</em>')
+        .replace(/~~([^~]+)~~/g, '<del>$1</del>');
+
+      if (refMap.size > 0) {
+        str = str.replace(/\[(\d{1,2})\]/g, (full, numStr) => {
+          const item = refMap.get(Number(numStr));
+          if (!item) return full;
+          const tip = `[${item.index}] ${item.title}${item.site ? ` (${item.site})` : ''}`;
+          return `<a class="ds-citation-badge" href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(tip)}">${item.index}</a>`;
+        });
+      }
+
+      inlineCodes.forEach((codeHtml, idx) => {
+        str = str.replace(`@@DSIC_${idx}@@`, () => codeHtml);
+      });
+      inlineMathList.forEach((mathHtml, idx) => {
+        str = str.replace(`@@DSMATHI_${idx}@@`, () => mathHtml);
+      });
+      return str;
+    };
+
+    const cleanedSafe = safe.replace(/^&lt;think&gt;[\s\S]*?&lt;\/think&gt;\s*/i, '');
+    const lines = cleanedSafe.split(/\r?\n/);
     const out = [];
     let i = 0;
+
+    // 判断第 idx 行起是否穿过连续空行紧接着匹配目标正则（解决正版 DeepSeek 列表项之间空行导致 <ol> 重置为 1. 的问题）
+    const peekNextNonEmpty = (startIdx) => {
+      let k = startIdx;
+      while (k < lines.length && !lines[k].trim()) k++;
+      return k < lines.length ? { index: k, raw: lines[k], trimmed: lines[k].trim() } : null;
+    };
 
     while (i < lines.length) {
       const line = lines[i];
@@ -246,13 +468,18 @@
         continue;
       }
 
-      if (/^@@DSCODE_\d+@@$/.test(trimmed)) {
+      if (/^@@DSCODE_\d+@@$/.test(trimmed) || /^@@DSMATHB_\d+@@$/.test(trimmed)) {
         out.push(trimmed);
         i++;
         continue;
       }
 
-      // 标题 h1~h4
+      if (/^(?:---|\*\*\*|___)\s*$/.test(trimmed)) {
+        out.push('<hr class="ds-md-hr" />');
+        i++;
+        continue;
+      }
+
       const hMatch = trimmed.match(/^(#{1,4})\s+(.+)$/);
       if (hMatch) {
         const lv = hMatch[1].length;
@@ -261,7 +488,6 @@
         continue;
       }
 
-      // Markdown 表格识别
       if (trimmed.startsWith('|') && i + 1 < lines.length && /^\|\s*[:\-| ]+\|$/.test(lines[i + 1].trim())) {
         const parseRow = (r) =>
           r
@@ -277,7 +503,7 @@
           i++;
         }
         out.push(`
-          <div class="ds-md-table-wrap">
+          <div class="ds-md-table-wrap" tabindex="0" role="region" aria-label="数据表格">
             <table class="ds-md-table">
               <thead><tr>${headers.map((h) => `<th>${h}</th>`).join('')}</tr></thead>
               <tbody>${bodyRows
@@ -289,7 +515,6 @@
         continue;
       }
 
-      // 引用块
       if (trimmed.startsWith('&gt;')) {
         const qLines = [];
         while (i < lines.length && lines[i].trim().startsWith('&gt;')) {
@@ -300,34 +525,96 @@
         continue;
       }
 
-      // 无序列表
       if (/^[-*]\s+/.test(trimmed)) {
         const items = [];
-        while (i < lines.length && /^[-*]\s+/.test(lines[i].trim())) {
-          items.push(`<li>${formatInline(lines[i].trim().replace(/^[-*]\s+/, ''))}</li>`);
+        while (i < lines.length) {
+          const curTrim = lines[i].trim();
+          if (!/^[-*]\s+/.test(curTrim)) break;
+          const itemBody = curTrim.replace(/^[-*]\s+/, '');
+          const taskMatch = itemBody.match(/^\[([ xX])\]\s+(.+)$/);
           i++;
+
+          const subBullets = [];
+          while (i < lines.length && /^\s{2,}(?:[-*]|\d+\.)\s+/.test(lines[i])) {
+            subBullets.push(`<li>${formatInline(lines[i].trim().replace(/^(?:[-*]|\d+\.)\s+/, ''))}</li>`);
+            i++;
+          }
+          const subHtml = subBullets.length > 0 ? `<ul>${subBullets.join('')}</ul>` : '';
+
+          if (taskMatch) {
+            const checked = taskMatch[1].toLowerCase() === 'x';
+            items.push(
+              `<li class="ds-task-item"><input type="checkbox" disabled ${checked ? 'checked' : ''} /><span>${formatInline(
+                taskMatch[2]
+              )}${subHtml}</span></li>`
+            );
+          } else {
+            items.push(`<li>${formatInline(itemBody)}${subHtml}</li>`);
+          }
+
+          const nextPeek = peekNextNonEmpty(i);
+          if (nextPeek && nextPeek.index > i && /^[-*]\s+/.test(nextPeek.trimmed) && !/^\s{2,}/.test(nextPeek.raw)) {
+            i = nextPeek.index;
+          }
         }
         out.push(`<ul>${items.join('')}</ul>`);
         continue;
       }
 
-      // 有序列表
-      if (/^\d+\.\s+/.test(trimmed)) {
+      const firstOlMatch = trimmed.match(/^(\d+)\.\s+(.+)$/);
+      if (firstOlMatch) {
+        const startNum = parseInt(firstOlMatch[1], 10) || 1;
         const items = [];
-        while (i < lines.length && /^\d+\.\s+/.test(lines[i].trim())) {
-          items.push(`<li>${formatInline(lines[i].trim().replace(/^\d+\.\s+/, ''))}</li>`);
+        while (i < lines.length) {
+          const curTrim = lines[i].trim();
+          const olMatch = curTrim.match(/^(\d+)\.\s+(.+)$/);
+          if (!olMatch) break;
+          let liContent = formatInline(olMatch[2]);
           i++;
+
+          const subItems = [];
+          while (i < lines.length) {
+            const subRaw = lines[i];
+            const subTrim = subRaw.trim();
+            if (!subTrim) {
+              const peekSub = peekNextNonEmpty(i);
+              if (peekSub && /^\s{2,}[-*]\s+/.test(peekSub.raw)) {
+                i = peekSub.index;
+                continue;
+              }
+              break;
+            }
+            if (/^\s{2,}[-*]\s+/.test(subRaw)) {
+              subItems.push(`<li>${formatInline(subTrim.replace(/^[-*]\s+/, ''))}</li>`);
+              i++;
+            } else if (/^\s{2,}(?!\d+\.\s+)/.test(subRaw) && !/^@@DS/.test(subTrim)) {
+              liContent += `<br/>${formatInline(subTrim)}`;
+              i++;
+            } else {
+              break;
+            }
+          }
+          if (subItems.length > 0) {
+            liContent += `<ul>${subItems.join('')}</ul>`;
+          }
+          items.push(`<li>${liContent}</li>`);
+
+          const nextOlPeek = peekNextNonEmpty(i);
+          if (nextOlPeek && nextOlPeek.index > i && /^\d+\.\s+/.test(nextOlPeek.trimmed) && !/^\s{2,}/.test(nextOlPeek.raw)) {
+            i = nextOlPeek.index;
+          }
         }
-        out.push(`<ol>${items.join('')}</ol>`);
+        out.push(startNum > 1 ? `<ol start="${startNum}">${items.join('')}</ol>` : `<ol>${items.join('')}</ol>`);
         continue;
       }
 
-      // 普通段落
       const pLines = [];
       while (
         i < lines.length &&
         lines[i].trim() &&
         !/^@@DSCODE_\d+@@$/.test(lines[i].trim()) &&
+        !/^@@DSMATHB_\d+@@$/.test(lines[i].trim()) &&
+        !/^(?:---|\*\*\*|___)\s*$/.test(lines[i].trim()) &&
         !/^(#{1,4})\s+/.test(lines[i].trim()) &&
         !lines[i].trim().startsWith('&gt;') &&
         !/^[-*]\s+/.test(lines[i].trim()) &&
@@ -340,15 +627,18 @@
     }
 
     let joined = out.join('');
+    mathBlocks.forEach((mb, idx) => {
+      joined = joined.replace(`@@DSMATHB_${idx}@@`, () => mb);
+    });
     codeBlocks.forEach((cb, idx) => {
-      joined = joined.replace(`@@DSCODE_${idx}@@`, cb);
+      joined = joined.replace(`@@DSCODE_${idx}@@`, () => cb);
     });
     return joined;
   }
 
-  function renderMessageMarkdown(rawText) {
+  function renderMessageMarkdown(rawText, searchResults = []) {
     return state.uiMode === 'deepseek'
-      ? renderNativeDeepSeekMarkdown(rawText)
+      ? renderNativeDeepSeekMarkdown(rawText, searchResults)
       : renderRoleplayMarkdown(rawText);
   }
 
@@ -564,13 +854,14 @@
   tabSigninBtn.addEventListener('click', () => switchAuthTab('signin'));
   tabSignupBtn.addEventListener('click', () => switchAuthTab('signup'));
 
-  // 密码显示与隐藏按钮（遵循 autofill-sign-in/up-form 规范）
+  // 密码显示与隐藏按钮（遵循 autofill-sign-in/up-form & forms aria-pressed 规范）
   document.querySelectorAll('.pwd-eye-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
       const input = document.getElementById(btn.dataset.target);
       if (!input) return;
       const isPwd = input.type === 'password';
       input.type = isPwd ? 'text' : 'password';
+      btn.setAttribute('aria-pressed', String(isPwd));
       btn.textContent = isPwd ? '隐藏' : '显示';
     });
   });
@@ -620,7 +911,12 @@
       signupForm.reset();
       document.getElementById('signup-avatar').value = '🎀';
       await enterWorkspace();
-      showToast('🎉 新账户创建成功！已为您发放 50 星光积分 + 5 次在线对话初遇礼');
+      const giftDays = res.gifted_days || 30;
+      showToast(
+        res.gifted_vip !== false
+          ? `🎉 注册成功！已自动赠送您「${giftDays} 天星月会员」礼包，全站角色扮演与个人 API 接入全免费畅玩！`
+          : '🎉 新账户创建成功！欢迎开启心动初遇'
+      );
     } catch (err) {
       setAuthError(err.message);
     }
@@ -638,7 +934,7 @@
       applyAuthLoginPayload(res, { persistDefault: true, rememberGuest: true });
       await enterWorkspace();
       if (res.is_new_guest) {
-        showToast(`🎀 已为您创建专属独立访客账号「${res.user.nickname}」，立赠 50 积分 + 5 次对话！`);
+        showToast(`🎀 已为您开启独立访客账号「${res.user.nickname}」，已赠畅享会员，支持免费自由接入个人 API！`);
       }
     } catch (err) {
       setAuthError(err.message);
@@ -705,8 +1001,8 @@
     {
       anchorId: 'tour-anchor-vip',
       ensureLeftOpen: true,
-      title: '👑 第四步：签到领积分 & 日卡/月卡畅聊',
-      desc: '默认的「梦境轻语」通道免费不限次数！点击这张权益卡即可每日签到与做任务免费赢取积分，积分商城可直接兑换对话次数、24小时日卡或30天月卡畅聊！'
+      title: '🔑 第四步：全免费畅玩 & 自由接入个人 API',
+      desc: '当前全站已开启全免费畅玩模式，新用户注册即送会员！点击左下角设置或输入框旁的「🔑 接入个人 API」，即可把您自己的 API 自由接入到 DeepSeek 原生对话与角色扮演剧场中！'
     }
   ];
 
@@ -853,6 +1149,8 @@
     quoteCardDialog,
     fimDialog,
     codePreviewDialog,
+    attachmentPreviewDialog,
+    dsShareDialog,
     adminConsoleDialog
   ]
     .filter(Boolean)
@@ -874,7 +1172,21 @@
     }
   });
 
-  // ================= 4. 三态主题切换 =================
+  // ================= 4. 三态主题切换（遵循 modern-web-guidance: dark-mode，同步 html.style.colorScheme 并监听系统变化） =================
+  const darkMediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+
+  function applyColorSchemeValue(val) {
+    const meta = document.querySelector('meta[name="color-scheme"]');
+    const cssScheme = val === 'light' || val === 'dark' ? val : 'light dark';
+    try {
+      if (val === 'system') localStorage.removeItem('color-scheme');
+      else localStorage.setItem('color-scheme', val);
+    } catch {}
+    if (meta) meta.content = cssScheme;
+    document.documentElement.style.colorScheme = cssScheme;
+    syncThemeControls();
+  }
+
   function syncThemeControls() {
     const meta = document.querySelector('meta[name="color-scheme"]');
     let stored = null;
@@ -882,39 +1194,66 @@
       stored = localStorage.getItem('color-scheme');
     } catch {}
     const currentVal = stored === 'light' || stored === 'dark' ? stored : 'system';
-    const sysDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const sysDark = darkMediaQuery.matches;
+    const isEffectiveDark = currentVal === 'dark' || (currentVal === 'system' && sysDark);
     const sysLabel = document.getElementById('theme-system-label');
     if (sysLabel) {
-      sysLabel.textContent = `跟随系统（当前${sysDark ? '星夜' : '樱白'}）`;
+      sysLabel.textContent = `跟随系统（当前${sysDark ? '深色' : '浅色'}）`;
     }
     document.querySelectorAll('input[name="theme-scheme"]').forEach((radio) => {
       radio.checked = radio.value === currentVal;
     });
-    if (meta) meta.content = stored ?? 'light dark';
+    const cssScheme = stored === 'light' || stored === 'dark' ? stored : 'light dark';
+    if (meta) meta.content = cssScheme;
+    document.documentElement.style.colorScheme = cssScheme;
+
+    const quickThemeBtn = document.getElementById('ds-quick-theme-btn');
+    if (quickThemeBtn) {
+      quickThemeBtn.textContent = isEffectiveDark ? '☀️' : '🌙';
+      quickThemeBtn.title = isEffectiveDark ? '当前深色模式 · 点击切换为纯净浅色' : '当前浅色模式 · 点击切换为极客深色';
+    }
+    const dsMenuThemeLbl = document.getElementById('ds-menu-theme-label');
+    if (dsMenuThemeLbl) {
+      const modeName = currentVal === 'light' ? '浅色纯白' : currentVal === 'dark' ? '极客深色' : '跟随系统';
+      dsMenuThemeLbl.textContent = `🌗 外观主题：${modeName}（点此切换）`;
+    }
   }
 
   document.querySelectorAll('input[name="theme-scheme"]').forEach((radio) => {
     radio.addEventListener('change', (e) => {
-      const val = e.target.value;
-      const meta = document.querySelector('meta[name="color-scheme"]');
-      try {
-        if (val === 'system') {
-          localStorage.removeItem('color-scheme');
-          if (meta) meta.content = 'light dark';
-        } else {
-          localStorage.setItem('color-scheme', val);
-          if (meta) meta.content = val;
-        }
-      } catch {
-        if (meta) meta.content = val === 'system' ? 'light dark' : val;
-      }
+      applyColorSchemeValue(e.target.value);
     });
   });
 
+  darkMediaQuery.addEventListener('change', () => syncThemeControls());
   window.addEventListener('storage', (e) => {
     if (e.key === 'color-scheme') syncThemeControls();
   });
   syncThemeControls();
+
+  document.getElementById('ds-quick-theme-btn')?.addEventListener('click', () => {
+    let stored = null;
+    try {
+      stored = localStorage.getItem('color-scheme');
+    } catch {}
+    const curDark = stored === 'dark' || (stored !== 'light' && darkMediaQuery.matches);
+    const next = curDark ? 'light' : 'dark';
+    applyColorSchemeValue(next);
+    showToast(next === 'dark' ? '🌙 已切换至 DeepSeek 官方极客深色主题' : '☀️ 已切换至 DeepSeek 官方纯净浅色主题');
+  });
+
+  document.getElementById('ds-menu-theme-cycle-btn')?.addEventListener('click', () => {
+    let stored = null;
+    try {
+      stored = localStorage.getItem('color-scheme');
+    } catch {}
+    const order = ['light', 'dark', 'system'];
+    const cur = stored === 'light' || stored === 'dark' ? stored : 'system';
+    const next = order[(order.indexOf(cur) + 1) % order.length];
+    applyColorSchemeValue(next);
+    const labelMap = { light: '☀️ 浅色纯白', dark: '🌙 极客深色', system: '🖥️ 跟随系统' };
+    showToast(`已切换外观主题为：${labelMap[next]}`);
+  });
 
   // ================= 5. 侧栏与抽屉控制 =================
   toggleLeftBtn.addEventListener('click', () => {
@@ -928,6 +1267,7 @@
 
   function openRightTab(tabId) {
     appShell.classList.remove('right-collapsed');
+    appShell.classList.toggle('artifacts-wide', tabId === 'ds-artifacts-tab');
     document.querySelectorAll('.tab-btn').forEach((btn) => {
       const active = btn.dataset.tab === tabId;
       btn.classList.toggle('active', active);
@@ -938,6 +1278,8 @@
     document.getElementById('persona-tab').classList.toggle('hidden', tabId !== 'persona-tab');
     const dsSuiteEl = document.getElementById('ds-suite-tab');
     if (dsSuiteEl) dsSuiteEl.classList.toggle('hidden', tabId !== 'ds-suite-tab');
+    const dsArtEl = document.getElementById('ds-artifacts-tab');
+    if (dsArtEl) dsArtEl.classList.toggle('hidden', tabId !== 'ds-artifacts-tab');
   }
 
   toggleRightBtn.addEventListener('click', () => {
@@ -950,9 +1292,13 @@
       appShell.classList.remove('right-collapsed');
     } else {
       appShell.classList.add('right-collapsed');
+      appShell.classList.remove('artifacts-wide');
     }
   });
-  closeRightBtn.addEventListener('click', () => appShell.classList.add('right-collapsed'));
+  closeRightBtn.addEventListener('click', () => {
+    appShell.classList.add('right-collapsed');
+    appShell.classList.remove('artifacts-wide');
+  });
   memoryStatusPill.addEventListener('click', () => openRightTab('memory-tab'));
   document.querySelectorAll('.tab-btn').forEach((btn) => {
     btn.addEventListener('click', () => openRightTab(btn.dataset.tab));
@@ -1011,39 +1357,44 @@
     }
 
     const m = state.membership || {
-      tier: 'free',
-      card_type: 'none',
-      tier_name: '普通旅人',
-      online_credits: 0,
-      points: 0,
-      is_vip: false,
-      has_active_card: false,
-      can_use_online: false
+      tier: 'moon',
+      card_type: 'month',
+      tier_name: '🌙 星月月卡会员',
+      online_credits: 30,
+      points: 100,
+      is_vip: true,
+      has_active_card: true,
+      can_bind_own_api: true,
+      can_use_online: true,
+      free_experience_mode: true,
+      billing_enabled: false
     };
+    const isFreeMode = m.free_experience_mode !== false && m.billing_enabled !== true;
     const p = state.settings.provider || 'demo';
 
-    sidebarVipTier.textContent = isAdmin ? '🛡️ 站长尊享' : m.tier_name || '🌙 普通旅人';
-    sidebarVipTier.classList.toggle('is-vip', Boolean(isAdmin || m.has_active_card));
+    sidebarVipTier.textContent = isAdmin ? '🛡️ 站长尊享' : m.tier_name || '🌙 星月会员';
+    sidebarVipTier.classList.toggle('is-vip', Boolean(isAdmin || m.has_active_card || isFreeMode));
     sidebarVipCta.textContent = m.checked_in_today
-      ? m.has_active_card
-        ? `${m.remaining_text || '畅聊中'} ▸`
-        : '任务 / 充值 ▸'
+      ? m.remaining_text
+        ? `${m.remaining_text} ▸`
+        : '免费福利 ▸'
       : '📅 今日可签到 ▸';
     const sidebarPtsEl = document.getElementById('sidebar-user-points');
     if (sidebarPtsEl) sidebarPtsEl.textContent = String(m.points ?? 0);
-    sidebarVipCredits.textContent = isAdmin
-      ? '免扣无限'
+    sidebarVipCredits.textContent = isAdmin || isFreeMode
+      ? '全免费畅玩'
       : m.has_active_card
       ? `畅聊 (${m.online_credits || 0}次)`
       : `${m.online_credits || 0} 次`;
 
     if (vipModalTier) {
-      vipModalTier.textContent = isAdmin ? '🛡️ 站长尊享账户' : m.tier_name || '🌙 普通旅人';
+      vipModalTier.textContent = isAdmin ? '🛡️ 站长尊享账户' : m.tier_name || '🌙 星月会员';
     }
     const expChip = document.getElementById('vip-modal-expire-chip');
     if (expChip) {
-      expChip.classList.toggle('hidden', !m.has_active_card || !m.remaining_text);
-      if (m.has_active_card && m.remaining_text) expChip.textContent = `⏳ ${m.remaining_text}`;
+      const showExp = Boolean((m.has_active_card || isFreeMode) && m.remaining_text);
+      expChip.classList.toggle('hidden', !showExp);
+      if (showExp) expChip.textContent = `⏳ ${m.remaining_text}`;
     }
     const ptsModalEl = document.getElementById('vip-modal-points');
     if (ptsModalEl) ptsModalEl.textContent = String(m.points ?? 0);
@@ -1054,32 +1405,43 @@
     if (shopPtsEl) shopPtsEl.textContent = `可用星光积分：${m.points ?? 0}`;
 
     if (vipModalDesc) {
-      vipModalDesc.innerHTML = m.has_active_card
-        ? `当前正处于<strong>${escapeHtml(m.tier_name)}</strong>有效期内（${escapeHtml(
-            m.remaining_text || '生效中'
-          )}），在线高阶对话<strong>全程免扣次数无限畅聊</strong>！备用对话次数与积分永久保留（累计已对话 ${
-            m.total_used || 0
-          } 次）。`
-        : `每日签到与做互动任务可免费赢取<strong>星光积分</strong>，积分商城可直兑对话次数、24h日卡或30天月卡；无卡时优先扣减对话次数，次数为 0 时满 10 积分也可自动抵扣畅聊！`;
+      if (isFreeMode) {
+        vipModalDesc.innerHTML = `🎉 当前全站处于<strong>全免费开放体验期</strong>（收费模式已关闭）！您的账户身份为<strong>${escapeHtml(
+          m.tier_name || '🌙 星月会员'
+        )}</strong>（${escapeHtml(
+          m.remaining_text || '生效中'
+        )}），所有剧本角色扮演、DeepSeek 原生对话与<strong>个人 API 自由接入</strong>均全程免费免扣次（累计已对话 ${
+          m.total_used || 0
+        } 次）！`;
+      } else {
+        vipModalDesc.innerHTML = m.has_active_card
+          ? `当前正处于<strong>${escapeHtml(m.tier_name)}</strong>有效期内（${escapeHtml(
+              m.remaining_text || '生效中'
+            )}），在线高阶对话<strong>全程免扣次数无限畅聊</strong>！备用对话次数与积分永久保留（累计已对话 ${
+              m.total_used || 0
+            } 次）。`
+          : `每日签到与做互动任务可免费赢取<strong>星光积分</strong>，积分商城可直兑对话次数或畅聊会员卡！`;
+      }
     }
 
     composerChannelBadge.classList.remove('online-locked', 'online-ready');
     const ownApiUnlocked = Boolean(
-      isAdmin || m.has_active_card || m.can_bind_own_api || state.settings.vip_own_api_unlocked
+      isFreeMode || isAdmin || m.has_active_card || m.can_bind_own_api || state.settings.vip_own_api_unlocked
     );
     const hasOwnKey = Boolean(state.settings.has_own_deepseek_key);
+    const shortModel = (state.settings.own_deepseek_model || 'deepseek-chat').split('/').pop();
     const dsComposerChip = document.getElementById('ds-composer-api-chip');
     if (dsComposerChip) {
       if (p === 'own_deepseek' && ownApiUnlocked && hasOwnKey) {
-        dsComposerChip.textContent = '🔑 个人官方 API 直连';
-      } else if (p === 'demo') {
-        dsComposerChip.textContent = '🌸 免费体验通道';
+        dsComposerChip.textContent = `🔑 个人 API 直连 (${shortModel})`;
+      } else if (hasOwnKey) {
+        dsComposerChip.textContent = '🔑 切回个人 API';
       } else {
-        dsComposerChip.textContent = '💎 星耀在线引擎';
+        dsComposerChip.textContent = '🔑 接入个人 API · 免费';
       }
     }
 
-    // 同步原生右侧抽屉「🔑 个人 DeepSeek 官方 API 特权」状态卡片
+    // 同步原生右侧抽屉「🔑 个人 API 直连」状态卡片
     const dsOwnBadge = document.getElementById('ds-suite-own-api-badge');
     const dsOwnDesc = document.getElementById('ds-suite-own-api-desc');
     const dsOwnBtn = document.getElementById('ds-suite-own-api-btn');
@@ -1089,18 +1451,19 @@
           ? p === 'own_deepseek'
             ? '✅ 直连生效中'
             : '🔓 已绑定密钥'
-          : '🔓 会员已解锁';
+          : '🔓 全免费开放';
         dsOwnDesc.textContent = hasOwnKey
-          ? `已加密托管您的 DeepSeek 官方密钥（${state.settings.own_deepseek_key_masked || 'sk-••••'}），随时可切换或更新。`
-          : '您已处于有效会员模式，现已解锁填写个人专属 DeepSeek 官方 API Key 直连特权！';
+          ? `已加密保存您的个人 API（${state.settings.own_deepseek_key_masked || 'sk-••••'} · 模型 ${
+              state.settings.own_deepseek_model || 'deepseek-chat'
+            }），DeepSeek 与角色扮演双模式同步可用！`
+          : '当前全免费开放！随时粘贴您自己的 DeepSeek 或兼容 API Key，即可在 DeepSeek 原生对话与角色扮演剧场中直连畅聊！';
         dsOwnBtn.textContent = hasOwnKey
-          ? '🔑 管理我的 DeepSeek 官方 API'
-          : '🔑 立即填写我的 DeepSeek 官方 API';
+          ? '🔑 管理我的个人 API 配置'
+          : '🔑 立即免费接入我的个人 API';
       } else {
         dsOwnBadge.textContent = '🔒 会员专属';
-        dsOwnDesc.textContent =
-          '开通日卡/月卡（或用签到积分免费兑换会员卡）后，即可解锁填写您自己的 DeepSeek 官方 API Key 直连使用。';
-        dsOwnBtn.textContent = '👑 开通会员 / 积分兑卡解锁 ▸';
+        dsOwnDesc.textContent = '使用签到积分兑换会员卡后，即可绑定您自己的 API Key 直连使用。';
+        dsOwnBtn.textContent = '👑 前往积分兑卡解锁 ▸';
       }
     }
 
@@ -1151,22 +1514,22 @@
     if (chkDsTools) chkDsTools.checked = dsToolsOn;
 
     if (p === 'demo') {
-      gatewaySummaryText.textContent = '梦境轻语 · 免费不限次数';
-      composerChannelBadge.textContent = '🌸 梦境轻语 · 免费';
+      gatewaySummaryText.textContent = '梦境轻语 · 免费畅玩（可接入个人API）';
+      composerChannelBadge.textContent = hasOwnKey
+        ? '🌸 内置免费（点此切个人API）'
+        : '🔑 接入个人 API · 全免费';
     } else if (p === 'own_deepseek') {
       if (ownApiUnlocked && hasOwnKey) {
-        gatewaySummaryText.textContent = `个人 DeepSeek 官方 API 直连 (${
-          state.settings.own_deepseek_model === 'deepseek-reasoner' ? 'R1' : 'V3'
-        })`;
-        composerChannelBadge.textContent = '🔑 个人官方 API · 直连';
+        gatewaySummaryText.textContent = `个人 API 直连 (${shortModel})`;
+        composerChannelBadge.textContent = `🔑 个人 API 直连 (${shortModel})`;
         composerChannelBadge.classList.add('online-ready');
       } else if (!ownApiUnlocked) {
-        gatewaySummaryText.textContent = '会员已到期 · 续卡恢复个人API';
-        composerChannelBadge.textContent = '🔒 会员到期 · 续卡恢复个人API';
+        gatewaySummaryText.textContent = '需会员解锁个人 API';
+        composerChannelBadge.textContent = '🔒 解锁个人 API';
         composerChannelBadge.classList.add('online-locked');
       } else {
-        gatewaySummaryText.textContent = '待填写个人 DeepSeek 官方密钥';
-        composerChannelBadge.textContent = '🔑 点此填写个人官方密钥';
+        gatewaySummaryText.textContent = '待填写个人 API Key';
+        composerChannelBadge.textContent = '🔑 点此填写个人 API';
         composerChannelBadge.classList.add('online-locked');
       }
     } else {
@@ -1174,6 +1537,10 @@
       if (isAdmin) {
         gatewaySummaryText.textContent = `${chName} · 站长免扣畅聊`;
         composerChannelBadge.textContent = `🛡️ 站长尊享 · 在线畅聊`;
+        composerChannelBadge.classList.add('online-ready');
+      } else if (isFreeMode) {
+        gatewaySummaryText.textContent = `${chName} · 全免费畅玩中`;
+        composerChannelBadge.textContent = `💎 ${chName} · 全免费畅玩`;
         composerChannelBadge.classList.add('online-ready');
       } else if (m.has_active_card) {
         gatewaySummaryText.textContent = `${chName} · ${m.tier_name}免扣畅聊`;
@@ -1188,8 +1555,8 @@
         composerChannelBadge.textContent = `✨ ${chName} · 积分可抵扣`;
         composerChannelBadge.classList.add('online-ready');
       } else {
-        gatewaySummaryText.textContent = `${chName} · 需签到领分或开卡`;
-        composerChannelBadge.textContent = `🔒 ${chName} · 领积分/开卡`;
+        gatewaySummaryText.textContent = `${chName} · 签到领分畅聊`;
+        composerChannelBadge.textContent = `✨ ${chName} · 签到领分`;
         composerChannelBadge.classList.add('online-locked');
       }
     }
@@ -1304,7 +1671,10 @@
   }
 
   function selectWalletTab(tabId) {
-    const selectedBtn = walletTabBtns.find((b) => b.id === tabId) || walletTabBtns[0];
+    const visibleTabs = walletTabBtns.filter((b) => !b.classList.contains('hidden'));
+    const fallbackBtn = visibleTabs[0] || walletTabBtns[0];
+    const requestedBtn = walletTabBtns.find((b) => b.id === tabId && !b.classList.contains('hidden'));
+    const selectedBtn = requestedBtn || fallbackBtn;
     if (!selectedBtn) return;
 
     for (const tab of walletTabBtns) {
@@ -1325,14 +1695,16 @@
     }
   }
 
-  walletTabBtns.forEach((btn, idx) => {
+  walletTabBtns.forEach((btn) => {
     btn.addEventListener('click', () => selectWalletTab(btn.id));
     btn.addEventListener('keydown', (e) => {
       if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+        const visibleTabs = walletTabBtns.filter((b) => !b.classList.contains('hidden'));
+        if (visibleTabs.length === 0) return;
         e.preventDefault();
         const dir = e.key === 'ArrowRight' ? 1 : -1;
-        const nextIdx = (idx + dir + walletTabBtns.length) % walletTabBtns.length;
-        const nextBtn = walletTabBtns[nextIdx];
+        const curIdx = Math.max(0, visibleTabs.indexOf(btn));
+        const nextBtn = visibleTabs[(curIdx + dir + visibleTabs.length) % visibleTabs.length];
         selectWalletTab(nextBtn.id);
         nextBtn.focus();
       }
@@ -1353,6 +1725,15 @@
     if (state.user && typeof w.is_admin === 'boolean') {
       state.user.is_admin = w.is_admin;
     }
+    const billingEnabled = Boolean(w.billing_enabled === true && w.free_experience_mode === false);
+    const rechargeTabBtn = document.getElementById('wtab-recharge');
+    if (rechargeTabBtn) {
+      rechargeTabBtn.classList.toggle('hidden', !billingEnabled);
+      if (!billingEnabled && rechargeTabBtn.getAttribute('aria-selected') === 'true') {
+        selectWalletTab('wtab-checkin');
+      }
+    }
+    document.getElementById('wallet-orders-section')?.classList.toggle('hidden', !billingEnabled);
     renderUserAndMembership();
 
     // 1. 7日连续签到网格
@@ -1644,16 +2025,11 @@
   }
 
   composerChannelBadge.addEventListener('click', () => {
-    const p = state.settings.provider || 'demo';
-    if (p !== 'demo' && !state.membership.can_use_online) {
-      openWalletModal('wtab-recharge');
-    } else {
-      openSettingsModal();
-    }
+    openSettingsModal(true);
   });
 
   document.getElementById('open-vip-btn').addEventListener('click', () => {
-    const defaultTab = state.membership?.checked_in_today ? 'wtab-recharge' : 'wtab-checkin';
+    const defaultTab = state.membership?.checked_in_today ? 'wtab-redeem' : 'wtab-checkin';
     openWalletModal(defaultTab);
   });
   document.getElementById('ds-menu-wallet-btn')?.addEventListener('click', () => {
@@ -1663,7 +2039,7 @@
         pop.hidePopover();
       } catch {}
     }
-    openWalletModal(state.membership?.checked_in_today ? 'wtab-recharge' : 'wtab-checkin');
+    openWalletModal(state.membership?.checked_in_today ? 'wtab-redeem' : 'wtab-checkin');
   });
   document.getElementById('close-vip-dialog').addEventListener('click', () => membershipDialog.close());
 
@@ -1956,6 +2332,26 @@
                 <form id="adm-platform-cfg-form" class="stack-form">
                   <div class="admin-gen-form stack-form">
                     <div class="block-title-row">
+                      <span>🎁 全站运营策略：免费畅玩开关 &amp; 新用户注册送会员</span>
+                    </div>
+                    <div class="inline-row" style="flex-wrap: wrap; gap: 14px;">
+                      <label class="pin-check-label">
+                        <input type="checkbox" id="adm-free-exp-mode" checked />
+                        <span><strong>开启全站免费畅玩模式</strong>（关闭收费收银台，全员免扣次 &amp; 自由接入个人 API）</span>
+                      </label>
+                      <label class="pin-check-label">
+                        <input type="checkbox" id="adm-reg-gift-vip" checked />
+                        <span><strong>新用户注册立赠会员</strong></span>
+                      </label>
+                    </div>
+                    <div class="field-group" style="max-width: 260px;">
+                      <label for="adm-reg-gift-days">注册赠送会员时长（天）</label>
+                      <input id="adm-reg-gift-days" type="number" min="1" max="3650" value="30" />
+                    </div>
+                  </div>
+
+                  <div class="admin-gen-form stack-form">
+                    <div class="block-title-row">
                       <span>💎 全站「星耀高阶在线通道」上游大模型网关（含防 SSRF 保护）</span>
                       <button type="button" class="mini-btn" id="adm-check-balance-btn">💰 查询官方 API 余额</button>
                     </div>
@@ -2158,6 +2554,9 @@
 
   function collectAdminPlatformDraft() {
     const draft = {
+      free_experience_mode: document.getElementById('adm-free-exp-mode')?.checked !== false,
+      register_gift_vip: document.getElementById('adm-reg-gift-vip')?.checked !== false,
+      register_gift_days: document.getElementById('adm-reg-gift-days')?.value.trim() || '30',
       online_provider_type: document.getElementById('adm-online-provider')?.value || 'deepseek',
       deepseek_base_url: document.getElementById('adm-ds-url')?.value.trim() || '',
       deepseek_model: document.getElementById('adm-ds-model')?.value.trim() || '',
@@ -2200,6 +2599,13 @@
 
   function applyPlatformConfigToAdminForm(cfg) {
     if (!cfg || !adminConsoleDialog) return;
+    const freeChk = document.getElementById('adm-free-exp-mode');
+    if (freeChk) freeChk.checked = cfg.free_experience_mode !== false;
+    const giftChk = document.getElementById('adm-reg-gift-vip');
+    if (giftChk) giftChk.checked = cfg.register_gift_vip !== false;
+    const giftDaysInp = document.getElementById('adm-reg-gift-days');
+    if (giftDaysInp) giftDaysInp.value = String(cfg.register_gift_days || 30);
+
     const provSel = document.getElementById('adm-online-provider');
     if (provSel) provSel.value = cfg.online_provider_type || 'deepseek';
     document.getElementById('adm-pane-ds')?.classList.toggle('hidden', provSel?.value === 'custom_gateway');
@@ -2902,7 +3308,151 @@
     }
   }
 
+  // 会话浮动上下文菜单（置顶、重命名、分享、删除）
+  let activeSessionCtxMenu = null;
+  function closeSessionContextMenu() {
+    if (activeSessionCtxMenu) {
+      activeSessionCtxMenu.menuEl.remove();
+      activeSessionCtxMenu.rowEl?.classList.remove('menu-open');
+      activeSessionCtxMenu = null;
+    }
+  }
+  document.addEventListener('click', (e) => {
+    if (activeSessionCtxMenu && !e.target.closest('.ds-session-ctx-menu') && !e.target.closest('.ds-session-more-btn')) {
+      closeSessionContextMenu();
+    }
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && activeSessionCtxMenu) closeSessionContextMenu();
+  });
+
+  function resolveDsTimelineGroup(session) {
+    if (session.pinned === 1) return '📌 已置顶';
+    const ts = Number(session.updated_at || Date.now());
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const startOfYesterday = startOfToday - 86400000;
+    const sevenDaysAgo = startOfToday - 7 * 86400000;
+    const thirtyDaysAgo = startOfToday - 30 * 86400000;
+
+    if (ts >= startOfToday) return '今天';
+    if (ts >= startOfYesterday) return '昨天';
+    if (ts >= sevenDaysAgo) return '7 天内';
+    if (ts >= thirtyDaysAgo) return '30 天内';
+    const dt = new Date(ts);
+    return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`;
+  }
+
+  function startInlineSessionRename(itemEl, sessionObj) {
+    const titleSpan = itemEl.querySelector('.session-title-text');
+    if (!titleSpan) return;
+    const oldTitle = sessionObj.title || '新对话';
+    const inp = document.createElement('input');
+    inp.type = 'text';
+    inp.className = 'ds-session-rename-input';
+    inp.value = oldTitle;
+    inp.maxLength = 42;
+    titleSpan.replaceWith(inp);
+    inp.focus();
+    inp.select();
+
+    let committed = false;
+    const finish = async (save) => {
+      if (committed) return;
+      committed = true;
+      const nextTitle = inp.value.trim();
+      if (save && nextTitle && nextTitle !== oldTitle) {
+        try {
+          const res = await apiJson(`/api/sessions/${encodeURIComponent(sessionObj.id)}`, {
+            method: 'PATCH',
+            body: JSON.stringify({ title: nextTitle, title_locked: true })
+          });
+          state.sessions = res.sessions || state.sessions;
+          if (state.activeSessionId === sessionObj.id && state.activeSession) {
+            state.activeSession.title = nextTitle;
+            renderUserAndMembership();
+          }
+          showToast('✏️ 对话标题已重命名并锁定');
+        } catch {}
+      }
+      renderSessionList();
+    };
+
+    inp.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        finish(true);
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        finish(false);
+      }
+    });
+    inp.addEventListener('click', (e) => e.stopPropagation());
+    inp.addEventListener('blur', () => finish(true));
+  }
+
+  function openSessionContextMenu(btnEl, itemEl, sessionObj) {
+    closeSessionContextMenu();
+    itemEl.classList.add('menu-open');
+    const isPinned = sessionObj.pinned === 1;
+    const menu = document.createElement('div');
+    menu.className = 'ds-session-ctx-menu';
+    menu.setAttribute('role', 'menu');
+    menu.innerHTML = `
+      <button type="button" class="ds-ctx-item" data-act="pin" role="menuitem">
+        <span>${isPinned ? '📍 取消置顶' : '📌 置顶对话'}</span>
+      </button>
+      <button type="button" class="ds-ctx-item" data-act="rename" role="menuitem">
+        <span>✏️ 重命名</span>
+      </button>
+      <button type="button" class="ds-ctx-item" data-act="share" role="menuitem">
+        <span>📤 分享 / 导出</span>
+      </button>
+      <button type="button" class="ds-ctx-item danger" data-act="delete" role="menuitem">
+        <span>🗑️ 删除对话</span>
+      </button>
+    `;
+    document.body.appendChild(menu);
+
+    const rect = btnEl.getBoundingClientRect();
+    const top = Math.min(window.innerHeight - 170, rect.bottom + 4);
+    const left = Math.min(window.innerWidth - 172, Math.max(8, rect.left));
+    menu.style.top = `${top}px`;
+    menu.style.left = `${left}px`;
+
+    menu.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const actBtn = e.target.closest('[data-act]');
+      if (!actBtn) return;
+      const act = actBtn.dataset.act;
+      closeSessionContextMenu();
+
+      if (act === 'pin') {
+        const res = await apiJson(`/api/sessions/${encodeURIComponent(sessionObj.id)}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ pinned: !isPinned })
+        });
+        state.sessions = res.sessions || state.sessions;
+        renderSessionList();
+        showToast(!isPinned ? '📌 已置顶该对话' : '📍 已取消置顶');
+      } else if (act === 'rename') {
+        startInlineSessionRename(itemEl, sessionObj);
+      } else if (act === 'share') {
+        if (state.activeSessionId !== sessionObj.id) {
+          await loadSession(sessionObj.id);
+        }
+        openDsShareModal();
+      } else if (act === 'delete') {
+        if (!state.isStreaming) await deleteSession(sessionObj.id);
+      }
+    });
+
+    activeSessionCtxMenu = { menuEl: menu, rowEl: itemEl };
+  }
+
   function renderSessionList() {
+    closeSessionContextMenu();
     sessionListEl.innerHTML = '';
     const isDsUi = state.uiMode === 'deepseek';
     const headingEl = document.getElementById('session-list-heading');
@@ -2924,7 +3474,7 @@
         const sScript = s.script_id || resolvePersonaScriptId(pObj);
         if (state.scripts.length > 0 && sScript !== state.activeScriptId) return false;
       }
-      if (isDsUi && s.title === '新对话') return false;
+      if (isDsUi && s.title === '新对话' && (s.message_count || 0) === 0 && !s.pinned) return false;
       if (isDsUi && searchKw) {
         return String(s.title || '')
           .toLowerCase()
@@ -2934,22 +3484,15 @@
     });
 
     let lastGroup = '';
-    let groupIdx = 0;
 
     for (const s of filtered) {
       if (isDsUi) {
-        const dt = new Date(s.updated_at || Date.now());
-        const grp = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`;
+        const grp = resolveDsTimelineGroup(s);
         if (grp !== lastGroup) {
           lastGroup = grp;
-          groupIdx += 1;
           const grpEl = document.createElement('div');
           grpEl.className = 'session-group-label';
-          grpEl.innerHTML = `<span>${escapeHtml(grp)}</span>${
-            groupIdx === 1
-              ? `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="4" y1="6" x2="20" y2="6"></line><line x1="4" y1="12" x2="14" y2="12"></line><line x1="4" y1="18" x2="18" y2="18"></line></svg>`
-              : ''
-          }`;
+          grpEl.innerHTML = `<span>${escapeHtml(grp)}</span>`;
           sessionListEl.appendChild(grpEl);
         }
       }
@@ -2958,24 +3501,58 @@
       item.className = `session-item ${s.id === state.activeSessionId ? 'active' : ''}`;
       item.setAttribute('role', 'listitem');
       const prefixSpan = isDsUi
-        ? ''
+        ? s.pinned === 1
+          ? '<span class="ds-pin-glyph" aria-hidden="true">📌</span>'
+          : ''
         : `<span>${escapeHtml(s.persona_avatar || '🌸')}</span>`;
+
       item.innerHTML = `
         <div class="session-title-wrap">
           ${prefixSpan}
-          <span class="session-title-text">${escapeHtml(s.title)}</span>
+          <span class="session-title-text" title="双击可快速重命名">${escapeHtml(s.title)}</span>
         </div>
-        <button type="button" class="session-del-btn" title="删除会话" aria-label="删除会话">✕</button>
+        ${
+          isDsUi
+            ? `<div class="session-row-actions">
+                 <button type="button" class="ds-session-more-btn" title="置顶、重命名、分享或删除" aria-label="对话更多操作">···</button>
+               </div>`
+            : `<button type="button" class="session-del-btn" title="删除会话" aria-label="删除会话">✕</button>`
+        }
       `;
+
       item.addEventListener('click', (e) => {
-        if (e.target.closest('.session-del-btn')) return;
+        if (
+          e.target.closest('.session-del-btn') ||
+          e.target.closest('.ds-session-more-btn') ||
+          e.target.closest('.ds-session-rename-input')
+        ) {
+          return;
+        }
         loadSession(s.id);
       });
-      item.querySelector('.session-del-btn').addEventListener('click', async (e) => {
+
+      item.querySelector('.session-title-text')?.addEventListener('dblclick', (e) => {
         e.stopPropagation();
-        if (state.isStreaming) return;
-        await deleteSession(s.id);
+        startInlineSessionRename(item, s);
       });
+
+      const moreBtn = item.querySelector('.ds-session-more-btn');
+      if (moreBtn) {
+        moreBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          openSessionContextMenu(moreBtn, item, s);
+        });
+      }
+
+      const delBtn = item.querySelector('.session-del-btn');
+      if (delBtn) {
+        delBtn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          if (state.isStreaming) return;
+          await deleteSession(s.id);
+        });
+      }
+
       sessionListEl.appendChild(item);
     }
   }
@@ -3177,13 +3754,46 @@
     }
   }
 
-  // ================= 8. 对话流渲染与流式通信 =================
+  // ================= 8. 对话流渲染、智能防抢滚与流式通信 =================
+  let userManuallyScrolledUp = false;
+  const scrollBottomBtn = document.getElementById('ds-scroll-bottom-btn');
+
+  function updateScrollBottomBtnVisibility() {
+    if (!messagesViewport || !scrollBottomBtn) return;
+    const dist = messagesViewport.scrollHeight - messagesViewport.scrollTop - messagesViewport.clientHeight;
+    const shouldShow = state.messages.length > 0 && dist > 150;
+    scrollBottomBtn.classList.toggle('hidden', !shouldShow);
+    if (dist < 60) {
+      userManuallyScrolledUp = false;
+    }
+  }
+
+  messagesViewport.addEventListener('scroll', () => {
+    const dist = messagesViewport.scrollHeight - messagesViewport.scrollTop - messagesViewport.clientHeight;
+    if (dist > 150) {
+      userManuallyScrolledUp = true;
+    } else if (dist < 50) {
+      userManuallyScrolledUp = false;
+    }
+    updateScrollBottomBtnVisibility();
+  });
+
+  scrollBottomBtn?.addEventListener('click', () => {
+    userManuallyScrolledUp = false;
+    messagesViewport.scrollTo({ top: messagesViewport.scrollHeight, behavior: 'smooth' });
+  });
+
   function scrollToBottom(force = false) {
-    const nearBottom =
-      messagesViewport.scrollHeight - messagesViewport.scrollTop - messagesViewport.clientHeight < 180;
-    if (force || nearBottom) {
+    if (force) {
+      userManuallyScrolledUp = false;
+      messagesViewport.scrollTop = messagesViewport.scrollHeight;
+      updateScrollBottomBtnVisibility();
+      return;
+    }
+    if (!userManuallyScrolledUp) {
       messagesViewport.scrollTop = messagesViewport.scrollHeight;
     }
+    updateScrollBottomBtnVisibility();
   }
 
   // 广播剧级温柔语音合成（优先路由至 24kHz Kokoro 神经网络帅气/可爱声线引擎）
@@ -3245,16 +3855,41 @@
     window.speechSynthesis.speak(utter);
   }
 
-  // 原地精修台词编辑器
-  function mountInlineEditor(containerEl, msg, onSaved) {
+  // 附件与剪贴板图片预览弹窗触发器
+  function openAttachmentPreviewModal(att) {
+    if (!att || !attachmentPreviewDialog) return;
+    const titleEl = document.getElementById('att-preview-title');
+    const bodyEl = document.getElementById('att-preview-body');
+    if (titleEl) {
+      titleEl.textContent = `${att.is_image ? '🖼️ 图片预览' : '📄 文档预览'} · ${att.name || '附件'}`;
+    }
+    if (bodyEl) {
+      if (att.is_image && att.data_url) {
+        bodyEl.innerHTML = `<img src="${escapeHtml(att.data_url)}" alt="${escapeHtml(att.name || '上传图片')}" />`;
+      } else {
+        const txt = String(att.content || '（该历史附件仅保存了元信息摘要）');
+        bodyEl.innerHTML = `<pre>${escapeHtml(txt)}</pre>`;
+      }
+    }
+    attachmentPreviewDialog.showModal();
+  }
+
+  // 原地精修台词编辑器（用户消息支持「发送并重新生成」分支重跑）
+  function mountInlineEditor(containerEl, msg, onSaved, allowResubmit = false) {
     if (containerEl.querySelector('.inline-edit-box')) return;
+    const isDsUi = state.uiMode === 'deepseek';
     const box = document.createElement('div');
     box.className = 'inline-edit-box';
     box.innerHTML = `
       <textarea rows="3">${escapeHtml(msg.content)}</textarea>
-      <div class="right-btns" style="justify-content: flex-end;">
+      <div class="right-btns" style="justify-content: flex-end; gap: 6px;">
         <button type="button" class="secondary-btn cancel-edit-btn">取消</button>
-        <button type="button" class="primary-btn save-edit-btn">保存润色</button>
+        <button type="button" class="secondary-btn save-edit-btn">${allowResubmit ? '仅改文字' : '保存润色'}</button>
+        ${
+          allowResubmit && msg.id
+            ? `<button type="button" class="${isDsUi ? 'ds-primary-btn' : 'primary-btn'} resubmit-edit-btn">发送并重新生成</button>`
+            : ''
+        }
       </div>
     `;
     box.querySelector('.cancel-edit-btn').addEventListener('click', () => box.remove());
@@ -3270,12 +3905,40 @@
       msg.content = nextVal;
       box.remove();
       onSaved();
-      showToast('✏️ 台词已精修保存');
+      showToast('✏️ 内容已保存');
     });
+    const resubmitBtn = box.querySelector('.resubmit-edit-btn');
+    if (resubmitBtn) {
+      resubmitBtn.addEventListener('click', async () => {
+        const nextVal = box.querySelector('textarea').value.trim();
+        if (!nextVal || state.isStreaming) return;
+        box.remove();
+        await sendStreamMessage(nextVal, false, msg.id);
+      });
+    }
     containerEl.appendChild(box);
+    box.querySelector('textarea')?.focus();
   }
 
   const DS_WHALE_AVATAR_SVG = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path fill="#4D6BFE" fill-rule="evenodd" clip-rule="evenodd" d="M23.748 4.482c-.254-.124-.364.113-.512.234-.051.039-.094.09-.137.136-.372.397-.806.657-1.373.626-.829-.046-1.537.214-2.163.848-.133-.782-.575-1.248-1.247-1.548-.352-.156-.708-.311-.955-.65-.172-.241-.219-.51-.305-.774-.055-.16-.11-.323-.293-.35-.2-.031-.278.136-.356.276-.313.572-.434 1.202-.422 1.84.027 1.436.633 2.58 1.838 3.393.137.093.172.187.129.323-.082.28-.18.552-.266.833-.055.179-.137.217-.329.14a5.526 5.526 0 0 1-1.736-1.18c-.857-.828-1.631-1.742-2.597-2.458a11.365 11.365 0 0 0-.689-.471c-.985-.957.13-1.743.388-1.836.27-.098.093-.432-.779-.428-.872.004-1.67.295-2.687.684a3.055 3.055 0 0 1-.465.137 9.597 9.597 0 0 0-2.883-.102c-1.885.21-3.39 1.102-4.497 2.623C.082 8.606-.231 10.684.152 12.85c.403 2.284 1.569 4.175 3.36 5.653 1.858 1.533 3.997 2.284 6.438 2.14 1.482-.085 3.133-.284 4.994-1.86.47.234.962.327 1.78.397.63.059 1.236-.03 1.705-.128.735-.156.684-.837.419-.961-2.155-1.004-1.682-.595-2.113-.926 1.096-1.296 2.746-2.642 3.392-7.003.05-.347.007-.565 0-.845-.004-.17.035-.237.23-.256a4.173 4.173 0 0 0 1.545-.475c1.396-.763 1.96-2.015 2.093-3.517.02-.23-.004-.467-.247-.588zM11.581 18c-2.089-1.642-3.102-2.183-3.52-2.16-.392.024-.321.471-.235.763.09.288.207.486.371.739.114.167.192.416-.113.603-.673.416-1.842-.14-1.897-.167-1.361-.802-2.5-1.86-3.301-3.307-.774-1.393-1.224-2.887-1.298-4.482-.02-.386.093-.522.477-.592a4.696 4.696 0 0 1 1.529-.039c2.132.312 3.946 1.265 5.468 2.774.868.86 1.525 1.887 2.202 2.891.72 1.066 1.494 2.082 2.48 2.914.348.292.625.514.891.677-.802.09-2.14.11-3.054-.614zm1-6.44a.306.306 0 0 1 .415-.287.302.302 0 0 1 .2.288.306.306 0 0 1-.31.307.303.303 0 0 1-.304-.308zm3.11 1.596c-.2.081-.399.151-.59.16a1.245 1.245 0 0 1-.798-.254c-.274-.23-.47-.358-.552-.758a1.73 1.73 0 0 1 .129-.933c.27-.611.832-1.047 1.411-1.428.16-.106.321-.219.493-.309.223-.117.434-.055.536.18.114.262.149.544.157.828.019.805-.285 1.487-.876 2.026z"/></svg>`;
+
+  const DS_THINK_ATOM_SVG = `<svg class="ds-inline-status-svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><circle cx="12" cy="12" r="2.2"></circle><ellipse cx="12" cy="12" rx="9" ry="3.8" transform="rotate(30 12 12)"></ellipse><ellipse cx="12" cy="12" rx="9" ry="3.8" transform="rotate(-30 12 12)"></ellipse></svg>`;
+
+  const DS_GLOBE_SEARCH_SVG = `<svg class="ds-inline-status-svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><line x1="3.6" y1="9" x2="20.4" y2="9"></line><line x1="3.6" y1="15" x2="20.4" y2="15"></line><path d="M11.5 3a14 14 0 0 0 0 18"></path><path d="M12.5 3a14 14 0 0 1 0 18"></path></svg>`;
+
+  function formatDsReasoningHtml(rawReasoning) {
+    const cleaned = String(rawReasoning || '')
+      .replace(/^<think>\s*/i, '')
+      .replace(/\s*<\/think>$/i, '')
+      .trim();
+    if (!cleaned) return '';
+    return cleaned
+      .split(/\n{2,}|\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((p) => `<p class="ds-thought-para">${escapeHtml(p)}</p>`)
+      .join('');
+  }
 
   function populateAssistantAvatar(avatarEl, isDsUi) {
     if (isDsUi) {
@@ -3309,27 +3972,36 @@
       const proBadge = document.createElement('div');
       proBadge.className = 'proactive-msg-badge';
       proBadge.textContent = isDsUi
-        ? '💡 主动思考延展 · 自动发起'
+        ? '延伸思考 · 主动跟进'
         : `💌 ${state.activePersona?.name?.split(/[·\s]/)[0] || '他'}的主动搭话`;
       bodyEl.appendChild(proBadge);
     }
 
-    // 2. 联网搜索参考来源折叠栏（复刻 DeepSeek App 联网卡片）
+    // 2. 联网搜索与 URL 阅读参考来源折叠栏（1:1 复刻正版 DeepSeek 官网联网折叠头）
     if (Array.isArray(meta.search_results) && meta.search_results.length > 0) {
+      const urlReadCnt = meta.search_results.filter((s) => s.is_url_read).length;
+      const foldSummaryText =
+        urlReadCnt > 0 && urlReadCnt === meta.search_results.length
+          ? `已阅读 ${urlReadCnt} 个网页链接`
+          : `已阅读 ${meta.search_results.length} 个网页`;
       const sDetails = document.createElement('details');
       sDetails.className = 'ds-fold-details';
       sDetails.innerHTML = `
         <summary class="ds-fold-summary">
-          <span>🌐 已搜索并阅读 ${meta.search_results.length} 个网页参考来源</span>
+          ${DS_GLOBE_SEARCH_SVG}
+          <span>${escapeHtml(foldSummaryText)}</span>
         </summary>
         <div class="ds-search-list">
           ${meta.search_results
             .map(
               (s) => `
               <div class="ds-search-item">
-                <a href="${escapeHtml(s.url)}" target="_blank" rel="noopener noreferrer">[${
+                <div>
+                  <a href="${escapeHtml(s.url)}" target="_blank" rel="noopener noreferrer">[${
                 s.index
               }] ${escapeHtml(s.title)}</a>
+                  ${s.site ? `<span class="ds-url-site-pill">${escapeHtml(s.site)}</span>` : ''}
+                </div>
                 <span class="ds-search-snippet">${escapeHtml(s.snippet)}</span>
               </div>`
             )
@@ -3346,7 +4018,7 @@
       toolBar.innerHTML = meta.tool_calls
         .map(
           (tc) =>
-            `<span class="ds-tool-badge">🔧 已调用工具 <code>${escapeHtml(tc.name)}</code> · ${escapeHtml(
+            `<span class="ds-tool-badge">已调用工具 <code>${escapeHtml(tc.name)}</code> · ${escapeHtml(
               tc.summary || ''
             )}</span>`
         )
@@ -3354,7 +4026,7 @@
       bodyEl.appendChild(toolBar);
     }
 
-    // 4. 思维链 / 心声独白折叠框（自适应角色性别代词）
+    // 4. 思维链 / 心声独白折叠框（原生模式严格采用正版线性原子图标 +「已深度思考（用时 X 秒）」）
     const femaleIds = new Set([
       'persona_nagisa_sakura',
       'persona_kagaribi_kyou',
@@ -3372,28 +4044,29 @@
     if (msg.reasoning && msg.reasoning.trim()) {
       const secNum = Math.max(1, Math.round((msg.duration_ms || 1200) / 1000));
       const summaryLabel = isDsUi
-        ? `⚛️ 已深度思考（用时 ${secNum} 秒）`
+        ? `已深度思考（用时 ${secNum} 秒）`
         : `💭 ${pPronoun}的心声独白${msg.duration_ms ? `（心动推演 ${(msg.duration_ms / 1000).toFixed(1)}s）` : ''}`;
       const details = document.createElement('details');
       details.className = 'thought-details';
       if (isDsUi && isLastAssistant) details.open = true;
       details.innerHTML = `
         <summary class="thought-summary">
+          ${isDsUi ? DS_THINK_ATOM_SVG : ''}
           <span>${escapeHtml(summaryLabel)}</span>
           <span class="thought-chevron">▼</span>
         </summary>
-        <div class="thought-content">${escapeHtml(msg.reasoning)}</div>
+        <div class="thought-content">${isDsUi ? formatDsReasoningHtml(msg.reasoning) : escapeHtml(msg.reasoning)}</div>
       `;
       bodyEl.appendChild(details);
     }
 
-    // 5. 正文 Markdown 渲染
+    // 5. 正文 Markdown 渲染（传入联网参考来源以激活 [1] 引用角标）
     const prose = document.createElement('div');
     prose.className = 'assistant-prose';
-    prose.innerHTML = renderMessageMarkdown(msg.content);
+    prose.innerHTML = renderMessageMarkdown(msg.content, meta.search_results || []);
     bodyEl.appendChild(prose);
 
-    // 6. 底部操作栏与盘古磁盘缓存命中徽章
+    // 6. 底部操作栏（原生 DeepSeek 模式采用官方线性 SVG 工具栏 + < 1 / 2 > 多版本切换器）
     let cacheTagHtml = '';
     if (isDsUi && meta.usage) {
       const u = meta.usage;
@@ -3401,29 +4074,102 @@
       const miss = u.prompt_cache_miss_tokens || 0;
       const totalP = Math.max(1, hit + miss);
       const hitPct = Math.round((hit / totalP) * 100);
-      const rTok = u.reasoning_tokens ? ` · 思维链 ${u.reasoning_tokens} tok` : '';
-      cacheTagHtml = `<span class="ds-cache-hit-tag" title="DeepSeek Context Caching 磁盘前缀缓存统计">⚡ 缓存命中 ${hitPct}% (Hit ${hit} / Miss ${miss})${escapeHtml(
+      const rTok = u.reasoning_tokens ? ` · 思考 ${u.reasoning_tokens} tokens` : '';
+      cacheTagHtml = `<span class="ds-cache-hit-tag" style="margin-left:auto;" title="DeepSeek Context Caching 前缀缓存统计 (Hit ${hit} / Miss ${miss})">缓存命中 ${hitPct}%${escapeHtml(
         rTok
       )}</span>`;
     } else if (!isDsUi) {
       cacheTagHtml = `<span>✨ 呼应 ${msg.recalled_count || 0} 处</span>`;
     }
 
+    const versions = Array.isArray(meta.versions) ? meta.versions : [];
+    const totalVers = versions.length;
+    const curVerIdx = totalVers > 1 ? Math.min(totalVers - 1, Math.max(0, Number(meta.active_version ?? totalVers - 1))) : 0;
+    const verSwitcherHtml =
+      totalVers > 1
+        ? `<div class="ds-version-switcher" aria-label="切换生成版本">
+             <button type="button" class="ds-ver-nav-btn ver-prev-btn" ${curVerIdx <= 0 ? 'disabled' : ''} aria-label="上一版本">&lt;</button>
+             <span>${curVerIdx + 1} / ${totalVers}</span>
+             <button type="button" class="ds-ver-nav-btn ver-next-btn" ${curVerIdx >= totalVers - 1 ? 'disabled' : ''} aria-label="下一版本">&gt;</button>
+           </div>`
+        : '';
+
     const footer = document.createElement('div');
     footer.className = 'msg-footer-bar';
-    footer.innerHTML = `
-      ${cacheTagHtml}
-      ${
-        !isDsUi
-          ? `<button type="button" class="msg-tool-btn tts-btn" title="自动静音旁白，仅用温柔声线朗读角色对白">🔊 听声</button>
-             <button type="button" class="msg-tool-btn snap-btn" title="生成唯美心动语录珍藏海报">📸 语录签</button>`
-          : ''
+
+    if (isDsUi) {
+      const fb = meta.feedback || '';
+      footer.innerHTML = `
+        ${verSwitcherHtml}
+        <span class="ds-copy-wrap">
+          <button type="button" class="ds-icon-action-btn ds-copy-btn-std copy-btn" title="复制回答全文" aria-label="复制回答全文">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+          </button>
+          <span class="ds-copy-live-tip" role="status"></span>
+        </span>
+        ${
+          isLastAssistant
+            ? `<button type="button" class="ds-icon-action-btn regen-btn" title="重新生成（保留历史版本可对比）" aria-label="重新生成">
+                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
+               </button>`
+            : ''
+        }
+        <button type="button" class="ds-icon-action-btn edit-msg-btn" title="编辑修改本条回复" aria-label="编辑回复">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 20h9"></path><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg>
+        </button>
+        <button type="button" class="ds-icon-action-btn branch-btn" title="从这一刻创建平行对话分支" aria-label="创建对话分支">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="6" y1="3" x2="6" y2="15"></line><circle cx="18" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><path d="M18 9a9 9 0 0 1-9 9"></path></svg>
+        </button>
+        <button type="button" class="ds-icon-action-btn share-turn-btn" title="分享或导出对话长图" aria-label="分享对话">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"></path><polyline points="16 6 12 2 8 6"></polyline><line x1="12" y1="2" x2="12" y2="15"></line></svg>
+        </button>
+        <button type="button" class="ds-icon-action-btn fb-up-btn ${fb === 'up' ? 'liked' : ''}" title="回答有帮助" aria-label="回答有帮助" aria-pressed="${fb === 'up'}">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M7 10v12"></path><path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z"></path></svg>
+        </button>
+        <button type="button" class="ds-icon-action-btn fb-down-btn ${fb === 'down' ? 'disliked' : ''}" title="回答待改进" aria-label="回答待改进" aria-pressed="${fb === 'down'}">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M17 14V2"></path><path d="M9 18.12 10 14H4.17a2 2 0 0 1-1.92-2.56l2.33-8A2 2 0 0 1 6.5 2H20a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2.76a2 2 0 0 0-1.79 1.11L12 22a3.13 3.13 0 0 1-3-3.88Z"></path></svg>
+        </button>
+        ${cacheTagHtml}
+      `;
+    } else {
+      footer.innerHTML = `
+        ${cacheTagHtml}
+        ${verSwitcherHtml}
+        <button type="button" class="msg-tool-btn tts-btn" title="自动静音旁白，仅用温柔声线朗读角色对白">🔊 听声</button>
+        <button type="button" class="msg-tool-btn snap-btn" title="生成唯美心动语录珍藏海报">📸 语录签</button>
+        <button type="button" class="msg-tool-btn branch-btn" title="从这一刻创建对话分支">🌿 分支</button>
+        <button type="button" class="msg-tool-btn edit-msg-btn" title="编辑修改本条回复">✏️ 编辑</button>
+        <button type="button" class="msg-tool-btn copy-btn">复制</button>
+        ${isLastAssistant ? `<button type="button" class="msg-tool-btn regen-btn">重演</button>` : ''}
+      `;
+    }
+
+    // 绑定 < 1 / 2 > 多版本切换
+    const switchVersionTo = async (targetVerIdx) => {
+      if (!versions[targetVerIdx] || state.isStreaming) return;
+      const v = versions[targetVerIdx];
+      msg.content = v.content || msg.content;
+      msg.reasoning = v.reasoning || '';
+      msg.duration_ms = v.duration_ms || 0;
+      meta.active_version = targetVerIdx;
+      if (Array.isArray(v.search_results)) meta.search_results = v.search_results;
+      if (Array.isArray(v.tool_calls)) meta.tool_calls = v.tool_calls;
+      if (v.usage !== undefined) meta.usage = v.usage;
+      msg._parsedMeta = meta;
+      if (msg.id) {
+        try {
+          await apiJson(`/api/messages/${msg.id}`, {
+            method: 'PATCH',
+            body: JSON.stringify({ active_version: targetVerIdx })
+          });
+        } catch {}
       }
-      <button type="button" class="msg-tool-btn branch-btn" title="从这一刻创建对话分支">🌿 分支</button>
-      <button type="button" class="msg-tool-btn edit-msg-btn" title="编辑修改本条回复">✏️ 编辑</button>
-      <button type="button" class="msg-tool-btn copy-btn">复制</button>
-      ${isLastAssistant ? `<button type="button" class="msg-tool-btn regen-btn">${isDsUi ? '重新生成' : '重演'}</button>` : ''}
-    `;
+      renderDeepSeekSuiteTelemetry();
+      renderMessages();
+    };
+
+    footer.querySelector('.ver-prev-btn')?.addEventListener('click', () => switchVersionTo(curVerIdx - 1));
+    footer.querySelector('.ver-next-btn')?.addEventListener('click', () => switchVersionTo(curVerIdx + 1));
 
     const ttsBtn = footer.querySelector('.tts-btn');
     if (ttsBtn) {
@@ -3433,6 +4179,30 @@
     if (snapBtn) {
       snapBtn.addEventListener('click', () => openQuoteSnapModal(msg));
     }
+    footer.querySelector('.share-turn-btn')?.addEventListener('click', () => openDsShareModal());
+
+    const bindFeedback = (selector, targetVal) => {
+      const btn = footer.querySelector(selector);
+      if (!btn) return;
+      btn.addEventListener('click', async () => {
+        const nextFb = meta.feedback === targetVal ? '' : targetVal;
+        meta.feedback = nextFb;
+        msg._parsedMeta = meta;
+        if (msg.id) {
+          try {
+            await apiJson(`/api/messages/${msg.id}`, {
+              method: 'PATCH',
+              body: JSON.stringify({ feedback: nextFb })
+            });
+          } catch {}
+        }
+        renderMessages();
+        if (nextFb === 'up') showToast('👍 感谢反馈，已标记该回答有帮助');
+        else if (nextFb === 'down') showToast('📝 已记录反馈，你也可以点击「重新生成」获取另一版本对比');
+      });
+    };
+    bindFeedback('.fb-up-btn', 'up');
+    bindFeedback('.fb-down-btn', 'down');
 
     footer.querySelector('.branch-btn').addEventListener('click', async () => {
       if (state.isStreaming || !state.activeSessionId) return;
@@ -3450,18 +4220,27 @@
 
     footer.querySelector('.edit-msg-btn').addEventListener('click', () => {
       mountInlineEditor(bodyEl, msg, () => {
-        prose.innerHTML = renderMessageMarkdown(msg.content);
+        prose.innerHTML = renderMessageMarkdown(msg.content, meta.search_results || []);
       });
     });
 
     footer.querySelector('.copy-btn').addEventListener('click', async (e) => {
+      const btn = e.currentTarget;
+      let ok = false;
       try {
         await navigator.clipboard.writeText(msg.content);
-        e.target.textContent = '已复制';
+        ok = true;
+      } catch {
+        ok = fallbackLegacyCopy(msg.content);
+      }
+      if (isDsUi) {
+        reportCopyOutcome(btn, ok);
+      } else if (ok) {
+        btn.textContent = '已复制';
         setTimeout(() => {
-          e.target.textContent = '复制';
+          btn.textContent = '复制';
         }, 1200);
-      } catch {}
+      }
     });
 
     const regenBtn = footer.querySelector('.regen-btn');
@@ -3479,12 +4258,12 @@
       fRow.className = 'follow-ups-row';
       for (const q of meta.follow_ups) {
         const branchMatch = String(q).match(/^(🎬|🔍|💭)\s*(.+)$/);
-        const iconGlyph = branchMatch ? branchMatch[1] : isDsUi ? '💡' : '✨';
+        const iconGlyph = branchMatch ? branchMatch[1] : isDsUi ? '→' : '✨';
         const cleanQuery = branchMatch ? branchMatch[2] : q;
         const chip = document.createElement('button');
         chip.type = 'button';
         chip.className = 'followup-chip';
-        chip.innerHTML = `<span>${iconGlyph}</span><span>${escapeHtml(cleanQuery)}</span>`;
+        chip.innerHTML = `<span class="followup-arrow">${iconGlyph}</span><span>${escapeHtml(cleanQuery)}</span>`;
         chip.addEventListener('click', () => {
           if (!state.isStreaming) sendStreamMessage(cleanQuery, false);
         });
@@ -3577,15 +4356,39 @@
     state.messages.forEach((msg, idx) => {
       if (msg.role === 'user') {
         const uMeta = parseMsgMeta(msg);
-        const attHtml =
-          Array.isArray(uMeta.attachments) && uMeta.attachments.length > 0
-            ? `<div class="msg-attachments-row">
-                ${uMeta.attachments
+        const rawAtts = Array.isArray(uMeta.attachments_full)
+          ? uMeta.attachments_full
+          : Array.isArray(uMeta.attachments)
+          ? uMeta.attachments
+          : [];
+        const imgAtts = rawAtts.filter((a) => a && a.is_image && a.data_url);
+        const docAtts = rawAtts.filter((a) => a && !(a.is_image && a.data_url));
+
+        const imgGridHtml =
+          imgAtts.length > 0
+            ? `<div class="msg-user-images">
+                ${imgAtts
                   .map(
-                    (a) =>
-                      `<span class="attachment-chip" title="${escapeHtml(a.name)}">📎 ${renderFilenameHtml(
+                    (a, imgIdx) =>
+                      `<img src="${escapeHtml(a.data_url)}" alt="${escapeHtml(
                         a.name
-                      )}</span>`
+                      )}" class="msg-user-img-card" data-preview-img-idx="${imgIdx}" title="点击查看大图：${escapeHtml(
+                        a.name
+                      )}" />`
+                  )
+                  .join('')}
+              </div>`
+            : '';
+
+        const attHtml =
+          docAtts.length > 0
+            ? `<div class="msg-attachments-row">
+                ${docAtts
+                  .map(
+                    (a, docIdx) =>
+                      `<span class="attachment-chip clickable-att" data-preview-doc-idx="${docIdx}" title="点击预览：${escapeHtml(
+                        a.name
+                      )}">📎 ${renderFilenameHtml(a.name)}</span>`
                   )
                   .join('')}
               </div>`
@@ -3596,17 +4399,49 @@
         const wrap = document.createElement('div');
         wrap.className = 'user-msg-wrap';
         wrap.innerHTML = `
+          ${imgGridHtml}
           ${attHtml}
           <div class="msg-body">${escapeHtml(msg.content)}</div>
           <div class="user-msg-tools">
+            <button type="button" class="msg-tool-btn u-copy-btn">复制</button>
             <button type="button" class="msg-tool-btn u-edit-btn">✏️ 编辑</button>
             ${msg.id ? '<button type="button" class="msg-tool-btn u-rewind-btn" title="删除此句之后的内容重走对话">⏪ 回溯至此</button>' : ''}
           </div>
         `;
-        wrap.querySelector('.u-edit-btn').addEventListener('click', () => {
-          mountInlineEditor(wrap, msg, () => {
-            wrap.querySelector('.msg-body').textContent = msg.content;
+
+        wrap.querySelectorAll('[data-preview-img-idx]').forEach((imgEl) => {
+          imgEl.addEventListener('click', () => {
+            openAttachmentPreviewModal(imgAtts[Number(imgEl.dataset.previewImgIdx)]);
           });
+        });
+        wrap.querySelectorAll('[data-preview-doc-idx]').forEach((chipEl) => {
+          chipEl.addEventListener('click', () => {
+            openAttachmentPreviewModal(docAtts[Number(chipEl.dataset.previewDocIdx)]);
+          });
+        });
+
+        wrap.querySelector('.u-copy-btn')?.addEventListener('click', async (e) => {
+          const btn = e.currentTarget;
+          try {
+            await navigator.clipboard.writeText(msg.content);
+          } catch {
+            fallbackLegacyCopy(msg.content);
+          }
+          btn.textContent = '已复制';
+          setTimeout(() => {
+            btn.textContent = '复制';
+          }, 1100);
+        });
+
+        wrap.querySelector('.u-edit-btn').addEventListener('click', () => {
+          mountInlineEditor(
+            wrap,
+            msg,
+            () => {
+              wrap.querySelector('.msg-body').textContent = msg.content;
+            },
+            true
+          );
         });
         const rwBtn = wrap.querySelector('.u-rewind-btn');
         if (rwBtn) {
@@ -3623,6 +4458,19 @@
         messagesContainer.appendChild(createAssistantMessageDom(msg, idx === lastAssistantIdx));
       }
     });
+
+    // 同步顶栏「🖥️ 实时预览」蓝点指示器
+    const runButtons = messagesContainer.querySelectorAll('[data-run-code]');
+    const artDot = document.getElementById('ds-artifacts-count-dot');
+    if (artDot) {
+      artDot.classList.toggle('hidden', runButtons.length === 0);
+    }
+    if (runButtons.length > 0 && !state.lastSandboxCode) {
+      const latestBtn = runButtons[runButtons.length - 1];
+      const entry = codeSnippetStore.get(latestBtn.dataset.runCode);
+      const raw = typeof entry === 'string' ? entry : entry?.code || '';
+      if (raw) populateSideArtifactSandbox(raw, false);
+    }
 
     updateBondBadge();
     scrollToBottom(true);
@@ -3649,11 +4497,11 @@
     if (state.streamingAbort) state.streamingAbort.abort();
   });
 
-  async function sendStreamMessage(text, regenerate = false) {
+  async function sendStreamMessage(text, regenerate = false, editMessageId = 0) {
     if (state.isStreaming || !state.activeSessionId) return;
     const isDsUi = state.uiMode === 'deepseek';
     let trimmed = (text || '').trim();
-    const stagedFiles = !regenerate ? [...state.pendingAttachments] : [];
+    const stagedFiles = !regenerate && !editMessageId ? [...state.pendingAttachments] : [];
 
     if (!regenerate && !trimmed && stagedFiles.length === 0) return;
 
@@ -3679,9 +4527,15 @@
         ? prefixInputEl.value
         : '';
 
-    if (!regenerate) {
+    if (editMessageId > 0) {
+      const targetIdx = state.messages.findIndex((m) => Number(m.id) === Number(editMessageId));
+      if (targetIdx !== -1) {
+        state.messages[targetIdx].content = trimmed;
+        state.messages.splice(targetIdx + 1);
+      }
+    } else if (!regenerate) {
       if (!trimmed && stagedFiles.length > 0) {
-        trimmed = `请帮我详细解析并总结上传的文件：${stagedFiles.map((a) => a.name).join('、')}`;
+        trimmed = `请帮我详细解析并总结上传的附件：${stagedFiles.map((a) => a.name).join('、')}`;
       }
       chatInput.value = '';
       state.pendingAttachments = [];
@@ -3689,7 +4543,7 @@
       state.messages.push({
         role: 'user',
         content: trimmed,
-        meta: stagedFiles.length > 0 ? { attachments: stagedFiles } : {}
+        meta: stagedFiles.length > 0 ? { attachments: stagedFiles, attachments_full: stagedFiles } : {}
       });
     } else if (
       state.messages.length > 0 &&
@@ -3718,7 +4572,8 @@
     thoughtDetails.open = true;
     thoughtDetails.innerHTML = `
       <summary class="thought-summary">
-        <span class="live-thought-label">${isDsUi ? '⚛️ 正在深度思考... (0.0s)' : '💭 正在倾听并揣摩心绪…'}</span>
+        ${isDsUi ? DS_THINK_ATOM_SVG : ''}
+        <span class="live-thought-label">${isDsUi ? '思考中... (0.0s)' : '💭 正在倾听并揣摩心绪…'}</span>
         <span class="thought-chevron">▼</span>
       </summary>
       <div class="thought-content streaming-cursor"></div>
@@ -3749,7 +4604,7 @@
     const thinkTimer = setInterval(() => {
       if (isDsUi && thinkDoneSec === null && !thoughtDetails.classList.contains('hidden')) {
         const sec = ((Date.now() - thinkStartedAt) / 1000).toFixed(1);
-        thoughtLabelEl.textContent = `⚛️ 正在深度思考... (${sec}s)`;
+        thoughtLabelEl.textContent = `思考中... (${sec}s)`;
       }
     }, 120);
 
@@ -3766,6 +4621,7 @@
           session_id: state.activeSessionId,
           content: trimmed,
           regenerate,
+          edit_message_id: editMessageId || 0,
           attachments: stagedFiles,
           assistant_prefix: assistantPrefix
         }),
@@ -3829,16 +4685,16 @@
             liveSearchResults = payload.items;
             liveSearchSlot.innerHTML = `
               <details class="ds-fold-details" open>
-                <summary class="ds-fold-summary"><span>🌐 已实时检索到 ${payload.items.length} 个网页参考来源</span></summary>
+                <summary class="ds-fold-summary">${DS_GLOBE_SEARCH_SVG}<span>已阅读 ${payload.items.length} 个网页</span></summary>
                 <div class="ds-search-list">
                   ${payload.items
                     .map(
                       (s) =>
-                        `<div class="ds-search-item"><a href="${escapeHtml(
+                        `<div class="ds-search-item"><div><a href="${escapeHtml(
                           s.url
                         )}" target="_blank" rel="noopener noreferrer">[${s.index}] ${escapeHtml(
                           s.title
-                        )}</a><span class="ds-search-snippet">${escapeHtml(s.snippet)}</span></div>`
+                        )}</a>${s.site ? `<span class="ds-url-site-pill">${escapeHtml(s.site)}</span>` : ''}</div><span class="ds-search-snippet">${escapeHtml(s.snippet)}</span></div>`
                     )
                     .join('')}
                 </div>
@@ -3850,7 +4706,7 @@
             liveToolSlot.classList.remove('hidden');
             const badge = document.createElement('span');
             badge.className = 'ds-tool-badge';
-            badge.innerHTML = `🔧 调用 <code>${escapeHtml(payload.name)}</code> · ${escapeHtml(
+            badge.innerHTML = `调用 <code>${escapeHtml(payload.name)}</code> · ${escapeHtml(
               payload.summary || ''
             )}`;
             liveToolSlot.appendChild(badge);
@@ -3891,7 +4747,11 @@
           } else if (eventName === 'reasoning') {
             accReasoning += payload.delta || '';
             thoughtDetails.classList.remove('hidden');
-            thoughtContentEl.textContent = accReasoning;
+            if (isDsUi) {
+              thoughtContentEl.innerHTML = formatDsReasoningHtml(accReasoning);
+            } else {
+              thoughtContentEl.textContent = accReasoning;
+            }
             scrollToBottom();
           } else if (eventName === 'content') {
             if (thinkDoneSec === null) {
@@ -3913,11 +4773,11 @@
                   ? '她'
                   : '他';
               thoughtLabelEl.textContent = isDsUi
-                ? `⚛️ 已深度思考（用时 ${thinkDoneSec} 秒）`
+                ? `已深度思考（用时 ${thinkDoneSec} 秒）`
                 : `💭 ${livePronoun}的心声独白`;
             }
             accContent += payload.delta || '';
-            proseEl.innerHTML = renderMessageMarkdown(accContent);
+            proseEl.innerHTML = renderMessageMarkdown(accContent, liveSearchResults);
             scrollToBottom();
           } else if (eventName === 'done') {
             state.messages.push({
@@ -4449,16 +5309,19 @@
     showToast(`✨ 已缔结新角色「${res.persona.name}」并开启心动初遇`);
   });
 
-  // ================= 11. 聊天偏好与通道档位设置（含会员专属解锁个人 DeepSeek 官方 API） =================
+  // ================= 11. 个人 API 自由接入与聊天偏好设置（DeepSeek 原生 & 角色扮演双模式通用） =================
   const providerSelect = document.getElementById('st-provider');
   const testResultBox = document.getElementById('test-result-box');
 
   function isMemberOwnApiUnlocked() {
+    const m = state.membership || {};
+    const isFree = m.free_experience_mode !== false && m.billing_enabled !== true;
     return Boolean(
-      state.user?.is_admin ||
-        state.membership?.has_active_card ||
-        state.membership?.can_bind_own_api ||
-        state.settings?.vip_own_api_unlocked
+      isFree ||
+        state.user?.is_admin ||
+        m.has_active_card ||
+        m.can_bind_own_api ||
+        state.settings?.vip_own_api_unlocked !== false
     );
   }
 
@@ -4470,9 +5333,9 @@
 
   providerSelect.addEventListener('change', (e) => switchProviderPane(e.target.value));
 
-  // 当会员在个人官方密钥框输入新 sk-... 时，自动为其切到「个人 DeepSeek 官方 API 直连」档位
+  // 当用户在个人密钥框输入密钥时，自动为其切到「个人 API 自由直连」档位
   document.getElementById('st-own-ds-key')?.addEventListener('input', (e) => {
-    if (isMemberOwnApiUnlocked() && e.target.value.trim().startsWith('sk-')) {
+    if (isMemberOwnApiUnlocked() && e.target.value.trim().length >= 6) {
       providerSelect.value = 'own_deepseek';
       switchProviderPane('own_deepseek');
     }
@@ -4490,15 +5353,15 @@
     if (optOwn) {
       optOwn.disabled = !unlocked;
       optOwn.textContent = unlocked
-        ? '🔑 会员专属 · 个人 DeepSeek 官方 API 直连（已解锁）'
-        : '🔒 会员专属 · 个人 DeepSeek 官方 API 直连（需开通日卡/月卡解锁）';
+        ? '🔑 个人 API 自由直连（DeepSeek 原生 & 角色扮演双模式通用）'
+        : '🔒 个人 API 直连（需会员身份）';
     }
 
     const maskBadge = document.getElementById('own-api-mask-badge');
     if (maskBadge) {
       maskBadge.textContent = hasSavedKey
-        ? `✅ 已加密托管 (${s.own_deepseek_key_masked || 'sk-••••'})`
-        : '🔓 会员特权已解锁';
+        ? `✅ 已加密保存 (${s.own_deepseek_key_masked || 'sk-••••'})`
+        : '🔓 全免费自由接入';
     }
 
     const clearWrap = document.getElementById('clear-own-ds-key-wrap');
@@ -4511,15 +5374,29 @@
       keyInp.value = '';
       keyInp.type = 'password';
       const eyeBtn = keyInp.parentElement?.querySelector('.pwd-eye-btn');
-      if (eyeBtn) eyeBtn.textContent = '显示';
+      if (eyeBtn) {
+        eyeBtn.textContent = '显示';
+        eyeBtn.setAttribute('aria-pressed', 'false');
+      }
       keyInp.placeholder = hasSavedKey
-        ? `已绑定 ${s.own_deepseek_key_masked}（留空保持不变，输入新 sk-... 则覆盖更新）`
-        : '请输入您的 DeepSeek 官方 API Key（以 sk- 开头）';
+        ? `已绑定 ${s.own_deepseek_key_masked}（留空保持不变，输入新密钥则覆盖更新）`
+        : '粘贴您的 API Key（例如 sk-...，输入后自动切换至直连通道）';
     }
 
-    const modelSel = document.getElementById('st-own-ds-model');
-    if (modelSel) {
-      modelSel.value = s.own_deepseek_model === 'deepseek-reasoner' ? 'deepseek-reasoner' : 'deepseek-chat';
+    const modelInp = document.getElementById('st-own-ds-model');
+    if (modelInp) {
+      modelInp.value = s.own_deepseek_model || 'deepseek-chat';
+    }
+
+    const urlInp = document.getElementById('st-own-api-url');
+    const urlFold = document.getElementById('own-api-custom-url-fold');
+    const defaultOfficialUrl = 'https://api.deepseek.com/v1/chat/completions';
+    if (urlInp) {
+      const savedUrl = s.own_api_base_url || defaultOfficialUrl;
+      urlInp.value = savedUrl === defaultOfficialUrl ? '' : savedUrl;
+      if (urlFold) {
+        urlFold.open = Boolean(savedUrl && savedUrl !== defaultOfficialUrl);
+      }
     }
   }
 
@@ -4541,17 +5418,19 @@
     if (clearOwn) {
       payload.clear_own_deepseek_key = true;
       if (payload.provider === 'own_deepseek') {
-        payload.provider = unlocked ? 'online' : 'demo';
+        payload.provider = 'demo';
       }
     } else if (unlocked) {
       const ownKeyVal = document.getElementById('st-own-ds-key')?.value.trim() || '';
       if (ownKeyVal) {
         payload.own_deepseek_api_key = ownKeyVal;
       }
-      const ownModelVal = document.getElementById('st-own-ds-model')?.value;
-      if (ownModelVal) {
-        payload.own_deepseek_model = ownModelVal;
+      const ownModelVal = document.getElementById('st-own-ds-model')?.value.trim();
+      if (ownModelVal !== undefined) {
+        payload.own_deepseek_model = ownModelVal || 'deepseek-chat';
       }
+      const ownUrlVal = document.getElementById('st-own-api-url')?.value.trim() ?? '';
+      payload.own_api_base_url = ownUrlVal;
     }
     return payload;
   }
@@ -4613,16 +5492,14 @@
 
   document.getElementById('goto-unlock-own-api-btn')?.addEventListener('click', () => {
     settingsDialog.close();
-    const hasEnoughPts = (state.membership?.points || 0) >= 120;
-    openWalletModal(hasEnoughPts ? 'wtab-redeem' : 'wtab-recharge');
+    openWalletModal('wtab-redeem');
   });
 
   document.getElementById('ds-suite-own-api-btn')?.addEventListener('click', () => {
     if (isMemberOwnApiUnlocked()) {
       openSettingsModal(true);
     } else {
-      const hasEnoughPts = (state.membership?.points || 0) >= 120;
-      openWalletModal(hasEnoughPts ? 'wtab-redeem' : 'wtab-recharge');
+      openWalletModal('wtab-redeem');
     }
   });
 
@@ -4630,18 +5507,28 @@
     const btn = e.currentTarget;
     const origText = btn.textContent;
     btn.disabled = true;
-    btn.textContent = '⏳ 正在连接 DeepSeek 官方验证…';
+    btn.textContent = '⏳ 正在测试 API 连通性…';
     testResultBox?.classList.add('hidden');
     try {
       const draftKey = document.getElementById('st-own-ds-key')?.value.trim() || '';
+      const draftUrl = document.getElementById('st-own-api-url')?.value.trim() || '';
+      const draftModel = document.getElementById('st-own-ds-model')?.value.trim() || 'deepseek-chat';
       const res = await apiJson('/api/settings/verify-own-key', {
         method: 'POST',
-        body: JSON.stringify({ own_deepseek_api_key: draftKey })
+        body: JSON.stringify({
+          own_deepseek_api_key: draftKey,
+          own_api_base_url: draftUrl,
+          own_deepseek_model: draftModel
+        })
       });
       if (testResultBox) {
         testResultBox.className = 'test-result-box ok';
         testResultBox.textContent = res.message;
         testResultBox.classList.remove('hidden');
+      }
+      if (draftKey && providerSelect.value !== 'own_deepseek') {
+        providerSelect.value = 'own_deepseek';
+        switchProviderPane('own_deepseek');
       }
     } catch (err) {
       if (testResultBox) {
@@ -4680,15 +5567,9 @@
         await loadSession(state.activeSessionId);
       }
       if (res.settings.provider === 'own_deepseek') {
-        showToast('🔑 会员专属 · 您的个人 DeepSeek 官方 API 直连已保存并立即生效！');
-      } else if (
-        res.settings.provider === 'online' &&
-        !state.membership.can_use_online &&
-        !state.user?.is_admin
-      ) {
-        showToast('👑 已切换至星耀在线模型档位，请先每日签到领积分或开通日卡/月卡解锁畅聊哦');
+        showToast('🔑 您的个人 API 直连已保存生效！DeepSeek 原生对话与角色扮演剧场均可直连畅聊！');
       } else {
-        showToast('✨ 聊天偏好与外观设置已保存');
+        showToast('✨ 对话通道与聊天偏好设置已保存');
       }
     } catch (err) {
       if (testResultBox) {
@@ -5898,13 +6779,13 @@
       mode: 'cool',
       skinKey: 'cool_silver',
       label: '❄️ 高冷清隽 · 银发星眸',
-      img: '/assets/companions/cool_silver.jpg',
+      img: './assets/companions/cool_silver.jpg',
       aura: 'rgba(155, 135, 245, 0.36)',
       particle: '✦',
       reminderEnabled: true
     };
 
-    compImgEl.src = c.img;
+    compImgEl.src = String(c.img || './assets/companions/cool_silver.jpg').replace(/^\/assets\//, './assets/');
     compPokeArea.style.setProperty('--comp-aura', c.aura || 'rgba(226, 85, 157, 0.25)');
     compModeCoolBtn.classList.toggle('active', c.mode === 'cool');
     compModeCuteBtn.classList.toggle('active', c.mode === 'cute');
@@ -6228,54 +7109,137 @@
     );
   });
 
-  // 附件上传与拖拽解析
+  // 附件上传、拖拽解析与剪贴板 Ctrl+V 粘贴截图支持
   const dsAttachmentInput = document.getElementById('ds-attachment-input');
   const composerAttachmentsBar = document.getElementById('composer-attachments-bar');
+
+  document.getElementById('close-att-preview-dialog')?.addEventListener('click', () => attachmentPreviewDialog?.close());
+  document.getElementById('done-att-preview-btn')?.addEventListener('click', () => attachmentPreviewDialog?.close());
 
   function renderPendingAttachments() {
     if (!composerAttachmentsBar) return;
     if (state.pendingAttachments.length === 0) {
       composerAttachmentsBar.classList.add('hidden');
       composerAttachmentsBar.innerHTML = '';
+      syncComposerEmptyState();
       return;
     }
     composerAttachmentsBar.classList.remove('hidden');
     composerAttachmentsBar.innerHTML = state.pendingAttachments
       .map(
         (att, idx) => `
-          <span class="attachment-chip" title="${escapeHtml(att.name)} (${att.size} 字符)">
-            <span>📎</span>
+          <span class="attachment-chip clickable-att" data-stage-preview-idx="${idx}" title="点击预览：${escapeHtml(
+          att.name
+        )} (${att.is_image ? att.dimensions || '图片' : `${att.size} 字符`})">
+            ${
+              att.is_image && att.data_url
+                ? `<img src="${escapeHtml(att.data_url)}" alt="${escapeHtml(att.name)}" class="att-thumb-img" />`
+                : '<span>📎</span>'
+            }
             ${renderFilenameHtml(att.name)}
             <button type="button" class="att-remove-btn" data-att-idx="${idx}" aria-label="移除附件">✕</button>
           </span>
         `
       )
       .join('');
+
+    composerAttachmentsBar.querySelectorAll('[data-stage-preview-idx]').forEach((chip) => {
+      chip.addEventListener('click', (e) => {
+        if (e.target.closest('.att-remove-btn')) return;
+        const att = state.pendingAttachments[Number(chip.dataset.stagePreviewIdx)];
+        if (att) openAttachmentPreviewModal(att);
+      });
+    });
+
     composerAttachmentsBar.querySelectorAll('.att-remove-btn').forEach((btn) => {
-      btn.addEventListener('click', () => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
         const i = Number(btn.dataset.attIdx);
         state.pendingAttachments.splice(i, 1);
         renderPendingAttachments();
       });
     });
+    syncComposerEmptyState();
+  }
+
+  function readImageFileCompressed(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = () => reject(new Error('读取图片失败'));
+      reader.onload = () => {
+        const rawUrl = String(reader.result || '');
+        if (file.type === 'image/svg+xml') {
+          resolve({ dataUrl: rawUrl.slice(0, 320000), dimensions: 'SVG 矢量图' });
+          return;
+        }
+        const img = new Image();
+        img.onerror = () => resolve({ dataUrl: rawUrl.slice(0, 320000), dimensions: '' });
+        img.onload = () => {
+          const origW = img.naturalWidth || img.width;
+          const origH = img.naturalHeight || img.height;
+          const maxSide = 1280;
+          let targetW = origW;
+          let targetH = origH;
+          if (origW > maxSide || origH > maxSide) {
+            const ratio = Math.min(maxSide / origW, maxSide / origH);
+            targetW = Math.round(origW * ratio);
+            targetH = Math.round(origH * ratio);
+          }
+          const c = document.createElement('canvas');
+          c.width = targetW;
+          c.height = targetH;
+          const ctx = c.getContext('2d');
+          ctx.drawImage(img, 0, 0, targetW, targetH);
+          const outUrl = c.toDataURL('image/jpeg', 0.82);
+          resolve({
+            dataUrl: outUrl,
+            dimensions: `${origW}×${origH}`
+          });
+        };
+        img.src = rawUrl;
+      };
+      reader.readAsDataURL(file);
+    });
   }
 
   async function ingestAttachmentFiles(fileList) {
-    const files = Array.from(fileList || []).slice(0, 5);
+    const files = Array.from(fileList || []).slice(0, 6);
+    let added = 0;
     for (const f of files) {
       try {
-        const text = await readFileAsText(f);
-        state.pendingAttachments.push({
-          name: f.name,
-          size: text.length,
-          content: text.slice(0, 24000)
-        });
+        const isImg = Boolean(f.type && f.type.startsWith('image/')) || /\.(png|jpe?g|webp|gif|bmp)$/i.test(f.name || '');
+        if (isImg) {
+          const { dataUrl, dimensions } = await readImageFileCompressed(f);
+          let svgSource = '';
+          if (f.type === 'image/svg+xml' || /\.svg$/i.test(f.name || '')) {
+            svgSource = (await readFileAsText(f).catch(() => '')).slice(0, 18000);
+          }
+          state.pendingAttachments.push({
+            name: f.name || `粘贴截图_${new Date().toTimeString().slice(0, 8).replace(/:/g, '')}.png`,
+            size: f.size || dataUrl.length,
+            is_image: true,
+            mime: f.type || 'image/jpeg',
+            dimensions,
+            data_url: dataUrl,
+            content: svgSource || `图像文件 ${f.name || 'image'}（分辨率 ${dimensions || '未知'}）`
+          });
+          added++;
+        } else {
+          const text = await readFileAsText(f);
+          state.pendingAttachments.push({
+            name: f.name,
+            size: text.length,
+            is_image: false,
+            content: text.slice(0, 32000)
+          });
+          added++;
+        }
       } catch {}
     }
-    state.pendingAttachments = state.pendingAttachments.slice(0, 5);
+    state.pendingAttachments = state.pendingAttachments.slice(0, 6);
     renderPendingAttachments();
-    if (files.length > 0) {
-      showToast(`📎 已就绪 ${state.pendingAttachments.length} 份文档附件，发送时将完整注入解析`);
+    if (added > 0) {
+      showToast(`📎 已就绪 ${state.pendingAttachments.length} 份附件（点击芯片可预览内容）`);
     }
   }
 
@@ -6295,43 +7259,419 @@
       ingestAttachmentFiles(e.dataTransfer.files);
     }
   });
+  chatInput.addEventListener('paste', (e) => {
+    const items = Array.from(e.clipboardData?.items || []);
+    const imageFiles = items
+      .filter((it) => it.kind === 'file' && it.type.startsWith('image/'))
+      .map((it) => it.getAsFile())
+      .filter(Boolean);
+    if (imageFiles.length > 0) {
+      e.preventDefault();
+      ingestAttachmentFiles(imageFiles);
+    }
+  });
 
-  // 代码块一键复制 & HTML/SVG 实时预览沙盒事件委托
-  function openCodeSandboxPreview(rawCode) {
-    state.lastSandboxCode = rawCode;
-    const iframe = document.getElementById('ds-sandbox-iframe');
+  // 右侧伴生分栏 Artifacts 实时预览工作台 + 代码块全功能事件委托
+  function buildCompleteSandboxHtml(rawCode) {
     const isFullHtml = /<!doctype html>|<html/i.test(rawCode);
-    iframe.srcdoc = isFullHtml
+    return isFullHtml
       ? rawCode
-      : `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><style>body{margin:0;padding:16px;font-family:system-ui,sans-serif;}</style></head><body>${rawCode}</body></html>`;
+      : `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:0;padding:16px;font-family:system-ui,sans-serif;}</style></head><body>${rawCode}</body></html>`;
+  }
+
+  function populateSideArtifactSandbox(rawCode, openPane = true) {
+    state.lastSandboxCode = rawCode;
+    const htmlDoc = buildCompleteSandboxHtml(rawCode);
+    const sideIframe = document.getElementById('ds-side-sandbox-iframe');
+    const emptyBox = document.getElementById('ds-artifacts-empty');
+    const sourceCodeEl = document.getElementById('ds-side-source-code');
+    const sourcePreEl = document.getElementById('ds-side-source-pre');
+
+    if (emptyBox) emptyBox.classList.add('hidden');
+    if (sourceCodeEl) sourceCodeEl.textContent = rawCode;
+    if (sideIframe) {
+      sideIframe.srcdoc = htmlDoc;
+      if (sourcePreEl?.classList.contains('hidden') !== false) {
+        sideIframe.classList.remove('hidden');
+      }
+    }
+    document.getElementById('ds-artifacts-count-dot')?.classList.remove('hidden');
+    if (openPane) {
+      openRightTab('ds-artifacts-tab');
+    }
+  }
+
+  function openCodeSandboxPreview(rawCode, forceModal = false) {
+    state.lastSandboxCode = rawCode;
+    const htmlDoc = buildCompleteSandboxHtml(rawCode);
+    if (!forceModal && state.uiMode === 'deepseek' && window.innerWidth > 860) {
+      populateSideArtifactSandbox(rawCode, true);
+      return;
+    }
+    const iframe = document.getElementById('ds-sandbox-iframe');
+    if (iframe) iframe.srcdoc = htmlDoc;
     codePreviewDialog.showModal();
   }
+
+  // 右侧伴生预览工具栏事件
+  document.getElementById('open-ds-artifacts-btn')?.addEventListener('click', () => {
+    const artTabEl = document.getElementById('ds-artifacts-tab');
+    const isVisible = !appShell.classList.contains('right-collapsed') && artTabEl && !artTabEl.classList.contains('hidden');
+    if (isVisible) {
+      appShell.classList.add('right-collapsed');
+      appShell.classList.remove('artifacts-wide');
+    } else {
+      openRightTab('ds-artifacts-tab');
+      if (state.lastSandboxCode) populateSideArtifactSandbox(state.lastSandboxCode, false);
+    }
+  });
+
+  document.getElementById('ds-art-view-preview')?.addEventListener('click', (e) => {
+    e.currentTarget.classList.add('active');
+    document.getElementById('ds-art-view-code')?.classList.remove('active');
+    document.getElementById('ds-side-source-pre')?.classList.add('hidden');
+    if (state.lastSandboxCode) {
+      document.getElementById('ds-side-sandbox-iframe')?.classList.remove('hidden');
+    }
+  });
+
+  document.getElementById('ds-art-view-code')?.addEventListener('click', (e) => {
+    e.currentTarget.classList.add('active');
+    document.getElementById('ds-art-view-preview')?.classList.remove('active');
+    document.getElementById('ds-side-sandbox-iframe')?.classList.add('hidden');
+    if (state.lastSandboxCode) {
+      document.getElementById('ds-side-source-pre')?.classList.remove('hidden');
+    }
+  });
+
+  document.getElementById('ds-art-viewport-btn')?.addEventListener('click', (e) => {
+    const stage = document.getElementById('ds-artifacts-stage');
+    if (!stage) return;
+    const isMobile = stage.classList.toggle('mobile-viewport');
+    e.currentTarget.textContent = isMobile ? '📱 手机' : '🖥️ 桌面';
+  });
+
+  document.getElementById('ds-art-reload-btn')?.addEventListener('click', () => {
+    if (state.lastSandboxCode) populateSideArtifactSandbox(state.lastSandboxCode, false);
+  });
+
+  document.getElementById('ds-art-download-btn')?.addEventListener('click', () => {
+    if (!state.lastSandboxCode) return;
+    const blob = new Blob([buildCompleteSandboxHtml(state.lastSandboxCode)], { type: 'text/html;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `deepseek_artifact_${Date.now()}.html`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('💾 已下载单文件交互网页 (.html)');
+  });
+
+  document.getElementById('ds-art-fullscreen-btn')?.addEventListener('click', () => {
+    if (state.lastSandboxCode) openCodeSandboxPreview(state.lastSandboxCode, true);
+  });
+
+  document.getElementById('ds-art-try-demo-btn')?.addEventListener('click', () => {
+    if (!state.isStreaming) {
+      sendStreamMessage('请帮我写一个单文件 HTML5 Canvas 星际引力粒子交互网页，支持鼠标牵引效果', false);
+    }
+  });
 
   messagesContainer.addEventListener('click', async (e) => {
     const copyBtn = e.target.closest('[data-copy-code]');
     if (copyBtn) {
-      const code = codeSnippetStore.get(copyBtn.dataset.copyCode) || '';
+      const entry = codeSnippetStore.get(copyBtn.dataset.copyCode);
+      const code = typeof entry === 'string' ? entry : entry?.code || '';
+      let ok = false;
       try {
         await navigator.clipboard.writeText(code);
-        copyBtn.textContent = '✅ 已复制';
-        setTimeout(() => {
-          copyBtn.textContent = '复制代码';
-        }, 1300);
-      } catch {}
+        ok = true;
+      } catch {
+        ok = fallbackLegacyCopy(code);
+      }
+      reportCopyOutcome(copyBtn, ok);
+      return;
+    }
+
+    const wrapBtn = e.target.closest('[data-wrap-code]');
+    if (wrapBtn) {
+      const block = wrapBtn.closest('.ds-code-block');
+      if (block) {
+        const wrapped = block.classList.toggle('wrap-lines');
+        wrapBtn.classList.toggle('active', wrapped);
+      }
+      return;
+    }
+
+    const dlBtn = e.target.closest('[data-dl-code]');
+    if (dlBtn) {
+      const entry = codeSnippetStore.get(dlBtn.dataset.dlCode);
+      const code = typeof entry === 'string' ? entry : entry?.code || '';
+      const lang = typeof entry === 'object' && entry?.lang ? entry.lang : 'txt';
+      const ext = resolveCodeFileExt(lang);
+      const blob = new Blob([code], { type: 'text/plain;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `snippet_${Date.now()}.${ext}`;
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast(`💾 代码已保存为 .${ext} 文件`);
       return;
     }
 
     const runBtn = e.target.closest('[data-run-code]');
     if (runBtn) {
-      const code = codeSnippetStore.get(runBtn.dataset.runCode) || '';
-      if (code) openCodeSandboxPreview(code);
+      const entry = codeSnippetStore.get(runBtn.dataset.runCode);
+      const code = typeof entry === 'string' ? entry : entry?.code || '';
+      if (code) openCodeSandboxPreview(code, false);
     }
   });
 
   document.getElementById('close-code-preview-dialog').addEventListener('click', () => codePreviewDialog.close());
   document.getElementById('done-code-preview-btn').addEventListener('click', () => codePreviewDialog.close());
   document.getElementById('reload-code-preview-btn').addEventListener('click', () => {
-    if (state.lastSandboxCode) openCodeSandboxPreview(state.lastSandboxCode);
+    if (state.lastSandboxCode) openCodeSandboxPreview(state.lastSandboxCode, true);
+  });
+
+  // 空对话居中欢迎态 5 大官网场景胶囊一键体验
+  document.querySelectorAll('.ds-quick-scene-pill').forEach((pill) => {
+    pill.addEventListener('click', async () => {
+      const sc = pill.dataset.dsScene;
+      if (sc === 'upload') {
+        dsAttachmentInput.click();
+        return;
+      }
+      if (sc === 'math') {
+        if (state.activeSession?.ds_thinking === 0) {
+          await patchActiveSessionFlag({ ds_thinking: true });
+        }
+        chatInput.value = '请一步步推导无穷区间高斯积分公式与正态分布归一化常数，并给出工程意义';
+      } else if (sc === 'html') {
+        chatInput.value = '请帮我写一个单文件 HTML5 Canvas 星际粒子引力场交互网页，方便我在右侧实时预览';
+      } else if (sc === 'search') {
+        if (state.activeSession?.ds_search !== 1) {
+          await patchActiveSessionFlag({ ds_search: true }, '🌐 已自动点亮实时联网搜索');
+        }
+        chatInput.value = '帮我联网检索总结 DeepSeek R1 与盘古 Context Caching 技术架构的核心特点';
+      } else if (sc === 'url') {
+        chatInput.value = '请帮我自动抓取阅读这个网页的核心内容并提炼要点：https://zh.wikipedia.org/wiki/人工智能';
+      }
+      syncComposerEmptyState();
+      chatInput.focus();
+    });
+  });
+
+  // 📤 DeepSeek 官方极简风对话分享长图 (.png) 与 Markdown 导出引擎
+  function buildCurrentSessionMarkdown() {
+    const title = state.activeSession?.title || 'DeepSeek 对话记录';
+    const lines = [`# ${title}`, `> 导出时间：${new Date().toLocaleString('zh-CN')}`, ''];
+    for (const m of state.messages) {
+      if (m.role === 'user') {
+        lines.push(`## 🙋 提问\n\n${m.content}\n`);
+      } else {
+        lines.push(`## 🐋 DeepSeek 回答\n`);
+        if (m.reasoning && m.reasoning.trim()) {
+          lines.push(`<details><summary>⚛️ 深度思考过程</summary>\n\n${m.reasoning.trim()}\n\n</details>\n`);
+        }
+        lines.push(`${m.content}\n`);
+      }
+    }
+    return lines.join('\n');
+  }
+
+  function openDsShareModal() {
+    if (!dsShareDialog) return;
+    if (!state.messages || state.messages.length === 0) {
+      showToast('💡 当前还是空对话，先聊两句再来生成分享卡片吧');
+      return;
+    }
+    const card = document.getElementById('ds-share-preview-card');
+    const title = state.activeSession?.title || 'DeepSeek 对话精选';
+    const recentTurns = state.messages.slice(-8);
+    if (card) {
+      card.innerHTML = `
+        <div class="ds-share-head">
+          <span class="ds-share-brand">${DS_WHALE_AVATAR_SVG}<span>deepseek · ${escapeHtml(title)}</span></span>
+          <span class="muted-count">${new Date().toLocaleDateString('zh-CN')} · 共 ${state.messages.length} 条消息</span>
+        </div>
+        ${recentTurns
+          .map((m) =>
+            m.role === 'user'
+              ? `<div class="ds-share-turn"><div class="ds-share-user-q">${escapeHtml(m.content)}</div></div>`
+              : `<div class="ds-share-turn">
+                   ${
+                     m.reasoning
+                       ? `<div class="ds-share-thought-note">⚛️ 已深度思考：${escapeHtml(
+                           m.reasoning.replace(/\s+/g, ' ').slice(0, 95)
+                         )}…</div>`
+                       : ''
+                   }
+                   <div class="ds-share-ai-a">${escapeHtml(m.content.slice(0, 480))}${
+                  m.content.length > 480 ? '…' : ''
+                }</div>
+                 </div>`
+          )
+          .join('')}
+      `;
+    }
+    dsShareDialog.showModal();
+  }
+
+  document.getElementById('ds-share-session-btn')?.addEventListener('click', openDsShareModal);
+  document.getElementById('ds-menu-share-btn')?.addEventListener('click', () => {
+    hidePopoverSafe('ds-user-popover');
+    openDsShareModal();
+  });
+  document.getElementById('close-ds-share-dialog')?.addEventListener('click', () => dsShareDialog?.close());
+
+  document.getElementById('ds-copy-markdown-btn')?.addEventListener('click', async () => {
+    const md = buildCurrentSessionMarkdown();
+    try {
+      await navigator.clipboard.writeText(md);
+    } catch {
+      fallbackLegacyCopy(md);
+    }
+    showToast('📋 已复制完整对话 Markdown（含思考链折叠块）');
+  });
+
+  document.getElementById('ds-export-md-file-btn')?.addEventListener('click', () => {
+    const md = buildCurrentSessionMarkdown();
+    const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${(state.activeSession?.title || 'DeepSeek对话').slice(0, 24)}.md`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('📄 已下载 Markdown 对话文档');
+  });
+
+  document.getElementById('ds-download-share-png-btn')?.addEventListener('click', () => {
+    const turns = state.messages.slice(-6);
+    if (turns.length === 0) return;
+    const dpr = 2;
+    const width = 680;
+    const tmp = document.createElement('canvas');
+    const tCtx = tmp.getContext('2d');
+    const blocks = [];
+    let totalH = 130;
+
+    for (const m of turns) {
+      if (m.role === 'user') {
+        tCtx.font = 'bold 16px "Microsoft YaHei", sans-serif';
+        const qLines = wrapCanvasLines(tCtx, `🙋 提问：${m.content}`, width - 110).slice(0, 8);
+        blocks.push({ type: 'user', lines: qLines });
+        totalH += qLines.length * 26 + 28;
+      } else {
+        if (m.reasoning) {
+          tCtx.font = '13px "Microsoft YaHei", sans-serif';
+          const rLines = wrapCanvasLines(
+            tCtx,
+            `⚛️ 深度思考：${m.reasoning.replace(/\s+/g, ' ').slice(0, 140)}${m.reasoning.length > 140 ? '…' : ''}`,
+            width - 116
+          );
+          blocks.push({ type: 'thought', lines: rLines });
+          totalH += rLines.length * 22 + 16;
+        }
+        tCtx.font = '15px "Microsoft YaHei", sans-serif';
+        const cleanAns = m.content.replace(/```[\s\S]*?```/g, '[代码块详见原对话]').slice(0, 520);
+        const aLines = wrapCanvasLines(tCtx, cleanAns, width - 110).slice(0, 18);
+        blocks.push({ type: 'ai', lines: aLines });
+        totalH += aLines.length * 25 + 28;
+      }
+    }
+    totalH += 56;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = width * dpr;
+    canvas.height = totalH * dpr;
+    const ctx = canvas.getContext('2d');
+    ctx.scale(dpr, dpr);
+
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, width, totalH);
+    ctx.strokeStyle = '#e5e7eb';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(12, 12, width - 24, totalH - 24);
+
+    ctx.font = 'bold 22px "Microsoft YaHei", sans-serif';
+    ctx.fillStyle = '#4d6bfe';
+    ctx.fillText('🐋 deepseek', 42, 56);
+    ctx.font = 'bold 16px "Microsoft YaHei", sans-serif';
+    ctx.fillStyle = '#1f2329';
+    ctx.fillText(` · ${(state.activeSession?.title || '智能对话精选').slice(0, 22)}`, 176, 56);
+    ctx.strokeStyle = '#f1f3f5';
+    ctx.beginPath();
+    ctx.moveTo(42, 76);
+    ctx.lineTo(width - 42, 76);
+    ctx.stroke();
+
+    let y = 108;
+    for (const b of blocks) {
+      if (b.type === 'user') {
+        const boxH = b.lines.length * 26 + 16;
+        ctx.fillStyle = '#eff6ff';
+        ctx.fillRect(42, y - 18, width - 84, boxH);
+        ctx.font = 'bold 15px "Microsoft YaHei", sans-serif';
+        ctx.fillStyle = '#1e3a8a';
+        for (const ln of b.lines) {
+          ctx.fillText(ln, 56, y + 2);
+          y += 26;
+        }
+        y += 24;
+      } else if (b.type === 'thought') {
+        ctx.fillStyle = '#6b7280';
+        ctx.font = '13px "Microsoft YaHei", sans-serif';
+        for (const ln of b.lines) {
+          ctx.fillText(ln, 52, y);
+          y += 22;
+        }
+        y += 12;
+      } else {
+        ctx.fillStyle = '#4d6bfe';
+        ctx.fillRect(42, y - 14, 3, b.lines.length * 25 + 6);
+        ctx.font = '15px "Microsoft YaHei", sans-serif';
+        ctx.fillStyle = '#1f2329';
+        for (const ln of b.lines) {
+          ctx.fillText(ln, 56, y);
+          y += 25;
+        }
+        y += 24;
+      }
+    }
+
+    ctx.font = '12px "Microsoft YaHei", sans-serif';
+    ctx.fillStyle = '#8f959e';
+    ctx.fillText(`生成于 DeepSeek 原生工作台 · ${new Date().toLocaleString('zh-CN')}`, 42, totalH - 28);
+
+    const link = document.createElement('a');
+    link.download = `${(state.activeSession?.title || 'DeepSeek对话').slice(0, 18)}_分享长图.png`;
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+    showToast('🖼️ 高清对话分享长图已生成并保存！');
+  });
+
+  // 全局生产力快捷键（Ctrl/Cmd + K 搜索历史对话，Alt + N 开启新对话）
+  document.addEventListener('keydown', (e) => {
+    if (state.uiMode !== 'deepseek' || !state.user) return;
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+      e.preventDefault();
+      if (appShell.classList.contains('left-collapsed')) {
+        appShell.classList.remove('left-collapsed');
+        expandLeftBtn.classList.add('hidden');
+      }
+      const wrap = document.getElementById('ds-session-search-wrap');
+      const inp = document.getElementById('ds-session-search-input');
+      if (wrap && inp) {
+        wrap.classList.remove('hidden');
+        inp.focus();
+        inp.select();
+      }
+    } else if (e.altKey && e.key.toLowerCase() === 'n') {
+      e.preventDefault();
+      document.getElementById('ds-new-chat-btn')?.click();
+    }
   });
 
   // 全家桶面板：盘古磁盘缓存汇总、账户余额查询 (/user/balance) 与快捷绑 Key
@@ -6376,7 +7716,15 @@
     }
   });
   document.getElementById('ds-composer-api-chip')?.addEventListener('click', () => {
-    openSettingsModal();
+    openSettingsModal(true);
+  });
+  document.getElementById('ds-menu-own-api-quick-btn')?.addEventListener('click', () => {
+    hidePopoverSafe('ds-user-popover');
+    openSettingsModal(true);
+  });
+  document.getElementById('more-open-own-api-btn')?.addEventListener('click', () => {
+    hidePopoverSafe('topbar-more-popover');
+    openSettingsModal(true);
   });
 
   // ✨ 灵感补写小助手（面向纯小白的零门槛开箱即用剧情搭桥器）
@@ -6590,7 +7938,7 @@
     const proBadge = document.createElement('div');
     proBadge.className = 'proactive-msg-badge';
     proBadge.textContent = isDsUi
-      ? '💡 正在主动发起话题与延伸思考…'
+      ? '延伸思考 · 主动跟进'
       : `💌 ${state.activePersona?.name?.split(/[·\s]/)[0] || '他'}正在主动向你搭话…`;
     bodyEl.appendChild(proBadge);
 
@@ -6599,7 +7947,8 @@
     thoughtDetails.open = true;
     thoughtDetails.innerHTML = `
       <summary class="thought-summary">
-        <span class="live-thought-label">${isDsUi ? '⚛️ 正在深度思考...' : '💭 主动搭话前的潜台词…'}</span>
+        ${isDsUi ? DS_THINK_ATOM_SVG : ''}
+        <span class="live-thought-label">${isDsUi ? '思考中...' : '💭 主动搭话前的潜台词…'}</span>
         <span class="thought-chevron">▼</span>
       </summary>
       <div class="thought-content streaming-cursor"></div>
@@ -6667,7 +8016,11 @@
           if (eventName === 'reasoning') {
             accReasoning += payload.delta || '';
             thoughtDetails.classList.remove('hidden');
-            thoughtContentEl.textContent = accReasoning;
+            if (isDsUi) {
+              thoughtContentEl.innerHTML = formatDsReasoningHtml(accReasoning);
+            } else {
+              thoughtContentEl.textContent = accReasoning;
+            }
             scrollToBottom();
           } else if (eventName === 'content') {
             thoughtContentEl.classList.remove('streaming-cursor');
@@ -6867,7 +8220,19 @@
       }
     }
 
-    if (state.user && !state.user.onboarding_done && state.uiMode === 'roleplay') {
+    const urlParams = new URLSearchParams(window.location.search);
+    const isLiveDemoEntry =
+      urlParams.get('demo') === '1' ||
+      urlParams.get('demo') === 'true' ||
+      window.location.hash === '#demo' ||
+      Boolean(window.__isStaticLiveDemo);
+
+    if (isLiveDemoEntry) {
+      if (!sessionStorage.getItem('star_demo_welcomed')) {
+        sessionStorage.setItem('star_demo_welcomed', '1');
+        showToast('🌐 在线展示 Demo 已就绪 · 免注册畅玩四大剧本，亦可在设置中绑定自有 DeepSeek Key');
+      }
+    } else if (state.user && !state.user.onboarding_done && state.uiMode === 'roleplay') {
       setTimeout(() => {
         startOnboardingTour();
       }, 450);
@@ -6875,15 +8240,31 @@
   }
 
   async function bootCheck() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const wantQuickDemo =
+      urlParams.get('demo') === '1' ||
+      urlParams.get('demo') === 'true' ||
+      window.location.hash === '#demo';
+
     try {
       const me = await apiJson('/api/auth/me');
       if (me.authenticated && me.user) {
         applyAuthLoginPayload(me, { persistDefault: false, rememberGuest: false });
         await enterWorkspace();
-      } else {
-        resetClientWorkspaceState();
-        showAuthScreen();
+        return;
       }
+      if (wantQuickDemo) {
+        const savedGuestId = window.__starAuthStore?.getGuestUserId() || '';
+        const demoRes = await apiJson('/api/auth/demo-login', {
+          method: 'POST',
+          body: JSON.stringify({ guest_user_id: savedGuestId })
+        });
+        applyAuthLoginPayload(demoRes, { persistDefault: true, rememberGuest: true });
+        await enterWorkspace();
+        return;
+      }
+      resetClientWorkspaceState();
+      showAuthScreen();
     } catch {
       resetClientWorkspaceState();
       showAuthScreen();

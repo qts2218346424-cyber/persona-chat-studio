@@ -317,6 +317,9 @@ ensureColumn('sessions', 'ds_search', 'INTEGER NOT NULL DEFAULT 0');
 ensureColumn('sessions', 'ds_json_mode', 'INTEGER NOT NULL DEFAULT 0');
 ensureColumn('sessions', 'ds_tools_enabled', 'INTEGER NOT NULL DEFAULT 1');
 ensureColumn('sessions', 'proactive_enabled', 'INTEGER NOT NULL DEFAULT 1');
+ensureColumn('sessions', 'pinned', 'INTEGER NOT NULL DEFAULT 0');
+ensureColumn('sessions', 'title_locked', 'INTEGER NOT NULL DEFAULT 0');
+ensureColumn('sessions', 'session_prompt', "TEXT NOT NULL DEFAULT ''");
 
 ensureColumn('messages', 'meta_json', 'TEXT DEFAULT NULL');
 
@@ -390,8 +393,8 @@ const DEFAULT_SETTINGS = {
   custom_gateway_token: '',
   custom_gateway_headers: '{}',
   temperature: '0.85',
-  sliding_window_turns: '12',
-  max_recalled_memories: '6',
+  sliding_window_turns: '40',
+  max_recalled_memories: '16',
   proactive_idle_sec: '60',
   tts_provider: 'qwen3_otome',
   tts_api_key: '',
@@ -403,6 +406,77 @@ const DEFAULT_SETTINGS = {
   tts_ref_audio: '',
   tts_ref_text: ''
 };
+
+// 平台托管配置键（仅服务端内部执行与站长后台管理，严禁向普通用户暴露！）
+const PLATFORM_SECRET_KEYS = new Set([
+  'deepseek_api_key',
+  'custom_gateway_token',
+  'tts_api_key'
+]);
+
+const PLATFORM_CONFIG_DEFAULTS = {
+  free_experience_mode: '1', // '1' = 全免费开放体验（关闭收费模式，自由接入个人API） | '0' = 开启商业收费模式
+  register_gift_vip: '1', // '1' = 新用户注册立赠会员 | '0' = 仅赠基础积分
+  register_gift_days: '30', // 新用户注册赠送会员天数（默认 30 天星月月卡会员）
+  online_provider_type: 'deepseek', // 'deepseek' | 'custom_gateway'
+  deepseek_base_url: 'https://api.deepseek.com/v1/chat/completions',
+  deepseek_model: 'deepseek-chat',
+  deepseek_api_key: '',
+  custom_gateway_url: 'https://api.openai.com/v1/chat/completions',
+  custom_gateway_model: 'gpt-4o-mini',
+  custom_gateway_token: '',
+  custom_gateway_headers: '{}',
+  tts_provider: 'qwen3_otome',
+  tts_api_key: '',
+  tts_group_id: '',
+  tts_endpoint: '',
+  tts_model: '',
+  tts_cool_voice: '',
+  tts_cute_voice: '',
+  tts_ref_audio: '',
+  tts_ref_text: ''
+};
+
+function getRawPlatformConfigInternal() {
+  const cfg = { ...PLATFORM_CONFIG_DEFAULTS };
+  const rows = db.prepare('SELECT key, value FROM platform_config').all();
+  for (const r of rows) {
+    if (r.key in PLATFORM_CONFIG_DEFAULTS) cfg[r.key] = r.value;
+  }
+  if (!cfg.deepseek_api_key && process.env.PLATFORM_DEEPSEEK_API_KEY) {
+    cfg.deepseek_api_key = String(process.env.PLATFORM_DEEPSEEK_API_KEY).trim();
+  }
+  return cfg;
+}
+
+function isFreeExperienceMode() {
+  const raw = getRawPlatformConfigInternal();
+  return String(raw.free_experience_mode ?? '1') !== '0';
+}
+
+function resolveGiftCardMeta(days = 30) {
+  const d = Math.max(1, Math.min(3650, Number(days) || 30));
+  if (d >= 365) {
+    return { days: d, tier: 'crown', cardType: 'year', tierName: '👑 新人典藏年卡会员' };
+  }
+  if (d >= 90) {
+    return { days: d, tier: 'sakura', cardType: 'quarter', tierName: '🌸 新人繁花季卡会员' };
+  }
+  if (d >= 30) {
+    return { days: d, tier: 'moon', cardType: 'month', tierName: '🌙 星月月卡会员' };
+  }
+  return { days: d, tier: 'day', cardType: 'day', tierName: '☀️ 新人心动会员' };
+}
+
+function getRegisterGiftConfig() {
+  const raw = getRawPlatformConfigInternal();
+  const enabled = String(raw.register_gift_vip ?? '1') !== '0';
+  const days = Math.max(1, Math.min(3650, parseInt(raw.register_gift_days || '30', 10) || 30));
+  return {
+    enabled,
+    ...resolveGiftCardMeta(days)
+  };
+}
 
 // 7日连签阶梯奖励配置
 const CHECKIN_REWARDS = [
@@ -1390,7 +1464,17 @@ function createStarterSessionForUser(userId, nickname) {
     );
   }
 
-  return sessionId;
+  // 同时预置一条默认 DeepSeek 原生空白新对话，确保首次打开默认 DeepSeek 模式零延迟秒开
+  const dsSessId = genId('sess');
+  db.prepare(`
+    INSERT INTO sessions (
+      id, user_id, persona_id, title, session_mode, ds_thinking, ds_search,
+      rolling_summary, summarized_until_msg_id, enable_inner_thought, enable_auto_memory,
+      affection, trust, intimacy, current_mood, secret_diary, created_at, updated_at
+    ) VALUES (?, ?, 'persona_deepseek_official', '新对话', 'deepseek_native', 1, 0, '', 0, 1, 1, 20, 25, 15, '平静专注', '[]', ?, ?)
+  `).run(dsSessId, userId, now + 1, now + 1);
+
+  return dsSessId;
 }
 
 function seedInitialData() {
@@ -1405,6 +1489,16 @@ function seedInitialData() {
 
   // 安全清理旧版遗留在全局 settings 表中的私人密钥，避免跨用户泄露
   db.prepare("UPDATE settings SET value = '' WHERE key IN ('deepseek_api_key', 'custom_gateway_token')").run();
+
+  // 一次性平滑升级旧版默认短上下文窗口（12->40）与低记忆召回数（6->16），大幅强化长对话记忆牢靠度
+  const memMigrated = getSettingStmt.get('memory_v2_long_context_upgraded');
+  if (!memMigrated) {
+    db.prepare("UPDATE settings SET value = '40' WHERE key = 'sliding_window_turns' AND value = '12'").run();
+    db.prepare("UPDATE settings SET value = '16' WHERE key = 'max_recalled_memories' AND value = '6'").run();
+    db.prepare("UPDATE user_settings SET value = '40' WHERE key = 'sliding_window_turns' AND value = '12'").run();
+    db.prepare("UPDATE user_settings SET value = '16' WHERE key = 'max_recalled_memories' AND value = '6'").run();
+    setSettingStmt.run('memory_v2_long_context_upgraded', '1');
+  }
 
   const now = Date.now();
 
@@ -1502,11 +1596,28 @@ function seedInitialData() {
   // 保留旧版历史数据承接账户（不再将新访客混入该账号，确保新访客每人独立一户）
   const demoUser = db.prepare("SELECT * FROM users WHERE id = 'user_demo'").get();
   if (!demoUser) {
+    const giftCfg = getRegisterGiftConfig();
+    const demoTier = giftCfg.enabled ? giftCfg.tier : 'free';
+    const demoCard = giftCfg.enabled ? giftCfg.cardType : 'none';
+    const demoTierName = giftCfg.enabled ? giftCfg.tierName : '普通旅人';
+    const demoExp = giftCfg.enabled ? now + giftCfg.days * 86400 * 1000 : null;
     db.prepare(`
       INSERT INTO users (
-        id, email, nickname, avatar, password_hash, role, tier, card_type, tier_name, points, total_points_earned, online_credits, total_used, redeemed_codes, onboarding_done, created_at, updated_at
-      ) VALUES ('user_demo', 'demo@star.love', '星语旅人', '🎀', ?, 'user', 'free', 'none', '普通旅人', 50, 50, 5, 0, '[]', 0, ?, ?)
-    `).run(hashPassword('star123456'), now, now);
+        id, email, nickname, avatar, password_hash, role, tier, card_type, tier_name, points, total_points_earned, online_credits, total_used, redeemed_codes, onboarding_done, expires_at, created_at, updated_at
+      ) VALUES ('user_demo', 'demo@star.love', '星语旅人', '🎀', ?, 'user', ?, ?, ?, 100, 100, 30, 0, '[]', 0, ?, ?, ?)
+    `).run(hashPassword('star123456'), demoTier, demoCard, demoTierName, demoExp, now, now);
+  }
+
+  // 为升级前尚未获赠过会员的存量普通账户平滑补发注册会员礼
+  const giftInit = getRegisterGiftConfig();
+  if (giftInit.enabled) {
+    db.prepare(`
+      UPDATE users
+      SET tier = ?, card_type = ?, tier_name = ?, expires_at = ?,
+          points = MAX(points, 100), total_points_earned = MAX(total_points_earned, 100),
+          online_credits = MAX(online_credits, 30), updated_at = ?
+      WHERE role != 'admin' AND tier = 'free' AND expires_at IS NULL
+    `).run(giftInit.tier, giftInit.cardType, giftInit.tierName, now + giftInit.days * 86400 * 1000, now);
   }
 
   db.prepare("UPDATE sessions SET user_id = 'user_demo' WHERE user_id IS NULL OR user_id = ''").run();
@@ -1737,15 +1848,18 @@ function formatRemainingDuration(expiresAt, now = Date.now()) {
 }
 
 function buildMembershipSnapshot(row, now = Date.now()) {
+  const freeMode = isFreeExperienceMode();
   if (!row) {
     return {
       tier: 'free',
       card_type: 'none',
-      tier_name: '普通旅人',
-      is_vip: false,
+      tier_name: freeMode ? '🌟 免费畅玩旅人' : '普通旅人',
+      is_vip: freeMode,
       has_active_card: false,
-      can_bind_own_api: false,
-      can_use_online: false,
+      can_bind_own_api: freeMode,
+      can_use_online: freeMode,
+      free_experience_mode: freeMode,
+      billing_enabled: !freeMode,
       online_credits: 0,
       points: 0,
       total_points_earned: 0,
@@ -1771,30 +1885,36 @@ function buildMembershipSnapshot(row, now = Date.now()) {
     else if (row.tier === 'crown') effectiveCardType = 'year';
   }
 
-  let displayTierName = '🌙 普通旅人';
+  let displayTierName = freeMode ? '🌟 全站免费畅享会员' : '🌙 普通旅人';
   if (hasActiveCard) {
     displayTierName = row.tier_name || '🌙 星月会员';
-  } else if (credits > 0) {
+  } else if (!freeMode && credits > 0) {
     displayTierName = '💎 持次畅聊旅人';
-  } else if (cardExpired) {
+  } else if (!freeMode && cardExpired) {
     displayTierName = '🌙 普通旅人（卡已到期）';
   }
 
   return {
-    tier: hasActiveCard ? row.tier : 'free',
+    tier: hasActiveCard ? row.tier : freeMode ? 'moon' : 'free',
     card_type: effectiveCardType,
     tier_name: displayTierName,
-    is_vip: hasActiveCard,
+    is_vip: Boolean(freeMode || hasActiveCard || row.role === 'admin'),
     has_active_card: hasActiveCard,
-    can_bind_own_api: Boolean(hasActiveCard || row.role === 'admin'),
-    card_expired: cardExpired,
-    can_use_online: hasActiveCard || credits > 0 || points >= CHAT_POINTS_COST,
+    can_bind_own_api: Boolean(freeMode || hasActiveCard || row.role === 'admin'),
+    card_expired: freeMode ? false : cardExpired,
+    can_use_online: Boolean(freeMode || hasActiveCard || credits > 0 || points >= CHAT_POINTS_COST),
+    free_experience_mode: freeMode,
+    billing_enabled: !freeMode,
     online_credits: credits,
     points,
     total_points_earned: Math.max(points, Number(row.total_points_earned) || 0),
     total_used: Number(row.total_used) || 0,
     expires_at: row.expires_at || null,
-    remaining_text: hasActiveCard ? formatRemainingDuration(row.expires_at, now) : '',
+    remaining_text: hasActiveCard
+      ? formatRemainingDuration(row.expires_at, now)
+      : freeMode
+      ? '全免费畅玩中'
+      : '',
     checkin_streak: Number(row.checkin_streak) || 0,
     checked_in_today: row.last_checkin_date === todayKey,
     last_checkin_date: row.last_checkin_date || null,
@@ -1889,23 +2009,32 @@ function registerUser({ email, nickname, password, avatar }) {
 
   const now = Date.now();
   const userId = genId('user');
-  const initPoints = 50;
-  const initCredits = 5;
+  const giftCfg = getRegisterGiftConfig();
+  const initPoints = giftCfg.enabled ? 100 : 50;
+  const initCredits = giftCfg.enabled ? 30 : 5;
+  const initTier = giftCfg.enabled ? giftCfg.tier : 'free';
+  const initCardType = giftCfg.enabled ? giftCfg.cardType : 'none';
+  const initTierName = giftCfg.enabled ? giftCfg.tierName : '普通旅人';
+  const initExpiresAt = giftCfg.enabled ? now + giftCfg.days * 86400 * 1000 : null;
 
   db.prepare(`
     INSERT INTO users (
       id, email, nickname, avatar, password_hash, role, tier, card_type, tier_name,
-      points, total_points_earned, online_credits, total_used, redeemed_codes, onboarding_done, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, 'user', 'free', 'none', '普通旅人', ?, ?, ?, 0, '[]', 0, ?, ?)
+      points, total_points_earned, online_credits, total_used, redeemed_codes, onboarding_done, expires_at, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, 'user', ?, ?, ?, ?, ?, ?, 0, '[]', 0, ?, ?, ?)
   `).run(
     userId,
     cleanEmail,
     cleanNick,
     (avatar || '🎀').trim().slice(0, 4),
     hashPassword(rawPwd),
+    initTier,
+    initCardType,
+    initTierName,
     initPoints,
     initPoints,
     initCredits,
+    initExpiresAt,
     now,
     now
   );
@@ -1916,7 +2045,9 @@ function registerUser({ email, nickname, password, avatar }) {
     deltaCredits: initCredits,
     balanceAfter: initPoints,
     reasonType: 'welcome',
-    title: '新旅人注册初遇礼（+50积分 / +5次对话额度）',
+    title: giftCfg.enabled
+      ? `🎉 新用户注册尊享礼（立赠 ${giftCfg.days} 天${initTierName.replace(/^[^\s]+\s*/, '')} + ${initPoints}积分 + ${initCredits}次对话额度）`
+      : `新旅人注册初遇礼（+${initPoints}积分 / +${initCredits}次对话额度）`,
     now
   });
 
@@ -1924,7 +2055,7 @@ function registerUser({ email, nickname, password, avatar }) {
 
   const user = sanitizeUser(db.prepare('SELECT * FROM users WHERE id = ?').get(userId));
   const token = createAuthSessionToken(userId);
-  return { user, token };
+  return { user, token, gifted_vip: giftCfg.enabled, gifted_days: giftCfg.enabled ? giftCfg.days : 0 };
 }
 
 function loginUser({ email, password }) {
@@ -1957,23 +2088,33 @@ function loginDemoAccount(preferredGuestId = '') {
   const guestNick = `星屿旅人·${shortTag}`;
   const avatars = ['🎀', '🌸', '🍀', '🦋', '🌙', '🍓'];
   const pickedAvatar = avatars[now % avatars.length];
-  const initPoints = 50;
-  const initCredits = 5;
+  const giftCfg = getRegisterGiftConfig();
+  const grantGuestVip = giftCfg.enabled || isFreeExperienceMode();
+  const initPoints = grantGuestVip ? 100 : 50;
+  const initCredits = grantGuestVip ? 30 : 5;
+  const initTier = grantGuestVip ? giftCfg.tier : 'free';
+  const initCardType = grantGuestVip ? giftCfg.cardType : 'none';
+  const initTierName = grantGuestVip ? giftCfg.tierName : '普通旅人';
+  const initExpiresAt = grantGuestVip ? now + giftCfg.days * 86400 * 1000 : null;
 
   db.prepare(`
     INSERT INTO users (
       id, email, nickname, avatar, password_hash, role, tier, card_type, tier_name,
-      points, total_points_earned, online_credits, total_used, redeemed_codes, onboarding_done, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, 'user', 'free', 'none', '普通旅人', ?, ?, ?, 0, '[]', 0, ?, ?)
+      points, total_points_earned, online_credits, total_used, redeemed_codes, onboarding_done, expires_at, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, 'user', ?, ?, ?, ?, ?, ?, 0, '[]', 0, ?, ?, ?)
   `).run(
     userId,
     guestEmail,
     guestNick,
     pickedAvatar,
     hashPassword(crypto.randomBytes(12).toString('hex')),
+    initTier,
+    initCardType,
+    initTierName,
     initPoints,
     initPoints,
     initCredits,
+    initExpiresAt,
     now,
     now
   );
@@ -1984,7 +2125,9 @@ function loginDemoAccount(preferredGuestId = '') {
     deltaCredits: initCredits,
     balanceAfter: initPoints,
     reasonType: 'welcome',
-    title: '独立访客开户初遇礼（+50积分 / +5次对话额度）',
+    title: grantGuestVip
+      ? `🎉 独立访客开户畅享礼（立赠 ${giftCfg.days} 天会员体验 + ${initPoints}积分 + ${initCredits}次额度）`
+      : '独立访客开户初遇礼（+50积分 / +5次对话额度）',
     now
   });
 
@@ -2562,6 +2705,9 @@ function verifyOnlineChatAccess(userId) {
   if (row.role === 'admin') {
     return { allowed: true, mode: 'admin_free', membership: snap };
   }
+  if (isFreeExperienceMode()) {
+    return { allowed: true, mode: 'free_experience', membership: snap };
+  }
   if (snap.has_active_card) {
     return { allowed: true, mode: 'card_free', membership: snap };
   }
@@ -2575,7 +2721,7 @@ function verifyOnlineChatAccess(userId) {
   return {
     allowed: false,
     code: 'QUOTA_EXHAUSTED',
-    error: `当前高阶在线模型需持有有效「对话日卡/月卡」、对话次数或至少 ${CHAT_POINTS_COST} 星光积分（您可通过每日签到、完成任务获取积分，或充值/兑换卡密）`,
+    error: `当前高阶在线模型需持有有效「对话日卡/月卡」、对话次数或至少 ${CHAT_POINTS_COST} 星光积分（您可通过每日签到、完成任务获取积分，或兑换卡密）`,
     membership: snap
   };
 }
@@ -2590,6 +2736,11 @@ function consumeOnlineCredit(userId) {
   if (row.role === 'admin') {
     db.prepare('UPDATE users SET total_used = total_used + 1, updated_at = ? WHERE id = ?').run(now, userId);
     return { billing_mode: 'admin_free', cost_desc: '站长特权免扣畅聊', membership: getMembership(userId) };
+  }
+
+  if (isFreeExperienceMode()) {
+    db.prepare('UPDATE users SET total_used = total_used + 1, updated_at = ? WHERE id = ?').run(now, userId);
+    return { billing_mode: 'free_experience', cost_desc: '全免费畅玩体验（免扣次）', membership: getMembership(userId) };
   }
 
   if (snap.has_active_card) {
@@ -2671,9 +2822,12 @@ function getWalletOverview(userId) {
     .prepare('SELECT * FROM user_redeem_logs WHERE user_id = ? ORDER BY redeemed_at DESC LIMIT 20')
     .all(userId);
 
+  const freeMode = isFreeExperienceMode();
   return {
     server_date: todayKey,
     is_admin: row.role === 'admin',
+    free_experience_mode: freeMode,
+    billing_enabled: !freeMode,
     membership,
     checkin: {
       checked_in_today: checkedToday,
@@ -2681,7 +2835,7 @@ function getWalletOverview(userId) {
       calendar
     },
     tasks: getTasksProgressForUser(userId),
-    products: Object.values(RECHARGE_PRODUCTS),
+    products: freeMode ? [] : Object.values(RECHARGE_PRODUCTS),
     exchange_items: Object.values(POINTS_EXCHANGE_ITEMS),
     ledger,
     orders,
@@ -2813,51 +2967,15 @@ function deleteAdminRedeemCode(code) {
   return listAdminRedeemCodes();
 }
 
-// 平台托管配置键（仅服务端内部执行与站长后台管理，严禁向普通用户暴露！）
-const PLATFORM_SECRET_KEYS = new Set([
-  'deepseek_api_key',
-  'custom_gateway_token',
-  'tts_api_key'
-]);
-
-const PLATFORM_CONFIG_DEFAULTS = {
-  online_provider_type: 'deepseek', // 'deepseek' | 'custom_gateway'
-  deepseek_base_url: 'https://api.deepseek.com/v1/chat/completions',
-  deepseek_model: 'deepseek-chat',
-  deepseek_api_key: '',
-  custom_gateway_url: 'https://api.openai.com/v1/chat/completions',
-  custom_gateway_model: 'gpt-4o-mini',
-  custom_gateway_token: '',
-  custom_gateway_headers: '{}',
-  tts_provider: 'qwen3_otome',
-  tts_api_key: '',
-  tts_group_id: '',
-  tts_endpoint: '',
-  tts_model: '',
-  tts_cool_voice: '',
-  tts_cute_voice: '',
-  tts_ref_audio: '',
-  tts_ref_text: ''
-};
-
-function getRawPlatformConfigInternal() {
-  const cfg = { ...PLATFORM_CONFIG_DEFAULTS };
-  const rows = db.prepare('SELECT key, value FROM platform_config').all();
-  for (const r of rows) {
-    if (r.key in PLATFORM_CONFIG_DEFAULTS) cfg[r.key] = r.value;
-  }
-  if (!cfg.deepseek_api_key && process.env.PLATFORM_DEEPSEEK_API_KEY) {
-    cfg.deepseek_api_key = String(process.env.PLATFORM_DEEPSEEK_API_KEY).trim();
-  }
-  return cfg;
-}
-
 /**
  * 站长后台读取平台网关配置（所有密钥统一返回掩码与布尔状态，绝不回传明文密钥！）
  */
 function getMaskedAdminPlatformConfig() {
   const raw = getRawPlatformConfigInternal();
   return {
+    free_experience_mode: String(raw.free_experience_mode ?? '1') !== '0',
+    register_gift_vip: String(raw.register_gift_vip ?? '1') !== '0',
+    register_gift_days: Math.max(1, parseInt(raw.register_gift_days || '30', 10) || 30),
     online_provider_type: raw.online_provider_type || 'deepseek',
     deepseek_base_url: raw.deepseek_base_url,
     deepseek_model: raw.deepseek_model,
@@ -2889,7 +3007,12 @@ function updateAdminPlatformConfig(patch = {}) {
 
   for (const [k, v] of Object.entries(patch || {})) {
     if (!(k in PLATFORM_CONFIG_DEFAULTS) || v === undefined || v === null) continue;
-    const strVal = String(v).trim();
+    let strVal = String(v).trim();
+    if (k === 'free_experience_mode' || k === 'register_gift_vip') {
+      strVal = v === true || v === '1' || v === 'true' || v === 1 ? '1' : '0';
+    } else if (k === 'register_gift_days') {
+      strVal = String(Math.max(1, Math.min(3650, parseInt(strVal || '30', 10) || 30)));
+    }
     // 对密钥字段：若传空（除非显式传 clear_*_key）或传回掩码占位符，保留原密钥不覆盖
     if (PLATFORM_SECRET_KEYS.has(k)) {
       if (isMaskedPlaceholder(strVal)) continue;
@@ -2900,24 +3023,87 @@ function updateAdminPlatformConfig(patch = {}) {
   return getMaskedAdminPlatformConfig();
 }
 
-// 会员个人 DeepSeek 官方 API 固定官方端点（锁死官方域名，彻底杜绝会员自定义 URL 引发 SSRF）
+// 默认 DeepSeek 官方端点（同时支持用户填写第三方 OpenAI 兼容网关地址，严格防 SSRF 校验）
 const OFFICIAL_DEEPSEEK_CHAT_URL = 'https://api.deepseek.com/v1/chat/completions';
 
 function validateOfficialDeepSeekApiKey(rawKey) {
-  const clean = String(rawKey || '').trim();
-  if (!/^sk-[A-Za-z0-9_-]{10,160}$/.test(clean)) {
-    const err = new Error('DeepSeek 官方 API Key 格式不正确（需以 sk- 开头，不含空格或特殊字符）');
+  let clean = String(rawKey || '').trim();
+  if (/^Bearer\s+/i.test(clean)) {
+    clean = clean.replace(/^Bearer\s+/i, '').trim();
+  }
+  if (!clean || clean.length < 8 || clean.length > 240 || /\s/.test(clean)) {
+    const err = new Error('API Key 格式不正确（请粘贴完整密钥，不含空格或换行）');
     err.statusCode = 400;
     throw err;
   }
   return clean;
 }
 
+function validateSafeUserApiBaseUrl(rawUrl) {
+  const str = String(rawUrl || '').trim();
+  if (!str) return OFFICIAL_DEEPSEEK_CHAT_URL;
+
+  let parsed;
+  try {
+    parsed = new URL(str);
+  } catch {
+    const err = new Error('自定义 API 接口地址格式不正确（需以 https:// 开头）');
+    err.statusCode = 400;
+    throw err;
+  }
+  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+    const err = new Error('API 接口地址仅支持 HTTPS / HTTP 协议');
+    err.statusCode = 400;
+    throw err;
+  }
+  if (parsed.username || parsed.password) {
+    const err = new Error('API 接口地址禁止内嵌账号密码');
+    err.statusCode = 400;
+    throw err;
+  }
+  const host = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, '');
+  const isPrivateOrLoopback =
+    host === 'localhost' ||
+    host === '0.0.0.0' ||
+    host === '::1' ||
+    host.endsWith('.local') ||
+    host.endsWith('.internal') ||
+    /^127\./.test(host) ||
+    /^10\./.test(host) ||
+    /^192\.168\./.test(host) ||
+    /^169\.254\./.test(host) ||
+    /^172\.(1[6-9]|2\d|3[0-1])\./.test(host);
+  if (isPrivateOrLoopback) {
+    const err = new Error('安全拦截：API 接口地址禁止指向本机环回或私有内网地址');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const cleanPath = parsed.pathname.replace(/\/+$/, '');
+  if (!cleanPath || cleanPath === '') {
+    return `${parsed.origin}/v1/chat/completions`;
+  }
+  if (/\/v\d+$/i.test(cleanPath)) {
+    return `${parsed.origin}${cleanPath}/chat/completions`;
+  }
+  return `${parsed.origin}${cleanPath}${parsed.search || ''}`;
+}
+
+function sanitizeUserModelName(rawModel) {
+  const clean = String(rawModel || '').trim();
+  if (!clean) return 'deepseek-chat';
+  if (!/^[A-Za-z0-9._:@/-]{2,100}$/.test(clean)) {
+    return 'deepseek-chat';
+  }
+  return clean;
+}
+
 /**
- * 权威校验当前用户是否处于有效会员模式（日卡/月卡/季卡/年卡生效期内）或站长身份，可解锁个人官方 API 功能
+ * 校验当前用户是否可绑定自有 API（全免费模式下全员免门槛开放；商业模式下对会员与站长开放）
  */
 function canUserBindOwnDeepSeekKey(userId) {
   if (!userId) return false;
+  if (isFreeExperienceMode()) return true;
   const row = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
   if (!row) return false;
   if (row.role === 'admin') return true;
@@ -2926,22 +3112,30 @@ function canUserBindOwnDeepSeekKey(userId) {
 }
 
 /**
- * 仅限服务端内部读取该用户自己绑定的 DeepSeek 官方 API 配置（与站长 platform_config 100% 物理隔离）
+ * 仅限服务端内部读取该用户自己绑定的 API 配置（与站长 platform_config 100% 物理隔离，同时服务于 DeepSeek 与角色扮演双模式）
  */
 function getRawUserOwnDeepSeekConfig(userId) {
   const unlocked = canUserBindOwnDeepSeekKey(userId);
   let apiKey = '';
   let model = 'deepseek-chat';
+  let baseUrl = OFFICIAL_DEEPSEEK_CHAT_URL;
   if (userId) {
     const rows = db
       .prepare(
-        "SELECT key, value FROM user_settings WHERE user_id = ? AND key IN ('own_deepseek_api_key', 'own_deepseek_model')"
+        "SELECT key, value FROM user_settings WHERE user_id = ? AND key IN ('own_deepseek_api_key', 'own_deepseek_model', 'own_api_base_url')"
       )
       .all(userId);
     for (const r of rows) {
       if (r.key === 'own_deepseek_api_key') apiKey = String(r.value || '').trim();
-      if (r.key === 'own_deepseek_model' && r.value === 'deepseek-reasoner') {
-        model = 'deepseek-reasoner';
+      if (r.key === 'own_deepseek_model' && r.value) {
+        model = sanitizeUserModelName(r.value);
+      }
+      if (r.key === 'own_api_base_url' && r.value) {
+        try {
+          baseUrl = validateSafeUserApiBaseUrl(r.value);
+        } catch {
+          baseUrl = OFFICIAL_DEEPSEEK_CHAT_URL;
+        }
       }
     }
   }
@@ -2950,23 +3144,25 @@ function getRawUserOwnDeepSeekConfig(userId) {
     hasKey: Boolean(apiKey),
     apiKey,
     model,
-    baseUrl: OFFICIAL_DEEPSEEK_CHAT_URL
+    baseUrl
   };
 }
 
 /**
- * 普通用户前端可见的个人偏好设置（严禁明文返回任何 API Key，会员个人 Key 亦仅返回掩码状态！）
+ * 普通用户前端可见的个人偏好设置（严禁明文返回任何 API Key，个人 Key 仅返回掩码状态！）
  */
 function getSafeClientSettings(userId) {
   let provider = 'demo';
   let temperature = '0.85';
-  let slidingWindow = '12';
-  let maxRecall = '6';
+  let slidingWindow = '40';
+  let maxRecall = '16';
   let proactiveIdle = '60';
   let ownKey = '';
   let ownModel = 'deepseek-chat';
+  let ownBaseUrl = OFFICIAL_DEEPSEEK_CHAT_URL;
 
   const unlocked = canUserBindOwnDeepSeekKey(userId);
+  const freeMode = isFreeExperienceMode();
 
   if (userId) {
     const rows = db.prepare('SELECT key, value FROM user_settings WHERE user_id = ?').all(userId);
@@ -2982,7 +3178,14 @@ function getSafeClientSettings(userId) {
       provider = 'online';
     }
     if (map.own_deepseek_api_key) ownKey = String(map.own_deepseek_api_key).trim();
-    if (map.own_deepseek_model === 'deepseek-reasoner') ownModel = 'deepseek-reasoner';
+    if (map.own_deepseek_model) ownModel = sanitizeUserModelName(map.own_deepseek_model);
+    if (map.own_api_base_url) {
+      try {
+        ownBaseUrl = validateSafeUserApiBaseUrl(map.own_api_base_url);
+      } catch {
+        ownBaseUrl = OFFICIAL_DEEPSEEK_CHAT_URL;
+      }
+    }
     if (map.temperature) temperature = map.temperature;
     if (map.sliding_window_turns) slidingWindow = map.sliding_window_turns;
     if (map.max_recalled_memories) maxRecall = map.max_recalled_memories;
@@ -2991,10 +3194,12 @@ function getSafeClientSettings(userId) {
 
   return {
     provider, // 'demo' | 'online' | 'own_deepseek'
+    free_experience_mode: freeMode,
     vip_own_api_unlocked: unlocked,
     has_own_deepseek_key: Boolean(ownKey),
     own_deepseek_key_masked: ownKey ? maskSecret(ownKey) : '',
     own_deepseek_model: ownModel,
+    own_api_base_url: ownBaseUrl,
     temperature,
     sliding_window_turns: slidingWindow,
     max_recalled_memories: maxRecall,
@@ -3003,7 +3208,7 @@ function getSafeClientSettings(userId) {
 }
 
 /**
- * 普通用户/会员保存个人偏好设置（严格白名单 + 会员资格硬校验 + 密钥掩码保护）
+ * 保存个人偏好与自定义 API 直连设置（支持同时在 DeepSeek 原生模式与角色扮演模式中生效）
  */
 function updateSafeClientSettings(userId, patch = {}) {
   if (!userId) throw new Error('未指定用户身份');
@@ -3017,7 +3222,7 @@ function updateSafeClientSettings(userId, patch = {}) {
     ON CONFLICT(user_id, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
   `);
 
-  // 1. 允许用户随时解绑清空自己保存过的个人 API Key
+  // 1. 允许用户随时解绑清空或更新自己保存的个人 API Key
   let ownKeyAfter = existingOwn.apiKey;
   if (patch.clear_own_deepseek_key) {
     stmt.run(userId, 'own_deepseek_api_key', '', now);
@@ -3026,7 +3231,7 @@ function updateSafeClientSettings(userId, patch = {}) {
     const rawKeyInput = String(patch.own_deepseek_api_key).trim();
     if (rawKeyInput && !isMaskedPlaceholder(rawKeyInput)) {
       if (!unlocked) {
-        const err = new Error('👑 填写个人 DeepSeek 官方 API 为会员专属特权，请先开通日卡/月卡或用积分兑换会员卡');
+        const err = new Error('👑 填写个人专属 API 为会员特权，请先开通或兑换会员卡');
         err.statusCode = 403;
         err.code = 'VIP_REQUIRED';
         throw err;
@@ -3037,31 +3242,30 @@ function updateSafeClientSettings(userId, patch = {}) {
     }
   }
 
-  // 2. 会员官方模型选择（仅允许官方 V3 / R1）
+  // 2. 自定义 API 接口地址（留空自动恢复为 DeepSeek 官方端点）
+  if (patch.own_api_base_url !== undefined) {
+    const cleanUrl = validateSafeUserApiBaseUrl(patch.own_api_base_url);
+    stmt.run(userId, 'own_api_base_url', cleanUrl, now);
+  }
+
+  // 3. 个人 API 模型标识（支持官方 deepseek-chat / deepseek-reasoner 及第三方兼容模型名）
   if (patch.own_deepseek_model !== undefined) {
-    if (!unlocked && patch.own_deepseek_model !== existingOwn.model) {
-      const err = new Error('👑 个人 DeepSeek 官方 API 配置仅限生效中的会员使用');
-      err.statusCode = 403;
-      err.code = 'VIP_REQUIRED';
-      throw err;
-    }
-    const cleanModel =
-      patch.own_deepseek_model === 'deepseek-reasoner' ? 'deepseek-reasoner' : 'deepseek-chat';
+    const cleanModel = sanitizeUserModelName(patch.own_deepseek_model);
     stmt.run(userId, 'own_deepseek_model', cleanModel, now);
   }
 
-  // 3. 通道档位选择校验
+  // 4. 通道档位选择校验
   if (patch.provider !== undefined) {
     let cleanProv = 'demo';
     if (patch.provider === 'own_deepseek') {
       if (!unlocked) {
-        const err = new Error('👑 启用个人 DeepSeek 官方 API 直连为会员专属特权，请先开通日卡/月卡会员');
+        const err = new Error('👑 启用个人 API 直连为会员特权');
         err.statusCode = 403;
         err.code = 'VIP_REQUIRED';
         throw err;
       }
       if (!ownKeyAfter) {
-        const err = new Error('请先填写您的 DeepSeek 官方 API Key（sk-...），再启用个人官方 API 直连');
+        const err = new Error('请先输入您的 API Key（例如 sk-...），再启用个人 API 直连');
         err.statusCode = 400;
         throw err;
       }
@@ -3075,10 +3279,9 @@ function updateSafeClientSettings(userId, patch = {}) {
     }
     stmt.run(userId, 'provider', cleanProv, now);
   } else if (patch.clear_own_deepseek_key) {
-    // 若主动清空了个人密钥且原先处于 own_deepseek 档，自动切回平台在线档或免费档
     const cur = getSafeClientSettings(userId);
     if (cur.provider === 'own_deepseek') {
-      stmt.run(userId, 'provider', unlocked ? 'online' : 'demo', now);
+      stmt.run(userId, 'provider', 'demo', now);
     }
   }
 
@@ -3087,11 +3290,11 @@ function updateSafeClientSettings(userId, patch = {}) {
     stmt.run(userId, 'temperature', String(Number(t.toFixed(2))), now);
   }
   if (patch.sliding_window_turns !== undefined) {
-    const w = Math.min(40, Math.max(4, parseInt(patch.sliding_window_turns, 10) || 12));
+    const w = Math.min(120, Math.max(6, parseInt(patch.sliding_window_turns, 10) || 40));
     stmt.run(userId, 'sliding_window_turns', String(w), now);
   }
   if (patch.max_recalled_memories !== undefined) {
-    const r = Math.min(15, Math.max(2, parseInt(patch.max_recalled_memories, 10) || 6));
+    const r = Math.min(40, Math.max(4, parseInt(patch.max_recalled_memories, 10) || 16));
     stmt.run(userId, 'max_recalled_memories', String(r), now);
   }
   if (patch.proactive_idle_sec !== undefined) {
@@ -3104,9 +3307,9 @@ function updateSafeClientSettings(userId, patch = {}) {
 
 /**
  * 仅限服务端内部执行推理 / 语音合成时调用：
- * 1. 若用户选了会员专属个人官方 API (own_deepseek) 且当前处于有效会员期内：严格走该用户自己的 DeepSeek 官方 Key（锁死官方 URL）
+ * 1. 若用户选了个人 API 直连 (own_deepseek) 且已绑定密钥：同时在 DeepSeek 原生模式与角色扮演模式中直连该用户自己的 API
  * 2. 若用户选了平台在线通道 (online)：走站长托管网关配置
- * 3. 若用户处于免费档 (demo) 或会员已过期：强制清空所有大模型密钥，杜绝误耗任何一方 API 余额
+ * 3. 若用户处于内置体验档 (demo)：走本地桥接或高拟真剧情引擎
  */
 function getExecutionSettingsForUser(userId, options = {}) {
   const userPrefs = getSafeClientSettings(userId);
@@ -3119,8 +3322,8 @@ function getExecutionSettingsForUser(userId, options = {}) {
         ...DEFAULT_SETTINGS,
         ...platform,
         provider: 'deepseek',
-        deepseek_base_url: OFFICIAL_DEEPSEEK_CHAT_URL,
-        deepseek_model: ownCfg.model,
+        deepseek_base_url: ownCfg.baseUrl || OFFICIAL_DEEPSEEK_CHAT_URL,
+        deepseek_model: ownCfg.model || 'deepseek-chat',
         deepseek_api_key: ownCfg.apiKey,
         custom_gateway_token: '',
         _using_member_own_key: true,
@@ -3156,8 +3359,8 @@ function getExecutionSettingsForUser(userId, options = {}) {
     deepseek_api_key: useOnlineLlm ? platform.deepseek_api_key : '',
     custom_gateway_token: useOnlineLlm ? platform.custom_gateway_token : '',
     temperature: userPrefs.temperature,
-    sliding_window_turns: userPrefs.sliding_window_turns,
-    max_recalled_memories: userPrefs.sliding_window_turns ? userPrefs.max_recalled_memories : '6',
+    sliding_window_turns: userPrefs.sliding_window_turns || '40',
+    max_recalled_memories: userPrefs.max_recalled_memories || '16',
     proactive_idle_sec: userPrefs.proactive_idle_sec
   };
 }
@@ -3918,6 +4121,10 @@ module.exports = {
   canUserBindOwnDeepSeekKey,
   getRawUserOwnDeepSeekConfig,
   validateOfficialDeepSeekApiKey,
+  validateSafeUserApiBaseUrl,
+  sanitizeUserModelName,
+  isFreeExperienceMode,
+  getRegisterGiftConfig,
   OFFICIAL_DEEPSEEK_CHAT_URL,
   getRawPlatformConfigInternal,
   getMaskedAdminPlatformConfig,

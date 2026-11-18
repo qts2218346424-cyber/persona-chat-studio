@@ -111,25 +111,25 @@ if [ -f /root/.star_whisper_env_tmp ]; then
   chmod 600 /opt/star-whisper/.env
 fi
 rm -f /opt/star-whisper/data/tts_cache/*.bin /opt/star-whisper/data/tts_cache/*.json 2>/dev/null || true
+python3 -m pip install --break-system-packages -q edge-tts >/dev/null 2>&1 || pip3 install -q edge-tts >/dev/null 2>&1 || true
 
-# 同步刷新云端 SQLite 中的内置 API 配置与存量角色专属声纹
+# 同步刷新云端 SQLite 中的内置 API 配置与独立高清语音音源
 node -e '
 const {{ db, getRawPlatformConfigInternal, updateAdminPlatformConfig }} = require("/opt/star-whisper/server/db");
 db.prepare("UPDATE sessions SET companion_config = NULL").run();
 db.prepare("UPDATE user_settings SET value = \\x27online\\x27 WHERE key = \\x27provider\\x27 AND value = \\x27demo\\x27").run();
 const c = getRawPlatformConfigInternal();
-if (c.deepseek_api_key || c.tts_api_key) {{
-  updateAdminPlatformConfig({{
-    online_provider_type: "deepseek",
-    deepseek_base_url: c.deepseek_base_url,
-    deepseek_model: c.deepseek_model,
-    deepseek_api_key: c.deepseek_api_key,
-    tts_provider: c.tts_provider,
-    tts_api_key: c.tts_api_key,
-    tts_endpoint: c.tts_endpoint,
-    tts_model: c.tts_model
-  }});
-}}
+updateAdminPlatformConfig({{
+  online_provider_type: "deepseek",
+  deepseek_base_url: c.deepseek_base_url,
+  deepseek_model: c.deepseek_model,
+  deepseek_api_key: c.deepseek_api_key,
+  tts_provider: c.tts_provider,
+  tts_api_key: c.tts_api_key || "",
+  clear_tts_api_key: !c.tts_api_key,
+  tts_endpoint: c.tts_endpoint || "",
+  tts_model: c.tts_model || ""
+}});
 console.log("CLOUD_DB_SYNC_OK:", c.deepseek_model, c.tts_provider);
 '
 

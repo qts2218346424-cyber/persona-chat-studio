@@ -397,7 +397,7 @@ const DEFAULT_SETTINGS = {
   sliding_window_turns: '48',
   max_recalled_memories: '20',
   proactive_idle_sec: '60',
-  tts_provider: 'qwen3_otome',
+  tts_provider: 'edge_neural',
   tts_api_key: '',
   tts_group_id: '',
   tts_endpoint: '',
@@ -427,7 +427,7 @@ const PLATFORM_CONFIG_DEFAULTS = {
   custom_gateway_model: 'gpt-4o-mini',
   custom_gateway_token: '',
   custom_gateway_headers: '{}',
-  tts_provider: 'qwen3_otome',
+  tts_provider: 'edge_neural',
   tts_api_key: '',
   tts_group_id: '',
   tts_endpoint: '',
@@ -453,7 +453,12 @@ function getRawPlatformConfigInternal() {
     cfg.deepseek_api_key = String(process.env.PLATFORM_DEEPSEEK_API_KEY).trim();
   }
 
-  if (!cfg.tts_api_key && envBuiltin.hasBuiltinTtsKey) {
+  if (
+    envBuiltin.hasBuiltinTtsKey &&
+    (!cfg.tts_api_key ||
+      (cfg.tts_provider === 'siliconflow' && envBuiltin.ttsPatch.tts_provider !== 'siliconflow') ||
+      (envBuiltin.ttsPatch.tts_api_key && cfg.tts_provider !== envBuiltin.ttsPatch.tts_provider))
+  ) {
     Object.assign(cfg, envBuiltin.ttsPatch);
   }
 
@@ -3507,10 +3512,7 @@ function getExecutionSettingsForUser(userId, options = {}) {
       const autoTtsBridge = {};
       if (!platform.tts_api_key) {
         if (lowerUrl.includes('siliconflow.cn')) {
-          autoTtsBridge.tts_provider = 'siliconflow';
-          autoTtsBridge.tts_api_key = ownCfg.apiKey;
-          autoTtsBridge.tts_endpoint = 'https://api.siliconflow.cn/v1/audio/speech';
-          autoTtsBridge.tts_model = 'FunAudioLLM/CosyVoice2-0.5B';
+          // 硅基流动专注对话与 Qwen3-ASR 语音识别；配音保持独立高音质 edge_neural API，避免 0.5B 声码器电流底噪
           autoTtsBridge._builtin_asr = {
             enabled: true,
             provider: 'siliconflow',

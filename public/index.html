@@ -236,13 +236,13 @@
         </div>
       </div>
 
-      <!-- 保留工作台切换节点但默认收纳隐藏，不再干扰剧本主界面 -->
-      <div class="workspace-mode-bar hidden" role="tablist" aria-label="切换对话工作台模式">
-        <button type="button" class="ws-mode-btn" id="ws-mode-roleplay" role="tab" aria-selected="false">
-          🌸 恋庭沉浸
+      <!-- 双模式分段切换胶囊（支持在「恋庭剧场」与「原生 DeepSeek」间随时一键往返） -->
+      <div class="workspace-mode-bar" role="tablist" aria-label="切换对话工作台模式">
+        <button type="button" class="ws-mode-btn active" id="ws-mode-roleplay" role="tab" aria-selected="true">
+          🌸 恋庭剧场
         </button>
-        <button type="button" class="ws-mode-btn active" id="ws-mode-deepseek" role="tab" aria-selected="true">
-          🐋 原生 DeepSeek
+        <button type="button" class="ws-mode-btn" id="ws-mode-deepseek" role="tab" aria-selected="false">
+          🐋 DeepSeek
         </button>
       </div>
 
@@ -471,8 +471,12 @@
             <span>💞 好感与日记</span>
           </button>
 
-          <button type="button" class="soft-tool-btn rp-only-inline active" id="topbar-companion-btn" title="显示或收起右侧立体陪伴立绘">
-            <span>✨ 陪伴立绘</span>
+          <button type="button" class="soft-tool-btn rp-only-inline active" id="topbar-companion-btn" title="显示或收起立体陪伴立绘">
+            <span>✨ 立绘</span>
+          </button>
+
+          <button type="button" class="soft-tool-btn rp-only-inline" id="topbar-switch-ds-btn" title="一键切换回原生 DeepSeek 模式">
+            <span>🐋 DeepSeek</span>
           </button>
 
           <!-- 次级功能收纳进极简更多菜单 -->
@@ -481,17 +485,24 @@
             class="soft-tool-btn more-tools-trigger"
             id="topbar-more-btn"
             popovertarget="topbar-more-popover"
-            title="签到领福利与更多玩法"
+            aria-label="更多功能"
+            title="更多功能"
           >
             ⋯
           </button>
 
           <div id="topbar-more-popover" popover="auto" class="anchored-popover topbar-more-panel">
+            <button type="button" class="popover-action-item" id="quick-switch-mode-btn">
+              <span>🐋 切换至原生 DeepSeek 模式</span>
+            </button>
+            <button type="button" class="popover-action-item rp-only-flex" id="more-open-nurture-btn">
+              <span>💞 查看好感度与私密日记</span>
+            </button>
             <button type="button" class="popover-action-item rp-only-flex" id="more-open-vip-btn">
               <span>👑 每日签到与福利中心</span>
             </button>
             <button type="button" class="popover-action-item rp-only-flex" id="more-open-square-btn">
-              <span>🌐 玩家角色与剧本广场</span>
+              <span>📖 切换剧本与角色广场</span>
             </button>
             <button type="button" class="popover-action-item rp-only-flex" id="more-open-workshop-btn">
               <span>🪄 上传小说自动生成角色</span>
@@ -534,9 +545,6 @@
             </button>
             <button type="button" class="popover-action-item hidden" id="start-tour-btn">
               <span>🧭 新手引导</span>
-            </button>
-            <button type="button" class="popover-action-item hidden" id="quick-switch-mode-btn">
-              <span>🐋 纯文本模式</span>
             </button>
           </div>
         </div>

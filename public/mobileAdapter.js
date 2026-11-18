@@ -8,33 +8,21 @@
 (() => {
   const MOBILE_MQ = window.matchMedia('(max-width: 860px)');
 
-  // 1. 打开网页默认模式初始化（新开标签页默认进入 DeepSeek 模式，支持 URL ?mode= 覆盖）
+  // 1. 打开网页默认模式初始化（与 app.js 统一使用 ui_mode_v5，尊重玩家上次选择的模式）
   function resolveInitialDefaultMode() {
     try {
       const params = new URLSearchParams(window.location.search);
       const queryMode = params.get('mode');
       if (queryMode === 'roleplay' || queryMode === 'deepseek') {
-        localStorage.setItem('ui_mode_v3', queryMode);
-        localStorage.setItem('ui_mode_v4', queryMode);
-        sessionStorage.setItem('star_tab_ui_booted_v4', '1');
+        localStorage.setItem('ui_mode_v5', queryMode);
         return queryMode;
       }
-
-      if (!sessionStorage.getItem('star_tab_ui_booted_v4')) {
-        localStorage.setItem('ui_mode_v3', 'deepseek');
-        localStorage.setItem('ui_mode_v4', 'deepseek');
-        sessionStorage.setItem('star_tab_ui_booted_v4', '1');
-        return 'deepseek';
-      }
-
-      const currentSaved = localStorage.getItem('ui_mode_v3');
+      const currentSaved = localStorage.getItem('ui_mode_v5');
       if (currentSaved === 'roleplay' || currentSaved === 'deepseek') {
         return currentSaved;
       }
-      localStorage.setItem('ui_mode_v3', 'deepseek');
-      localStorage.setItem('ui_mode_v4', 'deepseek');
     } catch {}
-    return 'deepseek';
+    return 'roleplay';
   }
 
   const bootMode = resolveInitialDefaultMode();
@@ -69,9 +57,10 @@
     btn.innerHTML = `<span class="btn-full-lbl">${fullText}</span><span class="btn-short-lbl">${shortText}</span>`;
   }
 
-  applyResponsiveButtonLabels('topbar-script-switch-btn', '📖 剧本与广场', '📖 剧本');
-  applyResponsiveButtonLabels('topbar-chapters-btn', '🎬 选幕次', '🎬 幕次');
-  applyResponsiveButtonLabels('topbar-more-btn', '⋯ 更多', '⋯');
+  applyResponsiveButtonLabels('topbar-script-switch-btn', '📖 换剧本', '📖 剧本');
+  applyResponsiveButtonLabels('topbar-companion-btn', '✨ 陪伴立绘', '✨ 立绘');
+  applyResponsiveButtonLabels('topbar-switch-ds-btn', '🐋 DeepSeek', '🐋 DS');
+  applyResponsiveButtonLabels('topbar-more-btn', '⋯', '⋯');
 
   // 顶栏左侧移动端空状态轻量品牌字标
   const topbarLeft = document.querySelector('.stage-topbar .topbar-left');
@@ -107,8 +96,8 @@
       rpJumpBtn.type = 'button';
       rpJumpBtn.id = 'ds-topbar-rp-btn';
       rpJumpBtn.className = 'soft-tool-btn ds-only-inline ds-switch-rp-pill';
-      rpJumpBtn.title = '一键切换至「星语恋庭」番剧角色扮演沉浸剧场';
-      rpJumpBtn.innerHTML = '<span>🌸 恋庭剧场</span>';
+      rpJumpBtn.title = '一键切换至「星语恋庭」角色扮演剧场';
+      rpJumpBtn.innerHTML = '<span class="btn-full-lbl">🌸 恋庭剧场</span><span class="btn-short-lbl">🌸 恋庭</span>';
       rpJumpBtn.addEventListener('click', () => {
         document.getElementById('ws-mode-roleplay')?.click();
       });
@@ -136,69 +125,12 @@
     }
   }
 
-  // 补齐顶栏 ⋯ 更多菜单在 DeepSeek 手机模式下的常用入口
+  // 保持 ⋯ 更多菜单极简纯净，不再塞入极客调试菜单项
   const morePopover = document.getElementById('topbar-more-popover');
   if (morePopover) {
     const vipMoreBtn = document.getElementById('more-open-vip-btn');
     if (vipMoreBtn) {
       vipMoreBtn.classList.remove('rp-only-flex');
-    }
-
-    const extraDsItems = [
-      {
-        id: 'more-open-ds-artifacts-btn',
-        cls: 'popover-action-item ds-only-flex',
-        label: '🖥️ 打开代码实时预览视窗',
-        triggerId: 'open-ds-artifacts-btn'
-      },
-      {
-        id: 'more-open-ds-suite-btn',
-        cls: 'popover-action-item ds-only-flex',
-        label: '⚡ 引擎加速与工具状态',
-        triggerId: 'open-ds-inspector-btn'
-      },
-      {
-        id: 'more-open-ds-share-btn',
-        cls: 'popover-action-item ds-only-flex',
-        label: '📤 生成分享长图 / 导出 Markdown',
-        triggerId: 'ds-share-session-btn'
-      },
-      {
-        id: 'more-open-ds-theme-btn',
-        cls: 'popover-action-item ds-only-flex',
-        label: '🌗 切换浅色 / 深色外观',
-        triggerId: 'ds-quick-theme-btn'
-      }
-    ];
-
-    extraDsItems.reverse().forEach((cfg) => {
-      if (document.getElementById(cfg.id)) return;
-      const item = document.createElement('button');
-      item.type = 'button';
-      item.className = cfg.cls;
-      item.id = cfg.id;
-      item.innerHTML = `<span>${cfg.label}</span>`;
-      item.addEventListener('click', () => {
-        document.getElementById(cfg.triggerId)?.click();
-      });
-      morePopover.insertBefore(item, morePopover.firstChild);
-    });
-
-    if (!document.getElementById('more-open-settings-btn')) {
-      const settingsItem = document.createElement('button');
-      settingsItem.type = 'button';
-      settingsItem.className = 'popover-action-item';
-      settingsItem.id = 'more-open-settings-btn';
-      settingsItem.innerHTML = '<span>⚙️ 聊天偏好与外观设置</span>';
-      settingsItem.addEventListener('click', () => {
-        document.getElementById('open-settings-btn')?.click();
-      });
-      const switchModeItem = document.getElementById('quick-switch-mode-btn');
-      if (switchModeItem) {
-        morePopover.insertBefore(settingsItem, switchModeItem);
-      } else {
-        morePopover.appendChild(settingsItem);
-      }
     }
   }
 
@@ -216,6 +148,7 @@
     closeCompBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       companionStage.classList.add('hidden');
+      document.getElementById('topbar-companion-btn')?.classList.remove('active');
     });
     compStyleBar.appendChild(closeCompBtn);
   }
@@ -386,6 +319,7 @@
       }
 
       if (
+        target.closest('.ws-mode-btn') ||
         target.closest('.session-item') ||
         target.closest('.persona-card-item') ||
         target.closest('#ds-new-chat-btn') ||

@@ -199,7 +199,7 @@ function resolveOrGenerateCompanion({
     persona_guxiuyuan: 'otome_daddy',
     persona_hodgins_landon: 'otome_daddy',
     persona_suwanqing: 'otome_queen',
-    persona_yunzhiyao: 'otome_queen',
+    persona_yunzhiyao: 'otome_sister',
     persona_yan_feiyu: 'otome_queen',
     persona_xia_ningmeng: 'cute_sweet'
   };
@@ -228,7 +228,7 @@ function resolveOrGenerateCompanion({
         : isDaddy
         ? 'otome_daddy'
         : 'otome_boss',
-    cool_lady: 'otome_queen',
+    cool_lady: PERSONA_EXCLUSIVE_VOICE[pid] === 'otome_sister' ? 'otome_sister' : 'otome_queen',
     cute_boy: 'otome_sunny',
     cute_girl: 'cute_sweet',
     cute_chibi: 'cute_mochi'
@@ -249,7 +249,10 @@ function resolveOrGenerateCompanion({
         'otome_sunny'
       ].includes(savedVoice);
       // 防止切换角色时性别声线错位
-      if ((isFemale && isSavedMaleVoice) || (!isFemale && (savedVoice === 'otome_queen' || savedVoice === 'cute_sweet'))) {
+      if (
+        (isFemale && isSavedMaleVoice) ||
+        (!isFemale && ['otome_queen', 'otome_sister', 'cute_sweet'].includes(savedVoice))
+      ) {
         voiceId = defaultSkinVoice;
       } else {
         voiceId = savedVoice || defaultSkinVoice;

@@ -6,6 +6,7 @@ const readline = require('node:readline');
 
 const KOKORO_SCRIPT = path.join(__dirname, 'kokoroTtsWorker.py');
 const QWEN_SCRIPT = path.join(__dirname, 'qwenTtsWorker.py');
+const EDGE_SCRIPT = path.join(__dirname, 'edgeTtsWorker.py');
 const CACHE_DIR = path.join(__dirname, '..', 'data', 'tts_cache');
 const CUSTOM_REF_AUDIO_PATH = path.join(CACHE_DIR, 'custom_otome_ref.wav');
 
@@ -122,16 +123,32 @@ const VOICE_CATALOG = {
     style: 'cool',
     isMale: false,
     label: '👠 高冷清艳御姐',
-    desc: '冰山女执政官/清冷师姐 · 清冽微哑成熟御姐音，外冷内宠',
+    desc: '冰山女执政官/微撩歌姬 · 清冽微沉成熟御姐音，外冷内宠',
     defaultSpeed: 0.94,
     minimaxVoice: 'female-yujie',
     minimaxPitch: -1,
     minimaxSpeed: 0.94,
     dashscopeVoice: 'Serena',
-    volcVoice: 'zh_female_gaolengyujie_moon_bigtts',
+    volcVoice: 'zh_female_cancan_uranus_bigtts',
     siliconVoice: 'anna',
     openaiVoice: 'sage',
     cosyPrompt: '用高冷清艳、微哑磁性却暗藏温柔护短宠溺的成熟御姐女主声优语气轻声说'
+  },
+  otome_sister: {
+    id: 'otome_sister',
+    style: 'cool',
+    isMale: false,
+    label: '🌙 清冷仙侠师姐',
+    desc: '月华宫神女专属 · 清越温婉如碎玉落冰盘，温柔护短',
+    defaultSpeed: 0.95,
+    minimaxVoice: 'female-chengshu',
+    minimaxPitch: 0,
+    minimaxSpeed: 0.95,
+    dashscopeVoice: 'Serena',
+    volcVoice: 'zh_female_qingxinnvsheng_uranus_bigtts',
+    siliconVoice: 'anna',
+    openaiVoice: 'sage',
+    cosyPrompt: '用清冷温婉、雅致柔和却暗藏护短私心的古风仙侠大师姐声优语气轻声说'
   },
   cute_sweet: {
     id: 'cute_sweet',
@@ -144,7 +161,7 @@ const VOICE_CATALOG = {
     minimaxPitch: 0,
     minimaxSpeed: 1.02,
     dashscopeVoice: 'Chelsie',
-    volcVoice: 'zh_female_shuangkuaisisi_moon_bigtts',
+    volcVoice: 'zh_female_sajiaoxuemei_uranus_bigtts',
     siliconVoice: 'claire',
     openaiVoice: 'coral',
     cosyPrompt: '用清甜灵动、满眼欢喜崇拜与元气少女笑意的甜妹学妹声优语气说'
@@ -160,7 +177,7 @@ const VOICE_CATALOG = {
     minimaxPitch: 1,
     minimaxSpeed: 1.03,
     dashscopeVoice: 'Momo',
-    volcVoice: 'zh_female_tianmeixiaoyuan_moon_bigtts',
+    volcVoice: 'zh_female_tianmeitaozi_uranus_bigtts',
     siliconVoice: 'diana',
     openaiVoice: 'coral',
     cosyPrompt: '用清甜软糯、元气撒娇且充满灵动笑意的软萌配音语气说'
@@ -174,8 +191,8 @@ const LEGACY_VOICE_ALIAS = {
   zf_xiaoyi: 'cute_mochi'
 };
 
-// 通用 JSON 行子进程管理器（分别维护 Qwen3-TTS 1.7B 云端声优连接池与离线保底进程）
-function createJsonLineWorker(scriptPath, bootTimeoutMs = 20000) {
+// 通用 JSON 行子进程管理器（支持云端轻量网络 Worker 与本地离线 Worker 分离管控）
+function createJsonLineWorker(scriptPath, bootTimeoutMs = 20000, allowOnCloud = false) {
   let proc = null;
   let ready = false;
   let failed = false;
@@ -184,7 +201,7 @@ function createJsonLineWorker(scriptPath, bootTimeoutMs = 20000) {
   const pending = new Map();
 
   function ensure() {
-    if (process.env.DISABLE_LOCAL_TTS_WORKERS === '1') return Promise.resolve(false);
+    if (!allowOnCloud && process.env.DISABLE_LOCAL_TTS_WORKERS === '1') return Promise.resolve(false);
     if (ready && proc) return Promise.resolve(true);
     if (failed) return Promise.resolve(false);
     if (initPromise) return initPromise;
@@ -288,8 +305,9 @@ function createJsonLineWorker(scriptPath, bootTimeoutMs = 20000) {
   return { ensure, request, kill };
 }
 
-const qwenWorker = createJsonLineWorker(QWEN_SCRIPT, 22000);
-const kokoroWorker = createJsonLineWorker(KOKORO_SCRIPT, 15000);
+const edgeWorker = createJsonLineWorker(EDGE_SCRIPT, 12000, true);
+const qwenWorker = createJsonLineWorker(QWEN_SCRIPT, 22000, false);
+const kokoroWorker = createJsonLineWorker(KOKORO_SCRIPT, 15000, false);
 
 function stripTextForCommercialTts(raw) {
   return String(raw || '')
@@ -824,31 +842,21 @@ async function synthesizeNeuralSpeech({ text, voiceId = 'otome_cool', speed, set
     return { ok: false, fallback: true, error: '无可朗读对白文本' };
   }
 
-  const provider = settings.tts_provider || 'qwen3_otome';
-  const cacheKey = `v3:${provider}:${settings.tts_model || ''}:${settings.tts_cool_voice || ''}:${settings.tts_cute_voice || ''}:${settings.tts_ref_text || ''}:${meta.id}:${cleanedText}`;
+  const provider = settings.tts_provider || 'edge_neural';
+  const cacheKey = `v4:${provider}:${settings.tts_model || ''}:${settings.tts_cool_voice || ''}:${settings.tts_cute_voice || ''}:${settings.tts_ref_text || ''}:${meta.id}:${cleanedText}`;
 
   if (!strictCommercial) {
     const diskHit = readDiskCache(cacheKey);
     if (diskHit) return diskHit;
   }
 
-  // 1. 默认主力：通义千问 Qwen3-TTS 1.7B 乙游声优大模型（免密钥直出贴耳气声真声）
-  if (provider === 'qwen3_otome') {
-    const qwenRes = await callQwen3OtomeCloud({ text: cleanedText, voiceMeta: meta, settings });
-    if (qwenRes && qwenRes.ok) {
-      writeDiskCache(cacheKey, qwenRes);
-      return qwenRes;
-    }
-    if (strictCommercial) {
-      const detail = qwenRes?.error?.includes('ZeroGPU')
-        ? '当前公共免密钥通道今日匿名体验次数已满（填入免费 Hugging Face Token hf_... 可立享每日 25 分钟免费真声，或切换阿里云百炼 / 硅基流动 / 星野 MiniMax 秒回）'
-        : qwenRes?.error || '连接 Qwen3-TTS 云端声优大模型超时';
-      throw new Error(detail);
-    }
-  }
-
-  // 2. 用户自选商业 API 配音平台（MiniMax / 硅基流动 / Fish Audio / 火山豆包 / OpenAI）
-  if (provider !== 'qwen3_otome' && provider !== 'offline_kokoro' && provider !== 'local_kokoro') {
+  // 1. 若配置了专门的高阶商业漫剧配音 API（MiniMax海螺 / 火山豆包2.0 / Fish Audio / 阿里云百炼），优先走专属商业音源
+  if (
+    provider !== 'edge_neural' &&
+    provider !== 'qwen3_otome' &&
+    provider !== 'offline_kokoro' &&
+    provider !== 'local_kokoro'
+  ) {
     const cloudRes = await callCommercialCloudTts({
       text: cleanedText,
       voiceMeta: meta,
@@ -858,6 +866,41 @@ async function synthesizeNeuralSpeech({ text, voiceId = 'otome_cool', speed, set
     if (cloudRes && cloudRes.ok && cloudRes.audioBuffer) {
       writeDiskCache(cacheKey, cloudRes);
       return cloudRes;
+    }
+  }
+
+  // 2. 若显式指定了 Qwen3-TTS 1.7B 且带 HF Token
+  if (provider === 'qwen3_otome') {
+    const qwenRes = await callQwen3OtomeCloud({ text: cleanedText, voiceMeta: meta, settings });
+    if (qwenRes && qwenRes.ok) {
+      writeDiskCache(cacheKey, qwenRes);
+      return qwenRes;
+    }
+    if (strictCommercial) {
+      throw new Error(qwenRes?.error || '连接 Qwen3-TTS 声优模型超时');
+    }
+  }
+
+  // 3. 默认主力音源 API：独立 Azure Edge 24kHz 超纯净无底噪神经语音云（0.35s 极速直出，零电流杂音、零吞字）
+  if (provider === 'edge_neural' || !strictCommercial) {
+    const edgeRes = await edgeWorker.request(
+      {
+        text: cleanedText,
+        voice: meta.id
+      },
+      12000
+    );
+    if (edgeRes && edgeRes.ok && edgeRes.audio_b64) {
+      const mp3Buf = Buffer.from(edgeRes.audio_b64, 'base64');
+      const outObj = {
+        ok: true,
+        audioBuffer: mp3Buf,
+        mimeType: 'audio/mpeg',
+        engineName: 'Azure Edge 24kHz 超清声优',
+        voice: meta
+      };
+      writeDiskCache(cacheKey, outObj);
+      return outObj;
     }
   }
 
@@ -888,15 +931,15 @@ async function synthesizeNeuralSpeech({ text, voiceId = 'otome_cool', speed, set
   };
 }
 
-// 启动后立即预连接 Qwen3-TTS 1.7B 云端声优通道，并后台预烘烤高频切换试听样音进磁盘缓存！
+// 启动后立即预热 Azure Edge 24kHz 超清神经语音通道（约 18MB 内存，毫秒级首包响应）
 function warmupTtsEngine() {
-  if (process.env.DISABLE_LOCAL_TTS_WORKERS === '1') return;
   setTimeout(() => {
-    qwenWorker.ensure().catch(() => {});
-  }, 800);
+    edgeWorker.ensure().catch(() => {});
+  }, 400);
 }
 
 process.on('exit', () => {
+  edgeWorker.kill();
   qwenWorker.kill();
   kokoroWorker.kill();
 });

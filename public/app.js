@@ -3,13 +3,15 @@
   let initialScriptId = 'script_classic';
   try {
     const qMode = new URLSearchParams(window.location.search).get('mode');
+    const savedMode = localStorage.getItem('ui_mode_v5');
     if (qMode === 'roleplay' || qMode === 'deepseek') {
       initialUiMode = qMode;
+    } else if (savedMode === 'roleplay' || savedMode === 'deepseek') {
+      initialUiMode = savedMode;
     }
     if (localStorage.getItem('simple_v6_upgraded') !== '1') {
       localStorage.setItem('simple_v6_upgraded', '1');
       localStorage.setItem('active_script_id', 'script_classic');
-      localStorage.setItem('ui_mode_v5', 'roleplay');
     } else {
       const savedSc = localStorage.getItem('active_script_id');
       if (savedSc) initialScriptId = savedSc;
@@ -7406,10 +7408,15 @@
     } catch {}
   }
 
-  // 初始化恢复玩家的立绘显示偏好（默认开启展示）
+  // 初始化恢复立绘显示状态：桌面大屏默认展开，手机窄屏（<=860px）默认收起防遮挡聊天区
   try {
+    const isNarrowMobile = window.matchMedia('(max-width: 860px)').matches;
     const savedVis = localStorage.getItem('show_companion_stage');
-    setCompanionVisible(savedVis !== '0');
+    if (isNarrowMobile) {
+      setCompanionVisible(false);
+    } else {
+      setCompanionVisible(savedVis !== '0');
+    }
   } catch {}
 
   document.getElementById('toggle-companion-btn').addEventListener('click', () => {
@@ -7417,6 +7424,12 @@
   });
   topbarCompanionBtn?.addEventListener('click', () => {
     setCompanionVisible(companionStageEl.classList.contains('hidden'));
+  });
+  document.getElementById('topbar-switch-ds-btn')?.addEventListener('click', () => {
+    switchWorkspaceMode('deepseek');
+  });
+  document.getElementById('more-open-nurture-btn')?.addEventListener('click', () => {
+    document.getElementById('toggle-right-btn')?.click();
   });
 
   document.getElementById('st-auto-tts-chk')?.addEventListener('change', (e) => {

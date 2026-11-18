@@ -10,7 +10,7 @@
 
 @media (pointer: coarse) {
   :root {
-    --touch-target-min: 40px;
+    --touch-target-min: 44px;
   }
 }
 
@@ -271,16 +271,22 @@ body[data-ui-mode="deepseek"] .auth-gate .info-callout {
     display: flex !important;
     position: fixed !important;
     right: max(10px, env(safe-area-inset-right, 0px));
-    bottom: calc(88px + env(safe-area-inset-bottom, 0px));
-    width: min(232px, 64dvw) !important;
-    max-height: min(410px, 60dvh);
-    padding: 8px 10px 10px !important;
-    border-radius: 22px !important;
-    background: light-dark(rgba(255, 250, 253, 0.94), rgba(26, 20, 44, 0.94)) !important;
+    bottom: calc(84px + env(safe-area-inset-bottom, 0px));
+    width: min(192px, 52dvw) !important;
+    max-height: min(350px, 52dvh);
+    padding: 7px 8px 8px !important;
+    border-radius: 20px !important;
+    background: light-dark(rgba(255, 250, 253, 0.95), rgba(26, 20, 44, 0.95)) !important;
     backdrop-filter: blur(18px) !important;
     border: 1px solid var(--border-strong) !important;
-    box-shadow: 0 16px 40px rgba(28, 16, 48, 0.25) !important;
+    box-shadow: 0 14px 36px rgba(28, 16, 48, 0.25) !important;
     z-index: 75 !important;
+  }
+
+  /* 移动端悬浮立绘内精简次要图标（隐藏换装与传图），只保留高冷/可爱、关闭与语音按钮 */
+  .companion-stage #comp-cycle-skin,
+  .companion-stage #comp-upload-img {
+    display: none !important;
   }
 
   .companion-stage .companion-Style-bar,
@@ -505,7 +511,7 @@ body[data-ui-mode="deepseek"] .auth-gate .info-callout {
     display: inline !important;
   }
 
-  /* 手机端隐藏已收纳进 ⋯ 菜单的次级桌面按钮与过长徽标，释放对话标题与输入栏空间 */
+  /* 手机端全面清理顶栏冗余图标与多行副标题，确保顶栏清爽单行且低于 12% 视口高度 */
   .ds-desktop-tool,
   #open-ds-artifacts-btn,
   #open-fim-dialog-btn,
@@ -515,12 +521,29 @@ body[data-ui-mode="deepseek"] .auth-gate .info-callout {
   #ds-composer-api-chip,
   #composer-channel-badge,
   #ds-model-pill,
-  #bond-level-tag {
+  #bond-level-tag,
+  #live-mood-chip,
+  .persona-chip-tagline,
+  #topbar-script-switch-btn,
+  #toggle-right-btn,
+  .app-shell[data-ui-mode="deepseek"] #topbar-more-btn,
+  .app-shell[data-ui-mode="roleplay"] #open-theater-btn,
+  .app-shell[data-ui-mode="roleplay"] #attach-file-btn {
     display: none !important;
   }
 
+  .avatar-halo {
+    width: 30px !important;
+    height: 30px !important;
+    flex-shrink: 0;
+  }
+
+  .persona-chip-avatar {
+    font-size: 16px !important;
+  }
+
   .ds-topbar-title {
-    max-width: 42dvw !important;
+    max-width: 48dvw !important;
     font-size: 14.5px !important;
     font-weight: 600;
     white-space: nowrap;
@@ -529,8 +552,20 @@ body[data-ui-mode="deepseek"] .auth-gate .info-callout {
   }
 
   .persona-chip-name {
-    font-size: 14px !important;
-    max-width: 38dvw;
+    font-size: 14.5px !important;
+    max-width: 36dvw;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* 手机端消息气泡底部只保留核心「听语音」与「重说」，隐藏冗余小图标 */
+  .msg-footer-bar .a-copy-btn,
+  .msg-footer-bar .a-branch-btn,
+  .msg-footer-bar .a-card-btn,
+  .msg-footer-bar .u-copy-btn,
+  .msg-footer-bar .u-rewind-btn {
+    display: none !important;
   }
 
   .topbar-right > button {

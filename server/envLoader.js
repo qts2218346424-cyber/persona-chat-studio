@@ -70,6 +70,8 @@ function resolveBuiltinEnvConfig() {
   const deepseekKey = getEnvVal('DEEPSEEK_API_KEY') || getEnvVal('PLATFORM_DEEPSEEK_API_KEY');
   const minimaxKey = getEnvVal('MINIMAX_API_KEY');
   const minimaxGroupId = getEnvVal('MINIMAX_GROUP_ID');
+  const volcToken = getEnvVal('VOLC_TTS_TOKEN');
+  const volcAppId = getEnvVal('VOLC_TTS_APPID');
   const fishKey = getEnvVal('FISH_AUDIO_API_KEY');
   const hfToken = getEnvVal('HF_TOKEN');
 
@@ -138,16 +140,38 @@ function resolveBuiltinEnvConfig() {
     };
   }
 
-  // 2. 内置商业配音 TTS 优先级：MiniMax海螺 > 阿里云百炼 > 硅基流动 CosyVoice2 > Fish Audio > HF Qwen3-TTS
+  // 2. 独立专业配音 TTS API 优先级：MiniMax海螺 > 火山豆包 Seed-TTS 2.0 > Fish Audio > 阿里云百炼 > 默认独立 Azure Edge 24kHz 超清神经声优（不默认捆绑硅基 0.5B 模型）
+  const forceSiliconTts = getEnvVal('ENABLE_SILICONFLOW_TTS') === '1';
   if (minimaxKey) {
     result.hasBuiltinTtsKey = true;
-    result.builtinTtsLabel = 'MiniMax Speech-02-HD 漫剧声优';
+    result.builtinTtsLabel = 'MiniMax Speech-02-HD 星野同源声优';
     result.ttsPatch = {
       tts_provider: 'minimax',
       tts_api_key: minimaxKey,
       tts_group_id: minimaxGroupId,
       tts_endpoint: getEnvVal('MINIMAX_TTS_URL') || 'https://api.minimaxi.chat/v1/t2a_v2',
       tts_model: getEnvVal('MINIMAX_TTS_MODEL') || 'speech-02-hd'
+    };
+  } else if (volcToken && volcAppId) {
+    result.hasBuiltinTtsKey = true;
+    result.builtinTtsLabel = '火山豆包 Seed-TTS 2.0 漫剧声优';
+    result.ttsPatch = {
+      tts_provider: 'volcengine',
+      tts_api_key: volcToken,
+      tts_group_id: volcAppId,
+      tts_endpoint: getEnvVal('VOLC_TTS_URL') || 'https://openspeech.bytedance.com/api/v1/tts',
+      tts_model: getEnvVal('VOLC_TTS_CLUSTER') || 'volc_tts'
+    };
+  } else if (fishKey) {
+    result.hasBuiltinTtsKey = true;
+    result.builtinTtsLabel = 'Fish Audio 二次元乙游声优库';
+    result.ttsPatch = {
+      tts_provider: 'fish_audio',
+      tts_api_key: fishKey,
+      tts_endpoint: getEnvVal('FISH_AUDIO_TTS_URL') || 'https://api.fish.audio/v1/tts',
+      tts_model: getEnvVal('FISH_AUDIO_TTS_MODEL') || 's1',
+      tts_cool_voice: getEnvVal('FISH_MALE_VOICE_ID') || '',
+      tts_cute_voice: getEnvVal('FISH_FEMALE_VOICE_ID') || ''
     };
   } else if (dashscopeKey) {
     result.hasBuiltinTtsKey = true;
@@ -160,23 +184,14 @@ function resolveBuiltinEnvConfig() {
         'https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation',
       tts_model: getEnvVal('DASHSCOPE_TTS_MODEL') || 'qwen3-tts-flash'
     };
-  } else if (siliconKey) {
+  } else if (forceSiliconTts && siliconKey) {
     result.hasBuiltinTtsKey = true;
-    result.builtinTtsLabel = '硅基流动 CosyVoice2 漫剧声优';
+    result.builtinTtsLabel = '硅基流动 CosyVoice2';
     result.ttsPatch = {
       tts_provider: 'siliconflow',
       tts_api_key: siliconKey,
       tts_endpoint: getEnvVal('SILICONFLOW_TTS_URL') || 'https://api.siliconflow.cn/v1/audio/speech',
       tts_model: getEnvVal('SILICONFLOW_TTS_MODEL') || 'FunAudioLLM/CosyVoice2-0.5B'
-    };
-  } else if (fishKey) {
-    result.hasBuiltinTtsKey = true;
-    result.builtinTtsLabel = 'Fish Audio 二次元声优引擎';
-    result.ttsPatch = {
-      tts_provider: 'fish_audio',
-      tts_api_key: fishKey,
-      tts_endpoint: getEnvVal('FISH_AUDIO_TTS_URL') || 'https://api.fish.audio/v1/tts',
-      tts_model: getEnvVal('FISH_AUDIO_TTS_MODEL') || 's1'
     };
   } else if (hfToken) {
     result.hasBuiltinTtsKey = true;
@@ -184,6 +199,14 @@ function resolveBuiltinEnvConfig() {
     result.ttsPatch = {
       tts_provider: 'qwen3_otome',
       tts_api_key: hfToken
+    };
+  } else {
+    // 默认采用独立 Azure Edge 24kHz 超纯净无底噪神经语音云 API
+    result.hasBuiltinTtsKey = true;
+    result.builtinTtsLabel = 'Azure Edge 24kHz 超清零底噪神经音源';
+    result.ttsPatch = {
+      tts_provider: 'edge_neural',
+      tts_api_key: ''
     };
   }
 

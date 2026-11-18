@@ -775,23 +775,24 @@ body {
   color: var(--text-primary);
 }
 
-/* 实时轻提示气泡（右下安全区，绝不遮挡顶栏标题与按钮，点击可立即关闭） */
+/* 实时轻提示气泡（聊天视窗底部居中安全区，绝不遮挡顶栏与右侧立绘按钮，点击可立即关闭） */
 .memory-toast {
   position: absolute;
-  bottom: 92px;
-  right: 22px;
-  left: auto;
-  transform: none;
-  max-width: min(380px, calc(100% - 36px));
-  z-index: 38;
+  top: auto;
+  bottom: 88px;
+  left: 50%;
+  right: auto;
+  transform: translateX(-50%);
+  max-width: min(420px, calc(100% - 36px));
+  z-index: 42;
   background: var(--bg-composer);
   backdrop-filter: blur(14px);
   border: 1px solid rgba(236, 94, 167, 0.45);
   color: var(--text-primary);
   padding: 8px 16px;
-  border-radius: 14px;
+  border-radius: 999px;
   font-size: 12.5px;
-  font-weight: 500;
+  font-weight: 600;
   line-height: 1.45;
   box-shadow: var(--shadow-soft);
   cursor: pointer;
@@ -801,11 +802,11 @@ body {
 @keyframes fadeSlideUpToast {
   from {
     opacity: 0;
-    transform: translateY(8px);
+    transform: translate(-50%, 8px);
   }
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: translate(-50%, 0);
   }
 }
 
@@ -1020,13 +1021,21 @@ body {
 }
 
 .msg-tool-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
   background: none;
-  border: none;
+  border: 1px solid transparent;
   color: var(--text-muted);
   font-size: 12px;
+  font-weight: 500;
+  min-height: 28px;
+  min-width: 44px;
   cursor: pointer;
-  padding: 2px 7px;
-  border-radius: 6px;
+  padding: 4px 10px;
+  border-radius: 8px;
+  transition: color 0.15s ease, background-color 0.15s ease, border-color 0.15s ease;
 }
 
 .msg-tool-btn:hover {
@@ -2719,20 +2728,31 @@ progress.nurture-progress::-moz-progress-bar {
 .user-msg-tools {
   display: flex;
   gap: 6px;
-  margin-top: 2px;
-  min-height: 20px;
+  margin-top: 0;
+  max-height: 0;
+  min-height: 0;
+  overflow: hidden;
   opacity: 0;
-  transition: opacity 0.15s ease;
+  transition: opacity 0.15s ease, max-height 0.15s ease, margin-top 0.15s ease;
 }
 
 .msg-row.user:hover .user-msg-tools,
 .msg-row.user:focus-within .user-msg-tools {
+  margin-top: 4px;
+  max-height: 36px;
   opacity: 1;
+}
+
+.msg-tool-btn.synthesizing {
+  color: var(--accent-violet, #7c3aed);
+  background: rgba(139, 92, 246, 0.12);
+  font-weight: 600;
 }
 
 .msg-tool-btn.speaking {
   color: var(--brand-primary);
   background: var(--brand-soft);
+  border-color: rgba(236, 94, 167, 0.35);
   font-weight: 700;
 }
 

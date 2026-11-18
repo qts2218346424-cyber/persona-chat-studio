@@ -26,13 +26,12 @@ class StreamThinkSplitter {
   feedNativeReasoning(chunk) {
     if (!chunk) return;
     this.sawNativeReasoning = true;
-    this.mode = 'in_content';
     this.onReasoning(chunk);
   }
 
   feedContent(chunk) {
     if (!chunk) return;
-    if (this.sawNativeReasoning || !this.enableThought) {
+    if (!this.enableThought && !this.sawNativeReasoning) {
       this.onContent(chunk);
       return;
     }
@@ -64,13 +63,15 @@ class StreamThinkSplitter {
       const closeIdx = this.buffer.indexOf('</think>');
       if (closeIdx !== -1) {
         const thoughtPart = this.buffer.slice(0, closeIdx);
-        if (thoughtPart) this.onReasoning(thoughtPart);
+        if (thoughtPart && !this.sawNativeReasoning) {
+          this.onReasoning(thoughtPart);
+        }
         let rest = this.buffer.slice(closeIdx + 8);
         rest = rest.replace(/^\s+/, '');
         this.buffer = '';
         this.mode = 'in_content';
         if (rest) this.onContent(rest);
-      } else {
+      } else if (!this.sawNativeReasoning) {
         const safeLen = Math.max(0, this.buffer.length - 8);
         if (safeLen > 0) {
           const emitPart = this.buffer.slice(0, safeLen);
@@ -91,7 +92,9 @@ class StreamThinkSplitter {
   flush() {
     if (!this.buffer) return;
     if (this.mode === 'in_think') {
-      this.onReasoning(this.buffer);
+      if (!this.sawNativeReasoning) {
+        this.onReasoning(this.buffer);
+      }
     } else {
       this.onContent(this.buffer);
     }

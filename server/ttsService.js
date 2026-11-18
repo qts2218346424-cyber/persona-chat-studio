@@ -310,13 +310,19 @@ const qwenWorker = createJsonLineWorker(QWEN_SCRIPT, 22000, false);
 const kokoroWorker = createJsonLineWorker(KOKORO_SCRIPT, 15000, false);
 
 function stripTextForCommercialTts(raw) {
-  return String(raw || '')
+  const cleaned = String(raw || '')
     .replace(/^>.*$/gm, '')
-    .replace(/\*[^*]+\*/g, '，')
     .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/\*[^*\n]{1,180}\*/g, '，')
+    .replace(/[*＊]+/g, '')
     .replace(/\s+/g, ' ')
+    .replace(/^[，,。！？!?.、；;：:\s—…-]+/, '')
     .trim()
     .slice(0, 360);
+  if (!/[\u4e00-\u9fa5a-zA-Z0-9]/.test(cleaned)) {
+    return '';
+  }
+  return cleaned;
 }
 
 function injectMinimaxManjuPauses(text, isMaleLead) {
@@ -888,7 +894,7 @@ async function synthesizeNeuralSpeech({ text, voiceId = 'otome_cool', speed, set
         text: cleanedText,
         voice: meta.id
       },
-      12000
+      6500
     );
     if (edgeRes && edgeRes.ok && edgeRes.audio_b64) {
       const mp3Buf = Buffer.from(edgeRes.audio_b64, 'base64');
@@ -904,7 +910,7 @@ async function synthesizeNeuralSpeech({ text, voiceId = 'otome_cool', speed, set
     }
   }
 
-  // 3. 断网离线应急保底（仅在完全无法联网或显式选择离线时启用）
+  // 4. 断网离线应急保底（仅在完全无法联网或显式选择离线时启用）
   const finalSpeed = speed || meta.defaultSpeed || 0.94;
   const workerResult = await kokoroWorker.request(
     {
@@ -912,7 +918,7 @@ async function synthesizeNeuralSpeech({ text, voiceId = 'otome_cool', speed, set
       voice: meta.id,
       speed: finalSpeed
     },
-    12000
+    7000
   );
 
   if (!workerResult.ok || !workerResult.audio_b64) {

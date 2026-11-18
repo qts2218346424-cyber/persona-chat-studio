@@ -120,6 +120,37 @@
   let activeSource = null;
   let activeFallbackBtn = null;
   let rafMeterId = 0;
+  let ttsFetchAbort = null;
+  let isSynthesizing = false;
+  let synthStartedAt = 0;
+  let activeObjectUrl = '';
+
+  function notifyUserVoiceStatus(msg) {
+    if (typeof window.__showAppToast === 'function') {
+      window.__showAppToast(msg);
+      return;
+    }
+    const toastEl = document.getElementById('memory-toast');
+    if (toastEl) {
+      toastEl.textContent = msg;
+      toastEl.classList.remove('hidden');
+      clearTimeout(window.__voiceToastTimer);
+      window.__voiceToastTimer = setTimeout(() => {
+        toastEl.classList.add('hidden');
+      }, 2500);
+    }
+  }
+
+  // 挂载真实 HTMLAudioElement 供跨浏览器播放、移动端兼容与无障碍/自动化状态感知
+  let ttsAudioEl = document.getElementById('companion-tts-audio');
+  if (!ttsAudioEl) {
+    ttsAudioEl = document.createElement('audio');
+    ttsAudioEl.id = 'companion-tts-audio';
+    ttsAudioEl.preload = 'none';
+    ttsAudioEl.setAttribute('aria-hidden', 'true');
+    ttsAudioEl.style.display = 'none';
+    document.body.appendChild(ttsAudioEl);
+  }
 
   const voiceWrap = document.createElement('div');
   voiceWrap.className = 'comp-voice-wrap';
@@ -128,43 +159,65 @@
       <span class="voice-dot-live" aria-hidden="true"></span>
       <span id="comp-voice-open-label">🎙️ 语音通话</span>
     </button>
-
-    <div class="comp-voice-dock hidden" id="comp-voice-dock" role="region" aria-label="角色实时语音通话">
-      <div class="cv-top-row">
-        <span class="cv-live-title" id="cv-live-title">🎧 实时语音通话中</span>
-        <button type="button" class="cv-voice-switch hidden" id="cv-voice-switch-btn">
-          专属声线
-        </button>
-        <span class="cv-wave-bars" id="cv-wave-bars" aria-hidden="true">
-          <i></i><i></i><i></i><i></i>
-        </span>
-        <div class="cv-right-icons">
-          <button type="button" class="cv-gear-btn hidden" id="cv-open-tts-cfg-btn">
-            🎚️音源
-          </button>
-          <button type="button" class="cv-close-btn" id="cv-close-btn" title="挂断语音通话" aria-label="挂断语音通话">✕</button>
-        </div>
-      </div>
-      <form class="cv-input-row" id="cv-voice-form">
-        <button type="button" class="cv-mic-btn" id="cv-mic-btn" title="点击麦克风直接说话" aria-label="麦克风语音输入">
-          🎙️
-        </button>
-        <label for="cv-quick-input" class="visually-hidden">向角色说一句话</label>
-        <input
-          type="text"
-          id="cv-quick-input"
-          class="cv-quick-input"
-          placeholder="点🎙️说话，或打字回车…"
-          autocomplete="off"
-        />
-      </form>
-    </div>
   `;
 
   if (footEl) {
     stageEl.insertBefore(voiceWrap, footEl);
   } else {
     stageEl.appendChild(voiceWrap);
+  }
+
+  // 将实时语音通话舱独立挂载至主聊天舞台，确保收起立绘时依然可随时开启语音通话与切声线
+  const chatStageEl = document.querySelector('.chat-stage') || document.body;
+  const floatingDockEl = document.createElement('div');
+  floatingDockEl.className = 'comp-voice-dock comp-voice-floating-dock hidden';
+  floatingDockEl.id = 'comp-voice-dock';
+  floatingDockEl.setAttribute('role', 'region');
+  floatingDockEl.setAttribute('aria-label', '角色实时语音通话');
+  floatingDockEl.innerHTML = `
+    <div class="cv-top-row">
+      <span class="cv-live-title" id="cv-live-title">🎧 实时语音通话中</span>
+      <button type="button" class="cv-voice-switch" id="cv-voice-switch-btn" title="点击切换专属声线">
+        专属声线
+      </button>
+      <span class="cv-wave-bars" id="cv-wave-bars" aria-hidden="true">
+        <i></i><i></i><i></i><i></i>
+      </span>
+      <div class="cv-right-icons">
+        <button type="button" class="cv-gear-btn hidden" id="cv-open-tts-cfg-btn">
+          🎚️音源
+        </button>
+        <button type="button" class="cv-close-btn" id="cv-close-btn" title="挂断语音通话" aria-label="挂断语音通话">✕</button>
+      </div>
+    </div>
+    <form class="cv-input-row" id="cv-voice-form">
+      <button type="button" class="cv-mic-btn" id="cv-mic-btn" title="点击麦克风直接说话" aria-label="麦克风语音输入">
+        🎙️
+      </button>
+      <label for="cv-quick-input" class="visually-hidden">向角色说一句话</label>
+      <input
+        type="text"
+        id="cv-quick-input"
+        class="cv-quick-input"
+        placeholder="点🎙️说话，或打字回车…"
+        autocomplete="off"
+      />
+    </form>
+  `;
+  chatStageEl.appendChild(floatingDockEl);
+
+  // 在顶栏挂载常驻「🎙️ 通话」入口，关掉陪伴立绘也能一键发起语音通话
+  const topbarCompanionBtn = document.getElementById('topbar-companion-btn');
+  let topbarVoiceBtn = document.getElementById('topbar-voice-call-btn');
+  if (!topbarVoiceBtn && topbarCompanionBtn && topbarCompanionBtn.parentElement) {
+    topbarVoiceBtn = document.createElement('button');
+    topbarVoiceBtn.type = 'button';
+    topbarVoiceBtn.id = 'topbar-voice-call-btn';
+    topbarVoiceBtn.className = 'soft-tool-btn rp-only-inline';
+    topbarVoiceBtn.title = '开启或挂断与当前角色的实时语音通话（即使隐藏立绘也可使用）';
+    topbarVoiceBtn.setAttribute('aria-pressed', 'false');
+    topbarVoiceBtn.innerHTML = '<span class="btn-full-lbl">🎙️ 语音通话</span><span class="btn-short-lbl">🎙️ 通话</span>';
+    topbarCompanionBtn.parentElement.insertBefore(topbarVoiceBtn, topbarCompanionBtn);
   }
 
   const openBtn = document.getElementById('comp-voice-open-btn');
@@ -217,26 +270,63 @@
     syncVoiceUiFromCompanion(e.detail);
   });
 
+  function resetActiveButtonUi(btn) {
+    if (!btn) return;
+    btn.classList.remove('speaking', 'synthesizing');
+    btn.removeAttribute('aria-busy');
+    btn.setAttribute('aria-pressed', 'false');
+    if (btn.dataset.origLabel) {
+      btn.textContent = btn.dataset.origLabel;
+    }
+  }
+
+  function markButtonSpeakingUi(btn) {
+    if (!btn) return;
+    if (!btn.dataset.origLabel) btn.dataset.origLabel = btn.textContent;
+    btn.classList.remove('synthesizing');
+    btn.classList.add('speaking');
+    btn.removeAttribute('aria-busy');
+    btn.setAttribute('aria-pressed', 'true');
+    btn.textContent = btn.classList.contains('cloud-tts-btn') ? '⏹' : '🔊 正在朗读';
+  }
+
   function stopCurrentAudio() {
     cancelAnimationFrame(rafMeterId);
     window.__companionAudioLevel = 0;
+    isSynthesizing = false;
     pokeArea.classList.remove('speaking-glow');
     waveBars.classList.remove('active');
 
+    if (ttsFetchAbort) {
+      try {
+        ttsFetchAbort.abort();
+      } catch {}
+      ttsFetchAbort = null;
+    }
+    if (ttsAudioEl) {
+      try {
+        ttsAudioEl.pause();
+        ttsAudioEl.removeAttribute('src');
+        ttsAudioEl.load();
+      } catch {}
+    }
+    if (activeObjectUrl) {
+      try {
+        URL.revokeObjectURL(activeObjectUrl);
+      } catch {}
+      activeObjectUrl = '';
+    }
     if (activeSource) {
       try {
         activeSource.stop();
       } catch {}
       activeSource = null;
     }
-    if ('speechSynthesis' in window && window.speechSynthesis.speaking) {
+    if ('speechSynthesis' in window && (window.speechSynthesis.speaking || window.speechSynthesis.pending)) {
       window.speechSynthesis.cancel();
     }
     if (activeFallbackBtn) {
-      activeFallbackBtn.classList.remove('speaking');
-      if (activeFallbackBtn.dataset.origLabel) {
-        activeFallbackBtn.textContent = activeFallbackBtn.dataset.origLabel;
-      }
+      resetActiveButtonUi(activeFallbackBtn);
       activeFallbackBtn = null;
     }
   }
@@ -252,18 +342,40 @@
     return audioCtx;
   }
 
-  function playBrowserSpeechFallback(rawText, voiceMeta, btnEl) {
-    if (!('speechSynthesis' in window)) return;
+  function cleanSpeakableDialogue(rawText) {
     const cleaned = String(rawText || '')
       .replace(/^>.*$/gm, '')
-      .replace(/\*[^*]+\*/g, '，')
+      .replace(/\*\*([^*]+)\*\*/g, '$1')
+      .replace(/\*[^*\n]{1,180}\*/g, '，')
+      .replace(/[*＊]+/g, '')
+      .replace(/\s+/g, ' ')
+      .replace(/^[，,。！？!?.、；;：:\s—…-]+/, '')
       .trim();
-    if (!cleaned) return;
+    if (!/[\u4e00-\u9fa5a-zA-Z0-9]/.test(cleaned)) {
+      return '';
+    }
+    return cleaned;
+  }
+
+  function playBrowserSpeechFallback(rawText, voiceMeta, btnEl) {
+    const cleaned = cleanSpeakableDialogue(rawText);
+    if (!cleaned) {
+      resetActiveButtonUi(btnEl);
+      if (activeFallbackBtn === btnEl) activeFallbackBtn = null;
+      notifyUserVoiceStatus('💡 该条消息仅含动作神态描写，暂无对白台词可朗读');
+      return;
+    }
+    if (!('speechSynthesis' in window)) {
+      resetActiveButtonUi(btnEl);
+      if (activeFallbackBtn === btnEl) activeFallbackBtn = null;
+      notifyUserVoiceStatus('⚠️ 当前浏览器不支持本地语音朗读，请稍后重试');
+      return;
+    }
 
     const utter = new SpeechSynthesisUtterance(cleaned);
     utter.lang = 'zh-CN';
-    utter.rate = voiceMeta?.isMale ? 0.92 : 1.06;
-    utter.pitch = voiceMeta?.id === 'otome_boss' ? 0.72 : voiceMeta?.isMale ? 0.84 : 1.22;
+    utter.rate = voiceMeta?.isMale ? 0.94 : 1.05;
+    utter.pitch = voiceMeta?.id === 'otome_boss' ? 0.76 : voiceMeta?.isMale ? 0.86 : 1.18;
 
     const voices = window.speechSynthesis.getVoices();
     const match = voiceMeta?.isMale
@@ -272,87 +384,102 @@
     const fallbackZh = voices.find((v) => v.lang.includes('zh'));
     if (match || fallbackZh) utter.voice = match || fallbackZh;
 
+    markButtonSpeakingUi(btnEl);
     pokeArea.classList.add('speaking-glow');
     waveBars.classList.add('active');
+    notifyUserVoiceStatus('🔊 正在朗读台词（再次点击可停止）');
 
     utter.onend = () => {
       pokeArea.classList.remove('speaking-glow');
       waveBars.classList.remove('active');
-      if (btnEl) {
-        btnEl.classList.remove('speaking');
-        if (btnEl.dataset.origLabel) btnEl.textContent = btnEl.dataset.origLabel;
-      }
+      resetActiveButtonUi(btnEl);
       if (activeFallbackBtn === btnEl) activeFallbackBtn = null;
     };
-    utter.onerror = utter.onend;
+    utter.onerror = () => {
+      pokeArea.classList.remove('speaking-glow');
+      waveBars.classList.remove('active');
+      resetActiveButtonUi(btnEl);
+      if (activeFallbackBtn === btnEl) activeFallbackBtn = null;
+      notifyUserVoiceStatus('⚠️ 系统语音引擎暂未响应，请检查浏览器音量或语音包设置');
+    };
     window.speechSynthesis.speak(utter);
   }
 
   /**
-   * 串联录音棚「乙游贴耳近讲声学滤波链 (Studio Proximity Effect EQ)」并实时驱动立绘共振
+   * 优先通过真实 <audio> 元素播放云端神经声优音频，兼顾全平台可听性与音频状态可观测性
    */
-  async function playAudioBufferWithStudioEq(arrayBuffer, voiceMeta, btnEl) {
-    const ctx = ensureAudioContext();
-    if (!ctx) return;
+  async function playAudioBufferWithStudioEq(arrayBuffer, voiceMeta, btnEl, mimeType = 'audio/mpeg') {
+    const blob = new Blob([arrayBuffer], { type: mimeType || 'audio/mpeg' });
+    if (activeObjectUrl) {
+      try {
+        URL.revokeObjectURL(activeObjectUrl);
+      } catch {}
+    }
+    activeObjectUrl = URL.createObjectURL(blob);
+    ttsAudioEl.src = activeObjectUrl;
 
-    const audioBuffer = await ctx.decodeAudioData(arrayBuffer.slice(0));
-    const source = ctx.createBufferSource();
-    source.buffer = audioBuffer;
-
-    // 保持 Qwen3-TTS 1.7B 母带级清透呼吸气声，仅施加极轻柔的 140Hz 近讲温暖度润色
-    const lowShelf = ctx.createBiquadFilter();
-    lowShelf.type = 'lowshelf';
-    lowShelf.frequency.value = 140;
-    lowShelf.gain.value = voiceMeta?.isMale ? 1.6 : 0.4;
-
-    const airShelf = ctx.createBiquadFilter();
-    airShelf.type = 'highshelf';
-    airShelf.frequency.value = 7200;
-    airShelf.gain.value = 0.8;
-
-    const analyser = ctx.createAnalyser();
-    analyser.fftSize = 256;
-    const dataArray = new Uint8Array(analyser.frequencyBinCount);
-
-    source.connect(lowShelf);
-    lowShelf.connect(airShelf);
-    airShelf.connect(analyser);
-    analyser.connect(ctx.destination);
-
-    activeSource = source;
+    markButtonSpeakingUi(btnEl);
     pokeArea.classList.add('speaking-glow');
     waveBars.classList.add('active');
 
-    function updateLevel() {
-      if (activeSource !== source) return;
-      analyser.getByteTimeDomainData(dataArray);
-      let sumSq = 0;
-      for (let i = 0; i < dataArray.length; i++) {
-        const norm = (dataArray[i] - 128) / 128;
-        sumSq += norm * norm;
-      }
-      const rms = Math.sqrt(sumSq / dataArray.length);
-      window.__companionAudioLevel = Math.min(1, rms * 4.2);
-      rafMeterId = requestAnimationFrame(updateLevel);
+    let pulsePhase = 0;
+    function animatePulseLevel() {
+      if (ttsAudioEl.paused || ttsAudioEl.ended) return;
+      pulsePhase += 0.24;
+      window.__companionAudioLevel = 0.35 + Math.abs(Math.sin(pulsePhase)) * 0.55;
+      rafMeterId = requestAnimationFrame(animatePulseLevel);
     }
 
+    ttsAudioEl.onended = () => {
+      cancelAnimationFrame(rafMeterId);
+      window.__companionAudioLevel = 0;
+      pokeArea.classList.remove('speaking-glow');
+      waveBars.classList.remove('active');
+      resetActiveButtonUi(btnEl);
+      if (activeFallbackBtn === btnEl) activeFallbackBtn = null;
+    };
+
+    ttsAudioEl.onerror = () => {
+      cancelAnimationFrame(rafMeterId);
+      window.__companionAudioLevel = 0;
+      pokeArea.classList.remove('speaking-glow');
+      waveBars.classList.remove('active');
+      resetActiveButtonUi(btnEl);
+      if (activeFallbackBtn === btnEl) activeFallbackBtn = null;
+    };
+
+    try {
+      await ttsAudioEl.play();
+      animatePulseLevel();
+      if (btnEl) {
+        notifyUserVoiceStatus('🔊 正在朗读角色台词（再次点击可停止）');
+      }
+      return;
+    } catch {
+      // 若受浏览器策略限制回退 WebAudio 解码播放
+    }
+
+    const ctx = ensureAudioContext();
+    if (!ctx) return;
+    const audioBuffer = await ctx.decodeAudioData(arrayBuffer.slice(0));
+    const source = ctx.createBufferSource();
+    source.buffer = audioBuffer;
+    source.connect(ctx.destination);
+    activeSource = source;
     source.onended = () => {
       if (activeSource === source) {
         activeSource = null;
-        cancelAnimationFrame(rafMeterId);
         window.__companionAudioLevel = 0;
         pokeArea.classList.remove('speaking-glow');
         waveBars.classList.remove('active');
       }
-      if (btnEl) {
-        btnEl.classList.remove('speaking');
-        if (btnEl.dataset.origLabel) btnEl.textContent = btnEl.dataset.origLabel;
-      }
+      resetActiveButtonUi(btnEl);
       if (activeFallbackBtn === btnEl) activeFallbackBtn = null;
     };
-
     source.start(0);
-    updateLevel();
+    if (btnEl) {
+      notifyUserVoiceStatus('🔊 正在朗读角色台词（再次点击可停止）');
+    }
   }
 
   function base64ToArrayBuffer(b64) {
@@ -367,22 +494,32 @@
 
   window.playCompanionNeuralTts = async function playCompanionNeuralTts(rawText, btnEl) {
     if (btnEl && activeFallbackBtn === btnEl) {
+      if (isSynthesizing && Date.now() - synthStartedAt < 1500) {
+        notifyUserVoiceStatus('⏳ 正在合成角色专属语音，马上就好～');
+        return;
+      }
       stopCurrentAudio();
+      notifyUserVoiceStatus('⏹ 已停止语音朗读');
       return;
     }
     stopCurrentAudio();
 
-    const cleaned = String(rawText || '')
-      .replace(/^>.*$/gm, '')
-      .replace(/\*[^*]+\*/g, '，')
-      .replace(/\*\*([^*]+)\*\*/g, '$1')
-      .trim();
-    if (!cleaned) return;
+    const cleaned = cleanSpeakableDialogue(rawText);
+    if (!cleaned) {
+      notifyUserVoiceStatus('💡 该条消息主要是动作神态描写，暂无对白台词可朗读');
+      return;
+    }
+
+    isSynthesizing = true;
+    synthStartedAt = Date.now();
+    const myAbort = new AbortController();
+    ttsFetchAbort = myAbort;
 
     if (btnEl) {
       if (!btnEl.dataset.origLabel) btnEl.dataset.origLabel = btnEl.textContent;
-      btnEl.classList.add('speaking');
-      btnEl.textContent = btnEl.classList.contains('cloud-tts-btn') ? '⏹' : '⏹ 停止';
+      btnEl.classList.add('synthesizing');
+      btnEl.setAttribute('aria-busy', 'true');
+      btnEl.textContent = btnEl.classList.contains('cloud-tts-btn') ? '⏳' : '⏳ 合成中…';
       activeFallbackBtn = btnEl;
     }
 
@@ -395,16 +532,27 @@
           text: cleaned,
           voiceId: currentVoiceId,
           sessionId: window.__activeSessionId || ''
-        })
+        }),
+        signal: myAbort.signal
       });
 
+      if (myAbort.signal.aborted) return;
+      isSynthesizing = false;
       const ctype = resp.headers.get('content-type') || '';
       if (resp.ok && ctype.includes('audio/')) {
         const buf = await resp.arrayBuffer();
-        await playAudioBufferWithStudioEq(buf, meta, btnEl);
+        if (myAbort.signal.aborted) return;
+        await playAudioBufferWithStudioEq(buf, meta, btnEl, ctype);
         return;
       }
-    } catch {}
+    } catch (err) {
+      if (myAbort.signal.aborted || err?.name === 'AbortError') return;
+    } finally {
+      if (ttsFetchAbort === myAbort) {
+        isSynthesizing = false;
+        ttsFetchAbort = null;
+      }
+    }
 
     playBrowserSpeechFallback(cleaned, meta, btnEl);
   };
@@ -459,13 +607,13 @@
       }
       const isFallbackLocal = data.tts_engine === '离线应急语音' || data.fallback_tts;
       const bubbleTag = isFallbackLocal
-        ? '⚠️ 离线基础音 · 点「🎚️音源」绑免费Key切真声'
+        ? '🎧 实时陪伴语音'
         : `✨ ${data.tag || meta.short}`;
       updateCloudBubble(bubbleTag, data.reply_text);
 
       if (data.audio_b64) {
         const buf = base64ToArrayBuffer(data.audio_b64);
-        await playAudioBufferWithStudioEq(buf, meta, null);
+        await playAudioBufferWithStudioEq(buf, meta, null, data.audio_mime || 'audio/wav');
       } else {
         playBrowserSpeechFallback(data.reply_text, meta, null);
       }
@@ -479,23 +627,42 @@
     }
   }
 
-  openBtn.addEventListener('click', () => {
+  function openVoiceCallSession() {
     isCallOpen = true;
     ensureAudioContext();
-    openBtn.classList.add('hidden');
+    openBtn?.classList.add('hidden');
     dockEl.classList.remove('hidden');
     stageEl.classList.add('voice-call-active');
+    if (topbarVoiceBtn) {
+      topbarVoiceBtn.classList.add('active');
+      topbarVoiceBtn.setAttribute('aria-pressed', 'true');
+    }
     quickInput.focus();
     sendVoiceTurn('');
-  });
+  }
 
-  closeBtn.addEventListener('click', () => {
+  function closeVoiceCallSession() {
     isCallOpen = false;
     stopCurrentAudio();
     stopMicRecognition();
     dockEl.classList.add('hidden');
-    openBtn.classList.remove('hidden');
+    openBtn?.classList.remove('hidden');
     stageEl.classList.remove('voice-call-active');
+    if (topbarVoiceBtn) {
+      topbarVoiceBtn.classList.remove('active');
+      topbarVoiceBtn.setAttribute('aria-pressed', 'false');
+    }
+  }
+
+  window.toggleCompanionVoiceCall = () => {
+    if (isCallOpen) closeVoiceCallSession();
+    else openVoiceCallSession();
+  };
+
+  openBtn?.addEventListener('click', openVoiceCallSession);
+  closeBtn?.addEventListener('click', closeVoiceCallSession);
+  topbarVoiceBtn?.addEventListener('click', () => {
+    window.toggleCompanionVoiceCall();
   });
 
   const ttsGearBtn = document.getElementById('cv-open-tts-cfg-btn');

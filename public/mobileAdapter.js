@@ -62,6 +62,7 @@
   }
 
   applyResponsiveButtonLabels('topbar-script-switch-btn', '📖 换剧本', '📖 剧本');
+  applyResponsiveButtonLabels('toggle-right-btn', '💞 养成·记忆·设定', '💞 记忆');
   applyResponsiveButtonLabels('topbar-companion-btn', '✨ 陪伴立绘', '✨ 立绘');
   applyResponsiveButtonLabels('topbar-switch-ds-btn', '🐋 DeepSeek', '🐋 DS');
   applyResponsiveButtonLabels('topbar-more-btn', '⋯', '⋯');
@@ -208,10 +209,16 @@
     backdrop.classList.add('hidden');
   }
 
-  // 首屏若处于手机视口，立即收起两侧抽屉，确保首帧呈现 100% 全宽主对话区
+  window.__closeMobileDrawers = closeAllMobileDrawers;
+
+  // 首屏若处于手机视口，立即收起两侧抽屉与悬浮立绘，确保首帧呈现 100% 全宽无遮挡主对话区（点顶栏 ✨ 立绘 随时展开）
   if (isMobile()) {
     closeLeftDrawer();
     closeRightDrawer();
+    if (companionStage) {
+      companionStage.classList.add('hidden');
+      document.getElementById('topbar-companion-btn')?.classList.remove('active');
+    }
   }
 
   let lastLeftOpen = !appShell.classList.contains('left-collapsed');
@@ -293,6 +300,10 @@
   MOBILE_MQ.addEventListener('change', (e) => {
     if (e.matches) {
       closeAllMobileDrawers();
+      if (companionStage) {
+        companionStage.classList.add('hidden');
+        document.getElementById('topbar-companion-btn')?.classList.remove('active');
+      }
     } else {
       backdrop.classList.add('hidden');
       let savedLeftCollapsed = false;
@@ -302,6 +313,24 @@
       appShell.classList.toggle('left-collapsed', savedLeftCollapsed);
       if (expandLeftBtn) expandLeftBtn.classList.toggle('hidden', !savedLeftCollapsed);
       document.getElementById('collapsed-quick-nav')?.classList.toggle('hidden', !savedLeftCollapsed);
+    }
+  });
+
+  // 点击左侧栏「收起」按钮或右侧栏「关闭」按钮时，立即同步隐藏移动端半透明遮罩层
+  document.getElementById('toggle-left-btn')?.addEventListener('click', () => {
+    if (isMobile()) {
+      closeLeftDrawer();
+      if (appShell.classList.contains('right-collapsed')) {
+        backdrop.classList.add('hidden');
+      }
+    }
+  });
+  document.getElementById('close-right-btn')?.addEventListener('click', () => {
+    if (isMobile()) {
+      closeRightDrawer();
+      if (appShell.classList.contains('left-collapsed')) {
+        backdrop.classList.add('hidden');
+      }
     }
   });
 
@@ -326,21 +355,31 @@
       }
 
       if (
+        target.closest('#open-plaza-btn') ||
+        target.closest('#sidebar-open-workshop-btn') ||
+        target.closest('#create-persona-btn') ||
+        target.closest('#sidebar-import-history-btn') ||
+        target.closest('#open-user-persona-btn') ||
+        target.closest('#open-settings-btn') ||
+        target.closest('#sidebar-quick-vip-btn') ||
+        target.closest('#open-admin-console-btn') ||
+        target.closest('#logout-btn') ||
+        target.closest('.persona-mini-act-btn')
+      ) {
+        closeLeftDrawer();
+        backdrop.classList.add('hidden');
+        return;
+      }
+
+      if (
         target.closest('.ws-mode-btn') ||
         target.closest('.session-item') ||
         target.closest('.persona-card-item') ||
         target.closest('#ds-new-chat-btn') ||
         target.closest('#new-chat-btn') ||
-        target.closest('#open-plaza-btn') ||
-        target.closest('#sidebar-open-workshop-btn') ||
-        target.closest('#create-persona-btn') ||
-        target.closest('#open-user-persona-btn') ||
-        target.closest('#open-settings-btn') ||
-        target.closest('#open-admin-console-btn') ||
-        target.closest('#logout-btn') ||
         target.closest('#ds-user-popover .popover-action-item')
       ) {
-        setTimeout(() => closeLeftDrawer(), 60);
+        setTimeout(() => closeLeftDrawer(), 40);
       }
     });
   }

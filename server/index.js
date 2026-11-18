@@ -993,7 +993,7 @@ async function handleApi(req, res, pathname, parsedUrl) {
       .get(personaId, userId);
     if (!existing) return sendJson(res, 404, { error: '未找到该角色人设' });
 
-    if (method === 'PUT') {
+    if (method === 'PUT' || method === 'PATCH') {
       const body = await readJsonBody(req);
       const now = Date.now();
       const isSystemPersona = existing.user_id === 'system' || existing.user_id === 'system_ds';
@@ -1041,13 +1041,25 @@ async function handleApi(req, res, pathname, parsedUrl) {
         : existing.starter_prompts;
       const nextScriptId =
         body.script_id !== undefined ? String(body.script_id).trim() || existing.script_id : existing.script_id;
+      const nextGender =
+        body.gender !== undefined
+          ? ['female', 'male'].includes(String(body.gender).trim().toLowerCase())
+            ? String(body.gender).trim().toLowerCase()
+            : ''
+          : existing.gender || '';
+      const nextCategoryTag =
+        body.category_tag !== undefined
+          ? String(body.category_tag).trim() || existing.category_tag || '温柔治愈'
+          : existing.category_tag || '温柔治愈';
 
       db.prepare(`
         UPDATE personas
-        SET script_id = ?, name = ?, avatar = ?, tagline = ?, personality = ?, backstory = ?, speaking_style = ?, greeting = ?, starter_prompts = ?, updated_at = ?
+        SET script_id = ?, gender = ?, category_tag = ?, name = ?, avatar = ?, tagline = ?, personality = ?, backstory = ?, speaking_style = ?, greeting = ?, starter_prompts = ?, updated_at = ?
         WHERE id = ?
       `).run(
         nextScriptId,
+        nextGender,
+        nextCategoryTag,
         (body.name ?? existing.name).trim() || existing.name,
         (body.avatar ?? existing.avatar).trim() || '🌸',
         (body.tagline ?? existing.tagline).trim(),
@@ -1094,9 +1106,14 @@ async function handleApi(req, res, pathname, parsedUrl) {
         db.prepare('DELETE FROM messages WHERE session_id = ?').run(s.id);
         db.prepare('DELETE FROM memories WHERE session_id = ?').run(s.id);
       }
+      db.prepare('DELETE FROM lorebook_entries WHERE persona_id = ? AND user_id = ?').run(personaId, userId);
       db.prepare('DELETE FROM sessions WHERE persona_id = ? AND user_id = ?').run(personaId, userId);
       db.prepare('DELETE FROM personas WHERE id = ? AND user_id = ?').run(personaId, userId);
-      return sendJson(res, 200, { ok: true, sessions: listSessionsForUser(userId) });
+      const latestPersonas = db
+        .prepare("SELECT * FROM personas WHERE (user_id = 'system' OR user_id = ?) ORDER BY CASE WHEN user_id = 'system' THEN 0 ELSE 1 END, created_at ASC")
+        .all(userId)
+        .map(formatPersonaRow);
+      return sendJson(res, 200, { ok: true, personas: latestPersonas, sessions: listSessionsForUser(userId) });
     }
   }
 
@@ -1113,7 +1130,7 @@ async function handleApi(req, res, pathname, parsedUrl) {
         "SELECT * FROM personas WHERE id = ? AND (user_id = ? OR user_id = 'system' OR user_id = 'system_ds')"
       )
       .get(personaId, userId);
-    if (!persona) return sendJson(res, 404, { error: '所选人设或模型锚点不存在' });
+    if (!persona) return sendJson(res, 404, { error: '未找到所选角色，请刷新后重试' });
 
     const now = Date.now();
     const sessionId = genId('sess');
@@ -1123,33 +1140,38 @@ async function handleApi(req, res, pathname, parsedUrl) {
       sessionMode === 'deepseek_native'
         ? isPureOfficial
           ? '新对话'
-          : `原生对话 · ${shortPersonaName}`
+          : `问答对话 · ${shortPersonaName}`
         : `与${shortPersonaName}的心动篇章`;
     const title = (body.title || defaultTitle).trim();
     const dsThinking = body.ds_thinking !== undefined ? (body.ds_thinking ? 1 : 0) : 1;
     const dsSearch = body.ds_search !== undefined ? (body.ds_search ? 1 : 0) : 0;
-    const initProactive = body.proactive_enabled ? 1 : 0;
+    const initProactive = body.proactive_enabled === true ? 1 : 0;
 
     db.prepare(`
       INSERT INTO sessions (
         id, user_id, persona_id, title, session_mode, ds_thinking, ds_search, ds_json_mode, ds_tools_enabled, proactive_enabled,
-        rolling_summary, summarized_until_msg_id, enable_inner_thought, enable_auto_memory, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 1, ?, '', 0, 1, 1, ?, ?)
+        rolling_summary, summarized_until_msg_id, enable_inner_thought, enable_auto_memory,
+        affection, trust, intimacy, current_mood, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 1, ?, '', 0, 1, 1, 22, 26, 18, '温柔浅笑', ?, ?)
     `).run(sessionId, userId, personaId, title, sessionMode, dsThinking, dsSearch, initProactive, now, now);
 
-    // 原生 DeepSeek 模式保持官方 App 纯净新对话欢迎态；仅在恋庭沉浸模式注入初遇开场白
+    // 原生 DeepSeek 模式保持官方 App 纯净新对话欢迎态；仅在恋庭沉浸模式注入初遇开场白与贴合人设的初遇心声独白
     if (sessionMode !== 'deepseek_native' && persona.greeting && persona.greeting.trim()) {
+      const userNickCall = (currentUser.nickname || '你').replace(/^星语旅人·.*$/, '你');
       const renderedGreeting = replaceRoleplayMacros(
         persona.greeting.trim(),
         currentUser.nickname,
         persona.name
       );
+      const shortRoleName = (persona.name || '').split(/[·\s]/)[0].trim();
+      const personaTraitHint = (persona.personality || persona.tagline || '温柔守候').split(/[，。；]/)[0].trim();
+      const openingThought = `终于把${userNickCall === '星屿旅人' ? '你' : `「${userNickCall}」`}盼来了……平时别人总觉得${shortRoleName || '我'}${personaTraitHint}，可一看到你推门进来，心里早就悄悄软了下来，得先把准备好的暖意递给你才行。`;
       db.prepare(`
         INSERT INTO messages (session_id, role, reasoning, content, duration_ms, recalled_count, created_at)
         VALUES (?, 'assistant', ?, ?, 350, 1, ?)
       `).run(
         sessionId,
-        '',
+        openingThought,
         renderedGreeting,
         now
       );
@@ -1985,13 +2007,24 @@ async function handleApi(req, res, pathname, parsedUrl) {
         .prepare("SELECT * FROM lorebook_entries WHERE persona_id = ? AND (user_id = 'system' OR user_id = ?) ORDER BY created_at DESC")
         .all(session.persona_id, userId);
       const settings = getSafeClientSettings(userId);
-      const ctx = buildThreeTierContext({
-        sessionId,
-        expectedUserId: userId,
-        latestUserText: '',
-        settings,
-        reinforceMemories: false
-      });
+      const winLimit = Math.max(8, parseInt(settings.sliding_window_turns || '40', 10) || 40);
+      const activeWinMsgs = messages.slice(-winLimit);
+      const estLen = (str) => Math.ceil(String(str || '').length * 0.65);
+      const tier1Est = estLen(`${persona.name || ''}${persona.personality || ''}${persona.backstory || ''}${persona.speaking_style || ''}${session.session_prompt || ''}`);
+      const tier2Est =
+        estLen(session.rolling_summary || '') +
+        rawMemories.slice(0, 16).reduce((s, m) => s + estLen(m.content), 0);
+      const tier3Est = activeWinMsgs.reduce((s, m) => s + estLen(m.content), 0);
+      const fastTelemetry = {
+        tier1PersonaTokens: tier1Est,
+        tier2MemoryTokens: tier2Est,
+        tier3WindowTokens: tier3Est,
+        totalTokens: tier1Est + tier2Est + tier3Est,
+        activeWindowCount: activeWinMsgs.length,
+        totalHistoryCount: messages.length,
+        recalledMemoryCount: Math.min(rawMemories.length, parseInt(settings.max_recalled_memories || '16', 10) || 16),
+        triggeredLoreCount: 0
+      };
 
       let savedComp = null;
       try {
@@ -2007,7 +2040,7 @@ async function handleApi(req, res, pathname, parsedUrl) {
         lorebooks,
         nurturing: formatNurturingSnapshot(session),
         companion,
-        telemetry: ctx.telemetry,
+        telemetry: fastTelemetry,
         membership: getMembership(userId)
       });
     }
@@ -2815,6 +2848,14 @@ async function handleApi(req, res, pathname, parsedUrl) {
       db.prepare('DELETE FROM messages WHERE session_id = ? AND id > ?').run(sessionId, editMessageId);
       db.prepare('UPDATE sessions SET updated_at = ? WHERE id = ?').run(Date.now(), sessionId);
     } else if (isRegenerate) {
+      // 先校验是否存在前序玩家发言，防止在仅有开场白时误删开场白并报技术错误
+      const lastUserMsg = db
+        .prepare("SELECT * FROM messages WHERE session_id = ? AND role = 'user' ORDER BY id DESC LIMIT 1")
+        .get(sessionId);
+      if (!lastUserMsg) {
+        return sendJson(res, 400, { error: '请先和 TA 说上一句话，再使用「重演」换一种回答哦' });
+      }
+
       const lastMsg = db
         .prepare('SELECT * FROM messages WHERE session_id = ? ORDER BY id DESC LIMIT 1')
         .get(sessionId);
@@ -2838,12 +2879,6 @@ async function handleApi(req, res, pathname, parsedUrl) {
           }
         } catch {}
         db.prepare('DELETE FROM messages WHERE id = ?').run(lastMsg.id);
-      }
-      const lastUserMsg = db
-        .prepare("SELECT * FROM messages WHERE session_id = ? AND role = 'user' ORDER BY id DESC LIMIT 1")
-        .get(sessionId);
-      if (!lastUserMsg) {
-        return sendJson(res, 400, { error: '当前没有可重新推演的对话内容' });
       }
       userContent = lastUserMsg.content;
       try {
@@ -3086,10 +3121,10 @@ async function handleApi(req, res, pathname, parsedUrl) {
 
       const durationMs = Date.now() - startedAt;
       const wasAborted = Boolean(abortController.signal.aborted);
-      const substantiveContent = fullContent.replace(/^[\s*＊…—-]+$/g, '').trim();
+      const substantiveContent = fullContent.replace(/^[\s*＊…—\-()（）「」『』【】]+$/g, '').trim();
 
       if (wasAborted && !substantiveContent) {
-        fullContent = '（⏹ 已停止生成）';
+        fullContent = '（⏹ 已暂停生成）';
       }
 
       let latestMembership = getMembership(userId);
@@ -3139,6 +3174,29 @@ async function handleApi(req, res, pathname, parsedUrl) {
           : wasAborted
           ? '（⏹ 已停止生成）'
           : fallbackReply;
+      // 若恋庭角色开启了心声独白，而底层非推理在线模型省略了 <think> 标签，自动补齐贴合当前情境与人设的第一人称心声独白
+      if (
+        !isNativeMode &&
+        !isPureOfficial &&
+        session.enable_inner_thought === 1 &&
+        !wasAborted &&
+        substantiveContent &&
+        !fullReasoning.trim()
+      ) {
+        const nickCall = (contextBundle.userNickname || currentUser.nickname || '你').replace(/^星语旅人·.*$/, '你');
+        const callStr = nickCall === '星屿旅人' ? '眼前这个人' : `「${nickCall}」`;
+        const moodLabel = contextBundle.nurturing?.current_mood || '温柔浅笑';
+        const userBrief = String(userContent || '')
+          .replace(/\*[^*]*\*/g, '')
+          .replace(/\s+/g, ' ')
+          .trim()
+          .slice(0, 22);
+        const fallbackInnerThought = userBrief
+          ? `听着${callStr}提起「${userBrief}」，心头不禁泛起一阵「${moodLabel}」的涟漪……嘴上虽然保持着平时的分寸，目光却忍不住一直落在${callStr}身上，想回应得更贴心一点。`
+          : `看着眼前的${callStr}，此刻心底满是「${moodLabel}」的暖意，只想顺着这份默契好好陪在${callStr}身边。`;
+        fullReasoning = fallbackInnerThought;
+        sendEvent('reasoning', { delta: fallbackInnerThought });
+      }
       const finalAssistantReasoning = fullReasoning.trim();
 
       const assistantMetaObj = {
@@ -3217,7 +3275,7 @@ async function handleApi(req, res, pathname, parsedUrl) {
     } catch (err) {
       // 稳定性兜底：若流传输中途发生网络闪断或客户端中断，自动抢救落库或写入明确中断标记以防丢字及孤立符号
       const isUserAbort = Boolean(abortController.signal.aborted);
-      const rescuedSubstantive = fullContent.replace(/^[\s*＊…—-]+$/g, '').trim();
+      const rescuedSubstantive = fullContent.replace(/^[\s*＊…—\-()（）「」『』【】]+$/g, '').trim();
       if (rescuedSubstantive || fullReasoning.trim() || isUserAbort) {
         try {
           const now = Date.now();
@@ -3306,7 +3364,7 @@ async function handleApi(req, res, pathname, parsedUrl) {
     return;
   }
 
-  // ========= 10. 角色 / AI 主动发起关怀与破冰流式端点（多一点主动性核心引擎） =========
+  // ========= 10. 角色 / AI 主动发起关怀与破冰流式端点（仅手动触发或用户显式开启时运行） =========
   if (method === 'POST' && pathname === '/api/chat/proactive') {
     const body = await readJsonBody(req);
     const sessionId = body.session_id;
@@ -3317,7 +3375,18 @@ async function handleApi(req, res, pathname, parsedUrl) {
       .get(sessionId, userId);
     if (!session) return sendJson(res, 404, { error: '会话不存在' });
     if (session.session_mode === 'deepseek_native') {
-      return sendJson(res, 400, { error: 'DeepSeek 原生模式不启用自动插话，以保障上下文纯粹与稳定' });
+      return sendJson(res, 400, { error: '极简问答模式不启用自动插话，以保障上下文纯粹与稳定' });
+    }
+    if (triggerReason !== 'manual' && Number(session.proactive_enabled) !== 1) {
+      return sendJson(res, 200, { ok: true, skipped: true, reason: 'proactive_disabled' });
+    }
+    if (triggerReason !== 'manual') {
+      if (!global.__proactiveCooldownMap) global.__proactiveCooldownMap = new Map();
+      const lastProactiveTs = global.__proactiveCooldownMap.get(sessionId) || 0;
+      if (Date.now() - lastProactiveTs < 300 * 1000) {
+        return sendJson(res, 200, { ok: true, skipped: true, reason: 'cooldown' });
+      }
+      global.__proactiveCooldownMap.set(sessionId, Date.now());
     }
 
     res.writeHead(200, {
@@ -3448,26 +3517,40 @@ async function handleApi(req, res, pathname, parsedUrl) {
         }
       }
 
-      if (!fullContent.trim()) {
+      const wasProactiveAborted = Boolean(abortController.signal.aborted);
+      const substantiveProactive = fullContent.replace(/^[\s*＊…—\-()（）「」『』【】]+$/g, '').trim();
+      if (!substantiveProactive) {
         res.end();
         return;
       }
 
+      const rawProactiveTrimmed = fullContent.trim();
+      const balancedProactive =
+        (rawProactiveTrimmed.match(/\*/g) || []).length % 2 === 1
+          ? `${rawProactiveTrimmed}*`
+          : rawProactiveTrimmed;
+      const finalProactiveContent = wasProactiveAborted
+        ? `${balancedProactive}\n\n（⏹ 已暂停生成）`
+        : balancedProactive;
+
       const durationMs = Date.now() - startedAt;
-      const followUps = generateFollowUpSuggestions({
-        sessionMode: session.session_mode || 'roleplay',
-        isPureOfficial,
-        userText: lastUserRow?.content || '',
-        assistantText: fullContent,
-        persona: contextBundle.persona,
-        nurturing: contextBundle.nurturing
-      });
+      const followUps = wasProactiveAborted
+        ? []
+        : generateFollowUpSuggestions({
+            sessionMode: session.session_mode || 'roleplay',
+            isPureOfficial,
+            userText: lastUserRow?.content || '',
+            assistantText: finalProactiveContent,
+            persona: contextBundle.persona,
+            nurturing: contextBundle.nurturing
+          });
 
       const metaObj = {
         is_proactive: true,
         trigger_reason: triggerReason,
         follow_ups: followUps,
-        usage: usageMeta
+        usage: usageMeta,
+        ...(wasProactiveAborted ? { interrupted: true, partial_recovered: true } : {})
       };
 
       const now = Date.now();
@@ -3479,7 +3562,7 @@ async function handleApi(req, res, pathname, parsedUrl) {
         .run(
           sessionId,
           fullReasoning.trim(),
-          fullContent.trim(),
+          finalProactiveContent,
           JSON.stringify(metaObj),
           durationMs,
           contextBundle.recalledMemories.length,

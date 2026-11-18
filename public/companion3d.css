@@ -2,9 +2,15 @@
 
 .companion-stage {
   width: 248px !important;
-  padding: 10px 12px 8px 2px !important;
-  overflow: hidden !important;
+  padding: 8px 10px 8px 2px !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  scrollbar-width: none;
   isolation: isolate;
+}
+
+.companion-stage::-webkit-scrollbar {
+  display: none;
 }
 
 /* 彻底拆除旧版平面图片方框，改为开放式三维立体透视空间（隔离内部 Z 轴合成层不遮挡上下操作条） */
@@ -14,7 +20,8 @@
   box-shadow: none !important;
   border-radius: 0 !important;
   overflow: visible !important;
-  min-height: 220px;
+  min-height: 150px;
+  flex: 1 1 150px;
   perspective: 900px;
   display: flex;
   align-items: center;
@@ -51,7 +58,7 @@
   position: relative;
   width: 100%;
   height: 100%;
-  min-height: 235px;
+  min-height: 150px;
   transform-style: preserve-3d;
   display: flex;
   align-items: flex-end;
@@ -279,11 +286,13 @@
   }
 }
 
-/* 让上方温馨提醒云朵也拥有悬浮立体气泡角标 */
+/* 让上方温馨提醒云朵也拥有悬浮立体气泡角标，且层级高于 3D 立绘边缘确保语音键可点 */
 .companion-stage .companion-cloud {
+  position: relative;
   border-radius: 20px;
-  margin-bottom: -8px;
-  z-index: 8;
+  margin-bottom: -4px;
+  z-index: 24;
+  pointer-events: auto;
 }
 
 .companion-stage .companion-cloud::after {

@@ -4,7 +4,7 @@ function clampStat(val) {
   return Math.max(0, Math.min(100, Math.round(Number(val) || 0)));
 }
 
-function getRelationshipStage({ affection = 18, trust = 22, intimacy = 15 }) {
+function getRelationshipStage({ affection = 22, trust = 26, intimacy = 18 }) {
   const composite = Math.round(affection * 0.45 + trust * 0.35 + intimacy * 0.2);
 
   if (composite >= 80) {
@@ -57,9 +57,9 @@ function parseDiaryList(rawJson) {
 }
 
 function formatNurturingSnapshot(session) {
-  const affection = clampStat(session.affection ?? 18);
-  const trust = clampStat(session.trust ?? 22);
-  const intimacy = clampStat(session.intimacy ?? 15);
+  const affection = clampStat(session.affection ?? 22);
+  const trust = clampStat(session.trust ?? 26);
+  const intimacy = clampStat(session.intimacy ?? 18);
   const stage = getRelationshipStage({ affection, trust, intimacy });
   return {
     affection,
@@ -72,45 +72,57 @@ function formatNurturingSnapshot(session) {
 }
 
 /**
- * 根据本轮玩家输入动态演进角色的情感维度与实时心境状态机
+ * 根据本轮玩家输入动态演进角色的情感维度与实时心境状态机（告别机械每句 +1，仅真实情感互动触发升温）
  */
 function evaluateTurnNurturing(sessionId, userText) {
   const session = db.prepare('SELECT * FROM sessions WHERE id = ?').get(sessionId);
   if (!session) return null;
 
   const text = String(userText || '').trim();
-  let dAff = 1;
-  let dTrust = 1;
-  let dInt = 1;
+  const plainLen = text.replace(/[\s\p{P}*＊]/gu, '').length;
+  let dAff = 0;
+  let dTrust = 0;
+  let dInt = 0;
+  let reason = '';
   let nextMood = session.current_mood || '✨ 专注倾听';
 
-  if (/(?:\*[^*]*(?:牵|抱|靠|拉住|挽|蹭|摸|握|凝视|笑)[^*]*\*)|喜欢你|想你了|好温柔|陪着我|心动/.test(text)) {
-    dAff += 4;
-    dInt += 3;
-    nextMood = '💓 耳尖微热';
-  } else if (/送你|给你带|请你吃|尝尝|多穿|注意身体|别太累|心疼你|替你/.test(text)) {
-    dAff += 3;
-    dTrust += 3;
-    nextMood = '🌸 温柔宠溺';
-  } else if (/难过|委屈|不开心|害怕|累了|秘密|只告诉你|拉勾|约定|答应我/.test(text)) {
-    dTrust += 4;
-    dInt += 3;
-    nextMood = '🥺 心疼护短';
-  } else if (/打赌|骗人|吃醋|故意|哼|坏心眼|试探/.test(text)) {
-    dAff += 2;
-    dInt += 2;
-    nextMood = '🦊 愉悦纵容';
-  } else if (/讨厌|走开|别管我|算了/.test(text)) {
+  if (/讨厌|走开|别管我|烦死|滚/.test(text)) {
     dAff = 0;
     dTrust = 0;
+    dInt = 0;
     nextMood = '🌙 垂眸微怔';
+  } else if (/(?:\*[^*]*(?:牵|抱|靠|拉住|挽|蹭|摸|握|凝视|凑近|轻触)[^*]*\*)|喜欢你|想你了|好温柔|陪着我|心动|离不开/.test(text)) {
+    dAff = 3;
+    dInt = 2;
+    reason = '亲昵互动让心动升温';
+    nextMood = '💓 耳尖微热';
+  } else if (/送你|给你带|请你吃|尝尝|多穿|注意身体|别太累|心疼你|替你|照顾好/.test(text)) {
+    dAff = 2;
+    dTrust = 2;
+    reason = '贴心关怀拉近信任';
+    nextMood = '🌸 温柔宠溺';
+  } else if (/难过|委屈|不开心|害怕|累了|秘密|只告诉你|拉勾|约定|答应我|相信你/.test(text)) {
+    dTrust = 3;
+    dInt = 2;
+    reason = '坦诚心事加深羁绊';
+    nextMood = '🥺 心疼护短';
+  } else if (/打赌|骗人|吃醋|故意|哼|坏心眼|试探|猜猜/.test(text)) {
+    dAff = 1;
+    dInt = 2;
+    reason = '默契打趣拉近距离';
+    nextMood = '🦊 愉悦纵容';
+  } else if (/\*[^*]{2,}\*/.test(text) || plainLen >= 16) {
+    dTrust = 1;
+    dInt = plainLen >= 28 ? 1 : 0;
+    reason = '认真交流增进了解';
+    nextMood = '✨ 专注倾听';
   } else {
     nextMood = '✨ 专注倾听';
   }
 
-  const newAff = clampStat((session.affection ?? 18) + dAff);
-  const newTrust = clampStat((session.trust ?? 22) + dTrust);
-  const newInt = clampStat((session.intimacy ?? 15) + dInt);
+  const newAff = clampStat((session.affection ?? 22) + dAff);
+  const newTrust = clampStat((session.trust ?? 26) + dTrust);
+  const newInt = clampStat((session.intimacy ?? 18) + dInt);
 
   db.prepare(`
     UPDATE sessions
@@ -121,6 +133,7 @@ function evaluateTurnNurturing(sessionId, userText) {
   const updated = db.prepare('SELECT * FROM sessions WHERE id = ?').get(sessionId);
   return {
     deltas: { affection: dAff, trust: dTrust, intimacy: dInt },
+    reason,
     snapshot: formatNurturingSnapshot(updated)
   };
 }
@@ -208,7 +221,7 @@ function runDreamConsolidation({ sessionId, persona, userNickname }) {
   const trimmedDiary = diaryList.slice(0, 12);
 
   // 顺手提升一点默契度奖励
-  const nextIntimacy = clampStat((session.intimacy ?? 15) + 3);
+  const nextIntimacy = clampStat((session.intimacy ?? 18) + 3);
   db.prepare(`
     UPDATE sessions SET secret_diary = ?, intimacy = ?, updated_at = ? WHERE id = ?
   `).run(JSON.stringify(trimmedDiary), nextIntimacy, Date.now(), sessionId);

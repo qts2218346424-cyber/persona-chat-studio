@@ -214,10 +214,11 @@ details.sidebar-fold:not([open]) .fold-caret {
   box-shadow: 0 14px 36px rgba(45, 22, 64, 0.16);
 }
 
-[popover].anchored-popover:is(:popover-open, .\:popover-open) {
-  display: flex;
+[popover].anchored-popover:is(:popover-open, .\:popover-open, .manual-popover-open) {
+  display: flex !important;
   flex-direction: column;
   gap: 3px;
+  z-index: 9995 !important;
 }
 
 .topbar-more-panel {
@@ -269,9 +270,26 @@ details.sidebar-fold:not([open]) .fold-caret {
   margin: 0 !important;
 }
 
-/* 遵循 viewport-aware-dropdowns：仅在 @supports 内启用 inset: auto 与 position-area，防止无锚点支持时漂移至 (0,0) */
+/* 遵循 viewport-aware-dropdowns：声明显式唯一 anchor-name 与 position-anchor，并仅在 @supports 内启用 inset: auto 与 position-area */
+#topbar-more-btn {
+  anchor-name: --topbar-more-trigger;
+}
+
+#topbar-more-btn > span {
+  pointer-events: none;
+}
+
+#magic-popover-btn {
+  anchor-name: --magic-quick-trigger;
+}
+
+#ds-profile-btn {
+  anchor-name: --ds-user-trigger;
+}
+
 @supports (position-area: block-end) {
   #topbar-more-popover.anchored-popover {
+    position-anchor: --topbar-more-trigger;
     inset: auto;
     margin: 8px 0 0 0;
     position-area: block-end span-inline-start;
@@ -279,8 +297,17 @@ details.sidebar-fold:not([open]) .fold-caret {
   }
 
   #magic-quick-popover.anchored-popover {
+    position-anchor: --magic-quick-trigger;
     inset: auto;
     margin: 0 0 10px 0;
+    position-area: block-start span-inline-end;
+    position-try-fallbacks: flip-block, flip-inline, flip-block flip-inline;
+  }
+
+  #ds-user-popover.anchored-popover {
+    position-anchor: --ds-user-trigger;
+    inset: auto;
+    margin: 0 0 8px 0;
     position-area: block-start span-inline-end;
     position-try-fallbacks: flip-block, flip-inline, flip-block flip-inline;
   }
@@ -299,6 +326,12 @@ details.sidebar-fold:not([open]) .fold-caret {
     transform: translateX(-50%);
     margin: 0;
   }
+
+  #ds-user-popover.anchored-popover {
+    position: fixed;
+    inset: auto auto 64px 16px;
+    margin: 0;
+  }
 }
 
 /* 5. 对话流紧凑呼吸感与侧栏收起自适应重排舒展 */
@@ -308,18 +341,18 @@ details.sidebar-fold:not([open]) .fold-caret {
 
 .messages-container {
   width: 100%;
-  max-width: min(860px, 100%) !important;
-  gap: 14px !important;
+  max-width: min(880px, 100%) !important;
+  gap: 12px !important;
   transition: max-width 0.22s ease;
 }
 
 .app-shell.left-collapsed .messages-container,
 .app-shell.right-collapsed .messages-container {
-  max-width: min(980px, 96%) !important;
+  max-width: min(1080px, 95%) !important;
 }
 
 .app-shell.left-collapsed.right-collapsed .messages-container {
-  max-width: min(1100px, 94%) !important;
+  max-width: min(1240px, 94%) !important;
 }
 
 .persona-story-banner {
@@ -431,7 +464,7 @@ details.sidebar-fold:not([open]) .fold-caret {
 
 .composer-card {
   width: 100%;
-  max-width: min(860px, 100%) !important;
+  max-width: min(880px, 100%) !important;
   border-radius: 20px !important;
   border-width: 1px !important;
   border-color: var(--border-subtle) !important;
@@ -441,12 +474,17 @@ details.sidebar-fold:not([open]) .fold-caret {
 }
 
 .app-shell.left-collapsed .composer-card,
-.app-shell.right-collapsed .composer-card {
-  max-width: min(980px, 96%) !important;
+.app-shell.right-collapsed .composer-card,
+.app-shell[data-ui-mode="deepseek"].left-collapsed .composer-card,
+.app-shell[data-ui-mode="deepseek"].right-collapsed .composer-card {
+  width: 100% !important;
+  max-width: min(1080px, 95%) !important;
 }
 
-.app-shell.left-collapsed.right-collapsed .composer-card {
-  max-width: min(1100px, 94%) !important;
+.app-shell.left-collapsed.right-collapsed .composer-card,
+.app-shell[data-ui-mode="deepseek"].left-collapsed.right-collapsed .composer-card {
+  width: 100% !important;
+  max-width: min(1240px, 94%) !important;
 }
 
 #composer-channel-badge {
@@ -2808,24 +2846,30 @@ dialog::backdrop {
   user-select: none;
 }
 
-/* 14.3 回到底部悬浮圆钮（恋庭与原生双模式通用） */
+/* 14.3 回到底部悬浮胶囊按钮（恋庭与原生双模式通用，高辨识度防遮挡） */
 .ds-scroll-bottom-btn {
   position: absolute;
-  top: -42px;
+  top: -44px;
   left: 50%;
   transform: translateX(-50%);
-  width: 34px;
+  width: auto;
   height: 34px;
-  border-radius: 50%;
+  padding: 0 14px;
+  gap: 5px;
+  border-radius: 999px;
   border: 1px solid var(--border-strong);
   background: var(--bg-composer);
-  color: var(--text-secondary);
-  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.14);
+  backdrop-filter: blur(14px);
+  color: var(--text-primary);
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.16);
   display: inline-flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  z-index: 25;
+  z-index: 44;
   transition: transform 0.16s ease, color 0.16s ease, border-color 0.16s ease;
 }
 
@@ -3980,8 +4024,29 @@ dialog::backdrop {
    16. 全量交互体验、无障碍键盘操作、面板立绘共存与破坏性操作防护增强层
    ========================================================================== */
 
-/* 16.1 桌面端收起左右侧栏时彻底从渲染与命中树隐藏，避免产生 0px 被遮挡空白节点 */
+/* 16.1 桌面端显式锁定 Grid 三栏轨道坐标，彻底杜绝侧栏 display:none 导致中央舞台掉入 0px 列塌陷 */
 @media (min-width: 861px) {
+  .sidebar#left-sidebar {
+    grid-column: 1 !important;
+  }
+
+  .chat-stage {
+    grid-column: 2 !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    overflow-x: clip !important;
+  }
+
+  .inspector-panel#right-panel {
+    grid-column: 3 !important;
+    position: relative !important;
+    z-index: 50 !important;
+    width: 100% !important;
+    min-width: 320px !important;
+    max-width: 100% !important;
+    background: var(--bg-inspector, light-dark(#fffafd, #19142b)) !important;
+  }
+
   .app-shell.right-collapsed .inspector-panel {
     display: none !important;
   }
@@ -3989,10 +4054,7 @@ dialog::backdrop {
   .app-shell.left-collapsed .sidebar {
     display: none !important;
   }
-}
 
-/* 桌面端右侧面板稳固宽度、高优先级层级与窄窗口立绘自动避让（彻底根治立绘遮挡页签与 0 宽消失） */
-@media (min-width: 861px) {
   .app-shell:not(.right-collapsed):not(.left-collapsed) {
     grid-template-columns: 248px minmax(0, 1fr) 332px !important;
   }
@@ -4001,13 +4063,20 @@ dialog::backdrop {
     grid-template-columns: 0px minmax(0, 1fr) 332px !important;
   }
 
-  .inspector-panel#right-panel {
-    position: relative !important;
-    z-index: 50 !important;
-    width: 332px !important;
-    min-width: 332px !important;
-    max-width: 332px !important;
-    background: var(--bg-panel, light-dark(#fffafd, #19142b)) !important;
+  .app-shell:not(.left-collapsed).right-collapsed {
+    grid-template-columns: 248px minmax(0, 1fr) 0px !important;
+  }
+
+  .app-shell.left-collapsed.right-collapsed {
+    grid-template-columns: 0px minmax(0, 1fr) 0px !important;
+  }
+
+  .app-shell[data-ui-mode="deepseek"].artifacts-wide:not(.right-collapsed):not(.left-collapsed) {
+    grid-template-columns: 248px minmax(0, 1fr) minmax(380px, 46vw) !important;
+  }
+
+  .app-shell[data-ui-mode="deepseek"].artifacts-wide.left-collapsed:not(.right-collapsed) {
+    grid-template-columns: 0px minmax(0, 1fr) minmax(380px, 48vw) !important;
   }
 
   .app-shell:not(.right-collapsed) .inspector-panel#right-panel {
@@ -4017,14 +4086,22 @@ dialog::backdrop {
   }
 }
 
-/* 861px ~ 1240px：当右侧面板展开时自动收折立绘让出空间；当右侧面板收起时正常显示立绘 */
-@media (min-width: 861px) and (max-width: 1240px) {
-  .app-shell[data-ui-mode="roleplay"]:not(.right-collapsed) .companion-stage {
+/* 861px ~ 1440px：当右侧面板展开时智能避让立绘并精简顶栏次级重复按钮，确保中栏绝不拥挤且右上角 ⋯ 永远清晰可点 */
+@media (min-width: 861px) and (max-width: 1440px) {
+  .app-shell[data-ui-mode="roleplay"]:not(.right-collapsed) #companion-stage.companion-stage {
     display: none !important;
   }
 
-  .app-shell[data-ui-mode="roleplay"].right-collapsed .companion-stage:not(.hidden) {
+  .app-shell[data-ui-mode="roleplay"].right-collapsed #companion-stage.companion-stage:not(.hidden) {
     display: flex !important;
+  }
+
+  .app-shell:not(.right-collapsed) .stage-topbar #topbar-script-switch-btn,
+  .app-shell:not(.right-collapsed) .stage-topbar #topbar-voice-call-btn,
+  .app-shell:not(.right-collapsed) .stage-topbar #ds-share-session-btn,
+  .app-shell:not(.right-collapsed) .stage-topbar #bond-level-tag,
+  .app-shell:not(.right-collapsed) .stage-topbar #live-mood-chip {
+    display: none !important;
   }
 }
 
@@ -4738,4 +4815,152 @@ dialog::backdrop {
   font-size: 11px;
   color: var(--text-muted);
   white-space: nowrap;
+}
+
+/* ============================================================================
+   18. 新手引导高可靠视口悬浮卡片、侧栏签到直达胶囊与角色模式连接卡片高亮补强
+   ============================================================================ */
+
+/* 新手引导卡片固定于视口右下角（窄屏底部居中），彻底杜绝被溢出侧栏锚点挤出屏幕 */
+#onboarding-tour-popover.tour-popover {
+  position: fixed !important;
+  position-anchor: unset !important;
+  position-area: none !important;
+  inset: auto 24px 24px auto !important;
+  margin: 0 !important;
+  z-index: 9990 !important;
+  width: min(376px, calc(100vw - 32px)) !important;
+  max-height: calc(100dvh - 48px);
+  overflow-y: auto;
+}
+
+@media (max-width: 640px) {
+  #onboarding-tour-popover.tour-popover {
+    inset: auto 12px max(16px, env(safe-area-inset-bottom, 0px)) 12px !important;
+    width: auto !important;
+  }
+}
+
+/* 左侧栏底部清爽不拥挤的「每日签到与成就 · 全免费」单行直达胶囊 */
+.sidebar-checkin-pill {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 11px;
+  margin-bottom: 7px;
+  border-radius: 11px;
+  border: 1px solid light-dark(rgba(236, 94, 167, 0.32), rgba(192, 132, 252, 0.36));
+  background: light-dark(
+    linear-gradient(135deg, rgba(255, 245, 250, 0.96), rgba(248, 244, 255, 0.96)),
+    linear-gradient(135deg, rgba(44, 31, 68, 0.92), rgba(35, 27, 58, 0.92))
+  );
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.14s ease, border-color 0.14s ease, box-shadow 0.14s ease;
+}
+
+.sidebar-checkin-pill:hover {
+  border-color: var(--brand-primary);
+  box-shadow: 0 4px 14px rgba(226, 85, 157, 0.14);
+  transform: translateY(-1px);
+}
+
+.scp-free-tag {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--brand-soft);
+  color: var(--brand-primary);
+  white-space: nowrap;
+}
+
+[data-ui-mode="roleplay"] .conn-choice-card.active {
+  border-color: var(--brand-primary);
+  background: light-dark(rgba(236, 94, 167, 0.08), rgba(236, 94, 167, 0.18));
+  box-shadow: 0 4px 14px rgba(236, 94, 167, 0.14);
+}
+
+.followup-chip em.rp-action,
+.starter-chip em.rp-action {
+  font-style: italic;
+  color: light-dark(#7c3aed, #c4b5fd);
+  margin-right: 3px;
+}
+
+/* 18. 独立悬浮语音通话舱、「帮我回一句 + 灵感库」双联胶囊、防挤压徽标与侧栏长标题释放层 */
+.comp-voice-floating-dock {
+  position: absolute;
+  right: 18px;
+  bottom: 88px;
+  width: min(286px, calc(100% - 28px));
+  z-index: 46;
+}
+
+.magic-split-pill-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 1px;
+  border-radius: 999px;
+  background: light-dark(rgba(248, 228, 241, 0.52), rgba(46, 38, 75, 0.52));
+  border: 1px solid light-dark(rgba(236, 94, 167, 0.2), rgba(192, 132, 252, 0.24));
+}
+
+.magic-split-pill-group .pill-toggle {
+  background: transparent !important;
+  border: none !important;
+}
+
+.magic-split-pill-group .magic-library-btn {
+  padding-left: 7px !important;
+  padding-right: 9px !important;
+  border-left: 1px solid light-dark(rgba(236, 94, 167, 0.22), rgba(192, 132, 252, 0.28)) !important;
+  border-radius: 0 999px 999px 0 !important;
+  color: var(--text-secondary);
+}
+
+.magic-split-pill-group .pill-toggle:hover {
+  background: var(--brand-soft) !important;
+  color: var(--brand-primary) !important;
+}
+
+.auth-close-x-btn {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 34px !important;
+  height: 34px !important;
+  border-radius: 50% !important;
+  z-index: 5;
+}
+
+.muted-count {
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.sticky-modal-actions,
+.wallet-footer-actions,
+.hub-footer-actions {
+  position: sticky;
+  bottom: -18px;
+  margin-bottom: -8px;
+  padding-top: 10px;
+  padding-bottom: 10px;
+  background: var(--bg-composer, light-dark(#fffafd, #19142b));
+  border-top: 1px solid var(--border-subtle);
+  z-index: 12;
+}
+
+/* 会话列表非悬停时释放右侧操作按钮占宽，让长对话标题多展示 4~6 个汉字 */
+.session-item:not(:hover):not(:focus-within) .session-row-actions {
+  display: none !important;
 }

@@ -185,9 +185,10 @@ db.exec(`
     summarized_until_msg_id INTEGER NOT NULL DEFAULT 0,
     enable_inner_thought INTEGER NOT NULL DEFAULT 1,
     enable_auto_memory INTEGER NOT NULL DEFAULT 1,
-    affection INTEGER NOT NULL DEFAULT 18,
-    trust INTEGER NOT NULL DEFAULT 22,
-    intimacy INTEGER NOT NULL DEFAULT 15,
+    proactive_enabled INTEGER NOT NULL DEFAULT 0,
+    affection INTEGER NOT NULL DEFAULT 22,
+    trust INTEGER NOT NULL DEFAULT 26,
+    intimacy INTEGER NOT NULL DEFAULT 18,
     current_mood TEXT NOT NULL DEFAULT '温柔浅笑',
     secret_diary TEXT NOT NULL DEFAULT '[]',
     created_at INTEGER NOT NULL,
@@ -287,6 +288,8 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_community_shares_created ON community_shares(created_at DESC);
 
   CREATE INDEX IF NOT EXISTS idx_sessions_user_updated ON sessions(user_id, updated_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_messages_session_id ON messages(session_id, id ASC);
+  CREATE INDEX IF NOT EXISTS idx_memories_session_id ON memories(session_id, pinned DESC, importance DESC, updated_at DESC);
   CREATE INDEX IF NOT EXISTS idx_personas_user ON personas(user_id);
   CREATE INDEX IF NOT EXISTS idx_lore_persona_user ON lorebook_entries(persona_id, user_id);
   CREATE INDEX IF NOT EXISTS idx_ledger_user_created ON point_ledger(user_id, created_at DESC);
@@ -306,9 +309,9 @@ ensureColumn('personas', 'category_tag', "TEXT NOT NULL DEFAULT '温柔治愈'")
 ensureColumn('personas', 'script_id', "TEXT NOT NULL DEFAULT 'script_classic'");
 ensureColumn('personas', 'gender', "TEXT NOT NULL DEFAULT ''");
 ensureColumn('sessions', 'user_id', "TEXT DEFAULT 'user_demo'");
-ensureColumn('sessions', 'affection', 'INTEGER NOT NULL DEFAULT 18');
-ensureColumn('sessions', 'trust', 'INTEGER NOT NULL DEFAULT 22');
-ensureColumn('sessions', 'intimacy', 'INTEGER NOT NULL DEFAULT 15');
+ensureColumn('sessions', 'affection', 'INTEGER NOT NULL DEFAULT 22');
+ensureColumn('sessions', 'trust', 'INTEGER NOT NULL DEFAULT 26');
+ensureColumn('sessions', 'intimacy', 'INTEGER NOT NULL DEFAULT 18');
 ensureColumn('sessions', 'current_mood', "TEXT NOT NULL DEFAULT '温柔浅笑'");
 ensureColumn('sessions', 'secret_diary', "TEXT NOT NULL DEFAULT '[]'");
 ensureColumn('sessions', 'director_note', "TEXT NOT NULL DEFAULT ''");
@@ -318,10 +321,19 @@ ensureColumn('sessions', 'ds_thinking', 'INTEGER NOT NULL DEFAULT 1');
 ensureColumn('sessions', 'ds_search', 'INTEGER NOT NULL DEFAULT 0');
 ensureColumn('sessions', 'ds_json_mode', 'INTEGER NOT NULL DEFAULT 0');
 ensureColumn('sessions', 'ds_tools_enabled', 'INTEGER NOT NULL DEFAULT 1');
-ensureColumn('sessions', 'proactive_enabled', 'INTEGER NOT NULL DEFAULT 1');
+ensureColumn('sessions', 'proactive_enabled', 'INTEGER NOT NULL DEFAULT 0');
 ensureColumn('sessions', 'pinned', 'INTEGER NOT NULL DEFAULT 0');
 ensureColumn('sessions', 'title_locked', 'INTEGER NOT NULL DEFAULT 0');
 ensureColumn('sessions', 'session_prompt', "TEXT NOT NULL DEFAULT ''");
+
+// 平滑修正旧版初始会话好感度默认值(18/22/15 -> 22/26/18)与默认关闭自动闲置插话
+try {
+  db.exec(`
+    UPDATE sessions
+    SET affection = 22, trust = 26, intimacy = 18
+    WHERE affection = 18 AND trust = 22 AND intimacy = 15;
+  `);
+} catch {}
 
 ensureColumn('messages', 'meta_json', 'TEXT DEFAULT NULL');
 
@@ -397,7 +409,7 @@ const DEFAULT_SETTINGS = {
   temperature: '0.90',
   sliding_window_turns: '48',
   max_recalled_memories: '20',
-  proactive_idle_sec: '60',
+  proactive_idle_sec: '300',
   tts_provider: 'edge_neural',
   tts_api_key: '',
   tts_group_id: '',
@@ -1576,16 +1588,16 @@ function createStarterSessionForUser(userId, nickname) {
       id, user_id, persona_id, title, proactive_enabled, rolling_summary, summarized_until_msg_id,
       enable_inner_thought, enable_auto_memory, affection, trust, intimacy, current_mood, secret_diary, created_at, updated_at
     ) VALUES (?, ?, ?, ?, 0, '', 0, 1, 1, 22, 26, 18, '温柔浅笑', ?, ?, ?)
-  `).run(sessionId, userId, firstPersona.id, '星夜初访白山茶钟楼', initialDiary, now, now);
+  `).run(sessionId, userId, firstPersona.id, '星夜初访白山茶钟楼', initialDiary, now + 1, now + 1);
 
   db.prepare(`
     INSERT INTO messages (session_id, role, reasoning, content, duration_ms, recalled_count, created_at)
     VALUES (?, 'assistant', ?, ?, 360, 2, ?)
   `).run(
     sessionId,
-    `听见楼梯传来轻快的脚步声，星盘指针果然又轻轻偏转了半寸。先把花房窗户关小些，免得刚进门的客人吹风着凉。`,
+    `外头夜风渐凉，终于把等了许久的人盼来了，可得先把温好的蜜桃乌龙递过去暖暖手。`,
     firstPersona.greeting,
-    now
+    now + 1
   );
 
   const insertMem = db.prepare(`
@@ -1625,17 +1637,17 @@ function createStarterSessionForUser(userId, nickname) {
     );
   }
 
-  // 同时预置一条默认 DeepSeek 原生空白新对话，确保首次打开默认 DeepSeek 模式零延迟秒开
+  // 同时预置一条默认 DeepSeek 极简问答空白新对话，确保切换模式时零延迟秒开
   const dsSessId = genId('sess');
   db.prepare(`
     INSERT INTO sessions (
-      id, user_id, persona_id, title, session_mode, ds_thinking, ds_search,
+      id, user_id, persona_id, title, session_mode, ds_thinking, ds_search, proactive_enabled,
       rolling_summary, summarized_until_msg_id, enable_inner_thought, enable_auto_memory,
       affection, trust, intimacy, current_mood, secret_diary, created_at, updated_at
-    ) VALUES (?, ?, 'persona_deepseek_official', '新对话', 'deepseek_native', 1, 0, '', 0, 1, 1, 20, 25, 15, '平静专注', '[]', ?, ?)
-  `).run(dsSessId, userId, now + 1, now + 1);
+    ) VALUES (?, ?, 'persona_deepseek_official', '新对话', 'deepseek_native', 1, 0, 0, '', 0, 1, 1, 22, 26, 18, '平静专注', '[]', ?, ?)
+  `).run(dsSessId, userId, now, now);
 
-  return dsSessId;
+  return sessionId;
 }
 
 function seedInitialData() {
@@ -2348,7 +2360,7 @@ function recordUserDailyEvent(userId, eventType, dateKey = getShanghaiDateKey())
 }
 
 function getCardCheckinBonusInfo(memSnap) {
-  if (!memSnap || !memSnap.has_active_card) {
+  if (!memSnap || !memSnap.has_active_card || memSnap.free_experience_mode) {
     return { points: 0, label: '', shortLabel: '' };
   }
   if (memSnap.card_type === 'year') {
@@ -3435,7 +3447,7 @@ function getSafeClientSettings(userId) {
   let temperature = '0.85';
   let slidingWindow = '40';
   let maxRecall = '16';
-  let proactiveIdle = '180';
+  let proactiveIdle = '300';
   let ownKey = '';
   let ownModel = 'deepseek-flash';
   let ownBaseUrl = OFFICIAL_DEEPSEEK_CHAT_URL;

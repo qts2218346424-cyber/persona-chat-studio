@@ -757,6 +757,7 @@
       splash.classList.add('hidden');
     }
   }
+  window.__showAppToast = (msg, dur) => showToast(msg, dur);
 
   let toastTimer = null;
   let topToastTimer = null;
@@ -1075,45 +1076,81 @@
     });
   }
 
-  let stashedGuestIdBeforeSwitch = '';
+  let isSwitchingAccountOverlay = false;
+
+  function dismissAccountSwitchOverlay() {
+    if (!isSwitchingAccountOverlay || !state.user) return false;
+    isSwitchingAccountOverlay = false;
+    authGate.classList.add('hidden');
+    appShell.classList.remove('hidden');
+    document.getElementById('auth-back-to-chat-btn')?.classList.add('hidden');
+    document.getElementById('auth-close-x-btn')?.classList.add('hidden');
+    document.getElementById('auth-confirm-signout-btn')?.classList.add('hidden');
+    setAuthError('');
+    showToast('✨ 已回到刚才的聊天对话');
+    return true;
+  }
 
   async function performAccountLogout() {
+    window.__closeMobileDrawers?.();
+    if (state.user) {
+      // 无损打开账号切换面板：不提前吊销原登录令牌、不卸载当前聊天，随时可按 Esc / ✕ / 返回键一键回到原对话
+      isSwitchingAccountOverlay = true;
+      setAuthError('');
+      appShell.classList.add('hidden');
+      authGate.classList.remove('hidden');
+      document.getElementById('auth-back-to-chat-btn')?.classList.remove('hidden');
+      document.getElementById('auth-close-x-btn')?.classList.remove('hidden');
+      document.getElementById('auth-confirm-signout-btn')?.classList.remove('hidden');
+      document.getElementById('signin-email')?.focus();
+      return;
+    }
+    showAuthScreen();
+  }
+
+  document.getElementById('auth-back-to-chat-btn')?.addEventListener('click', () => {
+    if (!dismissAccountSwitchOverlay()) {
+      document.getElementById('quick-demo-login-btn')?.click();
+    }
+  });
+  document.getElementById('auth-close-x-btn')?.addEventListener('click', () => {
+    dismissAccountSwitchOverlay();
+  });
+  document.getElementById('auth-confirm-signout-btn')?.addEventListener('click', async () => {
     const curNick = state.user?.nickname || '当前账号';
     const ok = await askUserConfirm({
-      title: '🔄 切换账号或前往登录页',
-      message: `确定要离开「${curNick}」前往登录/注册页吗？\n（放心，进入登录页后仍可点击顶部「← 返回继续刚才的聊天」随时回来）`,
-      confirmText: '前往切换账号',
-      danger: false
+      title: '🚪 确认退出当前账号',
+      message: `确定要退出「${curNick}」的登录状态吗？`,
+      confirmText: '确认退出登录',
+      danger: true
     });
     if (!ok) return;
-
-    stashedGuestIdBeforeSwitch = window.__starAuthStore?.getGuestUserId?.() || state.user?.id || '';
+    isSwitchingAccountOverlay = false;
     try {
       sessionStorage.setItem('manual_account_switch', '1');
     } catch {}
     await apiJson('/api/auth/logout', { method: 'POST' }).catch(() => {});
     resetClientWorkspaceState();
     window.__starAuthStore?.clearTabSession(true);
+    document.getElementById('auth-confirm-signout-btn')?.classList.add('hidden');
+    document.getElementById('auth-close-x-btn')?.classList.add('hidden');
     showAuthScreen();
-    document.getElementById('auth-back-to-chat-btn')?.classList.remove('hidden');
-  }
+    showToast('👋 已安全退出登录，可登录其他账号或免注册畅玩');
+  });
 
-  document.getElementById('auth-back-to-chat-btn')?.addEventListener('click', async () => {
-    try {
-      sessionStorage.removeItem('manual_account_switch');
-    } catch {}
-    const gid = stashedGuestIdBeforeSwitch || window.__starAuthStore?.getGuestUserId?.() || '';
-    try {
-      const demoRes = await apiJson('/api/auth/demo-login', {
-        method: 'POST',
-        body: JSON.stringify({ guest_user_id: gid })
-      });
-      applyAuthLoginPayload(demoRes, { persistDefault: true, rememberGuest: true });
-      document.getElementById('auth-back-to-chat-btn')?.classList.add('hidden');
-      await enterWorkspace();
-      showToast('✨ 已回到刚才的聊天空间');
-    } catch {
-      document.getElementById('quick-demo-login-btn')?.click();
+  // 全局 Escape 保底关闭：支持按 Esc 随时退出账号切换层，并确保所有模态弹窗（含内部搜索框聚焦时）均可按 Esc 关闭
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    const openDialogs = Array.from(document.querySelectorAll('dialog[open]'));
+    if (openDialogs.length > 0) {
+      const topDialog = openDialogs[openDialogs.length - 1];
+      e.preventDefault();
+      topDialog.close();
+      return;
+    }
+    if (isSwitchingAccountOverlay && !authGate.classList.contains('hidden')) {
+      e.preventDefault();
+      dismissAccountSwitchOverlay();
     }
   });
 
@@ -1169,14 +1206,15 @@
     const step = TOUR_STEPS[state.tourIndex];
     if (!step) return;
 
-    if (step.ensureLeftOpen && appShell.classList.contains('left-collapsed')) {
+    const isNarrowViewport = window.matchMedia('(max-width: 860px)').matches;
+    if (!isNarrowViewport && step.ensureLeftOpen && appShell.classList.contains('left-collapsed')) {
       appShell.classList.remove('left-collapsed');
       expandLeftBtn.classList.add('hidden');
     }
 
     clearTourSpotlight();
     const targetEl = document.getElementById(step.anchorId);
-    if (targetEl) {
+    if (targetEl && (!isNarrowViewport || !targetEl.closest('#left-sidebar'))) {
       targetEl.classList.add('tour-spotlight-target');
       targetEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     }
@@ -1198,12 +1236,16 @@
   }
 
   function startOnboardingTour() {
+    if (!tourPopover) return;
+    hidePopoverSafe('topbar-more-popover');
     state.tourIndex = 0;
     state.tourActive = true;
     if (supportsNativePopover && typeof tourPopover.showPopover === 'function') {
       try {
         tourPopover.showPopover();
-      } catch {}
+      } catch {
+        tourPopover.classList.add('tour-manual-open');
+      }
     } else {
       tourPopover.classList.add('tour-manual-open');
     }
@@ -1213,12 +1255,12 @@
   async function closeOnboardingTour(markDone = true) {
     state.tourActive = false;
     clearTourSpotlight();
-    if (supportsNativePopover && typeof tourPopover.hidePopover === 'function') {
+    if (supportsNativePopover && typeof tourPopover?.hidePopover === 'function') {
       try {
         tourPopover.hidePopover();
       } catch {}
     }
-    tourPopover.classList.remove('tour-manual-open');
+    tourPopover?.classList.remove('tour-manual-open');
 
     if (markDone && state.user) {
       chatInput.focus();
@@ -1234,7 +1276,11 @@
     }
   }
 
-  document.getElementById('start-tour-btn').addEventListener('click', startOnboardingTour);
+  document.getElementById('start-tour-btn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    hidePopoverSafe('topbar-more-popover');
+    setTimeout(() => startOnboardingTour(), 20);
+  });
   tourPrevBtn.addEventListener('click', () => {
     if (state.tourIndex > 0) {
       state.tourIndex -= 1;
@@ -1405,36 +1451,88 @@
     true
   );
 
-  // 确定性 Popover 触发器接管：彻底消除按 Esc 关闭 <dialog> 后首次点击 ⋯更多 / 🪄帮我回一句 被吞掉的问题
+  // 确定性 Popover 触发器接管：彻底消除按 Esc 关闭 <dialog> 后首次点击被吞，并保证视口内精准贴靠显示
+  // 确定性 Popover 触发器接管：原生 Top-Layer + 精确固定坐标双保险，彻底杜绝任何视口挤压或被吞点击
+  function positionPopoverNearTrigger(triggerEl, popEl) {
+    if (!triggerEl || !popEl) return;
+    const tRect = triggerEl.getBoundingClientRect();
+    const pRect = popEl.getBoundingClientRect();
+    const vw = window.innerWidth || document.documentElement.clientWidth;
+    const vh = window.innerHeight || document.documentElement.clientHeight;
+
+    popEl.style.position = 'fixed';
+    popEl.style.margin = '0';
+    popEl.style.inset = 'auto';
+    popEl.style.positionAnchor = 'unset';
+    popEl.style.positionArea = 'none';
+
+    const popW = Math.min(Math.max(pRect.width || 228, 204), vw - 16);
+    const popH = Math.min(pRect.height || 340, vh - 24);
+
+    let left = tRect.right - popW;
+    if (tRect.left < vw * 0.45) {
+      left = tRect.left;
+    }
+    left = Math.max(8, Math.min(vw - popW - 8, left));
+
+    let top = tRect.bottom + 8;
+    if (tRect.top > vh * 0.55 || top + popH > vh - 8) {
+      top = Math.max(8, tRect.top - popH - 8);
+    }
+    popEl.style.left = `${Math.round(left)}px`;
+    popEl.style.top = `${Math.round(top)}px`;
+  }
+
   function bindDeterministicPopoverTrigger(triggerEl, popoverId) {
     const popEl = document.getElementById(popoverId);
-    if (!triggerEl || !popEl || typeof popEl.showPopover !== 'function') return;
+    if (!triggerEl || !popEl) return;
     triggerEl.removeAttribute('popovertarget');
     triggerEl.setAttribute('aria-expanded', 'false');
     popEl.addEventListener('toggle', (ev) => {
-      triggerEl.setAttribute('aria-expanded', ev.newState === 'open' ? 'true' : 'false');
+      const openNow = ev.newState === 'open';
+      popEl.classList.toggle('manual-popover-open', openNow);
+      triggerEl.setAttribute('aria-expanded', openNow ? 'true' : 'false');
     });
     triggerEl.addEventListener('click', (ev) => {
       ev.preventDefault();
       ev.stopPropagation();
-      const isOpen = popEl.matches(':popover-open');
+      const isOpen = popEl.matches(':popover-open') || popEl.classList.contains('manual-popover-open');
       if (isOpen) {
+        popEl.classList.remove('manual-popover-open');
+        triggerEl.setAttribute('aria-expanded', 'false');
         try {
-          popEl.hidePopover();
+          popEl.hidePopover?.();
         } catch {}
       } else {
+        popEl.classList.add('manual-popover-open');
+        triggerEl.setAttribute('aria-expanded', 'true');
         try {
-          popEl.showPopover({ source: triggerEl });
-        } catch {
-          try {
-            popEl.showPopover();
-          } catch {}
-        }
+          popEl.showPopover?.();
+        } catch {}
+        positionPopoverNearTrigger(triggerEl, popEl);
       }
     });
   }
+
+  document.addEventListener('click', (ev) => {
+    const target = ev.target;
+    if (!(target instanceof Element)) return;
+    ['topbar-more-popover', 'magic-quick-popover', 'ds-user-popover'].forEach((pid) => {
+      const pEl = document.getElementById(pid);
+      if (!pEl || !pEl.classList.contains('manual-popover-open')) return;
+      if (pEl.contains(target)) return;
+      if (
+        (pid === 'topbar-more-popover' && target.closest('#topbar-more-btn')) ||
+        (pid === 'magic-quick-popover' && target.closest('#magic-menu-trigger-btn')) ||
+        (pid === 'ds-user-popover' && (target.closest('#ds-profile-btn') || target.closest('.ds-dots-btn')))
+      ) {
+        return;
+      }
+      hidePopoverSafe(pid);
+    });
+  });
   bindDeterministicPopoverTrigger(document.getElementById('topbar-more-btn'), 'topbar-more-popover');
-  bindDeterministicPopoverTrigger(document.getElementById('magic-popover-btn'), 'magic-quick-popover');
+  bindDeterministicPopoverTrigger(document.getElementById('magic-menu-trigger-btn'), 'magic-quick-popover');
   bindDeterministicPopoverTrigger(document.getElementById('ds-profile-btn'), 'ds-user-popover');
   document.querySelectorAll('.ds-dots-btn[popovertarget="ds-user-popover"]').forEach((btn) => {
     bindDeterministicPopoverTrigger(btn, 'ds-user-popover');
@@ -1553,7 +1651,10 @@
     expandLeftBtn.classList.toggle('hidden', !collapsed);
     expandLeftBtn.setAttribute('aria-expanded', String(!collapsed));
     collapsedQuickNav?.classList.toggle('hidden', !collapsed);
-    if (persist && !window.matchMedia('(max-width: 860px)').matches) {
+    if (window.matchMedia('(max-width: 860px)').matches) {
+      const bothClosed = collapsed && appShell.classList.contains('right-collapsed');
+      document.getElementById('mobile-drawer-backdrop')?.classList.toggle('hidden', bothClosed);
+    } else if (persist) {
       try {
         localStorage.setItem('left_sidebar_collapsed_v1', collapsed ? '1' : '0');
       } catch {}
@@ -1566,7 +1667,10 @@
       appShell.classList.remove('artifacts-wide');
     }
     toggleRightBtn?.classList.toggle('active', !collapsed);
-    if (persist && !window.matchMedia('(max-width: 860px)').matches) {
+    if (window.matchMedia('(max-width: 860px)').matches) {
+      const bothClosed = collapsed && appShell.classList.contains('left-collapsed');
+      document.getElementById('mobile-drawer-backdrop')?.classList.toggle('hidden', bothClosed);
+    } else if (persist) {
       try {
         localStorage.setItem('right_panel_collapsed_v1', collapsed ? '1' : '0');
       } catch {}
@@ -1593,13 +1697,36 @@
     }
   });
   document.getElementById('topbar-collapsed-create-persona-btn')?.addEventListener('click', () => {
-    document.getElementById('create-persona-btn')?.click();
+    openPersonaModalForCreate();
+  });
+  document.getElementById('topbar-collapsed-plaza-btn')?.addEventListener('click', () => {
+    document.getElementById('open-plaza-btn')?.click();
   });
   document.getElementById('topbar-collapsed-settings-btn')?.addEventListener('click', () => {
     openSettingsModal(false);
   });
   document.getElementById('topbar-collapsed-account-btn')?.addEventListener('click', () => {
-    document.getElementById('logout-btn')?.click();
+    performAccountLogout();
+  });
+  document.getElementById('more-create-persona-btn')?.addEventListener('click', () => {
+    hidePopoverSafe('topbar-more-popover');
+    openPersonaModalForCreate();
+  });
+  document.getElementById('more-new-chat-btn')?.addEventListener('click', () => {
+    hidePopoverSafe('topbar-more-popover');
+    if (state.uiMode === 'deepseek') {
+      document.getElementById('ds-new-chat-btn')?.click();
+    } else {
+      document.getElementById('new-chat-btn')?.click();
+    }
+  });
+  document.getElementById('more-switch-account-btn')?.addEventListener('click', () => {
+    hidePopoverSafe('topbar-more-popover');
+    performAccountLogout();
+  });
+  document.getElementById('more-open-square-btn')?.addEventListener('click', () => {
+    hidePopoverSafe('topbar-more-popover');
+    document.getElementById('open-plaza-btn')?.click();
   });
 
   function openRightTab(tabId, persist = true) {
@@ -1738,12 +1865,19 @@
       ? `畅聊 (${m.online_credits || 0}次)`
       : `${m.online_credits || 0} 次`;
 
+    const quickVipSub = document.getElementById('sidebar-quick-vip-sub');
+    if (quickVipSub) {
+      quickVipSub.textContent = m.checked_in_today
+        ? `✨ ${m.points ?? 0} 积分 ▸`
+        : '📅 今日可签到 ▸';
+    }
+
     if (vipModalTier) {
-      vipModalTier.textContent = isAdmin ? '🛡️ 站长尊享账户' : m.tier_name || '🌙 星月会员';
+      vipModalTier.textContent = isAdmin ? '🛡️ 站长尊享账户' : isFreeMode ? '🌟 全站免费畅享旅人' : m.tier_name || '🌙 星月会员';
     }
     const expChip = document.getElementById('vip-modal-expire-chip');
     if (expChip) {
-      const showExp = Boolean((m.has_active_card || isFreeMode) && m.remaining_text);
+      const showExp = Boolean(!isFreeMode && m.has_active_card && m.remaining_text);
       expChip.classList.toggle('hidden', !showExp);
       if (showExp) expChip.textContent = `⏳ ${m.remaining_text}`;
     }
@@ -1757,13 +1891,9 @@
 
     if (vipModalDesc) {
       if (isFreeMode) {
-        vipModalDesc.innerHTML = `🎉 当前全站处于<strong>全免费开放体验期</strong>（收费模式已关闭）！您的账户身份为<strong>${escapeHtml(
-          m.tier_name || '🌙 星月会员'
-        )}</strong>（${escapeHtml(
-          m.remaining_text || '生效中'
-        )}），所有剧本角色扮演、DeepSeek 原生对话与<strong>个人 API 自由接入</strong>均全程免费免扣次（累计已对话 ${
+        vipModalDesc.innerHTML = `🎉 本站所有角色扮演、真声配音、长期记忆与<strong>使用您自己的 API 密钥</strong>功能均<strong>完全免费开放、不限次数畅聊</strong>！签到与完成互动小目标可收集星光积分，免费兑换好感心意礼盒与纪念头衔（累计已畅聊 ${
           m.total_used || 0
-        } 次）！`;
+        } 句）。`;
       } else {
         vipModalDesc.innerHTML = m.has_active_card
           ? `当前正处于<strong>${escapeHtml(m.tier_name)}</strong>有效期内（${escapeHtml(
@@ -2412,6 +2542,9 @@
   document.getElementById('open-vip-btn').addEventListener('click', () => {
     const defaultTab = state.membership?.checked_in_today ? 'wtab-redeem' : 'wtab-checkin';
     openWalletModal(defaultTab);
+  });
+  document.getElementById('sidebar-quick-vip-btn')?.addEventListener('click', () => {
+    openWalletModal('wtab-checkin');
   });
   document.getElementById('ds-menu-wallet-btn')?.addEventListener('click', () => {
     const pop = document.getElementById('ds-user-popover');
@@ -3602,7 +3735,11 @@
   }
 
   async function switchActiveScript(scriptId, preferredPersonaId = null) {
-    if (!scriptId || state.isStreaming) return;
+    if (!scriptId) return;
+    if (state.isStreaming) {
+      showToast('⏳ 角色正在回应中，请稍候或点击「轻声止步」后再切换剧本');
+      return;
+    }
     state.activeScriptId = scriptId;
     try {
       localStorage.setItem('active_script_id', scriptId);
@@ -4147,7 +4284,7 @@
 
     const statusBadge = document.getElementById('session-prompt-status-badge');
     if (statusBadge) {
-      statusBadge.textContent = hasCustom ? '🎯 专属设定生效中' : '未填写（仅本对话生效）';
+      statusBadge.textContent = hasCustom ? '🎯 已生效' : '仅本对话生效';
     }
     const dsSettingPill = document.getElementById('ds-session-setting-pill');
     if (dsSettingPill) {
@@ -4221,7 +4358,7 @@
     document.getElementById('val-tier1').textContent = t.tier1PersonaTokens;
     document.getElementById('val-tier2').textContent = t.tier2MemoryTokens;
     document.getElementById('val-tier3').textContent = t.tier3WindowTokens;
-    document.getElementById('telemetry-total-label').textContent = `约 ${t.totalTokens} 词元`;
+    document.getElementById('telemetry-total-label').textContent = `约 ${t.totalTokens} 字`;
 
     memoryPillText.textContent = `唤醒记忆 ${t.recalledMemoryCount} 条`;
 
@@ -4657,6 +4794,7 @@
 
     const footer = document.createElement('div');
     footer.className = 'msg-footer-bar';
+    const canRegen = isLastAssistant && state.messages.some((m) => m.role === 'user');
 
     if (isDsUi) {
       const fb = meta.feedback || '';
@@ -4669,7 +4807,7 @@
           <span class="ds-copy-live-tip" role="status"></span>
         </span>
         ${
-          isLastAssistant
+          canRegen
             ? `<button type="button" class="ds-icon-action-btn regen-btn" title="重新生成（保留历史版本可对比）" aria-label="重新生成">
                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
                </button>`
@@ -4701,7 +4839,7 @@
         <button type="button" class="msg-tool-btn branch-btn" title="从这一刻创建对话分支">🌿 分支</button>
         <button type="button" class="msg-tool-btn edit-msg-btn" title="编辑修改本条回复">✏️ 编辑</button>
         <button type="button" class="msg-tool-btn copy-btn">复制</button>
-        ${isLastAssistant ? `<button type="button" class="msg-tool-btn regen-btn">重演</button>` : ''}
+        ${canRegen ? `<button type="button" class="msg-tool-btn regen-btn" title="换一种剧情回答">重演</button>` : ''}
       `;
     }
 
@@ -4813,18 +4951,29 @@
 
     bodyEl.appendChild(footer);
 
-    // 7. 最新一条回复下方渲染 3 条「主动追问 / 剧情推进」引导胶囊
-    if (isLastAssistant && !state.isStreaming && Array.isArray(meta.follow_ups) && meta.follow_ups.length > 0) {
+    // 7. 最新一条回复下方渲染「主动追问 / 剧情推进」引导胶囊（若切回历史会话无 follow_ups 则自动补齐角色推荐选项，不再消失）
+    const hasPriorUser = state.messages.some((m) => m.role === 'user');
+    const effectiveFollowUps =
+      Array.isArray(meta.follow_ups) && meta.follow_ups.length > 0
+        ? meta.follow_ups
+        : !isDsUi && hasPriorUser && !meta.interrupted && Array.isArray(state.activePersona?.starter_prompts) && state.activePersona.starter_prompts.length > 0
+        ? state.activePersona.starter_prompts.slice(0, 3)
+        : [];
+    if (isLastAssistant && !state.isStreaming && effectiveFollowUps.length > 0) {
       const fRow = document.createElement('div');
       fRow.className = 'follow-ups-row';
-      for (const q of meta.follow_ups) {
+      for (const q of effectiveFollowUps) {
         const branchMatch = String(q).match(/^(🎬|🔍|💭)\s*(.+)$/);
         const iconGlyph = branchMatch ? branchMatch[1] : isDsUi ? '→' : '✨';
-        const cleanQuery = branchMatch ? branchMatch[2] : q;
+        const cleanQuery = branchMatch ? branchMatch[2] : String(q);
+        const prettyChipHtml = escapeHtml(cleanQuery).replace(
+          /\*([^*\n]+)\*/g,
+          '<em class="rp-action">（$1）</em>'
+        );
         const chip = document.createElement('button');
         chip.type = 'button';
         chip.className = 'followup-chip';
-        chip.innerHTML = `<span class="followup-arrow">${iconGlyph}</span><span>${escapeHtml(cleanQuery)}</span>`;
+        chip.innerHTML = `<span class="followup-arrow">${iconGlyph}</span><span>${prettyChipHtml}</span>`;
         chip.addEventListener('click', () => {
           if (!state.isStreaming) sendStreamMessage(cleanQuery, false);
         });
@@ -4873,7 +5022,13 @@
         !hasUserTurn && Array.isArray(p.starter_prompts) && p.starter_prompts.length > 0
           ? `<div class="starter-prompts-grid">
               ${p.starter_prompts
-                .map((sp) => `<button type="button" class="starter-chip">✦ ${escapeHtml(sp)}</button>`)
+                .map((sp) => {
+                  const prettySp = escapeHtml(sp).replace(
+                    /\*([^*\n]+)\*/g,
+                    '<em class="rp-action">（$1）</em>'
+                  );
+                  return `<button type="button" class="starter-chip" data-raw-prompt="${escapeHtml(sp)}">✦ ${prettySp}</button>`;
+                })
                 .join('')}
             </div>`
           : '';
@@ -4903,7 +5058,8 @@
       banner.querySelectorAll('.starter-chip').forEach((chip) => {
         chip.addEventListener('click', () => {
           if (!state.isStreaming) {
-            sendStreamMessage(chip.textContent.replace(/^✦\s*/, ''), false);
+            const rawSp = chip.getAttribute('data-raw-prompt') || chip.textContent.replace(/^✦\s*/, '');
+            sendStreamMessage(rawSp, false);
           }
         });
       });
@@ -5107,6 +5263,12 @@
       return;
     }
     const stagedFiles = !regenerate && !editMessageId ? [...state.pendingAttachments] : [];
+
+    if (regenerate && !state.messages.some((m) => m.role === 'user')) {
+      showToast('✨ 请先和 TA 说上一句话，就能随时点击「重演」换不同回答啦');
+      chatInput.focus();
+      return;
+    }
 
     if (!regenerate && !trimmed && stagedFiles.length === 0) return;
 
@@ -5370,7 +5532,7 @@
             const trigLores = payload.triggered_lorebooks || [];
             state.triggeredLoreIds = new Set(trigLores.map((l) => l.id));
             if (trigLores.length > 0 && !originIsDsUi) {
-              showToast(`📖 已唤醒世界书设定：【${trigLores[0].title}】`, 2200);
+              showToast(`🔑 已触发关键词设定：【${trigLores[0].title}】`, 2200);
             }
             if (payload.nurturing) {
               state.nurturing = payload.nurturing;
@@ -5487,18 +5649,19 @@
       if (!isStillOriginSession()) {
         return;
       }
-      if (err.name === 'AbortError') {
+      if (err.name === 'AbortError' || abortController.signal.aborted) {
+        liveRow.classList.remove('awaiting-first-token');
         thoughtContentEl.classList.remove('streaming-cursor');
         proseEl.classList.remove('streaming-cursor');
-        const substantivePartial = accContent.replace(/^[\s*＊…—-]+$/g, '').trim();
+        const substantivePartial = accContent.replace(/^[\s*＊…—\-()（）「」『』【】]+$/g, '').trim();
         const trimmedAcc = accContent.trim();
         const balancedAcc =
           substantivePartial && (trimmedAcc.match(/\*/g) || []).length % 2 === 1
             ? `${trimmedAcc}*`
             : trimmedAcc;
         const preservedText = substantivePartial
-          ? `${balancedAcc}\n\n*(生成已中断)*`
-          : '*（生成已中断，可点击下方按钮继续或重演）*';
+          ? `${balancedAcc}\n\n（⏹ 已停止生成）`
+          : '*（⏹ 已停止生成，可点击下方按钮继续或重演）*';
         state.messages.push({
           role: 'assistant',
           reasoning: accReasoning,
@@ -5515,7 +5678,7 @@
         });
         setStreamingUi(false);
         renderMessages();
-        showToast('⏸️ 已轻声止步，已输出的内容已为您完整保留');
+        showToast('⏸️ 已停止生成，已输出的内容已为您完整保留');
         // 延迟静默对齐服务端记录（防止旧快照覆盖刚保留的半段回复）
         const localCountAfterStop = state.messages.length;
         setTimeout(async () => {
@@ -5537,14 +5700,14 @@
         proseEl.innerHTML =
           renderMessageMarkdown(accContent, liveSearchResults) +
           `<p style="color: var(--accent-danger); margin-top: 8px; font-size: 13px;">⚠️ 网络波动提示：${escapeHtml(
-            err.message
+            err?.message || '连接中断'
           )}（以上已生成正文已为你保留）</p>`;
         await loadSession(originSessionId).catch(() => {});
       } else {
         liveRow.classList.remove('awaiting-first-token');
         proseEl.classList.remove('streaming-cursor');
         proseEl.innerHTML = `<p style="color: var(--accent-danger)">⚠️ 响应异常：${escapeHtml(
-          err.message
+          err?.message || '网络连接暂时中断，请稍后重试'
         )}</p>`;
       }
     } finally {
@@ -6007,8 +6170,26 @@
       triggerCompanionCare('timer', true);
     }
 
-    // 久别重逢检测：仅在恋庭沉浸扮演模式且开启主动关怀时触发（原生 DeepSeek 模式保持纯净问答不自动插话）
-    if (sessMode === 'roleplay' && state.messages.length > 0 && data.session?.proactive_enabled !== 0) {
+    // 同步右上角更多菜单中「自动主动搭话」按钮显示态
+    const proBtnEl = document.getElementById('toggle-proactive-btn');
+    if (proBtnEl) {
+      const proOn =
+        localStorage.getItem('pref_auto_proactive') === '1' &&
+        Number(data.session?.proactive_enabled) === 1;
+      proBtnEl.classList.toggle('active', proOn);
+      proBtnEl.setAttribute('aria-pressed', String(proOn));
+      proBtnEl.textContent = proOn
+        ? '💓 角色安静时自动搭话：已开启'
+        : '💓 角色安静时自动搭话：已关闭';
+    }
+
+    // 久别重逢检测：仅在用户显式开启主动搭话时触发（默认保持安静不打扰）
+    if (
+      sessMode === 'roleplay' &&
+      state.messages.length > 0 &&
+      localStorage.getItem('pref_auto_proactive') === '1' &&
+      Number(data.session?.proactive_enabled) === 1
+    ) {
       const lastMsg = state.messages[state.messages.length - 1];
       const lastMeta = parseMsgMeta(lastMsg);
       const idleMs = Date.now() - (lastMsg.created_at || Date.now());
@@ -6071,7 +6252,7 @@
       contentEl.value = '';
       state.lorebooks = res.lorebooks || [];
       renderLorebooks();
-      showToast('📖 已写入新的世界书隐藏设定，对话提及关键词时将自动唤醒！');
+      showToast('🔑 已添加关键词设定，聊天提到触发词时角色会自动想起来！');
     } catch (err) {
       showToast(`⚠️ ${err.message}`);
     }
@@ -6259,6 +6440,15 @@
   document.getElementById('clear-session-prompt-btn')?.addEventListener('click', async () => {
     if (!state.activeSessionId) return;
     const inp = document.getElementById('session-prompt-input');
+    if (inp && inp.value.trim().length > 0) {
+      const confirmed = await askUserConfirm({
+        title: '🧹 确认清空本对话专属设定',
+        message: '确定要清空当前对话框填写的专属附加设定吗？',
+        confirmText: '确认清空',
+        danger: true
+      });
+      if (!confirmed) return;
+    }
     if (inp) inp.value = '';
     const res = await apiJson(`/api/sessions/${encodeURIComponent(state.activeSessionId)}`, {
       method: 'PATCH',
@@ -6268,11 +6458,18 @@
     state.sessions = res.sessions || state.sessions;
     populatePersonaEditor();
     renderSessionList();
-    showToast('↺ 已清空本对话独立附加设定');
+    showToast('↺ 已清空本对话专属设定');
   });
 
   document.getElementById('reset-persona-override-btn')?.addEventListener('click', async () => {
     if (!state.activeSessionId) return;
+    const confirmed = await askUserConfirm({
+      title: '↺ 恢复角色默认初始卡',
+      message: '确定要清除本对话对角色卡片的独立修改，恢复为角色的初始基础设定吗？',
+      confirmText: '确认恢复初始卡',
+      danger: true
+    });
+    if (!confirmed) return;
     const res = await apiJson(`/api/sessions/${encodeURIComponent(state.activeSessionId)}`, {
       method: 'PATCH',
       body: JSON.stringify({ clear_persona_override: true })
@@ -6327,7 +6524,7 @@
     });
     state.activeSession = res.session;
     await loadSession(state.activeSessionId);
-    showToast('📜 回忆手札已更新');
+    showToast('📜 前情提要已保存');
   });
 
   compressNowBtn.addEventListener('click', async () => {
@@ -6382,26 +6579,35 @@
   cpBackstoryEl?.addEventListener('input', syncPersonaBackstoryCounter);
 
   function openPersonaModalForCreate() {
+    window.__closeMobileDrawers?.();
     const formEl = document.getElementById('create-persona-form');
     formEl?.reset();
     const editIdEl = document.getElementById('cp-editing-id');
     if (editIdEl) editIdEl.value = '';
     const avEl = document.getElementById('cp-avatar');
     if (avEl) avEl.value = '🌸';
+    const femRad = document.getElementById('cp-gender-female');
+    if (femRad) femRad.checked = true;
     const titleEl = document.getElementById('persona-dialog-title');
-    if (titleEl) titleEl.textContent = '🌸 缔结全新角色人设与背景故事';
+    if (titleEl) titleEl.textContent = '🌸 创建属于你的新角色';
     const submitBtn = document.getElementById('submit-persona-dialog-btn');
-    if (submitBtn) submitBtn.textContent = '✨ 缔结角色并开启初遇';
+    if (submitBtn) submitBtn.textContent = '✨ 创建角色并开始聊天';
     syncPersonaBackstoryCounter();
-    setTimeout(() => personaDialog.showModal(), 10);
+    setTimeout(() => {
+      if (!personaDialog.open) personaDialog.showModal();
+    }, 15);
   }
 
   function openPersonaModalForEdit(p) {
     if (!p) return;
+    window.__closeMobileDrawers?.();
     const editIdEl = document.getElementById('cp-editing-id');
     if (editIdEl) editIdEl.value = p.id;
     document.getElementById('cp-avatar').value = p.avatar || '🌸';
     document.getElementById('cp-name').value = p.name || '';
+    const isMaleEdit = p.gender === 'male' || (!p.gender && getPersonaPronoun(p) === '他');
+    const genderRadio = document.getElementById(isMaleEdit ? 'cp-gender-male' : 'cp-gender-female');
+    if (genderRadio) genderRadio.checked = true;
     document.getElementById('cp-tagline').value = p.tagline || '';
     document.getElementById('cp-personality').value = p.personality || '';
     document.getElementById('cp-backstory').value = p.backstory || '';
@@ -6415,7 +6621,7 @@
     const submitBtn = document.getElementById('submit-persona-dialog-btn');
     if (submitBtn) submitBtn.textContent = '💾 保存角色设定';
     syncPersonaBackstoryCounter();
-    personaDialog.showModal();
+    if (!personaDialog.open) personaDialog.showModal();
   }
 
   async function deleteCustomPersona(p) {
@@ -6784,6 +6990,7 @@
     return {
       themeScheme: storedTheme,
       autoTts: localStorage.getItem('auto_tts_reply') !== '0',
+      autoProactive: localStorage.getItem('pref_auto_proactive') === '1',
       showCompanion: companionStageEl ? !companionStageEl.classList.contains('hidden') : true
     };
   }
@@ -6793,10 +7000,13 @@
     applyColorSchemeValue(snap.themeScheme);
     try {
       localStorage.setItem('auto_tts_reply', snap.autoTts ? '1' : '0');
+      localStorage.setItem('pref_auto_proactive', snap.autoProactive ? '1' : '0');
     } catch {}
     const autoTtsChk = document.getElementById('st-auto-tts-chk');
     if (autoTtsChk) autoTtsChk.checked = snap.autoTts;
-    setCompanionVisible(Boolean(snap.showCompanion));
+    const autoProChk = document.getElementById('st-auto-proactive-chk');
+    if (autoProChk) autoProChk.checked = Boolean(snap.autoProactive);
+    setCompanionVisible(Boolean(snap.showCompanion), false);
     const showCompChk = document.getElementById('st-show-companion-chk');
     if (showCompChk) showCompChk.checked = Boolean(snap.showCompanion);
   }
@@ -7017,7 +7227,17 @@
         }
         const showCompChk = document.getElementById('st-show-companion-chk');
         if (showCompChk) {
-          setCompanionVisible(Boolean(showCompChk.checked));
+          setCompanionVisible(Boolean(showCompChk.checked), false);
+        }
+        const autoProChk = document.getElementById('st-auto-proactive-chk');
+        if (autoProChk) {
+          const wantPro = Boolean(autoProChk.checked);
+          try {
+            localStorage.setItem('pref_auto_proactive', wantPro ? '1' : '0');
+          } catch {}
+          if (state.activeSessionId) {
+            await patchActiveSessionFlag({ proactive_enabled: wantPro }, '');
+          }
         }
         renderUserAndMembership();
         window.DeepSeekMonitorPlugin?.sync({
@@ -7095,7 +7315,7 @@
     const nickInp = document.getElementById('up-nickname');
     const cleanNick = (nickInp?.value || '').trim();
     if (!cleanNick) {
-      showToast('⚠️ 主控昵称不能为空哦，请填写希望角色平时对你的称呼');
+      showToast('⚠️ 你在故事里的名字不能为空哦，请填写希望角色对你的称呼');
       nickInp?.focus();
       return;
     }
@@ -7113,8 +7333,33 @@
       state.user = res.user;
       userPersonaDialog.close();
       renderUserAndMembership();
-      if (state.activeSessionId) await loadSession(state.activeSessionId);
+
+      // 立即在本地记忆列表中同步更新「我在故事里的名字」置顶记忆，确保零延迟显示
+      if (Array.isArray(state.memories)) {
+        const nickContent = `我在故事里的名字是「${res.user.nickname}」，请称呼我为「${res.user.nickname}」`;
+        const existMem = state.memories.find((m) => m.slot_key === 'user_nickname');
+        if (existMem) {
+          existMem.content = nickContent;
+          existMem.pinned = 1;
+        } else {
+          state.memories.unshift({
+            id: Date.now(),
+            category: 'profile',
+            slot_key: 'user_nickname',
+            content: nickContent,
+            pinned: 1,
+            importance: 5,
+            retention: 100
+          });
+        }
+        renderTelemetryAndMemories();
+      }
+      renderMessages();
+
       showToast(`🎀 已保存！现在所有角色都会称呼你为「${res.user.nickname}」`);
+      if (state.activeSessionId && state.sessions.some((s) => s.id === state.activeSessionId)) {
+        await loadSession(state.activeSessionId).catch(() => {});
+      }
     } catch (err) {
       showToast(`⚠️ ${err.message}`);
     }
@@ -8477,13 +8722,23 @@
   }
 
   const topbarCompanionBtn = document.getElementById('topbar-companion-btn');
-  function setCompanionVisible(visible) {
+  function setCompanionVisible(visible, notify = false) {
     if (!companionStageEl) return;
     companionStageEl.classList.toggle('hidden', !visible);
     topbarCompanionBtn?.classList.toggle('active', visible);
+    topbarCompanionBtn?.setAttribute('aria-pressed', String(Boolean(visible)));
+    const showCompChk = document.getElementById('st-show-companion-chk');
+    if (showCompChk) showCompChk.checked = Boolean(visible);
     try {
       localStorage.setItem('show_companion_stage', visible ? '1' : '0');
     } catch {}
+    if (notify) {
+      showToast(
+        visible
+          ? '✨ 已开启角色陪伴立绘（可点击立绘戳一戳互动或换造型）'
+          : '✨ 已收起陪伴立绘（仍可点击顶栏「🎙️ 语音通话」随时语音聊天）'
+      );
+    }
   }
 
   // 初始化恢复立绘显示状态：桌面大屏默认展开，手机窄屏（<=860px）默认收起防遮挡聊天区
@@ -8491,17 +8746,17 @@
     const isNarrowMobile = window.matchMedia('(max-width: 860px)').matches;
     const savedVis = localStorage.getItem('show_companion_stage');
     if (isNarrowMobile) {
-      setCompanionVisible(false);
+      setCompanionVisible(false, false);
     } else {
-      setCompanionVisible(savedVis !== '0');
+      setCompanionVisible(savedVis !== '0', false);
     }
   } catch {}
 
   document.getElementById('toggle-companion-btn').addEventListener('click', () => {
-    setCompanionVisible(companionStageEl.classList.contains('hidden'));
+    setCompanionVisible(companionStageEl.classList.contains('hidden'), true);
   });
   topbarCompanionBtn?.addEventListener('click', () => {
-    setCompanionVisible(companionStageEl.classList.contains('hidden'));
+    setCompanionVisible(companionStageEl.classList.contains('hidden'), true);
   });
   document.getElementById('topbar-switch-ds-btn')?.addEventListener('click', () => {
     switchWorkspaceMode('deepseek');
@@ -8635,7 +8890,7 @@
       tabDs.setAttribute('aria-selected', String(isDs));
     }
     if (quickJumpBtn) {
-      quickJumpBtn.textContent = isDs ? '🌸 切换回恋庭沉浸扮演' : '🐋 切换到原生 DeepSeek 模式';
+      quickJumpBtn.textContent = isDs ? '🌸 切换回恋庭沉浸扮演' : '🐋 切换到 DeepSeek 问答模式';
     }
 
     const pronoun = getPersonaPronoun(state.activePersona);
@@ -8672,7 +8927,7 @@
     }
 
     if (isDs) {
-      showToast('🐋 已切换至 DeepSeek 原生模式（长效上下文记忆、深度思考与联网搜索已就绪）');
+      showToast('🐋 已切换至 DeepSeek 问答模式（独立记忆、深度思考与联网搜索已就绪）');
     } else {
       showToast('🌸 已回到星语恋庭沉浸扮演模式');
     }
@@ -8756,25 +9011,6 @@
       { ds_json_mode: next },
       next ? '📋 已开启结构清单整理格式' : '📋 已恢复自然对话格式'
     );
-  });
-
-  document.getElementById('ds-toggle-prefix')?.addEventListener('click', (e) => {
-    const bar = document.getElementById('ds-prefix-bar');
-    if (!bar) return;
-    const isNowOpen = bar.classList.toggle('hidden') === false;
-    e.currentTarget.classList.toggle('active', isNowOpen);
-    e.currentTarget.setAttribute('aria-pressed', String(isNowOpen));
-    if (isNowOpen) {
-      document.getElementById('ds-prefix-input')?.focus();
-    }
-  });
-
-  document.querySelectorAll('.ds-mini-preset').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const inp = document.getElementById('ds-prefix-input');
-      inp.value = btn.dataset.prefix || '';
-      inp.focus();
-    });
   });
 
   document.getElementById('ds-tools-enable-chk').addEventListener('change', (e) => {
@@ -9588,24 +9824,34 @@
     showToast('🖼️ 高清对话分享长图已生成并开始下载！');
   });
 
-  // 「🪄 帮我回一句」AI 实时帮写回复直填输入框 + 偏好设置「允许角色安静时自动搭话」开关联动
+  // 「🪄 帮我回一句」一键直接结合当前剧情填入输入框（无需二次选菜单，连点可换下一句）
   let cachedSuggestedReplies = [];
   let cachedSuggestSessionId = '';
+  let cachedSuggestMsgLen = -1;
   let suggestCursor = 0;
 
-  document.getElementById('magic-ai-draft-btn')?.addEventListener('click', async (e) => {
-    e.stopPropagation();
+  async function fillSmartSuggestedReply(triggerBtn) {
     if (!state.activeSessionId) return;
-    const btn = e.currentTarget;
+    const draftMenuBtn = document.getElementById('magic-ai-draft-btn');
+    const mainMagicBtn = document.getElementById('magic-popover-btn');
+    const curMsgLen = state.messages.length;
     try {
-      if (cachedSuggestSessionId !== state.activeSessionId || cachedSuggestedReplies.length === 0) {
-        btn.textContent = '⏳ 正在结合上文帮你想台词…';
+      if (
+        cachedSuggestSessionId !== state.activeSessionId ||
+        cachedSuggestMsgLen !== curMsgLen ||
+        cachedSuggestedReplies.length === 0
+      ) {
+        if (draftMenuBtn) draftMenuBtn.textContent = '⏳ 正在帮你想台词…';
+        if (triggerBtn === mainMagicBtn && mainMagicBtn) {
+          mainMagicBtn.disabled = true;
+        }
         const res = await apiJson(`/api/sessions/${encodeURIComponent(state.activeSessionId)}/suggest-replies`, {
           method: 'POST',
           body: '{}'
         });
         cachedSuggestedReplies = Array.isArray(res.replies) && res.replies.length > 0 ? res.replies : [];
         cachedSuggestSessionId = state.activeSessionId;
+        cachedSuggestMsgLen = curMsgLen;
         suggestCursor = 0;
       }
       if (cachedSuggestedReplies.length > 0) {
@@ -9615,34 +9861,46 @@
         syncComposerEmptyState();
         hidePopoverSafe('magic-quick-popover');
         chatInput.focus();
-        showToast('✍️ 已帮你把回复写进输入框，可直接点发送或按需修改（再点可换一句）');
+        showToast(
+          `🪄 已为你写好一句回复（第 ${((suggestCursor - 1) % cachedSuggestedReplies.length) + 1}/${cachedSuggestedReplies.length} 句，再点可换一句）`,
+          2400
+        );
       }
     } catch {
-      chatInput.value = '*弯起眼睛看向你* 听你这么说我就安心多啦，接下来我们一起去看看吧？';
+      const fallbacks = [
+        '*弯起眼睛看向你* 听你这么说我就安心多啦，接下来我们一起去看看吧？',
+        '*轻轻靠近半步，认真看着你的眼睛* 其实我刚才一直在想你说的那句话，能多告诉我一点吗？',
+        '*浅浅一笑，把温热的饮品往你手边推了推* 别太累着自己呀，我会一直陪在你身边的。'
+      ];
+      chatInput.value = fallbacks[suggestCursor % fallbacks.length];
+      suggestCursor += 1;
       syncComposerEmptyState();
       hidePopoverSafe('magic-quick-popover');
       chatInput.focus();
-      showToast('✍️ 已帮你填入一句回复，可直接发送！');
+      showToast('🪄 已为你填入一句回复，可直接发送或按喜好微调！', 2400);
     } finally {
-      btn.textContent = '✨ 帮我想一句回复填入输入框（可连点换一句）';
+      if (draftMenuBtn) {
+        draftMenuBtn.textContent = '✨ 帮我想一句回复填入输入框（可连点换一句）';
+      }
+      if (mainMagicBtn) {
+        mainMagicBtn.disabled = false;
+      }
     }
+  }
+
+  document.getElementById('magic-popover-btn')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    fillSmartSuggestedReply(e.currentTarget);
+  });
+
+  document.getElementById('magic-ai-draft-btn')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    fillSmartSuggestedReply(e.currentTarget);
   });
 
   const autoProactiveChk = document.getElementById('st-auto-proactive-chk');
   if (autoProactiveChk) {
     autoProactiveChk.checked = localStorage.getItem('pref_auto_proactive') === '1';
-    autoProactiveChk.addEventListener('change', async () => {
-      const enabled = autoProactiveChk.checked;
-      localStorage.setItem('pref_auto_proactive', enabled ? '1' : '0');
-      if (state.activeSessionId) {
-        await patchActiveSessionFlag(
-          { proactive_enabled: enabled },
-          enabled
-            ? '💬 已开启空闲主动搭话（停顿较久时角色会主动找你说话）'
-            : '🤫 已关闭空闲自动搭话（聊天保持安静不打断）'
-        );
-      }
-    });
   }
 
   // 全局生产力快捷键（Ctrl/Cmd + K 搜索历史对话，Alt + N 开启新对话）
@@ -10156,13 +10414,29 @@
     magicProChip.addEventListener('click', () => triggerProactiveMessage('manual'));
   }
 
-  document.getElementById('toggle-proactive-btn').addEventListener('click', () => {
-    const next = state.activeSession?.proactive_enabled === 0;
-    patchActiveSessionFlag(
+  document.getElementById('toggle-proactive-btn').addEventListener('click', async () => {
+    const curEnabled =
+      localStorage.getItem('pref_auto_proactive') === '1' &&
+      Number(state.activeSession?.proactive_enabled) === 1;
+    const next = !curEnabled;
+    try {
+      localStorage.setItem('pref_auto_proactive', next ? '1' : '0');
+    } catch {}
+    const autoProChk = document.getElementById('st-auto-proactive-chk');
+    if (autoProChk) autoProChk.checked = next;
+    const proBtnEl = document.getElementById('toggle-proactive-btn');
+    if (proBtnEl) {
+      proBtnEl.classList.toggle('active', next);
+      proBtnEl.setAttribute('aria-pressed', String(next));
+      proBtnEl.textContent = next
+        ? '💓 角色安静时自动搭话：已开启'
+        : '💓 角色安静时自动搭话：已关闭';
+    }
+    await patchActiveSessionFlag(
       { proactive_enabled: next },
       next
-        ? '💓 已开启静默主动关怀（停留片刻或重返时 TA 会主动开口）'
-        : '💤 已暂停自动主动搭话（仍可随时点「👋 让 TA 主动开口」）'
+        ? '💓 已开启空闲主动搭话（停顿较久时角色会主动开口找你）'
+        : '💤 已关闭自动主动搭话（默认安静不打断，可随时点「👋 让 TA 开口」）'
     );
   });
 
@@ -10190,7 +10464,16 @@
 
   function hidePopoverSafe(id) {
     const el = document.getElementById(id);
-    if (el && typeof el.hidePopover === 'function') {
+    if (!el) return;
+    el.classList.remove('manual-popover-open');
+    if (id === 'topbar-more-popover') {
+      document.getElementById('topbar-more-btn')?.setAttribute('aria-expanded', 'false');
+    } else if (id === 'magic-quick-popover') {
+      document.getElementById('magic-menu-trigger-btn')?.setAttribute('aria-expanded', 'false');
+    } else if (id === 'ds-user-popover') {
+      document.getElementById('ds-profile-btn')?.setAttribute('aria-expanded', 'false');
+    }
+    if (typeof el.hidePopover === 'function') {
       try {
         el.hidePopover();
       } catch {}
@@ -10227,7 +10510,7 @@
     openSettingsModal();
   });
 
-  // 静默陪伴自动搭话心跳检查（仅在恋庭沉浸扮演模式下生效，DeepSeek 原生模式严格保持零插话与角色交替稳定）
+  // 静默陪伴自动搭话心跳检查（默认严格关闭，仅在用户显式开启 pref_auto_proactive 且会话允许时生效）
   setInterval(() => {
     if (
       !state.user ||
@@ -10236,14 +10519,15 @@
       state.activeSession?.session_mode === 'deepseek_native' ||
       state.isStreaming ||
       state.tourActive ||
-      state.activeSession?.proactive_enabled === 0 ||
+      localStorage.getItem('pref_auto_proactive') !== '1' ||
+      Number(state.activeSession?.proactive_enabled) !== 1 ||
       state.proactiveIdleCount >= 1 ||
       chatInput.value.trim().length > 0
     ) {
       return;
     }
     const idleSec = (Date.now() - state.lastInteractionAt) / 1000;
-    const thresholdSec = Math.max(35, parseInt(state.settings.proactive_idle_sec || '55', 10));
+    const thresholdSec = Math.max(180, parseInt(state.settings.proactive_idle_sec || '300', 10));
     if (idleSec >= thresholdSec) {
       state.proactiveIdleCount += 1;
       triggerProactiveMessage('idle');
@@ -10252,6 +10536,10 @@
 
   // ================= 14. 进入工作台与首次登录检测 =================
   async function enterWorkspace() {
+    isSwitchingAccountOverlay = false;
+    document.getElementById('auth-back-to-chat-btn')?.classList.add('hidden');
+    document.getElementById('auth-close-x-btn')?.classList.add('hidden');
+    document.getElementById('auth-confirm-signout-btn')?.classList.add('hidden');
     try {
       sessionStorage.removeItem('manual_account_switch');
     } catch {}
@@ -10399,11 +10687,7 @@
     popEl.addEventListener('click', (e) => {
       const btn = e.target.closest('button');
       if (!btn || btn.id === 'toggle-proactive-btn') return;
-      if (typeof popEl.hidePopover === 'function') {
-        try {
-          popEl.hidePopover();
-        } catch {}
-      }
+      hidePopoverSafe(popId);
     });
   });
 

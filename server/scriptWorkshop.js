@@ -259,10 +259,13 @@ async function analyzeAndOptimizeScript({ filename = '', rawText = '', focusMode
         })
       ].join('\n');
 
-      const modelToUse =
-        cred.preferredModel === 'deepseek-reasoner' ? 'deepseek-flash' : cred.preferredModel || 'deepseek-flash';
-
       const isSilicon = String(cred.chatUrl || '').includes('siliconflow.cn');
+      let modelToUse =
+        cred.preferredModel === 'deepseek-reasoner' ? 'deepseek-flash' : cred.preferredModel || 'deepseek-flash';
+      if (isSilicon && /V3\.2|R1/i.test(modelToUse)) {
+        modelToUse = 'deepseek-ai/DeepSeek-V3';
+      }
+
       const reqBody = {
         model: modelToUse,
         messages: [

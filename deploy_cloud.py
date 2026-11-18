@@ -115,6 +115,9 @@ if ! python3 -c "import edge_tts" >/dev/null 2>&1; then
   python3 -m pip install -i https://pypi.tuna.tsinghua.edu.cn/simple --timeout 20 --break-system-packages -q edge-tts >/dev/null 2>&1 || \
   pip3 install -i https://pypi.tuna.tsinghua.edu.cn/simple --timeout 20 -q edge-tts >/dev/null 2>&1 || true
 fi
+if ! command -v pdftotext >/dev/null 2>&1; then
+  (DEBIAN_FRONTEND=noninteractive apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq poppler-utils >/dev/null 2>&1) || true
+fi
 
 # 同步刷新云端 SQLite 中的内置 API 配置与独立高清语音音源
 node -e '

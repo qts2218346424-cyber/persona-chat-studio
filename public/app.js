@@ -3400,14 +3400,23 @@
     menu.className = 'ds-session-ctx-menu';
     menu.setAttribute('role', 'menu');
     menu.innerHTML = `
+      <button type="button" class="ds-ctx-item" data-act="export-md" role="menuitem">
+        <span>📄 导出聊天与记忆 (.md)</span>
+      </button>
+      <button type="button" class="ds-ctx-item" data-act="import-md" role="menuitem">
+        <span>📥 导入 .md 记忆到此对话</span>
+      </button>
+      <button type="button" class="ds-ctx-item" data-act="session-setting" role="menuitem">
+        <span>🎭 本对话独立设定与记忆</span>
+      </button>
+      <button type="button" class="ds-ctx-item" data-act="share" role="menuitem">
+        <span>📤 分享长图 / 多格式导出</span>
+      </button>
       <button type="button" class="ds-ctx-item" data-act="pin" role="menuitem">
         <span>${isPinned ? '📍 取消置顶' : '📌 置顶对话'}</span>
       </button>
       <button type="button" class="ds-ctx-item" data-act="rename" role="menuitem">
         <span>✏️ 重命名</span>
-      </button>
-      <button type="button" class="ds-ctx-item" data-act="share" role="menuitem">
-        <span>📤 分享 / 导出</span>
       </button>
       <button type="button" class="ds-ctx-item danger" data-act="delete" role="menuitem">
         <span>🗑️ 删除对话</span>
@@ -3416,9 +3425,9 @@
     document.body.appendChild(menu);
 
     const rect = btnEl.getBoundingClientRect();
-    const top = Math.min(window.innerHeight - 170, rect.bottom + 4);
-    const left = Math.min(window.innerWidth - 172, Math.max(8, rect.left));
-    menu.style.top = `${top}px`;
+    const top = Math.min(window.innerHeight - 280, rect.bottom + 4);
+    const left = Math.min(window.innerWidth - 205, Math.max(8, rect.left));
+    menu.style.top = `${Math.max(8, top)}px`;
     menu.style.left = `${left}px`;
 
     menu.addEventListener('click', async (e) => {
@@ -3428,7 +3437,19 @@
       const act = actBtn.dataset.act;
       closeSessionContextMenu();
 
-      if (act === 'pin') {
+      if (act === 'export-md') {
+        await exportSessionMarkdownById(sessionObj.id);
+      } else if (act === 'import-md') {
+        if (state.activeSessionId !== sessionObj.id) {
+          await loadSession(sessionObj.id);
+        }
+        openImportHistoryModal();
+      } else if (act === 'session-setting') {
+        if (state.activeSessionId !== sessionObj.id) {
+          await loadSession(sessionObj.id);
+        }
+        openRightTab('persona-tab');
+      } else if (act === 'pin') {
         const res = await apiJson(`/api/sessions/${encodeURIComponent(sessionObj.id)}`, {
           method: 'PATCH',
           body: JSON.stringify({ pinned: !isPinned })
@@ -3453,7 +3474,7 @@
 
   function renderSessionList() {
     closeSessionContextMenu();
-    sessionListEl.innerHTML = '';
+    sessionListEl.replaceChildren();
     const isDsUi = state.uiMode === 'deepseek';
     const headingEl = document.getElementById('session-list-heading');
     if (headingEl) {
@@ -3474,7 +3495,16 @@
         const sScript = s.script_id || resolvePersonaScriptId(pObj);
         if (state.scripts.length > 0 && sScript !== state.activeScriptId) return false;
       }
-      if (isDsUi && s.title === '新对话' && (s.message_count || 0) === 0 && !s.pinned) return false;
+      if (
+        isDsUi &&
+        s.title === '新对话' &&
+        (s.message_count || 0) === 0 &&
+        !s.pinned &&
+        !s.has_custom_setting &&
+        s.id !== state.activeSessionId
+      ) {
+        return false;
+      }
       if (isDsUi && searchKw) {
         return String(s.title || '')
           .toLowerCase()
@@ -3504,25 +3534,35 @@
         ? s.pinned === 1
           ? '<span class="ds-pin-glyph" aria-hidden="true">📌</span>'
           : ''
-        : `<span>${escapeHtml(s.persona_avatar || '🌸')}</span>`;
+        : `${s.pinned === 1 ? '<span class="ds-pin-glyph" aria-hidden="true">📌</span>' : ''}<span>${escapeHtml(
+            s.persona_avatar || '🌸'
+          )}</span>`;
+
+      const hasCustomSetting = Boolean(
+        s.has_custom_setting ||
+          s.custom_persona_override ||
+          (s.session_prompt && String(s.session_prompt).trim())
+      );
+      const customBadgeHtml = hasCustomSetting
+        ? '<span class="session-custom-badge" title="该对话框配置了独立的专属设定">独立设定</span>'
+        : '';
 
       item.innerHTML = `
         <div class="session-title-wrap">
           ${prefixSpan}
           <span class="session-title-text" title="双击可快速重命名">${escapeHtml(s.title)}</span>
+          ${customBadgeHtml}
         </div>
-        ${
-          isDsUi
-            ? `<div class="session-row-actions">
-                 <button type="button" class="ds-session-more-btn" title="置顶、重命名、分享或删除" aria-label="对话更多操作">···</button>
-               </div>`
-            : `<button type="button" class="session-del-btn" title="删除会话" aria-label="删除会话">✕</button>`
-        }
+        <div class="session-row-actions">
+          <button type="button" class="session-export-quick-btn" title="导出此对话的聊天记录与记忆 (.md)" aria-label="导出此对话为 Markdown 记忆文件">📄</button>
+          <button type="button" class="ds-session-more-btn" title="导出 .md 记忆、导入记忆、独立设定、置顶或删除" aria-label="对话更多操作">···</button>
+        </div>
       `;
 
       item.addEventListener('click', (e) => {
         if (
           e.target.closest('.session-del-btn') ||
+          e.target.closest('.session-export-quick-btn') ||
           e.target.closest('.ds-session-more-btn') ||
           e.target.closest('.ds-session-rename-input')
         ) {
@@ -3536,20 +3576,16 @@
         startInlineSessionRename(item, s);
       });
 
+      item.querySelector('.session-export-quick-btn')?.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        await exportSessionMarkdownById(s.id);
+      });
+
       const moreBtn = item.querySelector('.ds-session-more-btn');
       if (moreBtn) {
         moreBtn.addEventListener('click', (e) => {
           e.stopPropagation();
           openSessionContextMenu(moreBtn, item, s);
-        });
-      }
-
-      const delBtn = item.querySelector('.session-del-btn');
-      if (delBtn) {
-        delBtn.addEventListener('click', async (e) => {
-          e.stopPropagation();
-          if (state.isStreaming) return;
-          await deleteSession(s.id);
         });
       }
 
@@ -3652,12 +3688,40 @@
     }
   }
 
+  function syncSessionIsolationBadges() {
+    const sess = state.activeSession;
+    const hasPrompt = Boolean(sess?.session_prompt && String(sess.session_prompt).trim());
+    const hasOverride = Boolean(sess?.custom_persona_override);
+    const hasDirector = Boolean(sess?.director_note && String(sess.director_note).trim());
+    const hasCustom = hasPrompt || hasOverride || hasDirector;
+
+    const statusBadge = document.getElementById('session-prompt-status-badge');
+    if (statusBadge) {
+      statusBadge.textContent = hasCustom ? '🎯 专属设定生效中' : '仅本对话生效';
+    }
+    const dsSettingPill = document.getElementById('ds-session-setting-pill');
+    if (dsSettingPill) {
+      const memCnt = Array.isArray(state.memories) ? state.memories.length : 0;
+      const shouldShow = hasCustom || memCnt > 0;
+      dsSettingPill.classList.toggle('hidden', !shouldShow);
+      if (shouldShow) {
+        dsSettingPill.textContent = hasCustom
+          ? `🎯 独立设定${memCnt > 0 ? ` · 记忆 ${memCnt}` : ''}`
+          : `🧠 独立记忆 ${memCnt} 条`;
+      }
+    }
+  }
+
   function populatePersonaEditor() {
     const p = state.activePersona;
     if (!p) return;
     topbarAvatar.textContent = p.avatar || '🌸';
     topbarName.textContent = p.name;
-    topbarTagline.textContent = p.tagline || p.backstory?.slice(0, 48) || '';
+    topbarTagline.textContent =
+      (state.activeSession?.session_prompt && String(state.activeSession.session_prompt).trim().slice(0, 48)) ||
+      p.tagline ||
+      p.backstory?.slice(0, 48) ||
+      '';
     updateBondBadge();
 
     document.getElementById('ip-avatar').value = p.avatar || '🌸';
@@ -3666,6 +3730,23 @@
     document.getElementById('ip-personality').value = p.personality || '';
     document.getElementById('ip-backstory').value = p.backstory || '';
     document.getElementById('ip-style').value = p.speaking_style || '';
+
+    const sessionPromptEl = document.getElementById('session-prompt-input');
+    if (sessionPromptEl) {
+      sessionPromptEl.value = state.activeSession?.session_prompt || '';
+    }
+
+    const globalSyncWrap = document.getElementById('ip-global-sync-wrap');
+    const globalSyncChk = document.getElementById('ip-sync-global-chk');
+    const isCustomUserPersona = Boolean(p.user_id && p.user_id !== 'system' && p.user_id !== 'system_ds');
+    if (globalSyncWrap) {
+      globalSyncWrap.classList.toggle('hidden', !isCustomUserPersona);
+    }
+    if (globalSyncChk) {
+      globalSyncChk.checked = false;
+    }
+
+    syncSessionIsolationBadges();
   }
 
   function renderTelemetryAndMemories() {
@@ -3704,7 +3785,8 @@
     }
 
     memoryCountLabel.textContent = `${state.memories.length} 条`;
-    memoryCardsList.innerHTML = '';
+    memoryCardsList.replaceChildren();
+    syncSessionIsolationBadges();
 
     const catLabel = {
       Pinned: '📌 核心羁绊',
@@ -4658,30 +4740,27 @@
 
       const decoder = new TextDecoder('utf-8');
       let buffer = '';
+      let receivedDoneEvent = false;
 
-      for await (const chunk of response.body) {
-        buffer += decoder.decode(chunk, { stream: true });
-        const events = buffer.split('\n\n');
-        buffer = events.pop() || '';
+      const handleSseBlock = (rawBlock) => {
+        const lines = rawBlock.split(/\r?\n/);
+        let eventName = 'message';
+        let dataStr = '';
+        for (const l of lines) {
+          if (l.startsWith(':')) continue; // 忽略 SSE keepalive 心跳注释帧
+          if (l.startsWith('event:')) eventName = l.slice(6).trim();
+          else if (l.startsWith('data:')) dataStr += l.slice(5).trim();
+        }
+        if (!dataStr) return;
 
-        for (const rawBlock of events) {
-          const lines = rawBlock.split('\n');
-          let eventName = 'message';
-          let dataStr = '';
-          for (const l of lines) {
-            if (l.startsWith('event:')) eventName = l.slice(6).trim();
-            else if (l.startsWith('data:')) dataStr += l.slice(5).trim();
-          }
-          if (!dataStr) continue;
+        let payload = {};
+        try {
+          payload = JSON.parse(dataStr);
+        } catch {
+          return;
+        }
 
-          let payload = {};
-          try {
-            payload = JSON.parse(dataStr);
-          } catch {
-            continue;
-          }
-
-          if (eventName === 'search_results' && Array.isArray(payload.items)) {
+        if (eventName === 'search_results' && Array.isArray(payload.items)) {
             liveSearchResults = payload.items;
             liveSearchSlot.innerHTML = `
               <details class="ds-fold-details" open>
@@ -4780,6 +4859,7 @@
             proseEl.innerHTML = renderMessageMarkdown(accContent, liveSearchResults);
             scrollToBottom();
           } else if (eventName === 'done') {
+            receivedDoneEvent = true;
             state.messages.push({
               id: payload.message_id,
               role: 'assistant',
@@ -4814,11 +4894,40 @@
           } else if (eventName === 'error') {
             throw new Error(payload.message || '流式推演中断');
           }
+      };
+
+      for await (const chunk of response.body) {
+        buffer += decoder.decode(chunk, { stream: true });
+        const events = buffer.split(/\r?\n\r?\n/);
+        buffer = events.pop() || '';
+        for (const rawBlock of events) {
+          handleSseBlock(rawBlock);
         }
+      }
+
+      const tail = decoder.decode();
+      if (tail) buffer += tail;
+      if (buffer.trim()) {
+        for (const rawBlock of buffer.split(/\r?\n\r?\n/)) {
+          handleSseBlock(rawBlock);
+        }
+      }
+
+      // 若连接提前结束且未收到 done，但已有部分生成内容，主动重拉会话对齐服务端抢救落库记录
+      if (!receivedDoneEvent && (accContent.trim() || accReasoning.trim())) {
+        await loadSession(state.activeSessionId).catch(() => {});
       }
     } catch (err) {
       if (err.name === 'AbortError') {
         await loadSession(state.activeSessionId);
+      } else if (accContent.trim()) {
+        proseEl.classList.remove('streaming-cursor');
+        proseEl.innerHTML =
+          renderMessageMarkdown(accContent, liveSearchResults) +
+          `<p style="color: var(--accent-danger); margin-top: 8px; font-size: 13px;">⚠️ 网络波动提示：${escapeHtml(
+            err.message
+          )}（以上已生成正文已为你保留）</p>`;
+        await loadSession(state.activeSessionId).catch(() => {});
       } else {
         proseEl.classList.remove('streaming-cursor');
         proseEl.innerHTML = `<p style="color: var(--accent-danger)">⚠️ 响应异常：${escapeHtml(
@@ -4941,15 +5050,162 @@
   const historyPasteArea = document.getElementById('history-paste-area');
   const historyFileBadge = document.getElementById('history-file-badge');
 
+  function buildClientSessionMemoryMarkdown(bundle = {}) {
+    if (bundle.markdown && typeof bundle.markdown === 'string' && bundle.markdown.trim()) {
+      return bundle.markdown;
+    }
+    const isNative = (bundle.session_mode || state.activeSession?.session_mode) === 'deepseek_native';
+    const personaObj = bundle.persona || state.activePersona || {};
+    const personaName = bundle.persona_name || personaObj.name || (isNative ? 'DeepSeek 官方助手' : '未命名角色');
+    const title = (bundle.title || state.activeSession?.title || personaName || '对话记录').trim();
+    const memories = Array.isArray(bundle.memories) ? bundle.memories : state.memories || [];
+    const messages = Array.isArray(bundle.messages) ? bundle.messages : state.messages || [];
+    const sessionPrompt = String(bundle.session_prompt ?? state.activeSession?.session_prompt ?? '').trim();
+    const directorNote = String(bundle.director_note ?? state.activeSession?.director_note ?? '').trim();
+    const rollingSummary = String(bundle.rolling_summary ?? state.activeSession?.rolling_summary ?? '').trim();
+    const modeLabel = isNative ? 'DeepSeek 原生对话模式' : '星语恋庭 · 角色扮演模式';
+    const isPureOfficial =
+      personaObj.id === 'persona_deepseek_official' &&
+      !bundle.persona_override &&
+      !state.activeSession?.custom_persona_override;
+
+    const lines = [
+      `# 📖 ${title} · 聊天记录与专属记忆档案`,
+      ``,
+      `> - **对话模式**：${modeLabel}`,
+      `> - **角色 / 助手名称**：${personaName}`,
+      `> - **导出时间**：${new Date().toLocaleString('zh-CN', { hour12: false })}`,
+      `> - **记忆条数 / 消息轮数**：独立记忆 ${memories.length} 条 · 历史消息 ${messages.length} 条`,
+      `> - **跨对话记忆说明**：本文件包含当前对话框独立的专属设定、长期记忆锚点、前情浓缩手札与完整聊天记录，可直接导入其他对话框或外部平台作为记忆使用。`,
+      ``,
+      `## 🎭 本对话专属设定`,
+      `- **角色 / 身份名称**：${personaName}`
+    ];
+    if (personaObj.avatar) lines.push(`- **专属徽记**：${personaObj.avatar}`);
+    if (!isPureOfficial) {
+      if (personaObj.tagline) lines.push(`- **一句话定位**：${String(personaObj.tagline).trim()}`);
+      if (personaObj.personality) {
+        lines.push(`- **性格特质**：${String(personaObj.personality).trim().replace(/\r?\n/g, ' / ')}`);
+      }
+      if (personaObj.speaking_style) {
+        lines.push(`- **语言风格**：${String(personaObj.speaking_style).trim().replace(/\r?\n/g, ' / ')}`);
+      }
+      if (personaObj.backstory) {
+        lines.push(`- **背景与世界观设定**：\n${String(personaObj.backstory).trim()}`);
+      }
+    }
+    lines.push(
+      sessionPrompt
+        ? `- **本对话独立设定指令**：\n${sessionPrompt}`
+        : `- **本对话独立设定指令**：_（未额外指定，使用当前对话基础设定）_`
+    );
+    if (directorNote) lines.push(`- **当前场景氛围指引**：\n${directorNote}`);
+    lines.push(``);
+
+    const catMap = { Pinned: '核心记忆', relation: '专属称呼', fact: '已知心意', event: '共同回忆' };
+    lines.push(`## 🧠 长期记忆锚点`);
+    if (memories.length > 0) {
+      for (const m of memories) {
+        if (!m || !String(m.content || '').trim()) continue;
+        const pin = m.pinned ? '📌 ' : '';
+        const cat = catMap[m.category] || '记忆条目';
+        const imp = Number(m.importance) || 4;
+        lines.push(`- ${pin}[${cat} | 重要度 ${imp}] ${String(m.content).trim().replace(/\r?\n+/g, ' ')}`);
+      }
+    } else {
+      lines.push(`_（当前对话暂无已归档的长期记忆条目）_`);
+    }
+    lines.push(``);
+
+    lines.push(`## 📜 前情浓缩手札`);
+    lines.push(rollingSummary || `_（暂无前情浓缩摘要）_`);
+    lines.push(``);
+
+    lines.push(`## 💬 完整聊天记录`);
+    lines.push(``);
+    if (messages.length > 0) {
+      const assistantName = isNative && isPureOfficial ? 'DeepSeek' : personaName;
+      for (const m of messages) {
+        const body = String(m.content || '').trim();
+        const r = String(m.reasoning || '').trim();
+        if (!body && !r) continue;
+        if (m.role === 'user') {
+          lines.push(`### 🙋 我：\n\n${body}\n`);
+        } else {
+          lines.push(`### 🤖 ${assistantName}：\n`);
+          if (r) {
+            lines.push(`<details><summary>💭 思考与心声过程</summary>\n\n${r}\n\n</details>\n`);
+          }
+          lines.push(`${body}\n`);
+        }
+      }
+    } else {
+      lines.push(`_（当前对话暂无历史消息记录）_\n`);
+    }
+    return lines.join('\n');
+  }
+
+  function triggerBrowserDownload(contentStr, mimeType, rawFilename) {
+    const safeName = String(rawFilename || '对话记忆档案').replace(/[\\/:*?"<>|]/g, '_');
+    const blob = new Blob([contentStr], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = safeName;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  async function exportSessionMarkdownById(targetSessionId) {
+    const sid = targetSessionId || state.activeSessionId;
+    if (!sid) return;
+    try {
+      const data = await apiJson(`/api/sessions/${encodeURIComponent(sid)}/export`);
+      const md = buildClientSessionMemoryMarkdown(data);
+      const baseTitle = (data.title || data.persona_name || '对话记录').slice(0, 28);
+      triggerBrowserDownload(md, 'text/markdown;charset=utf-8', `${baseTitle}_聊天与记忆档案.md`);
+      showToast(`📄 已导出「${baseTitle}」的 .md 记忆档案，可随时导入到其他对话或外部平台！`);
+    } catch (err) {
+      showToast(`⚠️ 导出 .md 失败：${err.message}`);
+    }
+  }
+
+  async function exportSessionJsonById(targetSessionId) {
+    const sid = targetSessionId || state.activeSessionId;
+    if (!sid) return;
+    try {
+      const data = await apiJson(`/api/sessions/${encodeURIComponent(sid)}/export`);
+      const baseTitle = (data.title || '回忆篇章').slice(0, 28);
+      triggerBrowserDownload(
+        JSON.stringify(data, null, 2),
+        'application/json;charset=utf-8',
+        `${baseTitle}_聊天与记忆备份.json`
+      );
+      showToast('📦 已导出当前对话完整 JSON 备份文件');
+    } catch (err) {
+      showToast(`⚠️ 导出失败：${err.message}`);
+    }
+  }
+
   function openImportHistoryModal() {
+    hidePopoverSafe('topbar-more-popover');
+    hidePopoverSafe('ds-user-popover');
     state.pendingHistoryFile = null;
     historyPasteArea.value = '';
-    historyFileBadge.textContent = '📂 支持 .txt / .md / .json / .jsonl 格式';
+    historyFileBadge.textContent = '📂 支持 .md 记忆档案 / .txt / .json / .jsonl';
+    const applySetChk = document.getElementById('import-apply-setting-chk');
+    const repMemChk = document.getElementById('import-replace-memories-chk');
+    if (applySetChk) applySetChk.checked = false;
+    if (repMemChk) repMemChk.checked = false;
     importHistoryDialog.showModal();
   }
 
-  document.getElementById('open-import-history-btn').addEventListener('click', openImportHistoryModal);
-  document.getElementById('sidebar-import-history-btn').addEventListener('click', openImportHistoryModal);
+  document.getElementById('open-import-history-btn')?.addEventListener('click', openImportHistoryModal);
+  document.getElementById('sidebar-import-history-btn')?.addEventListener('click', openImportHistoryModal);
+  document.getElementById('ds-menu-import-md-btn')?.addEventListener('click', openImportHistoryModal);
+  document.getElementById('memtab-import-md-btn')?.addEventListener('click', openImportHistoryModal);
   document.getElementById('close-import-dialog').addEventListener('click', () => importHistoryDialog.close());
   document.getElementById('cancel-import-dialog').addEventListener('click', () => importHistoryDialog.close());
   document.getElementById('select-history-file-btn').addEventListener('click', () => historyFileInput.click());
@@ -4977,50 +5233,58 @@
 
     const pasted = historyPasteArea.value.trim();
     const content = state.pendingHistoryFile ? state.pendingHistoryFile.content : pasted;
-    const filename = state.pendingHistoryFile ? state.pendingHistoryFile.filename : 'pasted_history.txt';
+    const filename = state.pendingHistoryFile ? state.pendingHistoryFile.filename : 'pasted_memory.md';
 
     if (!content) {
-      showToast('⚠️ 请先选择聊天记录文件或在文本框中粘贴历史对话内容');
+      showToast('⚠️ 请先选择 .md / .json 记忆文件或在文本框中粘贴内容');
       return;
     }
 
     const mode = document.querySelector('input[name="import-mode"]:checked')?.value || 'append';
+    const importSetting = Boolean(document.getElementById('import-apply-setting-chk')?.checked);
+    const replaceMemories = Boolean(document.getElementById('import-replace-memories-chk')?.checked);
     try {
       const res = await apiJson(
         `/api/sessions/${encodeURIComponent(state.activeSessionId)}/import-history`,
         {
           method: 'POST',
-          body: JSON.stringify({ filename, content, mode })
+          body: JSON.stringify({
+            filename,
+            content,
+            mode,
+            import_setting: importSetting,
+            replace_memories: replaceMemories
+          })
         }
       );
-      state.sessions = res.sessions;
+      state.sessions = res.sessions || state.sessions;
       importHistoryDialog.close();
       await loadSession(state.activeSessionId);
+      const settingHint = res.applied_setting
+        ? '（已同步应用文件中的专属设定）'
+        : '（已保留当前对话的独立设定）';
       showToast(
-        `📥 成功导入 ${res.imported_count} 条历史对话，并自动提炼归档了 ${res.extracted_memories} 条前尘记忆！`
+        `📥 导入成功：载入 ${res.imported_count || 0} 条对话、写入 ${res.extracted_memories || 0} 条独立记忆${settingHint}！`
       );
     } catch (err) {
       showToast(`⚠️ 导入失败：${err.message}`);
     }
   });
 
-  document.getElementById('export-history-btn').addEventListener('click', async () => {
-    if (!state.activeSessionId) return;
-    try {
-      const data = await apiJson(`/api/sessions/${encodeURIComponent(state.activeSessionId)}/export`);
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${data.title || '回忆篇章'}_聊天与记忆备份.json`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-      showToast('📤 已导出当前会话完整聊天记录与记忆备份文件');
-    } catch (err) {
-      showToast(`⚠️ 导出失败：${err.message}`);
-    }
+  document.getElementById('export-md-memory-btn')?.addEventListener('click', () => {
+    hidePopoverSafe('topbar-more-popover');
+    exportSessionMarkdownById(state.activeSessionId);
+  });
+  document.getElementById('ds-menu-export-md-btn')?.addEventListener('click', () => {
+    hidePopoverSafe('ds-user-popover');
+    exportSessionMarkdownById(state.activeSessionId);
+  });
+  document.getElementById('memtab-export-md-btn')?.addEventListener('click', () => {
+    exportSessionMarkdownById(state.activeSessionId);
+  });
+  document.getElementById('export-history-btn')?.addEventListener('click', () => {
+    hidePopoverSafe('topbar-more-popover');
+    exportSessionJsonById(state.activeSessionId);
   });
 
   // ================= 10. 会话管理、梦境整理手账与世界书操作 =================
@@ -5065,14 +5329,14 @@
       triggerCompanionCare('timer', true);
     }
 
-    // 久别重逢检测：若距离上一条消息超过 35 分钟且开启了主动关怀，自动触发重逢问候
-    if (state.messages.length > 0 && data.session?.proactive_enabled !== 0) {
+    // 久别重逢检测：仅在恋庭沉浸扮演模式且开启主动关怀时触发（原生 DeepSeek 模式保持纯净问答不自动插话）
+    if (sessMode === 'roleplay' && state.messages.length > 0 && data.session?.proactive_enabled !== 0) {
       const lastMsg = state.messages[state.messages.length - 1];
       const lastMeta = parseMsgMeta(lastMsg);
       const idleMs = Date.now() - (lastMsg.created_at || Date.now());
       if (idleMs > 35 * 60 * 1000 && !lastMeta.is_proactive) {
         setTimeout(() => {
-          if (state.activeSessionId === sessionId && !state.isStreaming) {
+          if (state.activeSessionId === sessionId && state.uiMode === 'roleplay' && !state.isStreaming) {
             triggerProactiveMessage('return');
           }
         }, 900);
@@ -5217,11 +5481,66 @@
     renderTelemetryAndMemories();
   });
 
+  document.querySelectorAll('.session-preset-chip').forEach((chip) => {
+    chip.addEventListener('click', () => {
+      const inp = document.getElementById('session-prompt-input');
+      if (!inp) return;
+      inp.value = chip.dataset.preset || '';
+      inp.focus();
+    });
+  });
+
+  document.getElementById('save-session-prompt-btn')?.addEventListener('click', async () => {
+    if (!state.activeSessionId) return;
+    const val = (document.getElementById('session-prompt-input')?.value || '').trim();
+    const res = await apiJson(`/api/sessions/${encodeURIComponent(state.activeSessionId)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ session_prompt: val })
+    });
+    state.activeSession = res.session;
+    state.sessions = res.sessions || state.sessions;
+    populatePersonaEditor();
+    renderSessionList();
+    showToast(val ? '🎯 本对话独立设定已保存（仅当前对话生效，与其他对话隔离）' : '✨ 已清空本对话附加设定');
+  });
+
+  document.getElementById('clear-session-prompt-btn')?.addEventListener('click', async () => {
+    if (!state.activeSessionId) return;
+    const inp = document.getElementById('session-prompt-input');
+    if (inp) inp.value = '';
+    const res = await apiJson(`/api/sessions/${encodeURIComponent(state.activeSessionId)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ session_prompt: '' })
+    });
+    state.activeSession = res.session;
+    state.sessions = res.sessions || state.sessions;
+    populatePersonaEditor();
+    renderSessionList();
+    showToast('↺ 已清空本对话独立附加设定');
+  });
+
+  document.getElementById('reset-persona-override-btn')?.addEventListener('click', async () => {
+    if (!state.activeSessionId) return;
+    const res = await apiJson(`/api/sessions/${encodeURIComponent(state.activeSessionId)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ clear_persona_override: true })
+    });
+    state.activeSession = res.session;
+    state.activePersona = res.persona || state.activePersona;
+    state.sessions = res.sessions || state.sessions;
+    await loadSession(state.activeSessionId);
+    showToast('↺ 已恢复为角色卡的默认基础设定');
+  });
+
   inlinePersonaForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     if (!state.activePersona) return;
+    const applyGlobal = Boolean(document.getElementById('ip-sync-global-chk')?.checked);
+    const sessionPromptVal = document.getElementById('session-prompt-input')?.value ?? '';
     const payload = {
       session_id: state.activeSessionId,
+      apply_to_global: applyGlobal,
+      session_prompt: sessionPromptVal,
       avatar: document.getElementById('ip-avatar').value,
       name: document.getElementById('ip-name').value,
       tagline: document.getElementById('ip-tagline').value,
@@ -5233,12 +5552,19 @@
       method: 'PUT',
       body: JSON.stringify(payload)
     });
-    const idx = state.personas.findIndex((p) => p.id === res.persona.id);
-    if (idx !== -1 && res.persona.user_id !== 'system') {
-      state.personas[idx] = res.persona;
+    if (res.scope === 'global') {
+      const idx = state.personas.findIndex((p) => p.id === res.persona.id);
+      if (idx !== -1 && res.persona.user_id !== 'system' && res.persona.user_id !== 'system_ds') {
+        state.personas[idx] = res.persona;
+      }
     }
+    if (res.sessions) state.sessions = res.sessions;
     await loadSession(state.activeSessionId);
-    showToast('🌸 角色人设与背景故事已实时保存，下一句互动立即生效');
+    showToast(
+      res.scope === 'global'
+        ? '✨ 已同步更新自建角色卡与本对话设定！'
+        : '🎭 已保存为「当前对话独立设定」，不影响其他对话框，下一句立即生效！'
+    );
   });
 
   saveSummaryBtn.addEventListener('click', async () => {
@@ -5436,12 +5762,12 @@
   }
 
   function syncEasyVibeSelection() {
-    const win = String(document.getElementById('st-window')?.value || '12');
-    const tempNum = parseFloat(document.getElementById('st-temp')?.value || '0.85');
+    const win = String(document.getElementById('st-window')?.value || '40');
+    const tempNum = parseFloat(document.getElementById('st-temp')?.value || '0.7');
     let activeKey = 'balanced';
-    if (Number(win) >= 20) {
+    if (Number(win) >= 72) {
       activeKey = 'deep_memory';
-    } else if (tempNum >= 0.98) {
+    } else if (tempNum >= 0.95) {
       activeKey = 'dramatic';
     }
     document.querySelectorAll('.easy-vibe-card').forEach((card) => {
@@ -5451,9 +5777,9 @@
 
   document.querySelectorAll('.easy-vibe-card').forEach((card) => {
     card.addEventListener('click', () => {
-      document.getElementById('st-window').value = card.dataset.win || '12';
-      document.getElementById('st-recall').value = card.dataset.rec || '6';
-      document.getElementById('st-temp').value = card.dataset.temp || '0.85';
+      document.getElementById('st-window').value = card.dataset.win || '40';
+      document.getElementById('st-recall').value = card.dataset.rec || '16';
+      document.getElementById('st-temp').value = card.dataset.temp || '0.7';
       document.querySelectorAll('.easy-vibe-card').forEach((c) => c.classList.toggle('active', c === card));
     });
   });
@@ -5471,9 +5797,9 @@
       providerSelect.value = 'demo';
     }
 
-    document.getElementById('st-window').value = s.sliding_window_turns || '12';
-    document.getElementById('st-recall').value = s.max_recalled_memories || '6';
-    document.getElementById('st-temp').value = s.temperature || '0.85';
+    document.getElementById('st-window').value = s.sliding_window_turns || '40';
+    document.getElementById('st-recall').value = s.max_recalled_memories || '16';
+    document.getElementById('st-temp').value = s.temperature || '0.7';
     syncEasyVibeSelection();
 
     const advFold = document.getElementById('advanced-tech-settings-fold');
@@ -6575,9 +6901,26 @@
 
   document.getElementById('open-theater-btn')?.addEventListener('click', openChaptersModal);
   document.getElementById('topbar-chapters-btn')?.addEventListener('click', openChaptersModal);
-  document.getElementById('more-open-drawer-btn')?.addEventListener('click', () => {
+  function toggleSessionMemorySettingDrawer() {
     hidePopoverSafe('topbar-more-popover');
-    appShell.classList.toggle('right-collapsed');
+    hidePopoverSafe('ds-user-popover');
+    const isCollapsed = appShell.classList.contains('right-collapsed');
+    const memTabActive = !document.getElementById('memory-tab')?.classList.contains('hidden');
+    const perTabActive = !document.getElementById('persona-tab')?.classList.contains('hidden');
+    if (isCollapsed || (!memTabActive && !perTabActive)) {
+      openRightTab('memory-tab');
+    } else {
+      appShell.classList.add('right-collapsed');
+      appShell.classList.remove('artifacts-wide');
+    }
+  }
+
+  document.getElementById('more-open-drawer-btn')?.addEventListener('click', toggleSessionMemorySettingDrawer);
+  document.getElementById('ds-open-memory-setting-btn')?.addEventListener('click', toggleSessionMemorySettingDrawer);
+  document.getElementById('rp-quick-memory-btn')?.addEventListener('click', toggleSessionMemorySettingDrawer);
+  document.getElementById('ds-menu-session-setting-btn')?.addEventListener('click', () => {
+    hidePopoverSafe('ds-user-popover');
+    openRightTab('persona-tab');
   });
   document.getElementById('more-open-vip-btn')?.addEventListener('click', () => {
     hidePopoverSafe('topbar-more-popover');
@@ -6998,7 +7341,7 @@
     }
 
     if (isDs) {
-      showToast('🐋 已切换至纯净对话模式（深度思考、联网查资料与灵感补写已自动就绪）');
+      showToast('🐋 已切换至 DeepSeek 原生模式（长效上下文记忆、深度思考与联网搜索已就绪）');
     } else {
       showToast('🌸 已回到星语恋庭沉浸扮演模式');
     }
@@ -7076,7 +7419,7 @@
     );
   });
 
-  document.getElementById('ds-toggle-json').addEventListener('click', () => {
+  document.getElementById('ds-toggle-json')?.addEventListener('click', () => {
     const next = state.activeSession?.ds_json_mode !== 1;
     patchActiveSessionFlag(
       { ds_json_mode: next },
@@ -7084,13 +7427,14 @@
     );
   });
 
-  document.getElementById('ds-toggle-prefix').addEventListener('click', (e) => {
+  document.getElementById('ds-toggle-prefix')?.addEventListener('click', (e) => {
     const bar = document.getElementById('ds-prefix-bar');
+    if (!bar) return;
     const isNowOpen = bar.classList.toggle('hidden') === false;
     e.currentTarget.classList.toggle('active', isNowOpen);
     e.currentTarget.setAttribute('aria-pressed', String(isNowOpen));
     if (isNowOpen) {
-      document.getElementById('ds-prefix-input').focus();
+      document.getElementById('ds-prefix-input')?.focus();
     }
   });
 
@@ -7462,57 +7806,78 @@
     });
   });
 
-  // 📤 DeepSeek 官方极简风对话分享长图 (.png) 与 Markdown 导出引擎
+  // 📤 双模式通用对话记录与独立记忆档案 (.md) 导出与分享长图引擎
   function buildCurrentSessionMarkdown() {
-    const title = state.activeSession?.title || 'DeepSeek 对话记录';
-    const lines = [`# ${title}`, `> 导出时间：${new Date().toLocaleString('zh-CN')}`, ''];
-    for (const m of state.messages) {
-      if (m.role === 'user') {
-        lines.push(`## 🙋 提问\n\n${m.content}\n`);
-      } else {
-        lines.push(`## 🐋 DeepSeek 回答\n`);
-        if (m.reasoning && m.reasoning.trim()) {
-          lines.push(`<details><summary>⚛️ 深度思考过程</summary>\n\n${m.reasoning.trim()}\n\n</details>\n`);
-        }
-        lines.push(`${m.content}\n`);
-      }
-    }
-    return lines.join('\n');
+    return buildClientSessionMemoryMarkdown({
+      title: state.activeSession?.title,
+      session_mode: state.activeSession?.session_mode,
+      persona: state.activePersona,
+      persona_name: state.activePersona?.name,
+      session_prompt: state.activeSession?.session_prompt,
+      director_note: state.activeSession?.director_note,
+      rolling_summary: state.activeSession?.rolling_summary,
+      memories: state.memories,
+      messages: state.messages
+    });
   }
 
   function openDsShareModal() {
     if (!dsShareDialog) return;
-    if (!state.messages || state.messages.length === 0) {
-      showToast('💡 当前还是空对话，先聊两句再来生成分享卡片吧');
+    const hasMsgs = Array.isArray(state.messages) && state.messages.length > 0;
+    const hasMems = Array.isArray(state.memories) && state.memories.length > 0;
+    const hasPrompt = Boolean(state.activeSession?.session_prompt && state.activeSession.session_prompt.trim());
+    if (!hasMsgs && !hasMems && !hasPrompt) {
+      showToast('💡 当前对话还没有消息或记忆条目，先聊两句或写入专属设定再来导出吧');
       return;
     }
     const card = document.getElementById('ds-share-preview-card');
-    const title = state.activeSession?.title || 'DeepSeek 对话精选';
-    const recentTurns = state.messages.slice(-8);
+    const isNative = state.activeSession?.session_mode === 'deepseek_native';
+    const brandName = isNative ? 'deepseek' : state.activePersona?.name || '星语恋庭';
+    const brandIcon = isNative
+      ? DS_WHALE_AVATAR_SVG
+      : `<span style="font-size:18px">${escapeHtml(state.activePersona?.avatar || '🌸')}</span>`;
+    const title = state.activeSession?.title || '对话与记忆精选';
+    const recentTurns = (state.messages || []).slice(-8);
+    const memSummaryHtml = hasMems
+      ? `<div class="ds-share-thought-note">🧠 本对话独立记忆（共 ${state.memories.length} 条）：${escapeHtml(
+          state.memories
+            .slice(0, 2)
+            .map((x) => x.content)
+            .join(' ｜ ')
+            .slice(0, 110)
+        )}${state.memories.length > 2 ? '…' : ''}</div>`
+      : '';
     if (card) {
       card.innerHTML = `
         <div class="ds-share-head">
-          <span class="ds-share-brand">${DS_WHALE_AVATAR_SVG}<span>deepseek · ${escapeHtml(title)}</span></span>
-          <span class="muted-count">${new Date().toLocaleDateString('zh-CN')} · 共 ${state.messages.length} 条消息</span>
+          <span class="ds-share-brand">${brandIcon}<span>${escapeHtml(brandName)} · ${escapeHtml(title)}</span></span>
+          <span class="muted-count">${new Date().toLocaleDateString('zh-CN')} · 记忆 ${
+            (state.memories || []).length
+          } 条 · 消息 ${(state.messages || []).length} 条</span>
         </div>
-        ${recentTurns
-          .map((m) =>
-            m.role === 'user'
-              ? `<div class="ds-share-turn"><div class="ds-share-user-q">${escapeHtml(m.content)}</div></div>`
-              : `<div class="ds-share-turn">
-                   ${
-                     m.reasoning
-                       ? `<div class="ds-share-thought-note">⚛️ 已深度思考：${escapeHtml(
-                           m.reasoning.replace(/\s+/g, ' ').slice(0, 95)
-                         )}…</div>`
-                       : ''
-                   }
-                   <div class="ds-share-ai-a">${escapeHtml(m.content.slice(0, 480))}${
-                  m.content.length > 480 ? '…' : ''
-                }</div>
-                 </div>`
-          )
-          .join('')}
+        ${memSummaryHtml}
+        ${
+          recentTurns.length > 0
+            ? recentTurns
+                .map((m) =>
+                  m.role === 'user'
+                    ? `<div class="ds-share-turn"><div class="ds-share-user-q">${escapeHtml(m.content)}</div></div>`
+                    : `<div class="ds-share-turn">
+                         ${
+                           m.reasoning
+                             ? `<div class="ds-share-thought-note">💭 思考与心声：${escapeHtml(
+                                 m.reasoning.replace(/\s+/g, ' ').slice(0, 95)
+                               )}…</div>`
+                             : ''
+                         }
+                         <div class="ds-share-ai-a">${escapeHtml(m.content.slice(0, 480))}${
+                        m.content.length > 480 ? '…' : ''
+                      }</div>
+                       </div>`
+                )
+                .join('')
+            : '<div class="ds-share-thought-note">当前仅包含独立设定与记忆条目，点击下方按钮可直接下载 .md 记忆档案。</div>'
+        }
       `;
     }
     dsShareDialog.showModal();
@@ -7526,25 +7891,31 @@
   document.getElementById('close-ds-share-dialog')?.addEventListener('click', () => dsShareDialog?.close());
 
   document.getElementById('ds-copy-markdown-btn')?.addEventListener('click', async () => {
-    const md = buildCurrentSessionMarkdown();
+    let md = '';
+    try {
+      if (state.activeSessionId) {
+        const data = await apiJson(`/api/sessions/${encodeURIComponent(state.activeSessionId)}/export`);
+        md = buildClientSessionMemoryMarkdown(data);
+      } else {
+        md = buildCurrentSessionMarkdown();
+      }
+    } catch {
+      md = buildCurrentSessionMarkdown();
+    }
     try {
       await navigator.clipboard.writeText(md);
     } catch {
       fallbackLegacyCopy(md);
     }
-    showToast('📋 已复制完整对话 Markdown（含思考链折叠块）');
+    showToast('📋 已复制完整对话与独立记忆 Markdown（可直接粘贴导入到其他地方）');
   });
 
   document.getElementById('ds-export-md-file-btn')?.addEventListener('click', () => {
-    const md = buildCurrentSessionMarkdown();
-    const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${(state.activeSession?.title || 'DeepSeek对话').slice(0, 24)}.md`;
-    a.click();
-    URL.revokeObjectURL(url);
-    showToast('📄 已下载 Markdown 对话文档');
+    exportSessionMarkdownById(state.activeSessionId);
+  });
+
+  document.getElementById('ds-export-json-file-btn')?.addEventListener('click', () => {
+    exportSessionJsonById(state.activeSessionId);
   });
 
   document.getElementById('ds-download-share-png-btn')?.addEventListener('click', () => {
@@ -7781,6 +8152,20 @@
 
   document.getElementById('open-fim-dialog-btn')?.addEventListener('click', openFimLab);
   document.getElementById('inspector-open-fim-btn')?.addEventListener('click', openFimLab);
+  document.getElementById('inspector-open-memory-btn')?.addEventListener('click', () => {
+    openRightTab('memory-tab');
+    renderTelemetryAndMemories();
+  });
+  document.getElementById('ds-menu-memory-btn')?.addEventListener('click', () => {
+    hidePopoverSafe('ds-user-popover');
+    openRightTab('memory-tab');
+    renderTelemetryAndMemories();
+  });
+  document.getElementById('more-open-ds-memory-btn')?.addEventListener('click', () => {
+    hidePopoverSafe('topbar-more-popover');
+    openRightTab('memory-tab');
+    renderTelemetryAndMemories();
+  });
   document.getElementById('more-open-fim-btn')?.addEventListener('click', () => {
     hidePopoverSafe('topbar-more-popover');
     openFimLab();
@@ -7914,10 +8299,11 @@
     showToast('💬 已填入下方聊天框，可直接发送或按喜好微调哦！');
   });
 
-  // 🌟 多一点主动性核心引擎：角色 / DeepSeek 主动发起流式消息
+  // 🌟 多一点主动性核心引擎：仅在恋庭沉浸扮演模式下发起主动关怀（DeepSeek 原生模式保持纯粹上下文零干扰）
   async function triggerProactiveMessage(triggerReason = 'manual') {
     if (state.isStreaming || !state.activeSessionId) return;
-    const isDsUi = state.uiMode === 'deepseek';
+    if (state.uiMode === 'deepseek' || state.activeSession?.session_mode === 'deepseek_native') return;
+    const isDsUi = false;
     const isPure = !state.activePersona || state.activePersona.id === 'persona_deepseek_official';
 
     // 退出空对话居中态以便流式展示主动消息
@@ -7991,63 +8377,73 @@
 
       const decoder = new TextDecoder('utf-8');
       let buffer = '';
+      let receivedDoneEvent = false;
+
+      const handleSseBlock = (rawBlock) => {
+        const lines = rawBlock.split(/\r?\n/);
+        let eventName = 'message';
+        let dataStr = '';
+        for (const l of lines) {
+          if (l.startsWith(':')) continue; // 忽略 SSE keepalive 心跳注释帧
+          if (l.startsWith('event:')) eventName = l.slice(6).trim();
+          else if (l.startsWith('data:')) dataStr += l.slice(5).trim();
+        }
+        if (!dataStr) return;
+        let payload = {};
+        try {
+          payload = JSON.parse(dataStr);
+        } catch {
+          return;
+        }
+
+        if (eventName === 'reasoning') {
+          accReasoning += payload.delta || '';
+          thoughtDetails.classList.remove('hidden');
+          if (isDsUi) {
+            thoughtContentEl.innerHTML = formatDsReasoningHtml(accReasoning);
+          } else {
+            thoughtContentEl.textContent = accReasoning;
+          }
+          scrollToBottom();
+        } else if (eventName === 'content') {
+          thoughtContentEl.classList.remove('streaming-cursor');
+          accContent += payload.delta || '';
+          proseEl.innerHTML = renderMessageMarkdown(accContent);
+          scrollToBottom();
+        } else if (eventName === 'done') {
+          receivedDoneEvent = true;
+          state.messages.push({
+            id: payload.message_id,
+            role: 'assistant',
+            reasoning: accReasoning,
+            content: accContent,
+            duration_ms: payload.duration_ms,
+            recalled_count: payload.recalled_count,
+            meta: payload.meta || { is_proactive: true }
+          });
+          if (Array.isArray(payload.sessions)) state.sessions = payload.sessions;
+          setStreamingUi(false);
+          renderSessionList();
+          renderMessages();
+          if (triggerReason === 'idle') {
+            showToast('💌 看你安静了一会儿，TA 主动给你发来了一条新消息');
+          } else if (triggerReason === 'return') {
+            showToast('💌 欢迎回来！TA 一看到你就主动迎上来打招呼啦');
+          }
+        }
+      };
 
       for await (const chunk of response.body) {
         buffer += decoder.decode(chunk, { stream: true });
-        const events = buffer.split('\n\n');
+        const events = buffer.split(/\r?\n\r?\n/);
         buffer = events.pop() || '';
-
         for (const rawBlock of events) {
-          const lines = rawBlock.split('\n');
-          let eventName = 'message';
-          let dataStr = '';
-          for (const l of lines) {
-            if (l.startsWith('event:')) eventName = l.slice(6).trim();
-            else if (l.startsWith('data:')) dataStr += l.slice(5).trim();
-          }
-          if (!dataStr) continue;
-          let payload = {};
-          try {
-            payload = JSON.parse(dataStr);
-          } catch {
-            continue;
-          }
-
-          if (eventName === 'reasoning') {
-            accReasoning += payload.delta || '';
-            thoughtDetails.classList.remove('hidden');
-            if (isDsUi) {
-              thoughtContentEl.innerHTML = formatDsReasoningHtml(accReasoning);
-            } else {
-              thoughtContentEl.textContent = accReasoning;
-            }
-            scrollToBottom();
-          } else if (eventName === 'content') {
-            thoughtContentEl.classList.remove('streaming-cursor');
-            accContent += payload.delta || '';
-            proseEl.innerHTML = renderMessageMarkdown(accContent);
-            scrollToBottom();
-          } else if (eventName === 'done') {
-            state.messages.push({
-              id: payload.message_id,
-              role: 'assistant',
-              reasoning: accReasoning,
-              content: accContent,
-              duration_ms: payload.duration_ms,
-              recalled_count: payload.recalled_count,
-              meta: payload.meta || { is_proactive: true }
-            });
-            if (Array.isArray(payload.sessions)) state.sessions = payload.sessions;
-            setStreamingUi(false);
-            renderSessionList();
-            renderMessages();
-            if (triggerReason === 'idle') {
-              showToast('💌 看你安静了一会儿，TA 主动给你发来了一条新消息');
-            } else if (triggerReason === 'return') {
-              showToast('💌 欢迎回来！TA 一看到你就主动迎上来打招呼啦');
-            }
-          }
+          handleSseBlock(rawBlock);
         }
+      }
+      buffer += decoder.decode();
+      if (buffer.trim() && !receivedDoneEvent) {
+        handleSseBlock(buffer);
       }
     } catch {
       liveRow.remove();
@@ -8138,11 +8534,13 @@
     openSettingsModal();
   });
 
-  // 静默陪伴自动搭话心跳检查（每 10 秒巡检一次，超过 55 秒无输入自动触发 1 次主动关怀，不刷屏）
+  // 静默陪伴自动搭话心跳检查（仅在恋庭沉浸扮演模式下生效，DeepSeek 原生模式严格保持零插话与角色交替稳定）
   setInterval(() => {
     if (
       !state.user ||
       !state.activeSessionId ||
+      state.uiMode === 'deepseek' ||
+      state.activeSession?.session_mode === 'deepseek_native' ||
       state.isStreaming ||
       state.tourActive ||
       state.activeSession?.proactive_enabled === 0 ||

@@ -89,12 +89,12 @@
   if (topbarRight && moreBtn) {
     const firstDsToolBtn =
       document.getElementById('open-ds-artifacts-btn') ||
-      document.getElementById('open-fim-dialog-btn') ||
+      document.getElementById('ds-open-memory-setting-btn') ||
       moreBtn;
 
     [
       'open-ds-artifacts-btn',
-      'open-fim-dialog-btn',
+      'ds-open-memory-setting-btn',
       'open-ds-inspector-btn',
       'ds-share-session-btn',
       'ds-quick-theme-btn'

@@ -390,7 +390,7 @@ function parseMarkdownSettingSection(sectionText) {
   // 若导出源只是纯默认「DeepSeek 官方助手」且没有任何实质角色属性，不生成空覆盖对象
   const po = result.persona_override;
   const isDefaultDsOnly =
-    (po.name === 'DeepSeek 官方助手' || po.name === 'DeepSeek · 官方纯净助手') &&
+    (po.name === 'DeepSeek' || po.name === 'DeepSeek 官方助手' || po.name === 'DeepSeek · 官方纯净助手') &&
     !po.personality &&
     !po.backstory &&
     !po.speaking_style;

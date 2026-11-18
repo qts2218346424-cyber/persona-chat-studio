@@ -243,10 +243,19 @@ function extractFactsFromUserTurn(sessionId, userMessage) {
   if (!strippedCode) return [];
 
   const segments = strippedCode
-    .split(/[。！？!?\n；;]+/)
+    .split(/[，,。！？!?\n；;]+/)
     .map((s) => s.trim())
-    .filter((s) => s.length >= 4)
-    .slice(0, 16);
+    .filter((s) => s.length >= 3)
+    .slice(0, 24);
+
+  const isInterrogativeSegment = (seg, fullMsg) => {
+    const hasExplicitPinDirective = /(?:请记住|你要记住|牢牢记住|帮我记住|记一下|设定补充|背景补充)/.test(seg);
+    if (hasExplicitPinDirective) return false;
+    if (/[?？]|(?:吗|呢|么)$/.test(seg)) return true;
+    if (/(?:什么|啥|谁|哪(?:里|儿|个)|还记得|你记得|你知道|忘了吗|猜猜|是怎么)/.test(seg)) return true;
+    if (/^(?:你还记得|你记得|请问|帮我看看)/.test(fullMsg) && !hasExplicitPinDirective) return true;
+    return false;
+  };
 
   const patterns = [
     {
@@ -254,7 +263,15 @@ function extractFactsFromUserTurn(sessionId, userMessage) {
       slot_key: 'user_nickname',
       importance: 5,
       pinned: 1,
-      regex: /(?:以后改?叫我|我叫|我的名字是|我的昵称是|你可以叫我|称呼我为?|叫我)\s*([^\s，。！？,.!?；;“”"「」()（）]{1,14})/u,
+      regex: /(?:以后改?叫我|我叫|我的名字是|我的昵称是|你可以叫我|称呼我为?|叫我)\s*([^\s，,。！？.!?；;、：“”"「」『』()（）]{1,12})/u,
+      validate: (m) => {
+        const val = (m[1] || '').trim();
+        return (
+          val.length >= 1 &&
+          !/^(?:什么|啥|谁|哪|名字|昵称|怎么|大师|老板)$/.test(val) &&
+          !/(?:什么|名字|项目|记得|知道)/.test(val)
+        );
+      },
       format: (m) => `用户称呼：对方希望被称呼为「${m[1].trim()}」（对方自称「${m[1].trim()}」）。`
     },
     {
@@ -262,7 +279,7 @@ function extractFactsFromUserTurn(sessionId, userMessage) {
       slot_key: 'user_identity',
       importance: 5,
       pinned: 1,
-      regex: /(?:我的身份是|我的职业是|我的岗位是|我其实是|我是(?:一名|一个|位|做))\s*([^，。！？!?；;\n]{2,42})/u,
+      regex: /(?:我的身份是|我的职业是|我的岗位是|我其实是|我是(?:一名|一个|位|做))\s*([^，,。！？!?；;、\n]{2,42})/u,
       format: (m) => `用户身份与背景：对方表示自己是${m[1].trim()}。`
     },
     {
@@ -270,7 +287,7 @@ function extractFactsFromUserTurn(sessionId, userMessage) {
       slot_key: 'project_context',
       importance: 5,
       pinned: 1,
-      regex: /(?:我的项目(?:是|叫)|当前项目(?:是|叫)|我正在(?:开发|做|写|维护|重构))\s*([^。！？!?；;\n]{3,68})/u,
+      regex: /(?:我的项目(?:是|叫)|当前项目(?:是|叫)|(?:我)?正在(?:开发|做|写|维护|重构|推进))\s*([^，,。！？!?；;\n]{3,68})/u,
       format: (m) => `当前推进项目/任务背景：正在处理「${m[1].trim()}」。`
     },
     {
@@ -278,7 +295,7 @@ function extractFactsFromUserTurn(sessionId, userMessage) {
       slot_key: 'tech_stack',
       importance: 5,
       pinned: 1,
-      regex: /(?:技术栈|开发环境|操作系统|后端|前端|框架|数据库|编程语言)(?:用的是|使用|采用|是|基于)\s*([^。！？!?；;\n]{2,68})/u,
+      regex: /(?:技术栈|开发环境|操作系统|后端|前端|框架|数据库|编程语言)(?:用的是|使用|采用|是|基于|用)?\s*([^。！？!?；;\n]{2,68})/u,
       format: (m) => `技术栈与环境约束：${m[0].trim()}。`
     },
     {
@@ -346,7 +363,7 @@ function extractFactsFromUserTurn(sessionId, userMessage) {
               updated_existing: true
             });
           }
-          break;
+          continue;
         }
       }
 
@@ -381,7 +398,7 @@ function extractFactsFromUserTurn(sessionId, userMessage) {
             updated_existing: true
           });
         }
-        break;
+        continue;
       }
 
       const id = genId('mem');
@@ -401,7 +418,6 @@ function extractFactsFromUserTurn(sessionId, userMessage) {
       );
       existingRows.push({ id, category: rule.category, slot_key: rule.slot_key, content: factText, pinned: isPinned });
       extracted.push({ id, category: rule.category, content: factText, updated_existing: false });
-      break;
     }
   }
 

@@ -7,6 +7,7 @@ const COMPANION_SKINS = {
   cool_silver: {
     key: 'cool_silver',
     mode: 'cool',
+    isFemale: false,
     label: '❄️ 高冷清隽 · 银发星眸',
     img: '/assets/companions/cool_silver_cutout.png',
     aura: 'rgba(155, 135, 245, 0.45)',
@@ -15,22 +16,43 @@ const COMPANION_SKINS = {
   cool_dark: {
     key: 'cool_dark',
     mode: 'cool',
+    isFemale: false,
     label: '🥀 高冷禁欲 · 金丝墨发',
     img: '/assets/companions/cool_dark_cutout.png',
     aura: 'rgba(226, 85, 157, 0.42)',
     particle: '✧'
   },
+  cool_lady: {
+    key: 'cool_lady',
+    mode: 'cool',
+    isFemale: true,
+    label: '👠 高冷清艳 · 冰山御姐',
+    img: '/assets/companions/cool_lady_cutout.png',
+    aura: 'rgba(192, 132, 252, 0.48)',
+    particle: '✦'
+  },
   cute_boy: {
     key: 'cute_boy',
     mode: 'cute',
+    isFemale: false,
     label: '🐾 元气可爱 · 猫耳少年',
     img: '/assets/companions/cute_boy_cutout.png',
     aura: 'rgba(244, 114, 182, 0.48)',
     particle: '♡'
   },
+  cute_girl: {
+    key: 'cute_girl',
+    mode: 'cute',
+    isFemale: true,
+    label: '🍓 甜美元气 · 灵动少女',
+    img: '/assets/companions/cute_girl_cutout.png',
+    aura: 'rgba(251, 113, 133, 0.48)',
+    particle: '♡'
+  },
   cute_chibi: {
     key: 'cute_chibi',
     mode: 'cute',
+    isFemale: true,
     label: '🌸 软萌可爱 · 兔耳团子',
     img: '/assets/companions/cute_chibi_cutout.png',
     aura: 'rgba(251, 146, 60, 0.42)',
@@ -38,8 +60,53 @@ const COMPANION_SKINS = {
   }
 };
 
+const KNOWN_FEMALE_PERSONA_IDS = new Set([
+  'persona_suwanqing',
+  'persona_yunzhiyao',
+  'persona_xia_ningmeng',
+  'persona_yan_feiyu',
+  'persona_nagisa_sakura',
+  'persona_kagaribi_kyou',
+  'persona_ichinose_kotomi',
+  'persona_makise_sei',
+  'persona_asagiri_mio',
+  'persona_violet_eve'
+]);
+
+const KNOWN_MALE_PERSONA_IDS = new Set([
+  'persona_shenxinghui',
+  'persona_luchen',
+  'persona_xieqingyan',
+  'persona_jiangyubai',
+  'persona_jiran',
+  'persona_guxiuyuan',
+  'persona_hodgins_landon',
+  'persona_frieren_shuer',
+  'persona_stark_fer'
+]);
+
+function detectFemalePersona(persona) {
+  const pid = String(persona?.id || '').trim();
+  if (KNOWN_FEMALE_PERSONA_IDS.has(pid)) return true;
+  if (KNOWN_MALE_PERSONA_IDS.has(pid)) return false;
+
+  const text = `${persona?.name || ''} ${persona?.category_tag || ''} ${persona?.tagline || ''} ${
+    persona?.personality || ''
+  }`;
+  if (/女执政官|神女|师姐|学妹|学姐|御姐|甜妹|歌姬|大小姐|巫女|修女|女王|公主|名伶|女家主/.test(text)) {
+    return true;
+  }
+  if (/男主|学弟|小狼狗|少帅|公子|剑尊|师尊|竹马|爹系|联姻家主|少年/.test(text)) {
+    return false;
+  }
+  if (/少女|女孩|女子|双马尾|红裙|流仙裙/.test(text)) {
+    return true;
+  }
+  return false;
+}
+
 /**
- * 根据角色人设文本与玩家指定气质，实时推演生成陪伴立绘与专属声线配置
+ * 根据角色人设文本与玩家指定气质，实时推演生成陪伴立绘与专属声线配置（支持男女角色双轨自适应）
  */
 function resolveOrGenerateCompanion({
   persona,
@@ -49,53 +116,79 @@ function resolveOrGenerateCompanion({
   customImg,
   requestedVoice
 }) {
-  const combinedText = `${persona?.name || ''} ${persona?.tagline || ''} ${persona?.personality || ''} ${
-    persona?.backstory || ''
-  }`;
+  const combinedText = `${persona?.name || ''} ${persona?.category_tag || ''} ${persona?.tagline || ''} ${
+    persona?.personality || ''
+  } ${persona?.backstory || ''}`;
+  const isFemale = detectFemalePersona(persona);
 
   // 1. 决定高冷 (cool) 还是可爱 (cute)
   let mode = requestedMode || currentConfig?.mode || '';
   if (mode !== 'cool' && mode !== 'cute') {
-    const isNaturallyCute = /少年|学弟|小狼狗|撒娇|可爱|活泼|阳光|甜|元气|奶/.test(combinedText);
+    const isNaturallyCute = /少年|学弟|学妹|双马尾|甜妹|小狼狗|撒娇|可爱|活泼|阳光|甜|元气|奶|小梨涡/.test(
+      combinedText
+    );
     mode = isNaturallyCute ? 'cute' : 'cool';
   }
 
-  // 2. 决定具体皮肤
-  let skinKey = requestedSkin || currentConfig?.skinKey || '';
-  if (!COMPANION_SKINS[skinKey] || COMPANION_SKINS[skinKey].mode !== mode) {
-    if (mode === 'cool') {
+  // 2. 决定具体皮肤（严格贴合角色性别，除非玩家显式手动切换指定皮肤）
+  let skinKey = requestedSkin || '';
+  if (!skinKey || !COMPANION_SKINS[skinKey]) {
+    const prevKey = currentConfig?.skinKey || '';
+    const prevSkin = COMPANION_SKINS[prevKey];
+    const genderCompatible =
+      prevSkin &&
+      prevSkin.mode === mode &&
+      (isFemale
+        ? prevKey === 'cool_lady' || prevKey === 'cute_girl' || prevKey === 'cute_chibi'
+        : prevKey !== 'cool_lady' && prevKey !== 'cute_girl');
+
+    if (genderCompatible && !requestedMode) {
+      skinKey = prevKey;
+    } else if (isFemale) {
+      skinKey = mode === 'cool' ? 'cool_lady' : 'cute_girl';
+    } else if (mode === 'cool') {
       const preferSilver = /星|雪|霜|仙|剑尊|白塔|银|清冷|月光/.test(combinedText);
       skinKey = preferSilver ? 'cool_silver' : 'cool_dark';
     } else {
-      const preferChibi = requestedSkin === 'cute_chibi' || (currentConfig?.skinKey === 'cute_boy' && !requestedSkin);
-      skinKey = preferChibi ? 'cute_chibi' : 'cute_boy';
+      skinKey = 'cute_boy';
     }
   }
 
-  const baseSkin = COMPANION_SKINS[skinKey] || COMPANION_SKINS.cool_silver;
+  const baseSkin = COMPANION_SKINS[skinKey] || (isFemale ? COMPANION_SKINS.cool_lady : COMPANION_SKINS.cool_silver);
   const finalImg = customImg !== undefined ? customImg : currentConfig?.customImg || '';
 
-  // 3. 决定专属乙游男主 / AI 漫剧声线
+  // 3. 决定专属商业声线（男主低音/清冷/微撩/少年 + 女主高冷御姐/元气甜妹/软萌团子）
   const isFox = /腹黑|狐狸|公子|折扇|调侃|谢清晏|风流/.test(combinedText);
   const defaultSkinVoice = {
     cool_silver: isFox ? 'otome_fox' : 'otome_cool',
     cool_dark: 'otome_boss',
+    cool_lady: 'otome_queen',
     cute_boy: 'otome_sunny',
+    cute_girl: 'cute_sweet',
     cute_chibi: 'cute_mochi'
-  }[baseSkin.key] || 'otome_cool';
+  }[baseSkin.key] || (isFemale ? 'otome_queen' : 'otome_cool');
 
   let voiceId = requestedVoice || '';
   if (!voiceId) {
     if (requestedMode || requestedSkin) {
       voiceId = defaultSkinVoice;
     } else {
-      voiceId = currentConfig?.voiceId || defaultSkinVoice;
+      const savedVoice = currentConfig?.voiceId || '';
+      const isSavedMaleVoice = ['otome_boss', 'otome_cool', 'otome_fox', 'otome_sunny'].includes(savedVoice);
+      const isSavedFemaleVoice = ['otome_queen', 'cute_sweet', 'cute_mochi'].includes(savedVoice);
+      // 防止切换角色时性别声线错位
+      if ((isFemale && isSavedMaleVoice) || (!isFemale && (savedVoice === 'otome_queen' || savedVoice === 'cute_sweet'))) {
+        voiceId = defaultSkinVoice;
+      } else {
+        voiceId = savedVoice || defaultSkinVoice;
+      }
     }
   }
 
   return {
     mode: baseSkin.mode,
     skinKey: baseSkin.key,
+    isFemale,
     voiceId,
     label: finalImg ? `${baseSkin.mode === 'cool' ? '❄️ 高冷定制' : '🐾 可爱定制'} · 专属立绘` : baseSkin.label,
     img: finalImg || baseSkin.img,
@@ -231,7 +324,11 @@ function buildOfflineVoiceChatReply({ persona, companion, userNickname, stageLev
   const shortName = (persona?.name || '我').split(/[·\s]/)[0];
   const callName = userNickname && userNickname !== '星语旅人' ? userNickname : '你';
   const vid = companion?.voiceId || '';
-  const isCute = companion?.mode === 'cute' || vid === 'otome_sunny' || vid === 'cute_mochi';
+  const isCute =
+    companion?.mode === 'cute' ||
+    vid === 'otome_sunny' ||
+    vid === 'cute_sweet' ||
+    vid === 'cute_mochi';
   const q = String(userText || '').trim();
 
   if (!q || /^(喂|在吗|你好|嗨|哈喽|hello|hi)/i.test(q)) {
@@ -258,7 +355,7 @@ function buildOfflineVoiceChatReply({ persona, companion, userNickname, stageLev
         ]);
   }
 
-  if (/帅|好听|喜欢你|想你|爱你|心动|声音苏/.test(q)) {
+  if (/帅|美|漂亮|好看|姐姐|妹妹|好听|喜欢你|想你|爱你|心动|声音苏/.test(q)) {
     return isCute
       ? pickRandom([
           `嘿嘿，真的吗真的吗？被${callName}这么一夸，我开心得尾巴都要摇上天啦！我也超喜欢你的！`,

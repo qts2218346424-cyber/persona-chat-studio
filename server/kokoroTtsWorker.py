@@ -113,7 +113,11 @@ def build_otome_blended_presets(kokoro, available_voices: set) -> dict:
         presets["otome_sunny"] = 0.70 * get_v("zm_yunxia") + 0.30 * get_v("zm_yunxi")
 
     if {"zf_xiaoyi", "zf_xiaoxiao"}.issubset(available_voices):
-        # 5. 软萌糯米团子音
+        # 5. 高冷清艳御姐音（知性沉静女声底色）
+        presets["otome_queen"] = 0.78 * get_v("zf_xiaoxiao", "zf_xiaoyi") + 0.22 * get_v("zf_xiaoyi")
+        # 6. 甜美元气学妹音（清甜灵动少女音）
+        presets["cute_sweet"] = 0.85 * get_v("zf_xiaoyi") + 0.15 * get_v("zf_xiaoxiao", "zf_xiaoyi")
+        # 7. 软萌糯米团子音
         presets["cute_mochi"] = 0.78 * get_v("zf_xiaoyi") + 0.22 * get_v("zf_xiaoxiao")
 
     return presets

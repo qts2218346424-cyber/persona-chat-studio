@@ -19,10 +19,10 @@
   </script>
   <title>DeepSeek · 智能对话与角色扮演工作台</title>
   <link rel="icon" type="image/svg+xml" href="./assets/deepseek-whale.svg" />
-  <link rel="stylesheet" href="./styles.css?v=20261118ds7" />
-  <link rel="stylesheet" href="./companion3d.css?v=20261118ds7" />
-  <link rel="stylesheet" href="./clean-ui.css?v=20261118ds7" />
-  <link rel="stylesheet" href="./mobile-responsive.css?v=20261118ds7" />
+  <link rel="stylesheet" href="./styles.css?v=20261118m8" />
+  <link rel="stylesheet" href="./companion3d.css?v=20261118m8" />
+  <link rel="stylesheet" href="./clean-ui.css?v=20261118m8" />
+  <link rel="stylesheet" href="./mobile-responsive.css?v=20261118m8" />
   <script type="module">
     if (!Object.hasOwn(HTMLElement.prototype, "popover")) {
       import("https://unpkg.com/@oddbird/popover-polyfill@latest/dist/popover.min.js").catch(() => {});
@@ -332,20 +332,26 @@
           <a href="https://github.com/qts2218346424-cyber/persona-chat-studio/releases/latest" target="_blank" rel="noopener noreferrer" class="popover-action-item ds-apk-download-link">
             <span>📱 下载 Android APK 安装包</span>
           </a>
-          <button type="button" class="popover-action-item" id="ds-menu-proactive-btn">
-            <span>👋 让 TA 主动开口搭话</span>
-          </button>
-          <button type="button" class="popover-action-item" id="ds-menu-fim-btn">
-            <span>✨ 灵感补写小助手（写头尾补中间）</span>
-          </button>
           <button type="button" class="popover-action-item" id="ds-menu-own-api-quick-btn">
             <span>🔑 接入个人 API（DeepSeek / 角色扮演通用）</span>
           </button>
           <button type="button" class="popover-action-item" id="ds-menu-theme-cycle-btn">
             <span id="ds-menu-theme-label">🌗 切换外观主题（浅色 / 深色 / 跟随系统）</span>
           </button>
+          <button type="button" class="popover-action-item" id="ds-menu-memory-btn">
+            <span>🧠 上下文与长期记忆库（置顶铁律）</span>
+          </button>
+          <button type="button" class="popover-action-item" id="ds-menu-session-setting-btn">
+            <span>🎯 本对话独立附加设定</span>
+          </button>
+          <button type="button" class="popover-action-item" id="ds-menu-export-md-btn">
+            <span>📄 导出聊天与记忆档案 (.md)</span>
+          </button>
+          <button type="button" class="popover-action-item" id="ds-menu-import-md-btn">
+            <span>📥 导入记忆 / 聊天记录 (.md)</span>
+          </button>
           <button type="button" class="popover-action-item" id="ds-menu-share-btn">
-            <span>📤 分享 / 导出当前对话长图与 Markdown</span>
+            <span>📤 分享对话长图与更多格式</span>
           </button>
           <button type="button" class="popover-action-item" id="ds-menu-api-btn">
             <span>🌸 对话畅玩与智能工具状态</span>
@@ -416,6 +422,7 @@
             <span class="ds-topbar-title" id="ds-topbar-title">新对话</span>
             <span class="ds-model-badge" id="ds-model-pill">deepseek-reasoner · R1</span>
             <span class="ds-soul-pill hidden" id="ds-soul-active-pill">🎭 挂载人设中</span>
+            <span class="ds-soul-pill hidden" id="ds-session-setting-pill">🎯 独立设定</span>
           </div>
         </div>
 
@@ -440,25 +447,34 @@
 
           <button
             type="button"
-            class="proactive-trigger-btn hidden"
+            class="soft-tool-btn rp-only-inline"
+            id="rp-quick-memory-btn"
+            title="查看当前对话的独立设定、长期记忆并支持导出/导入 .md 记忆包"
+          >
+            🧠 设定与记忆
+          </button>
+
+          <button
+            type="button"
+            class="proactive-trigger-btn rp-only-inline hidden"
             id="proactive-now-btn"
           >
             👋 让 TA 开口
           </button>
 
-          <!-- 原生 DeepSeek 模式主快捷入口 -->
+          <!-- 原生 DeepSeek 模式主快捷入口（去除冗余补写按钮，聚焦长效记忆与实时预览） -->
           <button type="button" class="soft-tool-btn ds-only-inline" id="open-ds-artifacts-btn" title="打开右侧伴生实时预览视窗 (HTML / SVG / Canvas)">
             <span>🖥️ 实时预览</span>
             <span class="ds-artifact-dot hidden" id="ds-artifacts-count-dot"></span>
           </button>
-          <button type="button" class="soft-tool-btn ds-only-inline" id="open-fim-dialog-btn" title="卡文救星：写好开头和想要的结尾，AI 自动帮你补齐中间剧情">
-            ✨ 帮我补写
+          <button type="button" class="soft-tool-btn ds-only-inline" id="ds-open-memory-setting-btn" title="查看/置顶本对话长期记忆锚点、前情浓缩摘要与独立设定">
+            🧠 设定与记忆
           </button>
-          <button type="button" class="ds-inspector-btn ds-only-inline" id="open-ds-inspector-btn" title="查看上下文缓存命中率与智能工具状态">
+          <button type="button" class="ds-inspector-btn ds-only-inline" id="open-ds-inspector-btn" title="查看长效记忆缓存命中率与智能引擎状态">
             ⚡ 引擎状态
           </button>
-          <button type="button" class="soft-tool-btn ds-only-inline" id="ds-share-session-btn" title="生成对话分享长图或导出 Markdown">
-            📤 分享
+          <button type="button" class="soft-tool-btn ds-only-inline" id="ds-share-session-btn" title="导出当前对话记录与记忆 (.md)，或生成分享长图">
+            📤 导出 .md
           </button>
           <button type="button" class="soft-tool-btn ds-only-inline" id="ds-quick-theme-btn" title="切换浅色 / 深色外观模式" aria-label="切换浅色或深色外观">
             🌗
@@ -474,7 +490,7 @@
             class="soft-tool-btn more-tools-trigger"
             id="topbar-more-btn"
             popovertarget="topbar-more-popover"
-            title="记忆世界书、签到权益与更多工具"
+            title="长期记忆管理、导入导出 .md 记忆与更多工具"
           >
             ⋯ 更多
           </button>
@@ -486,10 +502,13 @@
             <button type="button" class="popover-action-item rp-only-flex" id="more-open-square-btn">
               <span>🌐 共创设计广场（共享剧本与人设）</span>
             </button>
-            <button type="button" class="popover-action-item rp-only-flex" id="more-open-drawer-btn">
-              <span>💫 展开羁绊记忆与世界书伏笔</span>
+            <button type="button" class="popover-action-item ds-only-flex" id="more-open-ds-memory-btn">
+              <span>🧠 上下文与长期记忆管理（置顶铁律）</span>
             </button>
-            <button type="button" class="popover-action-item" id="more-open-fim-btn">
+            <button type="button" class="popover-action-item" id="more-open-drawer-btn">
+              <span>🎯 本对话独立设定与前情档案</span>
+            </button>
+            <button type="button" class="popover-action-item rp-only-flex" id="more-open-fim-btn">
               <span>✨ 灵感补写小助手（卡文救星）</span>
             </button>
             <button type="button" class="popover-action-item" id="more-open-own-api-btn">
@@ -503,7 +522,7 @@
             </button>
             <button
               type="button"
-              class="popover-action-item active"
+              class="popover-action-item rp-only-flex active"
               id="toggle-proactive-btn"
               aria-pressed="true"
             >
@@ -513,11 +532,14 @@
               <span class="pulse-ring"></span>
               <span id="memory-pill-text">唤醒记忆 0 条</span>
             </button>
-            <button type="button" class="popover-action-item rp-only-flex" id="open-import-history-btn">
-              <span>📥 导入对话存档</span>
+            <button type="button" class="popover-action-item" id="export-md-memory-btn">
+              <span>📄 导出本对话聊天与记忆 (.md)</span>
+            </button>
+            <button type="button" class="popover-action-item" id="open-import-history-btn">
+              <span>📥 导入记忆 / 聊天记录 (.md / .json)</span>
             </button>
             <button type="button" class="popover-action-item" id="export-history-btn">
-              <span>📤 导出当前存档</span>
+              <span>📦 导出完整原始备份 (.json)</span>
             </button>
             <button type="button" class="popover-action-item hidden" id="start-tour-btn">
               <span>🧭 新手引导</span>
@@ -654,8 +676,8 @@
           <!-- 已选上传文档/代码附件预览芯片栏（遵循 single-line-overflow 保留扩展名规范） -->
           <div class="composer-attachments hidden" id="composer-attachments-bar" aria-label="待发送附件列表"></div>
 
-          <!-- 指定对方开口第一句话引导条（去技术化大白话版） -->
-          <div class="ds-prefix-bar hidden" id="ds-prefix-bar">
+          <!-- 指定对方开口第一句话引导条（仅恋庭角色扮演模式按需使用） -->
+          <div class="ds-prefix-bar rp-only-flex hidden" id="ds-prefix-bar">
             <span class="ds-prefix-tag">✍️ 指定开口</span>
             <label for="ds-prefix-input" class="visually-hidden">指定对方回复的第一句话</label>
             <input
@@ -709,7 +731,7 @@
               </button>
             </div>
 
-            <!-- 1:1 复刻 DeepSeek 官方左下角双胶囊（「深度思考」+「智能搜索」，高级特性收纳进按需小气泡） -->
+            <!-- 1:1 复刻 DeepSeek 官方纯净左下角双胶囊（「深度思考」+「智能搜索」，零多余干扰） -->
             <div class="composer-toggles ds-only-flex">
               <button
                 type="button"
@@ -742,35 +764,6 @@
                 </svg>
                 <span>智能搜索</span>
               </button>
-
-              <button
-                type="button"
-                class="ds-adv-icon-btn"
-                popovertarget="ds-adv-popover"
-                title="更多贴心小工具：灵感补写 / 指定开口第一句 / 让 TA 主动找话题"
-                aria-label="展开更多贴心小工具"
-              >
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <circle cx="12" cy="12" r="1.5"></circle>
-                  <circle cx="19" cy="12" r="1.5"></circle>
-                  <circle cx="5" cy="12" r="1.5"></circle>
-                </svg>
-              </button>
-
-              <div id="ds-adv-popover" popover="auto" class="anchored-popover ds-adv-popover-panel">
-                <button type="button" class="popover-action-item" id="ds-pop-fim-btn">
-                  <span>✨ 灵感补写小助手（写头尾补中间）</span>
-                </button>
-                <button type="button" class="popover-action-item" id="ds-pop-proactive-btn">
-                  <span>👋 让 TA 主动开口找话题</span>
-                </button>
-                <button type="button" class="popover-action-item" id="ds-toggle-prefix" aria-pressed="false">
-                  <span>✍️ 指定对方的开口第一句</span>
-                </button>
-                <button type="button" class="popover-action-item" id="ds-toggle-json" aria-pressed="false">
-                  <span>📋 整理成结构清单格式</span>
-                </button>
-              </div>
             </div>
 
             <div class="composer-actions">
@@ -844,10 +837,10 @@
           ⚡ 引擎状态
         </button>
         <button type="button" class="tab-btn" data-tab="memory-tab" role="tab" aria-selected="false">
-          💫 记忆与世界书
+          💫 本对话记忆
         </button>
         <button type="button" class="tab-btn" data-tab="persona-tab" role="tab" aria-selected="false">
-          🌸 角色设定
+          🎭 本对话设定
         </button>
         <button type="button" class="icon-btn close-inspector-btn" id="close-right-btn" title="收起面板" aria-label="收起右侧面板">
           ✕
@@ -950,16 +943,28 @@
           <div class="lore-cards-list" id="lore-cards-list"></div>
         </div>
 
+        <!-- 会话级独立记忆隔离与 .md 跨处迁移工具卡 -->
+        <div class="session-iso-banner">
+          <div class="session-iso-text">
+            <strong>🔒 当前对话框拥有独立记忆空间</strong>
+            <span>不同对话的记忆彼此隔离、互不串台；可随时导出 <code>.md</code> 导入到其他对话或外部平台。</span>
+          </div>
+          <div class="session-iso-actions">
+            <button type="button" class="mini-primary-btn" id="memtab-export-md-btn" title="将当前对话的设定、记忆与聊天记录导出为 .md 文件">📄 导出 .md</button>
+            <button type="button" class="mini-btn" id="memtab-import-md-btn" title="将 .md 记忆档案导入到当前对话">📥 导入记忆</button>
+          </div>
+        </div>
+
         <!-- 艾宾浩斯遗忘曲线长期记忆 -->
         <div class="memory-block">
           <div class="block-title-row">
-            <span>🧠 艾宾浩斯记忆碎片（唤醒越勤越深刻）</span>
+            <span>🧠 本对话长期记忆碎片（唤醒越勤越深刻）</span>
             <span class="muted-count" id="memory-count-label">0 条</span>
           </div>
 
           <form id="add-memory-form" class="add-memory-row">
             <label for="new-memory-input" class="visually-hidden">手动写入专属记忆</label>
-            <input id="new-memory-input" type="text" placeholder="写下你的昵称、生日或专属约定…" />
+            <input id="new-memory-input" type="text" placeholder="写下仅在当前对话生效的昵称、设定细节或约定…" />
             <label for="new-memory-pin" class="pin-check-label" title="置顶记忆保持100%鲜活度永不衰减">
               <input type="checkbox" id="new-memory-pin" class="visually-hidden-fallback" checked />
               <span>置顶</span>
@@ -972,27 +977,52 @@
 
         <div class="memory-block">
           <div class="block-title-row">
-            <label for="rolling-summary-input">📜 回忆手札（前情自动浓缩）</label>
+            <label for="rolling-summary-input">📜 回忆手札（本对话前情自动浓缩）</label>
             <button type="button" class="mini-btn" id="compress-now-btn">一键浓缩</button>
           </div>
           <textarea
             id="rolling-summary-input"
             class="summary-textarea"
             rows="3"
-            placeholder="长对话或导入历史记录后，早期剧情会自动浓缩保存在此…"
+            placeholder="长对话或导入 .md 记忆后，早期脉络会自动浓缩保存在当前对话框…"
           ></textarea>
           <button type="button" class="secondary-btn small-save-btn" id="save-summary-btn">保存手札</button>
         </div>
       </div>
 
-      <!-- 页签 3：角色设定编辑与文档上传 -->
+      <!-- 页签 3：本对话独立设定与角色档案覆盖 -->
       <div class="inspector-body hidden" id="persona-tab">
+        <div class="memory-block session-prompt-card">
+          <div class="block-title-row">
+            <label for="session-prompt-input">🎯 本对话独立附加设定（平行世界 / 专属规则）</label>
+            <span class="ds-cache-pill" id="session-prompt-status-badge">仅本对话生效</span>
+          </div>
+          <p class="ds-suite-desc">
+            给不同对话框赋予完全不同的背景设定、身份关系或输出风格（支持恋庭扮演与 DeepSeek 原生双模式），与其他对话框 100% 隔离！
+          </p>
+          <div class="session-preset-chips">
+            <button type="button" class="mini-btn session-preset-chip" data-preset="【平行世界设定】在这个时空里，我们是失散多年后在星际列车上重逢的旧搭档，彼此隐瞒着真实身份互相试探。">🌌 平行世界线</button>
+            <button type="button" class="mini-btn session-preset-chip" data-preset="【专属身份规则】在本对话中请称呼我为「馆长」，以冷静毒舌但极其护短的私人顾问口吻与我对话。">🎓 专属身份规则</button>
+            <button type="button" class="mini-btn session-preset-chip" data-preset="【悬疑解谜副本】当前处于无限流午夜钟楼副本，每轮对话请结合我们已知的记忆线索推进解谜。">🕵️ 副本新设定</button>
+          </div>
+          <textarea
+            id="session-prompt-input"
+            class="summary-textarea"
+            rows="3"
+            placeholder="输入仅对当前对话框生效的专属设定、平行世界观、特殊规则或身份关系…"
+          ></textarea>
+          <div class="session-prompt-actions">
+            <button type="button" class="mini-btn" id="clear-session-prompt-btn">清空附加指令</button>
+            <button type="button" class="mini-primary-btn" id="save-session-prompt-btn">🎯 保存本对话独立设定</button>
+          </div>
+        </div>
+
         <div class="upload-mini-dropzone" id="inline-persona-dropzone">
           <input type="file" id="inline-persona-file" accept=".txt,.md,.json" class="visually-hidden" />
           <div class="dropzone-content">
             <span class="drop-icon">📄</span>
             <div class="drop-texts">
-              <strong>上传人设文档自动填充</strong>
+              <strong>上传人设文档自动填充当前对话</strong>
               <span>支持拖拽或点击选择 .txt / .md / .json 设定集</span>
             </div>
             <button type="button" class="mini-btn" id="trigger-inline-doc-btn">选择文件</button>
@@ -1006,33 +1036,39 @@
               <input id="ip-avatar" type="text" maxlength="4" required />
             </div>
             <div class="field-group flex-1">
-              <label for="ip-name">角色姓名与头衔</label>
+              <label for="ip-name">本对话角色 / 助手名称</label>
               <input id="ip-name" type="text" placeholder="例如：裴清让 · 白塔首席调香师" required />
             </div>
           </div>
 
           <div class="field-group">
             <label for="ip-tagline">心动关键词 / 一句话定位</label>
-            <input id="ip-tagline" type="text" placeholder="清冷禁欲、外冷内热、竹马重逢…" />
+            <input id="ip-tagline" type="text" placeholder="清冷禁欲、外冷内热、毒舌导师…" />
           </div>
 
           <div class="field-group">
-            <label for="ip-personality">性格反差与相处细节</label>
-            <textarea id="ip-personality" rows="3" placeholder="描述他的性格特质、对你的偏爱细节与小习惯…"></textarea>
+            <label for="ip-personality">性格特质与相处细节</label>
+            <textarea id="ip-personality" rows="3" placeholder="描述在此对话中的性格特质、偏爱细节与相处习惯…"></textarea>
           </div>
 
           <div class="field-group">
             <label for="ip-backstory">世界观与完整背景故事</label>
-            <textarea id="ip-backstory" rows="6" placeholder="输入两人的过往羁绊、时代世界观与核心剧情设定…"></textarea>
+            <textarea id="ip-backstory" rows="5" placeholder="输入在此对话中的过往羁绊、平行世界观或项目背景设定…"></textarea>
           </div>
 
           <div class="field-group">
-            <label for="ip-style">声线语调与神态描写风格</label>
-            <textarea id="ip-style" rows="2" placeholder="例如：嗓音低柔磁性，善用眼神与指尖动作传递克制的温柔…"></textarea>
+            <label for="ip-style">声线语调与表达风格</label>
+            <textarea id="ip-style" rows="2" placeholder="例如：嗓音低柔磁性，或干练严谨、直击本质…"></textarea>
           </div>
 
-          <div class="form-footer-row">
-            <button type="submit" class="primary-btn full-width">✨ 保存设定（下一句对话立即生效）</button>
+          <label class="session-scope-check hidden" id="ip-global-sync-wrap">
+            <input type="checkbox" id="ip-sync-global-chk" />
+            <span>同步更新该自建角色的全局基础卡（默认不勾选，仅作为当前对话的独立设定生效）</span>
+          </label>
+
+          <div class="form-footer-row split-footer-btns">
+            <button type="button" class="secondary-btn" id="reset-persona-override-btn" title="清除当前对话的人设修改，恢复角色卡初始设定">↺ 恢复初始卡</button>
+            <button type="submit" class="primary-btn flex-1">✨ 保存为本对话设定</button>
           </div>
         </form>
       </div>
@@ -1041,14 +1077,14 @@
       <div class="inspector-body hidden" id="ds-suite-tab">
         <div class="ds-suite-card zero-config-hero-card">
           <div class="block-title-row">
-            <span>🌸 智能思考与工具已就绪</span>
-            <span class="ds-cache-pill">即开即用</span>
+            <span>🧠 三层长效记忆与稳态引擎</span>
+            <span class="ds-cache-pill">抗断流守护</span>
           </div>
           <p class="ds-suite-desc">
-            深度思考推理、联网检索与剧情补写均已自动就绪。如需切换免费体验通道或高阶会员在线通道，可在「⚙️ 聊天偏好」或「👑 账户权益」中查看。
+            已自动开启超长滑动窗口原话保留、4800 字早期前情自动浓缩与置顶铁律永久锚定，内置连接抖动自动重连与半截回复落库保护。
           </p>
-          <button type="button" class="primary-btn full-width" id="inspector-open-fim-btn" style="margin-top:4px;">
-            ✨ 打开灵感补写小助手（卡文救星）
+          <button type="button" class="primary-btn full-width" id="inspector-open-memory-btn" style="margin-top:4px;">
+            🧠 查看 / 置顶本对话长期记忆
           </button>
         </div>
 
@@ -1225,54 +1261,64 @@
     </div>
   </dialog>
 
-  <!-- 模态弹窗 2：导入历史对话记录弹窗 -->
+  <!-- 模态弹窗 2：导入历史对话记录与 .md 跨对话记忆弹窗 -->
   <dialog id="import-history-dialog" class="modal-dialog" closedby="any" aria-labelledby="import-history-title">
     <div class="modal-inner">
       <div class="modal-header">
-        <h2 id="import-history-title">📥 导入过往聊天记录（自动唤醒前尘记忆）</h2>
+        <h2 id="import-history-title">📥 导入聊天记录与 .md 记忆档案</h2>
         <button type="button" class="icon-btn" id="close-import-dialog" aria-label="关闭窗口">✕</button>
       </div>
 
       <div class="info-callout">
-        导入成功后，系统不仅会完整还原过往对话气泡，还会<strong>自动扫描提炼其中的称呼、约定与关键剧情存入长期记忆库</strong>，让角色无缝接续之前的点滴继续互动！
+        支持直接导入任意对话框导出的 <strong><code>.md</code> 聊天与记忆档案</strong>（或外部聊天记录）。导入后<strong>仅注入到当前选定对话框的独立记忆库</strong>中，与其他对话框严格隔离，方便在全新设定下继承前尘记忆！
       </div>
 
       <form id="import-history-form" class="stack-form">
         <div class="upload-hero-dropzone" id="history-dropzone">
-          <input type="file" id="history-file-input" accept=".txt,.md,.json,.jsonl" class="visually-hidden" />
+          <input type="file" id="history-file-input" accept=".md,.txt,.json,.jsonl" class="visually-hidden" />
           <div class="hero-drop-main">
-            <span class="hero-drop-badge" id="history-file-badge">📂 支持 .txt / .md / .json / .jsonl 格式</span>
-            <p id="history-file-hint">支持标准导出 JSON、JSONL 记录，或按 <code>我：…</code> / <code>角色名：…</code> 分行的纯文本聊天记录</p>
-            <button type="button" class="secondary-btn" id="select-history-file-btn">选择聊天记录文件</button>
+            <span class="hero-drop-badge" id="history-file-badge">📂 支持 .md 记忆档案 / .txt / .json / .jsonl</span>
+            <p id="history-file-hint">可直接拖入从恋庭模式或 DeepSeek 原生模式导出的 <code>.md</code> 记忆文件，自动无损还原记忆锚点、浓缩手札与聊天记录</p>
+            <button type="button" class="secondary-btn" id="select-history-file-btn">选择 .md 记忆或记录文件</button>
           </div>
         </div>
 
         <div class="field-group">
-          <label for="history-paste-area">或者直接在下方粘贴历史对话文本 / JSON（可选）</label>
+          <label for="history-paste-area">或者直接在下方粘贴 .md 记忆文档 / 对话文本 / JSON（可选）</label>
           <textarea
             id="history-paste-area"
-            rows="5"
-            placeholder="示例格式：&#10;我：沈星回，你还记得我最喜欢喝什么茶吗？&#10;沈星回：*眼底漾起笑意* 当然记得，三分糖的温热蜜桃乌龙，对不对？"
+            rows="4"
+            placeholder="示例：可直接粘贴导出的 .md 记忆档案内容，或按「我：… / 角色名：…」分行的聊天记录…"
           ></textarea>
         </div>
 
         <fieldset class="theme-fieldset">
-          <legend>导入合并方式</legend>
+          <legend>导入合并与设定保留策略</legend>
           <div class="theme-radio-group">
             <label class="theme-option">
               <input type="radio" name="import-mode" value="append" checked />
-              <span>✨ 追加到当前会话末尾</span>
+              <span>✨ 追加到当前对话末尾（保留现有消息与记忆）</span>
             </label>
             <label class="theme-option">
               <input type="radio" name="import-mode" value="replace" />
-              <span>🔄 覆盖当前会话全部消息</span>
+              <span>🔄 覆盖当前对话历史消息</span>
+            </label>
+          </div>
+          <div class="import-extra-checks">
+            <label class="session-scope-check">
+              <input type="checkbox" id="import-apply-setting-chk" />
+              <span>🎭 同时应用文件中的「专属设定」（不勾选则<strong>保留当前对话框自己的新设定</strong>，仅导入记忆与记录）</span>
+            </label>
+            <label class="session-scope-check">
+              <input type="checkbox" id="import-replace-memories-chk" />
+              <span>🧹 覆盖模式下同时清空当前对话旧记忆（仅保留新导入的记忆）</span>
             </label>
           </div>
         </fieldset>
 
         <div class="modal-actions">
           <button type="button" class="secondary-btn" id="cancel-import-dialog">取消</button>
-          <button type="submit" class="primary-btn">📥 立即导入并提炼记忆</button>
+          <button type="submit" class="primary-btn">📥 立即导入到当前对话</button>
         </div>
       </form>
     </div>
@@ -1645,42 +1691,42 @@
         </fieldset>
 
         <fieldset class="theme-fieldset">
-          <legend>💞 角色互动感觉（点一下自动调好）</legend>
+          <legend>🧠 上下文记忆容量与回复风格（点一下自动配好）</legend>
           <div class="easy-vibe-grid" id="easy-vibe-grid">
-            <button type="button" class="easy-vibe-card active" data-vibe="balanced" data-win="12" data-rec="6" data-temp="0.85">
-              <strong>🌸 自然贴心（推荐）</strong>
-              <span>温柔稳定，最贴合日常恋爱互动</span>
+            <button type="button" class="easy-vibe-card active" data-vibe="balanced" data-win="40" data-rec="16" data-temp="0.7">
+              <strong>⚖️ 稳健长记忆（推荐）</strong>
+              <span>保留 40 条完整原话 + 16 条长期记忆，兼顾精准与流畅</span>
             </button>
-            <button type="button" class="easy-vibe-card" data-vibe="dramatic" data-win="14" data-rec="8" data-temp="1.05">
-              <strong>💓 戏感拉满</strong>
-              <span>神态描写更丰富，更有心动张力</span>
+            <button type="button" class="easy-vibe-card" data-vibe="dramatic" data-win="56" data-rec="22" data-temp="1.0">
+              <strong>✨ 灵动深聊</strong>
+              <span>保留 56 条原话，表达更富创造力与情感细节</span>
             </button>
-            <button type="button" class="easy-vibe-card" data-vibe="deep_memory" data-win="24" data-rec="12" data-temp="0.8">
-              <strong>📖 超长记性</strong>
-              <span>记住更多前文细节，适合长篇慢聊</span>
+            <button type="button" class="easy-vibe-card" data-vibe="deep_memory" data-win="96" data-rec="32" data-temp="0.6">
+              <strong>📖 超长铁血记忆</strong>
+              <span>保留近百条完整原话与 32 条锚点，长篇项目绝不遗忘</span>
             </button>
           </div>
         </fieldset>
 
         <details class="tts-settings-fold" id="advanced-tech-settings-fold">
           <summary class="tts-fold-summary">
-            <span>🔧 细节微调：记忆窗口条数 &amp; 试听角色贴耳声线样片</span>
+            <span>🔧 高级微调：近期原话保留上限、长期记忆条数 &amp; 声线试听</span>
             <span class="fold-caret" aria-hidden="true">▾</span>
           </summary>
 
           <div class="tts-fold-body stack-form">
             <div class="inline-row">
               <div class="field-group flex-1">
-                <label for="st-window">近期原话保留条数 (4~40)</label>
-                <input id="st-window" type="number" min="4" max="40" value="12" />
+                <label for="st-window">近期完整原话保留条数 (6~120)</label>
+                <input id="st-window" type="number" min="6" max="120" value="40" />
               </div>
               <div class="field-group flex-1">
-                <label for="st-recall">每轮唤醒长期记忆条数 (2~15)</label>
-                <input id="st-recall" type="number" min="2" max="15" value="6" />
+                <label for="st-recall">每轮唤醒动态记忆条数 (4~40，置顶不限额)</label>
+                <input id="st-recall" type="number" min="4" max="40" value="16" />
               </div>
               <div class="field-group avatar-field">
-                <label for="st-temp">情感灵动度</label>
-                <input id="st-temp" type="number" step="0.05" min="0.1" max="1.4" value="0.85" />
+                <label for="st-temp">采样温度</label>
+                <input id="st-temp" type="number" step="0.05" min="0.1" max="1.4" value="0.7" />
               </div>
             </div>
 
@@ -2239,20 +2285,21 @@
     </div>
   </dialog>
 
-  <!-- 模态弹窗 12：📤 DeepSeek 官方极简风对话分享长图与导出面板 -->
+  <!-- 模态弹窗 12：📤 双模式通用对话记录与记忆档案 (.md) 导出与分享长图面板 -->
   <dialog id="ds-share-dialog" class="modal-dialog modal-wide" closedby="any" aria-labelledby="ds-share-title">
     <div class="modal-inner">
       <div class="modal-header">
-        <h2 id="ds-share-title">📤 分享与导出对话记录</h2>
+        <h2 id="ds-share-title">📤 导出聊天与记忆档案 (.md) / 分享长图</h2>
         <button type="button" class="icon-btn" id="close-ds-share-dialog" aria-label="关闭分享窗口">✕</button>
       </div>
       <div class="ds-share-preview-card" id="ds-share-preview-card"></div>
       <div class="modal-actions split-actions">
-        <span class="muted-count" id="ds-share-meta-hint">包含完整深度思考链与排版正文</span>
+        <span class="muted-count" id="ds-share-meta-hint">导出的 .md 含本对话独立设定、长期记忆与完整对话，可导入任意其他对话</span>
         <div class="right-btns">
-          <button type="button" class="secondary-btn" id="ds-copy-markdown-btn">📋 复制 Markdown</button>
-          <button type="button" class="secondary-btn" id="ds-export-md-file-btn">📄 下载 .md 文件</button>
-          <button type="button" class="ds-primary-btn" id="ds-download-share-png-btn">🖼️ 保存高清对话长图 (.png)</button>
+          <button type="button" class="secondary-btn" id="ds-copy-markdown-btn">📋 复制记忆 .md</button>
+          <button type="button" class="secondary-btn" id="ds-export-json-file-btn">📦 备份 .json</button>
+          <button type="button" class="primary-btn" id="ds-export-md-file-btn">📄 下载 .md 记忆档案</button>
+          <button type="button" class="ds-primary-btn" id="ds-download-share-png-btn">🖼️ 保存对话长图 (.png)</button>
         </div>
       </div>
     </div>
@@ -2261,10 +2308,10 @@
   <!-- 站长管理后台专属模态容器（静态 HTML 保持空白，仅在服务端认证 is_admin === true 时动态渲染） -->
   <dialog id="admin-console-dialog" class="modal-dialog modal-wide wallet-modal" closedby="any" aria-label="站长管理后台"></dialog>
 
-  <script src="./standaloneAdapter.js?v=20261118ds7"></script>
-  <script src="./mobileAdapter.js?v=20261118ds7"></script>
-  <script src="./app.js?v=20261118ds7"></script>
-  <script src="./companion3d.js?v=20261118ds7"></script>
-  <script src="./companionVoice.js?v=20261118ds7"></script>
+  <script src="./standaloneAdapter.js?v=20261118m8"></script>
+  <script src="./mobileAdapter.js?v=20261118m8"></script>
+  <script src="./app.js?v=20261118m8"></script>
+  <script src="./companion3d.js?v=20261118m8"></script>
+  <script src="./companionVoice.js?v=20261118m8"></script>
 </body>
 </html>

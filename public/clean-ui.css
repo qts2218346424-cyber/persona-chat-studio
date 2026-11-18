@@ -3465,3 +3465,158 @@ dialog::backdrop {
   color: #4d6bfe;
   font-weight: 600;
 }
+
+/* ==========================================================================
+   15. 双模式全对话框 .md 记忆档案导出/导入 & 会话级独立设定隔离增强样式
+   ========================================================================== */
+.session-iso-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid light-dark(rgba(77, 107, 254, 0.24), rgba(96, 165, 250, 0.28));
+  background: light-dark(rgba(239, 246, 255, 0.85), rgba(30, 41, 59, 0.72));
+}
+
+.app-shell[data-ui-mode="roleplay"] .session-iso-banner {
+  border-color: light-dark(rgba(226, 85, 157, 0.28), rgba(236, 94, 167, 0.34));
+  background: light-dark(rgba(255, 245, 250, 0.9), rgba(45, 33, 70, 0.65));
+}
+
+.session-iso-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  flex: 1;
+}
+
+.session-iso-text strong {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.session-iso-text span {
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
+.session-iso-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  flex-shrink: 0;
+}
+
+.session-prompt-card {
+  border: 1px solid light-dark(rgba(77, 107, 254, 0.25), rgba(96, 165, 250, 0.28)) !important;
+}
+
+.app-shell[data-ui-mode="roleplay"] .session-prompt-card {
+  border-color: light-dark(rgba(226, 85, 157, 0.28), rgba(236, 94, 167, 0.34)) !important;
+}
+
+.session-preset-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 4px 0 6px;
+}
+
+.session-preset-chip {
+  font-size: 11.5px !important;
+  padding: 3px 8px !important;
+  border-radius: 999px !important;
+}
+
+.session-prompt-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.session-scope-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.session-scope-check input[type="checkbox"] {
+  margin-top: 3px;
+  flex-shrink: 0;
+}
+
+.import-extra-checks {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--border-subtle);
+}
+
+.split-footer-btns {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.session-custom-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 5px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: light-dark(#3b5bdb, #93c5fd);
+  background: light-dark(rgba(77, 107, 254, 0.12), rgba(77, 107, 254, 0.22));
+  flex-shrink: 0;
+}
+
+.app-shell[data-ui-mode="roleplay"] .session-custom-badge {
+  color: var(--brand-primary);
+  background: light-dark(rgba(226, 85, 157, 0.12), rgba(236, 94, 167, 0.22));
+}
+
+.session-export-quick-btn {
+  min-inline-size: 24px;
+  min-block-size: 24px;
+  padding: 0 4px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.14s ease, background-color 0.14s ease;
+}
+
+.session-item:hover .session-export-quick-btn,
+.session-item:focus-within .session-export-quick-btn,
+.session-item.menu-open .session-export-quick-btn {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .session-export-quick-btn {
+    opacity: 0.82;
+  }
+}
+
+.session-export-quick-btn:hover {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+}

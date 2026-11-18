@@ -79,6 +79,38 @@ const VOICE_CATALOG = {
     openaiVoice: 'ballad',
     cosyPrompt: '用乙女游戏阳光清朗年下学弟、充满干净少年气与真诚撒娇热忱的年轻男声说'
   },
+  otome_queen: {
+    id: 'otome_queen',
+    style: 'cool',
+    isMale: false,
+    label: '👠 高冷清艳御姐',
+    desc: '冰山女执政官/清冷师姐 · 清冽微哑成熟御姐音，外冷内宠',
+    defaultSpeed: 0.94,
+    minimaxVoice: 'female-yujie',
+    minimaxPitch: -1,
+    minimaxSpeed: 0.94,
+    dashscopeVoice: 'Serena',
+    volcVoice: 'zh_female_gaolengyujie_moon_bigtts',
+    siliconVoice: 'anna',
+    openaiVoice: 'sage',
+    cosyPrompt: '用高冷清艳、微哑磁性却暗藏温柔护短宠溺的成熟御姐女主声优语气轻声说'
+  },
+  cute_sweet: {
+    id: 'cute_sweet',
+    style: 'cute',
+    isMale: false,
+    label: '🍓 甜美元气学妹',
+    desc: '双马尾直球少女 · 清甜娇软、满眼星光的元气少女音',
+    defaultSpeed: 1.02,
+    minimaxVoice: 'female-shaonv',
+    minimaxPitch: 0,
+    minimaxSpeed: 1.02,
+    dashscopeVoice: 'Chelsie',
+    volcVoice: 'zh_female_shuangkuaisisi_moon_bigtts',
+    siliconVoice: 'claire',
+    openaiVoice: 'coral',
+    cosyPrompt: '用清甜灵动、满眼欢喜崇拜与元气少女笑意的甜妹学妹声优语气说'
+  },
   cute_mochi: {
     id: 'cute_mochi',
     style: 'cute',
@@ -253,9 +285,14 @@ function resolveVoiceForCompanion(companion, requestedVoice) {
   if (compNorm) return VOICE_CATALOG[compNorm];
 
   const skin = companion?.skinKey || '';
+  if (skin === 'cool_lady') return VOICE_CATALOG.otome_queen;
+  if (skin === 'cute_girl') return VOICE_CATALOG.cute_sweet;
   if (skin === 'cool_dark') return VOICE_CATALOG.otome_boss;
   if (skin === 'cute_boy') return VOICE_CATALOG.otome_sunny;
   if (skin === 'cute_chibi') return VOICE_CATALOG.cute_mochi;
+  if (companion?.isFemale) {
+    return companion?.mode === 'cute' ? VOICE_CATALOG.cute_sweet : VOICE_CATALOG.otome_queen;
+  }
   return companion?.mode === 'cute' ? VOICE_CATALOG.otome_sunny : VOICE_CATALOG.otome_cool;
 }
 

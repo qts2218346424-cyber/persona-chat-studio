@@ -2824,8 +2824,85 @@ async function handleApi(req, res, pathname, parsedUrl) {
         billing: billingInfo
       });
     } catch (err) {
-      sendEvent('error', { message: sanitizePublicErrorMessage(err, '生成回复时发生未知异常') });
+      // 稳定性兜底：若流传输中途发生网络闪断或客户端中断，但已接收了实质内容，自动抢救落库以防丢字及破坏 user/assistant 交替结构
+      if (fullContent.trim() || fullReasoning.trim()) {
+        try {
+          const now = Date.now();
+          const durationMs = now - startedAt;
+          const isUserAbort = Boolean(abortController.signal.aborted);
+          const suffixNote = isUserAbort
+            ? '\n\n*(已停止生成)*'
+            : '\n\n*(注：网络连接出现短暂波动，以上已生成内容已自动为你妥善保存；如需完整重答可点击「重新生成」)*';
+          const rescuedContent = fullContent.trim()
+            ? `${fullContent.trim()}${suffixNote}`
+            : isUserAbort
+            ? '*(思考过程中已停止生成)*'
+            : '*(深度思考已完成，正文传输时遇到网络波动，请点击「重新生成」重试)*';
+          const rescuedReasoning = fullReasoning.trim();
+          const recalledLen = contextBundle?.recalledMemories?.length || 0;
+          const rescuedMeta = {
+            partial_recovered: true,
+            aborted_by_user: isUserAbort,
+            ...(priorAssistantVersions.length > 0
+              ? {
+                  versions: [
+                    ...priorAssistantVersions,
+                    {
+                      reasoning: rescuedReasoning,
+                      content: rescuedContent,
+                      duration_ms: durationMs,
+                      created_at: now
+                    }
+                  ],
+                  active_version: priorAssistantVersions.length
+                }
+              : {})
+          };
+
+          const insertRes = db
+            .prepare(`
+              INSERT INTO messages (session_id, role, reasoning, content, meta_json, duration_ms, recalled_count, created_at)
+              VALUES (?, 'assistant', ?, ?, ?, ?, ?, ?)
+            `)
+            .run(
+              sessionId,
+              rescuedReasoning,
+              rescuedContent,
+              JSON.stringify(rescuedMeta),
+              durationMs,
+              recalledLen,
+              now
+            );
+          db.prepare('UPDATE sessions SET updated_at = ? WHERE id = ?').run(now, sessionId);
+
+          if (!isUserAbort) {
+            sendEvent('content', { delta: suffixNote });
+          }
+          const allMemories = decorateMemoriesWithRetention(
+            db
+              .prepare('SELECT * FROM memories WHERE session_id = ? ORDER BY pinned DESC, importance DESC, updated_at DESC')
+              .all(sessionId)
+          );
+          const latestSessionRow = db.prepare('SELECT * FROM sessions WHERE id = ?').get(sessionId);
+          sendEvent('done', {
+            message_id: Number(insertRes.lastInsertRowid),
+            duration_ms: durationMs,
+            recalled_count: recalledLen,
+            meta: rescuedMeta,
+            memories: allMemories,
+            nurturing: formatNurturingSnapshot(latestSessionRow),
+            sessions: listSessionsForUser(userId),
+            membership: getMembership(userId),
+            recovered: true
+          });
+        } catch {
+          sendEvent('error', { message: sanitizePublicErrorMessage(err, '生成回复时发生未知异常') });
+        }
+      } else {
+        sendEvent('error', { message: sanitizePublicErrorMessage(err, '生成回复时发生未知异常') });
+      }
     } finally {
+      clearInterval(keepAliveTimer);
       if (!res.writableEnded) {
         res.end();
       }
@@ -2843,6 +2920,9 @@ async function handleApi(req, res, pathname, parsedUrl) {
       .prepare('SELECT * FROM sessions WHERE id = ? AND user_id = ?')
       .get(sessionId, userId);
     if (!session) return sendJson(res, 404, { error: '会话不存在' });
+    if (session.session_mode === 'deepseek_native') {
+      return sendJson(res, 400, { error: 'DeepSeek 原生模式不启用自动插话，以保障上下文纯粹与稳定' });
+    }
 
     res.writeHead(200, {
       'Content-Type': 'text/event-stream; charset=utf-8',

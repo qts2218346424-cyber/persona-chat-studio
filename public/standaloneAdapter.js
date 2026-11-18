@@ -573,9 +573,9 @@
         custom_gateway_model: '',
         custom_gateway_token: '',
         custom_gateway_headers: '{}',
-        temperature: '0.85',
-        sliding_window_turns: '12',
-        max_recalled_memories: '6',
+        temperature: '0.7',
+        sliding_window_turns: '40',
+        max_recalled_memories: '16',
         proactive_idle_sec: '55'
       },
       scripts: DEFAULT_SCRIPTS,
@@ -1052,6 +1052,43 @@
       return jsonResponse({ persona_id: pid, persona: newP, personas: dbObj.personas }, 201);
     }
 
+    const personaEditMatch = pathname.match(/^\/api\/personas\/([^/]+)$/);
+    if (personaEditMatch && method === 'PUT') {
+      const pid = decodeURIComponent(personaEditMatch[1]);
+      const baseP = dbObj.personas.find((x) => x.id === pid) || DEFAULT_PRESET_PERSONAS[0];
+      const overrideObj = {
+        avatar: bodyObj.avatar || baseP.avatar || '🌸',
+        name: bodyObj.name || baseP.name || '角色',
+        tagline: bodyObj.tagline ?? baseP.tagline ?? '',
+        personality: bodyObj.personality ?? baseP.personality ?? '',
+        backstory: bodyObj.backstory ?? baseP.backstory ?? '',
+        speaking_style: bodyObj.speaking_style ?? baseP.speaking_style ?? ''
+      };
+      const isUserOwned = baseP.user_id && baseP.user_id !== 'system' && baseP.user_id !== 'system_ds';
+      if (bodyObj.apply_to_global && isUserOwned) {
+        Object.assign(baseP, overrideObj);
+        if (bodyObj.session_id) {
+          const s = dbObj.sessions.find((x) => x.id === bodyObj.session_id);
+          if (s) {
+            s.custom_persona_override = null;
+            if (bodyObj.session_prompt !== undefined) s.session_prompt = String(bodyObj.session_prompt || '').trim();
+          }
+        }
+        saveLocalDb(dbObj);
+        return jsonResponse({ scope: 'global', persona: baseP, sessions: decorateSessions(dbObj) });
+      }
+      if (bodyObj.session_id) {
+        const s = dbObj.sessions.find((x) => x.id === bodyObj.session_id);
+        if (s) {
+          s.custom_persona_override = JSON.stringify(overrideObj);
+          if (bodyObj.session_prompt !== undefined) s.session_prompt = String(bodyObj.session_prompt || '').trim();
+          s.updated_at = Date.now();
+        }
+      }
+      saveLocalDb(dbObj);
+      return jsonResponse({ scope: 'session', persona: { ...baseP, ...overrideObj }, sessions: decorateSessions(dbObj) });
+    }
+
     if (pathname === '/api/settings' && method === 'PUT') {
       if (bodyObj?.clear_own_deepseek_key) {
         dbObj.settings.deepseek_api_key = '';
@@ -1279,14 +1316,140 @@
       return jsonResponse({ session_id: sid, sessions: decorateSessions(dbObj) }, 201);
     }
 
-    const sessSubMatch = pathname.match(/^\/api\/sessions\/([^/]+)\/(memories|dream|companion|companion\/remind|companion\/voice-chat)$/);
+    const sessSubMatch = pathname.match(/^\/api\/sessions\/([^/]+)\/(memories|dream|export|import-history|compress|companion|companion\/remind|companion\/voice-chat)$/);
     if (sessSubMatch) {
       const sid = decodeURIComponent(sessSubMatch[1]);
       const sub = sessSubMatch[2];
       const sess = dbObj.sessions.find((s) => s.id === sid);
       if (!sess) return jsonResponse({ error: '会话不存在' }, 404);
-      const p = dbObj.personas.find((x) => x.id === sess.persona_id) || DEFAULT_PRESET_PERSONAS[0];
+      const rawBaseP = dbObj.personas.find((x) => x.id === sess.persona_id) || DEFAULT_PRESET_PERSONAS[0];
+      let p = rawBaseP;
+      let parsedOv = null;
+      if (sess.custom_persona_override) {
+        try {
+          parsedOv = JSON.parse(sess.custom_persona_override);
+          if (parsedOv && typeof parsedOv === 'object') p = { ...rawBaseP, ...parsedOv };
+        } catch {}
+      }
       const shortName = (p.name || '角色').split(/[·\s]/)[0];
+
+      if (sub === 'export' && method === 'GET') {
+        return jsonResponse({
+          session_id: sess.id,
+          title: sess.title,
+          session_mode: sess.session_mode || 'roleplay',
+          persona: p,
+          persona_name: p.name,
+          persona_override: parsedOv,
+          session_prompt: sess.session_prompt || '',
+          director_note: sess.director_note || '',
+          rolling_summary: sess.rolling_summary || '',
+          exported_at: new Date().toISOString(),
+          memories: dbObj.memories[sid] || [],
+          messages: dbObj.messages[sid] || []
+        });
+      }
+
+      if (sub === 'import-history' && method === 'POST') {
+        const rawText = String(bodyObj.content || '').trim();
+        if (!rawText) return jsonResponse({ error: '导入内容不能为空' }, 400);
+        if (bodyObj.mode === 'replace') {
+          dbObj.messages[sid] = [];
+          sess.rolling_summary = '';
+          if (bodyObj.replace_memories) dbObj.memories[sid] = [];
+        }
+        if (!Array.isArray(dbObj.messages[sid])) dbObj.messages[sid] = [];
+        if (!Array.isArray(dbObj.memories[sid])) dbObj.memories[sid] = [];
+
+        let addedMsgs = 0;
+        let addedMems = 0;
+        const lines = rawText.split(/\r?\n/);
+        let sec = 'chat';
+        let curMsg = null;
+        const flushCur = () => {
+          if (!curMsg) return;
+          if (curMsg.role === 'assistant') {
+            const m = curMsg.content.match(/^<details>\s*<summary>[\s\S]*?<\/summary>([\s\S]*?)<\/details>\s*/i);
+            if (m) {
+              curMsg.reasoning = m[1].trim();
+              curMsg.content = curMsg.content.slice(m[0].length).trim();
+            }
+          }
+          curMsg.content = curMsg.content.trim();
+          if (curMsg.content || curMsg.reasoning) {
+            dbObj.messages[sid].push({
+              id: Date.now() + addedMsgs,
+              role: curMsg.role,
+              reasoning: curMsg.reasoning || '',
+              content: curMsg.content,
+              created_at: Date.now() + addedMsgs
+            });
+            addedMsgs += 1;
+          }
+          curMsg = null;
+        };
+
+        for (const ln of lines) {
+          const tr = ln.trim();
+          if (sec !== 'chat_locked') {
+            if (/^##\s*(?:🎭\s*)?本对话专属设定/.test(tr)) { sec = 'setting'; continue; }
+            if (/^##\s*(?:🧠\s*)?长期记忆锚点/.test(tr)) { sec = 'memories'; continue; }
+            if (/^##\s*(?:📜\s*)?前情浓缩手札/.test(tr)) { sec = 'summary'; continue; }
+            if (/^##\s*(?:💬\s*)?完整聊天记录/.test(tr)) { sec = 'chat_locked'; continue; }
+          }
+          if (sec === 'memories') {
+            const bm = tr.match(/^[-*]\s+(📌\s*)?(?:\[[^\]]+\]\s*)?(.*)$/);
+            if (bm && bm[2] && !/暂无/.test(bm[2])) {
+              dbObj.memories[sid].push({
+                id: 'mem_' + Date.now() + '_' + addedMems,
+                session_id: sid,
+                content: bm[2].trim(),
+                pinned: bm[1] ? 1 : 0,
+                importance: bm[1] ? 5 : 4,
+                retention_pct: 100,
+                created_at: Date.now()
+              });
+              addedMems += 1;
+            }
+            continue;
+          }
+          if (sec === 'summary') {
+            if (tr && !/暂无/.test(tr)) {
+              sess.rolling_summary = sess.rolling_summary ? `${sess.rolling_summary}\n${tr}` : tr;
+            }
+            continue;
+          }
+          if (sec === 'setting') {
+            if (bodyObj.import_setting) {
+              const pm = tr.match(/^[-*]\s*\*\*本对话独立设定指令\*\*\s*[:：]\s*(.*)$/);
+              if (pm && pm[1] && !/未额外/.test(pm[1])) sess.session_prompt = pm[1].trim();
+            }
+            continue;
+          }
+          const turnH = tr.match(/^(?:##|###)\s*(?:(🙋|👤)\s*(.*?)|(🤖|🐋)\s*(.*?))\s*[:：]?\s*$/);
+          if (turnH) {
+            flushCur();
+            curMsg = { role: turnH[1] ? 'user' : 'assistant', content: '', reasoning: '' };
+            continue;
+          }
+          if (curMsg) {
+            curMsg.content = curMsg.content ? `${curMsg.content}\n${ln}` : ln;
+          }
+        }
+        flushCur();
+        sess.updated_at = Date.now();
+        saveLocalDb(dbObj);
+        return jsonResponse({
+          imported_count: addedMsgs,
+          extracted_memories: addedMems,
+          applied_setting: Boolean(bodyObj.import_setting),
+          sessions: decorateSessions(dbObj)
+        });
+      }
+
+      if (sub === 'compress' && method === 'POST') {
+        return jsonResponse({ rolling_summary: sess.rolling_summary || '', session: sess });
+      }
 
       if (sub === 'memories' && method === 'POST') {
         if (!Array.isArray(dbObj.memories[sid])) dbObj.memories[sid] = [];
@@ -1403,7 +1566,13 @@
       if (!sess) return jsonResponse({ error: '会话不存在' }, 404);
 
       if (method === 'GET') {
-        const p = dbObj.personas.find((x) => x.id === sess.persona_id) || DEFAULT_PRESET_PERSONAS[0];
+        const baseP = dbObj.personas.find((x) => x.id === sess.persona_id) || DEFAULT_PRESET_PERSONAS[0];
+        let p = baseP;
+        if (sess.custom_persona_override) {
+          try {
+            p = { ...baseP, ...(JSON.parse(sess.custom_persona_override) || {}) };
+          } catch {}
+        }
         let diaries = [];
         try {
           diaries = JSON.parse(sess.secret_diary || '[]');
@@ -1431,8 +1600,11 @@
       }
 
       if (method === 'PATCH') {
-        for (const k of ['title', 'persona_id', 'session_mode', 'rolling_summary', 'director_note']) {
+        for (const k of ['title', 'persona_id', 'session_mode', 'rolling_summary', 'director_note', 'session_prompt']) {
           if (bodyObj[k] !== undefined) sess[k] = bodyObj[k];
+        }
+        if (bodyObj.clear_persona_override) {
+          sess.custom_persona_override = null;
         }
         if (bodyObj.title !== undefined && String(bodyObj.title).trim() && bodyObj.title !== '新对话') {
           sess.title_locked = 1;
@@ -1443,7 +1615,13 @@
         const isMetaOnly = Object.keys(bodyObj || {}).every((k) => k === 'pinned' || k === 'title' || k === 'title_locked');
         if (!isMetaOnly) sess.updated_at = Date.now();
         saveLocalDb(dbObj);
-        const p = dbObj.personas.find((x) => x.id === sess.persona_id) || DEFAULT_PRESET_PERSONAS[0];
+        const baseP = dbObj.personas.find((x) => x.id === sess.persona_id) || DEFAULT_PRESET_PERSONAS[0];
+        let p = baseP;
+        if (sess.custom_persona_override) {
+          try {
+            p = { ...baseP, ...(JSON.parse(sess.custom_persona_override) || {}) };
+          } catch {}
+        }
         return jsonResponse({ session: sess, persona: p, sessions: decorateSessions(dbObj) });
       }
 
@@ -1538,10 +1716,16 @@
       const sid = bodyObj.session_id;
       const sess = dbObj.sessions.find((s) => s.id === sid);
       if (!sess) return jsonResponse({ error: '会话不存在' }, 404);
-      const p = dbObj.personas.find((x) => x.id === sess.persona_id) || DEFAULT_PRESET_PERSONAS[0];
+      const rawBaseP = dbObj.personas.find((x) => x.id === sess.persona_id) || DEFAULT_PRESET_PERSONAS[0];
+      let p = rawBaseP;
+      if (sess.custom_persona_override) {
+        try {
+          p = { ...rawBaseP, ...(JSON.parse(sess.custom_persona_override) || {}) };
+        } catch {}
+      }
       const msgs = dbObj.messages[sid] || (dbObj.messages[sid] = []);
       const isNative = sess.session_mode === 'deepseek_native';
-      const isPure = p.id === 'persona_deepseek_official';
+      const isPure = p.id === 'persona_deepseek_official' && !sess.custom_persona_override;
       const apiKey = (dbObj.settings.deepseek_api_key || '').trim();
 
       let userText = (bodyObj.content || '').trim();
@@ -1603,17 +1787,22 @@
             ? (enableThink ? 'deepseek-reasoner' : 'deepseek-chat')
             : savedModel;
           const memHint = (dbObj.memories[sid] || []).map((m) => `- ${m.content}`).join('\n');
+          const sessPromptHint = sess.session_prompt && sess.session_prompt.trim()
+            ? `\n【本对话专属独立设定】：\n${sess.session_prompt.trim()}\n`
+            : '';
           const sysPrompt = isPure
             ? [
                 '你是 DeepSeek，由深度求索（DeepSeek）研发的智能助手。请严格遵循正版 DeepSeek 官方回答格式与风格：',
+                sessPromptHint,
+                memHint ? `【当前对话已归档的独立记忆】：\n${memHint}` : '',
                 '1. 直击本质、拒绝寒暄套话：严禁使用“好的，没问题！”、“下面我将从以下几个方面展开”等机械开场白。面对知识、技术或分析类问题，首段直接用 1~3 句话给出核心结论或本质定义（关键定性词加粗），再展开细节。',
                 '2. 按需结构化：简短问候或简单事实用 1~3 个短段落平实作答；深度技术、推导与方案拆解使用 `### 一、...` 三级标题、`---` 水平分割线、`- **核心词**：具体说明` 列表，涉及选型对比时主动给出工整的 Markdown 表格。',
                 '3. 视觉克制：严禁在标题或列表前堆砌花哨 Emoji，严禁使用角色扮演星号动作，结尾干脆有力、不写机械客套收尾。',
                 enableThink
                   ? '4. 思考推理阶段请全程使用纯简体中文，采用正版 DeepSeek-R1 标志性的第一人称自然内省思维流推敲细节与边界条件。'
                   : '4. 直接输出干净规范的中文正式正文，不要输出 <think> 标签。'
-              ].join('\n')
-            : `你是「${p.name}」（性格：${p.personality}。背景：${p.backstory}。语风：${p.speaking_style}）。对话者称呼为「${dbObj.user.nickname}」。${
+              ].filter(Boolean).join('\n')
+            : `你是「${p.name}」（性格：${p.personality}。背景：${p.backstory}。语风：${p.speaking_style}）。对话者称呼为「${dbObj.user.nickname}」。${sessPromptHint}${
                 memHint ? `\n【已知专属记忆】：\n${memHint}\n` : ''
               }${
                 isNative
@@ -1621,9 +1810,23 @@
                   : '请以第一人称沉浸式番剧分镜感扮演，兼顾动作神态细节与主动情感回应。'
               }`;
 
+          const winLimit = Math.max(12, Math.min(120, parseInt(dbObj.settings.sliding_window_turns || '48', 10) || 48));
+          const normalizedHistory = [];
+          for (const m of msgs.slice(-winLimit)) {
+            const r = m.role === 'assistant' ? 'assistant' : 'user';
+            const c = String(m.content || '').trim();
+            if (!c) continue;
+            if (normalizedHistory.length === 0 && r === 'assistant') continue;
+            const prev = normalizedHistory[normalizedHistory.length - 1];
+            if (prev && prev.role === r) {
+              prev.content += `\n\n${c}`;
+            } else {
+              normalizedHistory.push({ role: r, content: c });
+            }
+          }
           const payloadMsgs = [
             { role: 'system', content: sysPrompt },
-            ...msgs.slice(-12).map((m) => ({ role: m.role, content: m.content }))
+            ...normalizedHistory
           ];
           if (isProactive) {
             payloadMsgs.push({

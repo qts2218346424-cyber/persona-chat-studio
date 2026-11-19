@@ -801,10 +801,13 @@
 
   function dismissBootSplash() {
     const splash = document.getElementById('boot-splash');
-    if (splash && !splash.classList.contains('hidden')) {
+    if (splash) {
       splash.classList.add('hidden');
+      splash.style.display = 'none';
+      splash.style.pointerEvents = 'none';
     }
   }
+  window.__dismissBootSplash = dismissBootSplash;
   window.__showAppToast = (msg, dur) => showToast(msg, dur);
 
   let toastTimer = null;
@@ -10210,8 +10213,8 @@
   }
 
   async function bootCheck() {
-    // 6 秒终极防白屏安全锁：任何极端情况下确保移除首屏遮罩
-    const safetySplashTimer = setTimeout(dismissBootSplash, 6000);
+    // 1.5 秒极速防卡死安全锁：确保任何情况下首屏遮罩均平滑移出
+    const safetySplashTimer = setTimeout(dismissBootSplash, 1500);
 
     const urlParams = new URLSearchParams(window.location.search);
     const needLoginMsg = urlParams.get('msg') === 'download_login_required' || urlParams.get('auth') === 'login';
@@ -10221,11 +10224,13 @@
       if (me.authenticated && me.user) {
         applyAuthLoginPayload(me, { persistDefault: false, rememberGuest: false });
         await enterWorkspace();
+        dismissBootSplash();
         return;
       }
       // 严格认证防护：免注册通道已关闭，所有未登录访客强制进入注册/登录门扉
       resetClientWorkspaceState();
       showAuthScreen();
+      dismissBootSplash();
       if (needLoginMsg) {
         setTimeout(() => {
           setAuthError('【严格安全提示】请先注册或登录正式账号，以获取 APK 客户端下载权限');
@@ -10234,6 +10239,7 @@
     } catch {
       resetClientWorkspaceState();
       showAuthScreen();
+      dismissBootSplash();
       if (needLoginMsg) {
         setTimeout(() => {
           setAuthError('【严格安全提示】请先注册或登录正式账号，以获取 APK 客户端下载权限');

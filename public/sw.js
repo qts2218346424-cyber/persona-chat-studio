@@ -1,5 +1,5 @@
 // 星语恋庭 · PWA 极速离线与边缘加速 Service Worker
-const CACHE_VERSION = 'star-whisper-v20261120-pure-art';
+const CACHE_VERSION = 'star-whisper-v20261120-strict-auth-v3';
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const ASSETS_CACHE = `${CACHE_VERSION}-assets`;
 
@@ -95,22 +95,20 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 4. JS 脚本与 CSS 样式表（Stale-While-Revalidate 策略：0ms 极速响应，后台静默保新）
+  // 4. JS 脚本与 CSS 样式表（网络优先 Network-First 策略：确保实时更新与鉴权逻辑同步生效，弱网离线降级到缓存）
   if (url.pathname.endsWith('.js') || url.pathname.endsWith('.css')) {
     event.respondWith(
-      caches.open(STATIC_CACHE).then((cache) => {
-        return cache.match(req).then((cached) => {
-          const fetchPromise = fetch(req)
-            .then((networkRes) => {
-              if (networkRes && networkRes.status === 200) {
-                cache.put(req, networkRes.clone());
-              }
-              return networkRes;
-            })
-            .catch(() => cached);
-          return cached || fetchPromise;
-        });
-      })
+      fetch(req)
+        .then((networkRes) => {
+          if (networkRes && networkRes.status === 200) {
+            const clone = networkRes.clone();
+            caches.open(STATIC_CACHE).then((cache) => cache.put(req, clone));
+          }
+          return networkRes;
+        })
+        .catch(() => {
+          return caches.match(req);
+        })
     );
     return;
   }

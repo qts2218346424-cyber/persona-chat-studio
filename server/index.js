@@ -519,9 +519,9 @@ async function handleApi(req, res, pathname, parsedUrl) {
   }
 
   if (method === 'POST' && pathname === '/api/auth/demo-login') {
-    return sendJson(res, 403, {
+    return sendJson(res, 401, {
       error: '系统已启用严格注册模式：免注册体验通道已关闭，请先注册正式账号登录后再使用',
-      code: 'REGISTRATION_REQUIRED'
+      code: 'AUTH_REQUIRED'
     });
   }
 

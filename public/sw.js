@@ -1,5 +1,5 @@
 // 星语恋庭 · PWA 极速离线与边缘加速 Service Worker
-const CACHE_VERSION = 'star-whisper-v20261120-clean-ds';
+const CACHE_VERSION = 'star-whisper-v20261120-pure-art';
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const ASSETS_CACHE = `${CACHE_VERSION}-assets`;
 

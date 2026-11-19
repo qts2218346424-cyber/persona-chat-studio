@@ -732,6 +732,62 @@
     return '他';
   }
 
+  
+  // ================= 艺术字与质感头像引擎（告别 Emoji，极简高级质感） =================
+  function extractCoreGlyph(name, fallback = '星') {
+    if (!name) return fallback;
+    const clean = String(name).trim();
+    const baseName = clean.split(/[·\s(（]/)[0].trim() || clean;
+    if (/^[A-Za-z0-9]/.test(baseName)) {
+      return baseName.charAt(0).toUpperCase();
+    }
+    if (baseName.length >= 2) {
+      return baseName.charAt(baseName.length - 1);
+    }
+    return baseName.charAt(0) || fallback;
+  }
+
+  const AVATAR_PALETTES = [
+    'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)',
+    'linear-gradient(135deg, #0284c7 0%, #2563eb 100%)',
+    'linear-gradient(135deg, #e11d48 0%, #f43f5e 100%)',
+    'linear-gradient(135deg, #059669 0%, #10b981 100%)',
+    'linear-gradient(135deg, #d97706 0%, #f59e0b 100%)',
+    'linear-gradient(135deg, #9333ea 0%, #c084fc 100%)',
+    'linear-gradient(135deg, #0891b2 0%, #06b6d4 100%)',
+    'linear-gradient(135deg, #db2777 0%, #f472b6 100%)'
+  ];
+
+  function getAvatarGradient(key) {
+    if (!key) return AVATAR_PALETTES[0];
+    let hash = 0;
+    const str = String(key);
+    for (let i = 0; i < str.length; i++) {
+      hash = (hash << 5) - hash + str.charCodeAt(i);
+      hash |= 0;
+    }
+    const idx = Math.abs(hash) % AVATAR_PALETTES.length;
+    return AVATAR_PALETTES[idx];
+  }
+
+  function renderSmartAvatarHtml(avatarRaw, nameRaw, sizeClass = 'size-md', isUser = false) {
+    const raw = String(avatarRaw || '').trim();
+    if (raw.startsWith('http://') || raw.startsWith('https://') || raw.startsWith('data:image/') || raw.startsWith('/')) {
+      return `<img src="${escapeHtml(raw)}" class="avatar-img ${sizeClass}" alt="${escapeHtml(nameRaw || '')}" />`;
+    }
+    if (!isUser && (nameRaw?.includes('DeepSeek') || raw === '🐋')) {
+      return `<span class="art-badge-avatar ${sizeClass}" style="background: linear-gradient(135deg, #1d4ed8 0%, #3b82f6 100%);">${DS_WHALE_AVATAR_SVG}</span>`;
+    }
+    if (isUser) {
+      const glyph = extractCoreGlyph(nameRaw || state.user?.nickname || '我', '我');
+      const bg = 'linear-gradient(135deg, #2563eb 0%, #4f46e5 100%)';
+      return `<span class="art-badge-avatar ${sizeClass}" style="background: ${bg};">${escapeHtml(glyph)}</span>`;
+    }
+    const glyph = extractCoreGlyph(nameRaw, '角');
+    const bg = getAvatarGradient(nameRaw || glyph);
+    return `<span class="art-badge-avatar ${sizeClass}" style="background: ${bg};">${escapeHtml(glyph)}</span>`;
+  }
+
   function replaceClientMacros(rawStr) {
     const s = String(rawStr || '');
     if (!s) return '';
@@ -1832,14 +1888,14 @@
 
     if (state.user) {
       const fullNick = state.user.nickname || '星语旅人';
-      if (navUserAvatar) navUserAvatar.textContent = state.user.avatar || '🎀';
+      if (navUserAvatar) navUserAvatar.innerHTML = renderSmartAvatarHtml(state.user.avatar, fullNick, 'size-md', true);
       if (navUserNickname) {
         navUserNickname.textContent = fullNick;
         navUserNickname.title = fullNick;
       }
       const dsAv = document.getElementById('ds-nav-avatar');
       const dsNick = document.getElementById('ds-nav-nickname');
-      if (dsAv) dsAv.textContent = state.user.avatar || '🍀';
+      if (dsAv) dsAv.innerHTML = renderSmartAvatarHtml(state.user.avatar, fullNick, 'size-md', true);
       if (dsNick) {
         dsNick.textContent = fullNick;
         dsNick.title = fullNick;
@@ -2719,7 +2775,7 @@
     const curScript = getActiveScriptObj();
     const iconEl = document.getElementById('sidebar-script-icon');
     const titleEl = document.getElementById('sidebar-script-title');
-    if (iconEl) iconEl.textContent = curScript.icon || '📖';
+    if (iconEl) iconEl.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>';
     if (titleEl) titleEl.textContent = curScript.title || '选择剧本';
 
     if (state.uiMode !== 'deepseek' && chatInput) {
@@ -2825,7 +2881,7 @@
            </div>`
         : '';
       item.innerHTML = `
-        <span class="p-avatar">${escapeHtml(p.avatar)}</span>
+        <span class="p-avatar">${renderSmartAvatarHtml(p.avatar, p.name, "size-md")}</span>
         <div class="p-meta">
           <div class="p-name-row">
             <span class="p-name" title="${escapeHtml(p.name || shortName)}">${escapeHtml(shortName)}</span>
@@ -3154,9 +3210,7 @@
         ? s.pinned === 1
           ? pinSvg
           : ''
-        : `${s.pinned === 1 ? pinSvg : ''}<span>${escapeHtml(
-            s.persona_avatar || '🌸'
-          )}</span>`;
+        : `${s.pinned === 1 ? pinSvg : ''}<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="session-icon-glyph" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>`;
 
       const hasCustomSetting = Boolean(
         s.has_custom_setting ||
@@ -3224,7 +3278,7 @@
     const n = state.nurturing;
     const liveMoodEl = document.getElementById('live-mood-chip');
     if (n && n.stage) {
-      bondLevelTag.textContent = n.stage.badge;
+      bondLevelTag.textContent = cleanUiEmojiText(n.stage.badge);
       if (liveMoodEl) liveMoodEl.textContent = n.current_mood || '专注倾听';
     } else {
       bondLevelTag.textContent = '初遇微光 Lv.1';
@@ -3243,7 +3297,7 @@
     updateBondBadge();
     const pronoun = getPersonaPronoun();
 
-    document.getElementById('nurture-stage-badge').textContent = n.stage?.badge || '初识破冰 Lv.1';
+    document.getElementById('nurture-stage-badge').textContent = cleanUiEmojiText(n.stage?.badge || '初识破冰 Lv.1');
     document.getElementById('nurture-mood-text').textContent = `心境：${n.current_mood || '温柔浅笑'}`;
     const descEl = document.getElementById('nurture-stage-desc');
     if (descEl) {
@@ -3355,7 +3409,7 @@
   function populatePersonaEditor() {
     const p = state.activePersona;
     if (!p) return;
-    topbarAvatar.textContent = p.avatar || '🌸';
+    topbarAvatar.innerHTML = renderSmartAvatarHtml(p.avatar, p.name, 'size-lg');
     topbarName.textContent = p.name;
     topbarTagline.textContent = replaceClientMacros(
       (state.activeSession?.session_prompt && String(state.activeSession.session_prompt).trim().slice(0, 48)) ||
@@ -3679,9 +3733,9 @@
         avatarEl.innerHTML = DS_WHALE_AVATAR_SVG;
         return;
       }
-      avatarEl.textContent = state.activePersona?.avatar || '🎭';
+      avatarEl.innerHTML = renderSmartAvatarHtml(state.activePersona?.avatar, state.activePersona?.name, 'size-md');
     } else {
-      avatarEl.textContent = state.activePersona?.avatar || '🌸';
+      avatarEl.innerHTML = renderSmartAvatarHtml(state.activePersona?.avatar, state.activePersona?.name, 'size-md');
     }
   }
 
@@ -4111,7 +4165,7 @@
 
       const curSc = getActiveScriptObj();
       banner.innerHTML = `
-        <div class="banner-title">${escapeHtml(curSc.icon || '')} 剧本《${escapeHtml(curSc.title)}》 · 序章背景</div>
+        <div class="banner-title"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-2px;margin-right:5px;" aria-hidden="true"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg><span>剧本《${escapeHtml(curSc.title)}》 · 序章背景</span></div>
         <div>${escapeHtml(cleanBackstory)}</div>
         ${directorHtml}
         ${promptsHtml}

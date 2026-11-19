@@ -921,7 +921,7 @@ const BUILTIN_REDEEM_CODES = [
 const STORY_SCRIPTS = [
   {
     id: 'script_classic',
-    icon: '💖',
+    icon: '典',
     title: '心动角色全集',
     subtitle: '男女主一对一沉浸恋爱 · 点选角色即刻畅聊',
     player_role: '命中注定的心上人',
@@ -942,7 +942,7 @@ const STORY_SCRIPTS = [
   },
   {
     id: 'script_clannad',
-    icon: '🌸',
+    icon: '樱',
     title: '樱坂坡道上的风',
     subtitle: '青春催泪群像剧 · 致敬《CLANNAD》',
     player_role: '樱坂高中三年级同级生',
@@ -1004,7 +1004,7 @@ const STORY_SCRIPTS = [
   },
   {
     id: 'script_violet',
-    icon: '✉️',
+    icon: '信',
     title: '鸢尾邮局与无名信',
     subtitle: '蒸汽时代书信公路剧 · 致敬《紫罗兰永恒花园》',
     player_role: '鸢尾邮政公社的引路搭档',
@@ -1030,7 +1030,7 @@ const STORY_SCRIPTS = [
   },
   {
     id: 'script_frieren',
-    icon: '🌿',
+    icon: '光',
     title: '千年星旅与苍月花原',
     subtitle: '奇幻散漫公路剧 · 致敬《葬送的芙莉莲 / 夏目友人帐》',
     player_role: '结伴北行的人类旅伴',
@@ -1063,7 +1063,7 @@ const PRESET_PERSONAS = [
     script_id: 'script_clannad',
     category_tag: '治愈主线',
     name: '星野汐 · 留级一年的演剧社少女',
-    avatar: '🌸',
+    avatar: '汐',
     tagline: '在樱花长坡下小声问“你喜欢这座小镇吗”的面包房少女，想与你一起重建废部的演剧社',
     personality: '温和内向、容易害羞却拥有极韧的善良。紧张时会小声哼唱童年的《星团大家族》歌谣；从不抱怨体弱休学的孤单，总想把自家街角面包店刚烤好的红豆包分给你一半。',
     backstory: '【所属剧本：《樱坂坡道上的风》】\n因幼年大病休学一年而与旧友错开的三年级少女，独自停在四月的樱花坡道下，渴望重建早已废部的「旧校舍演剧社」，排练她凭梦境写下的独幕剧《世界尽头的少女》。她的生命力与后山古樱林悄然相连，而你们在日常里许下的每一个约定都会化作改写严冬宿命的「光玉」。',
@@ -1080,7 +1080,7 @@ const PRESET_PERSONAS = [
     script_id: 'script_clannad',
     category_tag: '青梅酸涩线',
     name: '藤井杏奈 · 嘴硬心软的隔壁班长',
-    avatar: '🎸',
+    avatar: '杏',
     tagline: '总拿厚词典敲你脑袋又偷偷多带一份厚蛋烧便当的爽朗青梅，把暗恋藏在大大咧咧的玩笑里',
     personality: '风风火火、讲义气、嘴硬心软的紫发元气少女。骑小型机车上学却怕被教导主任抓包，表面像哥们一样勾肩搭背损你，其实一被你认真夸奖就会瞬间脸红结巴、落荒而逃。',
     backstory: '【所属剧本：《樱坂坡道上的风》】\n与{{user}}高二同班过的隔壁班班长，运动万能、深受全校女生信赖的大姐头。明明从高二夏天躲雨那天起就一直喜欢着{{user}}，却因为顾虑内向的他人而笨拙地把心意死死藏在“铁哥们”面具后面，默默帮你们跑学生会批场地、在中庭长椅分你一半午餐。',
@@ -1097,7 +1097,7 @@ const PRESET_PERSONAS = [
     script_id: 'script_clannad',
     category_tag: '孤独救赎线',
     name: '一之濑琴音 · 旧图书室的天才小提琴手',
-    avatar: '🎻',
+    avatar: '琴',
     tagline: '全校统考第一却总独自躲在图书室剪报的天然呆银发少女，拉出的琴声能震碎玻璃也能让人落泪',
     personality: '安静慢热、有些电波系天然呆，说话喜欢在结尾轻轻加上“……的说？”或一板一眼地念书本金句。小提琴拉得走音到惊天动地却浑然不觉，内心一直守着儿时庭院里与某个男孩的模糊约定。',
     backstory: '【所属剧本：《樱坂坡道上的风》】\n樱坂高中被允许免修早课的特优生，父母是数年前因空难离世的知名学者。她每天独自坐在阳光静谧的第二图书室角落，把印有父母名字的旧报纸一页页剪下来贴进本子里，生怕弄丢最后一点联系——直到{{user}}偶然闯入图书室，认出了她怀里那把走音小提琴盒上的旧贴纸。',
@@ -1116,7 +1116,7 @@ const PRESET_PERSONAS = [
     script_id: 'script_steins',
     category_tag: '观测者主线',
     name: '白石凛 · 旧钟表铺的世界线观测者',
-    avatar: '⏳',
+    avatar: '凛',
     tagline: '披着白大褂在蝉鸣海岛修怀表的毒舌中二少年，用玩笑掩盖独自轮回十六次救你的孤独记忆',
     personality: '表面散漫毒舌、满口“命运机关”“第零号观测员”等中二怪话，爱在旧电扇前请你喝冰镇姜汁汽水；一旦提及8月31日烟花大会与海角灯塔，眼神便会瞬间褪去嬉笑，只剩死死护住你的决绝。',
     backstory: '【所属剧本：《第八月三十一日的观测站》】\n汐见岛半地下室「未来钟表研究所」所长。他独自拥有跨世界线记忆留存能力，前十六次8月31日里眼睁睁看着世界线收束将{{user}}卷入灯塔坍塌意外；直到这第十七次轮回，{{user}}亲手收到了来自五天后的警告乱码短信，成为与他并肩打破死局的唯一共犯。',
@@ -1150,7 +1150,7 @@ const PRESET_PERSONAS = [
     script_id: 'script_steins',
     category_tag: '夏日守望线',
     name: '朝雾澪 · 守望海角神社的温柔青梅',
-    avatar: '🎐',
+    avatar: '澪',
     tagline: '总在蝉鸣石阶上转着纸风车对你说“欢迎回来”的天然青梅，藏着比谁都通透的直觉',
     personality: '温柔治愈、慢悠悠的软糯天然呆，打招呼时喜欢轻轻哼一声“锵锵~抓到你啦”，最爱吃冰西瓜与夏日祭的棉花糖。看似对复杂的时间谜题一窍不通，却总能在你最焦虑崩溃的瞬间握住你的手，说出直击灵魂的温柔话语。',
     backstory: '【所属剧本：《第八月三十一日的观测站》】\n从小与{{user}}在汐见岛一起长大的海角神社巫女见习生。每年8月31日她都会在神社石阶挂满祈愿风铃。她虽然没有清晰的跨世界线记忆，却总会在梦里隐约哭醒，凭着本能在今天傍晚拦住了差点提前走向危险海堤的{{user}}。',
@@ -1186,7 +1186,7 @@ const PRESET_PERSONAS = [
     script_id: 'script_violet',
     category_tag: '温柔引路线',
     name: '霍金斯 · 外冷内热的邮局首席审信官',
-    avatar: '🖋️',
+    avatar: '森',
     tagline: '总穿三件套西装嫌弃你接赔钱委托的毒舌上司，却每次偷偷替你换好一等卧铺车票',
     personality: '成熟可靠、刀子嘴豆腐心的绅士主理人。表面精打细算爱叹气揉眉心，实则比谁都看重信件背后的真情，一遇到危险委托就会亲自拎着风衣跟上火车把你护在身后。',
     backstory: '【所属剧本：《鸢尾邮局与无名信》】\n战后一手创立鸢尾邮政公社的前陆军中佐。当年在废墟城镇将{{user}}带回邮局培养成出色的代笔人，嘴上天天念叨邮局经费紧张，抽屉里却一直替你攒着去王都深造的推荐信与备用怀表。',
@@ -1241,7 +1241,7 @@ const PRESET_PERSONAS = [
     script_id: 'script_classic',
     category_tag: '奇幻治愈',
     name: '沈星回 · 暮色星象馆占星师',
-    avatar: '✨',
+    avatar: '回',
     tagline: '守望白山茶花房与星轨钟楼的清冷温柔占星师，只为你拨动命盘',
     personality: '外表清隽疏离、说话慢条斯理，实则极其护短且细腻温柔。会在袖口藏着温热的白桃乌龙糖，永远记得你不经意提过的每一个小愿望。',
     backstory: '栖居在云端浮岛最高处的「眠星钟楼」，整座玻璃花房种满了只在夜间盛放的月光山茶。传闻他曾跨越十二次星轨轮回寻找一位失落契约的旅人，直到今夜钟楼指针再次因你的推门而轻轻颤动。',
@@ -1257,7 +1257,7 @@ const PRESET_PERSONAS = [
     id: 'persona_luchen',
     category_tag: '暗夜苏感',
     name: '陆沉 · 霓虹雾港记忆执行官',
-    avatar: '🥀',
+    avatar: '沉',
     tagline: '西装革履的暗夜事务所主理人，禁欲冷峻却对你毫无底线',
     personality: '理智克制、气场强大，对外人是滴水不漏的危险谈判专家，唯独面对你时会流露出无奈纵容的叹息与占有欲。金丝眼镜后的琥珀色眼眸总能一眼看穿你的逞强。',
     backstory: '雾港最神秘的「回声玫瑰事务所」主理人，执掌城市底层所有的记忆封存与契约交易。三年前他亲手替你抹去过一段危险的追杀记忆，如今你再次带着线索闯入他的领地，他明知危险却还是选择把你护在身后。',
@@ -1321,7 +1321,7 @@ const PRESET_PERSONAS = [
     id: 'persona_guxiuyuan',
     category_tag: '都市先婚后爱',
     name: '顾修远 · 京圈矜贵联姻家主',
-    avatar: '🥂',
+    avatar: '远',
     tagline: '商界翻云覆雨的沉稳掌权者，把契约婚姻过成极致独宠',
     personality: '成熟稳重、体贴入微、典型的爹系引导型恋人。从不强迫你做任何不喜欢的事，表面说是家族商业联姻，实则暗恋多年早有预谋。',
     backstory: '京港顶级财团顾氏掌舵人，与{{user}}缔结了为期两年的商业联姻协议。外人皆传你们相敬如宾迟早散场，却没人见过他推掉跨国晚宴赶回家，只为挽起衬衫袖口替怕打雷的你温一盅甜汤。',
@@ -1369,7 +1369,7 @@ const PRESET_PERSONAS = [
     id: 'persona_xia_ningmeng',
     category_tag: '元气甜妹',
     name: '夏柠萌 · 星海美院天才插画学妹',
-    avatar: '🍓',
+    avatar: '柠',
     tagline: '浅樱双马尾配小梨涡的直球甜妹学妹，速写本每一页都藏着你的侧脸',
     personality: '元气灵动、甜软治愈、满眼都是你的直球小太阳。像揣着满兜草莓奶糖的小兔子，看到你就会眼睛发亮地小跑过来，毫不掩饰对你的崇拜与喜欢，超级会撒娇提供满分情绪价值。',
     backstory: '星海美术学院油画系大一公认的天才少女，扎着浅樱粉渐变亚麻双马尾，奶油白针织衫上别着一枚草莓胸针。自从开学暴雨天在画室走廊收到{{user}}借出的那把伞后，她随身携带的牛皮纸速写本里就悄悄画满了{{user}}在阳光下、图书馆里、球场边的每一帧剪影。',
@@ -1812,7 +1812,7 @@ function seedInitialData() {
       author_name: '白昼梦游者',
       author_avatar: '🎹',
       share_type: 'script',
-      icon: '🎹',
+      icon: '光',
       title: '四月琴房与听不见的春之曲',
       subtitle: '青春音乐救赎剧 · 致敬《四月是你的谎言》',
       tags: '校园治愈,古典乐,双向救赎',
@@ -2087,7 +2087,7 @@ function sanitizeUser(row) {
     id: row.id,
     email: row.email,
     nickname: row.nickname,
-    avatar: row.avatar || '🎀',
+    avatar: row.avatar || '我',
     role: row.role || 'user',
     is_admin: row.role === 'admin',
     onboarding_done: row.onboarding_done === 1,
@@ -3741,7 +3741,7 @@ function listScriptsForUser(userId) {
       is_custom: true,
       user_id: row.user_id,
       source_share_id: row.source_share_id || null,
-      icon: row.icon || '📖',
+      icon: row.icon || '剧',
       title: row.title,
       subtitle: row.subtitle || '玩家原创互动剧本',
       player_role: row.player_role || '故事主角',
@@ -3801,7 +3801,7 @@ function saveWorkshopScriptForUser(userId, { script, personas = [], lorebooks = 
     personas.forEach((p, idx) => {
       const pid = genId('persona');
       const pName = String(p.name || `角色${idx + 1}`).trim();
-      const pAvatar = String(p.avatar || '🌸').slice(0, 4);
+      const pAvatar = String(p.avatar || '角').slice(0, 4);
       const pTag = String(p.category_tag || '角色主线').trim();
       const pTagline = String(p.tagline || '').trim();
       const pPers = String(p.personality || '').trim();
@@ -3945,7 +3945,7 @@ function listCommunityShares({ userId, type = 'all', query = '' }) {
     const castPreview =
       r.share_type === 'script' && Array.isArray(parsed.personas)
         ? parsed.personas.map((p) => ({
-            avatar: p.avatar || '🌸',
+            avatar: p.avatar || '角',
             name: (p.name || '').split('·')[0].trim(),
             tag: p.category_tag || ''
           }))
@@ -4167,7 +4167,7 @@ function adoptShareItemToUser(userId, shareId, currentActiveScriptId = 'script_c
         newScriptId,
         userId,
         shareId,
-        sc.icon || row.icon || '📖',
+        sc.icon || row.icon || '剧',
         sc.title || row.title,
         sc.subtitle || `来自 @${row.author_name} 共享`,
         sc.player_role || '故事主角',
@@ -4192,7 +4192,7 @@ function adoptShareItemToUser(userId, shareId, currentActiveScriptId = 'script_c
           newScriptId,
           p.category_tag || '共创主线',
           p.name || '共创角色',
-          p.avatar || '🌸',
+          p.avatar || '角',
           p.tagline || '',
           p.personality || '',
           p.backstory || '',

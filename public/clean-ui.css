@@ -5192,3 +5192,64 @@ dialog::backdrop {
   left: -9999px !important;
   top: -9999px !important;
 }
+
+/* 15. 高级单字/单字母艺术头像徽标（彻底告别 low 俗 Emoji，原生极简美学） */
+.art-badge-avatar {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border-radius: 50% !important;
+  color: #ffffff !important;
+  font-weight: 600 !important;
+  letter-spacing: -0.5px !important;
+  user-select: none !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), inset 0 1px 1px rgba(255, 255, 255, 0.25) !important;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.18) !important;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif !important;
+  line-height: 1 !important;
+  flex-shrink: 0 !important;
+}
+.art-badge-avatar.size-sm {
+  width: 20px !important;
+  height: 20px !important;
+  font-size: 11px !important;
+}
+.art-badge-avatar.size-md {
+  width: 28px !important;
+  height: 28px !important;
+  font-size: 13px !important;
+}
+.art-badge-avatar.size-lg {
+  width: 32px !important;
+  height: 32px !important;
+  font-size: 14px !important;
+}
+.art-badge-avatar svg {
+  width: 62% !important;
+  height: 62% !important;
+  stroke: currentColor !important;
+}
+
+.avatar-img {
+  border-radius: 50% !important;
+  object-fit: cover !important;
+  flex-shrink: 0 !important;
+}
+.avatar-img.size-sm {
+  width: 20px !important;
+  height: 20px !important;
+}
+.avatar-img.size-md {
+  width: 28px !important;
+  height: 28px !important;
+}
+.avatar-img.size-lg {
+  width: 32px !important;
+  height: 32px !important;
+}
+
+.session-icon-glyph {
+  opacity: 0.65;
+  margin-right: 4px;
+  flex-shrink: 0;
+}

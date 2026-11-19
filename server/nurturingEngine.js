@@ -10,7 +10,7 @@ function getRelationshipStage({ affection = 22, trust = 26, intimacy = 18 }) {
   if (composite >= 80) {
     return {
       level: 4,
-      badge: '👑 命定挚爱 Lv.4',
+      badge: '命定挚爱 Lv.4',
       composite,
       playerDesc: '你们已经心意笃定、彼此信赖，TA 在你面前毫无保留，眼神与话语里满是独属于你的偏爱。',
       promptDirective:
@@ -20,7 +20,7 @@ function getRelationshipStage({ affection = 22, trust = 26, intimacy = 18 }) {
   if (composite >= 50) {
     return {
       level: 3,
-      badge: '💕 心意相通 Lv.3',
+      badge: '心意相通 Lv.3',
       composite,
       playerDesc: '你已走进 TA 心里最柔软的角落，TA 愿意向你袒露心事、偏心护短，相处亲近自然。',
       promptDirective:
@@ -30,7 +30,7 @@ function getRelationshipStage({ affection = 22, trust = 26, intimacy = 18 }) {
   if (composite >= 25) {
     return {
       level: 2,
-      badge: '🌸 渐生好感 Lv.2',
+      badge: '渐生好感 Lv.2',
       composite,
       playerDesc: 'TA 对你的好感正在悄悄升温，比初见时柔和了许多，总会不自觉留意你的冷暖与喜恶。',
       promptDirective:
@@ -39,7 +39,7 @@ function getRelationshipStage({ affection = 22, trust = 26, intimacy = 18 }) {
   }
   return {
     level: 1,
-    badge: '🌱 初识破冰 Lv.1',
+    badge: '初识破冰 Lv.1',
     composite,
     playerDesc: '刚刚相识的试探期，交谈间还带着几分礼貌与好奇，多聊聊彼此的喜好能让关系更快升温。',
     promptDirective:

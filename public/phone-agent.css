@@ -368,6 +368,24 @@
   box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2);
 }
 
+.pa-quick-test-btn {
+  background: light-dark(rgba(77, 107, 254, 0.08), rgba(255, 255, 255, 0.08));
+  border: 1px solid light-dark(rgba(77, 107, 254, 0.2), rgba(255, 255, 255, 0.15));
+  color: inherit;
+  font-size: 11px;
+  padding: 5px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-weight: 500;
+}
+
+.pa-quick-test-btn:hover {
+  background: #4d6bfe;
+  color: #ffffff;
+  border-color: #4d6bfe;
+}
+
 .phone-agent-log-console {
   background: light-dark(#0f172a, #0b0f19);
   color: #a7f3d0;
@@ -401,4 +419,249 @@
 .apk-install-guide ol {
   margin: 8px 0 0 16px;
   padding: 0;
+}
+
+/* 10. dsh-Go 纯净聊天模式专属顶部横幅与快捷指令栏 */
+.phone-agent-banner {
+  margin: 10px 14px 6px 14px;
+  padding: 12px 14px;
+  background: light-dark(rgba(77, 107, 254, 0.05), rgba(77, 107, 254, 0.12));
+  border: 1px solid light-dark(rgba(77, 107, 254, 0.22), rgba(77, 107, 254, 0.35));
+  border-radius: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  animation: paBannerFadeIn 0.25s ease-out;
+}
+
+@keyframes paBannerFadeIn {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.pa-banner-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.pa-status-chips {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.pa-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 8px;
+}
+
+.pa-chip .pa-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.pa-chip.active {
+  background: rgba(16, 185, 129, 0.15);
+  color: #10b981;
+}
+.pa-chip.active .pa-dot {
+  background: #10b981;
+  box-shadow: 0 0 6px #10b981;
+}
+
+.pa-chip.pending {
+  background: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
+}
+.pa-chip.pending .pa-dot {
+  background: #f59e0b;
+}
+
+.pa-chip.disabled {
+  background: rgba(148, 163, 184, 0.18);
+  color: #94a3b8;
+}
+.pa-chip.disabled .pa-dot {
+  background: #94a3b8;
+}
+
+.pa-banner-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.pa-banner-btn {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 8px;
+  border: none;
+  background: #4d6bfe;
+  color: #ffffff;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.pa-banner-btn.outline {
+  background: transparent;
+  border: 1px solid light-dark(rgba(77, 107, 254, 0.4), rgba(77, 107, 254, 0.6));
+  color: light-dark(#4d6bfe, #93c5fd);
+}
+
+.pa-banner-btn:hover {
+  transform: translateY(-1px);
+}
+
+.pa-quick-chips-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow-x: auto;
+  white-space: nowrap;
+  padding-bottom: 2px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.pa-quick-chips-row::-webkit-scrollbar {
+  height: 3px;
+}
+
+.pa-quick-chips-row::-webkit-scrollbar-thumb {
+  background: rgba(77, 107, 254, 0.3);
+  border-radius: 3px;
+}
+
+.pa-chips-label {
+  font-size: 11px;
+  color: light-dark(#64748b, #94a3b8);
+  font-weight: 600;
+}
+
+.pa-quick-chip {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 4px 9px;
+  border-radius: 9999px;
+  background: light-dark(#ffffff, #1e2235);
+  border: 1px solid light-dark(rgba(0, 0, 0, 0.08), rgba(255, 255, 255, 0.12));
+  color: light-dark(#334155, #e2e8f0);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.pa-quick-chip:hover {
+  border-color: #4d6bfe;
+  color: #4d6bfe;
+  background: light-dark(rgba(77, 107, 254, 0.08), rgba(77, 107, 254, 0.18));
+}
+
+/* 11. 原生 APK 环境下的版本状态与拉取最新版卡片 */
+.apk-native-version-card {
+  padding: 18px 20px;
+  border-radius: 16px;
+  background: light-dark(
+    linear-gradient(135deg, rgba(77, 107, 254, 0.08) 0%, rgba(16, 185, 129, 0.06) 100%),
+    linear-gradient(135deg, rgba(77, 107, 254, 0.16) 0%, rgba(16, 185, 129, 0.12) 100%)
+  );
+  border: 1px solid light-dark(rgba(77, 107, 254, 0.25), rgba(77, 107, 254, 0.4));
+  margin-bottom: 16px;
+}
+
+.anv-head {
+  margin-bottom: 12px;
+}
+
+.anv-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.anv-badge {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: #10b981;
+  color: #ffffff;
+}
+
+.anv-version {
+  font-size: 15px;
+  font-weight: 700;
+  color: light-dark(#0f172a, #f8fafc);
+}
+
+.anv-desc {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: light-dark(#475569, #cbd5e1);
+}
+
+.anv-update-status-box {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: light-dark(rgba(255, 255, 255, 0.7), rgba(255, 255, 255, 0.06));
+  border: 1px solid light-dark(rgba(0, 0, 0, 0.05), rgba(255, 255, 255, 0.1));
+  margin-bottom: 14px;
+}
+
+.anv-status-icon {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.anv-status-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: light-dark(#1e293b, #f1f5f9);
+}
+
+.anv-status-sub {
+  font-size: 11px;
+  color: light-dark(#64748b, #94a3b8);
+  margin-top: 2px;
+}
+
+.anv-actions-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* 12. 顶栏更新小红点与呼吸灯动画 */
+.topbar-apk-badge-btn.has-update {
+  border-color: #f59e0b !important;
+  box-shadow: 0 0 10px rgba(245, 158, 11, 0.45) !important;
+  animation: pulseUpdate 2s infinite ease-in-out;
+}
+
+.topbar-apk-badge-btn.has-update .apk-pill-tag {
+  background: #f59e0b !important;
+  color: #000000 !important;
+  font-weight: 800;
+}
+
+@keyframes pulseUpdate {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.04); }
 }

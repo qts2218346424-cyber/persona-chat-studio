@@ -1182,3 +1182,182 @@ body[data-ui-mode="deepseek"] .auth-gate .info-callout {
     display: none !important;
   }
 }
+
+/* ==========================================================================
+   6. 参考 DeepSeekGo (dsh-Go) 架构设计的原生级移动端极简高可用布局
+   ========================================================================== */
+
+/* 6.1 模式隔离铁律：DeepSeek 模式下彻底杜绝角色扮演浮层、立绘和养成面板的任何遮挡 */
+.app-shell[data-ui-mode="deepseek"] #companion-stage,
+.app-shell[data-ui-mode="deepseek"] .companion-stage,
+.app-shell[data-ui-mode="deepseek"] #topbar-companion-btn,
+.app-shell[data-ui-mode="deepseek"] #toggle-right-btn,
+.app-shell[data-ui-mode="deepseek"] #topbar-persona-chip,
+.app-shell[data-ui-mode="deepseek"] .active-script-wrap,
+.app-shell[data-ui-mode="deepseek"] #tour-anchor-vip {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+/* 6.2 侧边栏抽屉顶部模式分段选择器 (Segmented Control，参考 dsh-Go 经典抽屉设计) */
+.dsh-segmented-bar {
+  display: flex !important;
+  align-items: center;
+  gap: 3px;
+  background: light-dark(#f1f5f9, rgba(255, 255, 255, 0.08)) !important;
+  padding: 4px;
+  border-radius: 14px !important;
+  border: 1px solid light-dark(rgba(0, 0, 0, 0.06), rgba(255, 255, 255, 0.12));
+  margin: 10px 12px 8px !important;
+}
+
+.dsh-segmented-bar .ws-mode-btn {
+  flex: 1 1 0 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 7px 4px !important;
+  border-radius: 10px !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  color: light-dark(#64748b, #94a3b8) !important;
+  background: transparent !important;
+  border: none !important;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  white-space: nowrap !important;
+  text-align: center;
+}
+
+.dsh-segmented-bar .ws-mode-btn:hover {
+  color: light-dark(#0f172a, #ffffff) !important;
+}
+
+.dsh-segmented-bar .ws-mode-btn.active {
+  background: light-dark(#ffffff, #2d3348) !important;
+  color: light-dark(#4d6bfe, #93c5fd) !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08) !important;
+}
+
+/* 6.3 移动端顶栏重构 (<=860px)：单行克制防遮挡，彻底消除按钮溢出与标题折行 */
+@media (max-width: 860px) {
+  .stage-topbar {
+    height: 52px !important;
+    min-height: 52px !important;
+    max-height: 52px !important;
+    padding: 0 12px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    background: light-dark(rgba(255, 255, 255, 0.94), rgba(15, 23, 42, 0.94)) !important;
+    backdrop-filter: blur(16px) !important;
+    border-bottom: 1px solid light-dark(rgba(0, 0, 0, 0.06), rgba(255, 255, 255, 0.08)) !important;
+    z-index: 40 !important;
+  }
+
+  .topbar-left {
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    min-width: 0 !important;
+    flex: 1 1 auto !important;
+    overflow: hidden;
+  }
+
+  .sidebar-expand-btn {
+    width: 36px !important;
+    height: 36px !important;
+    min-width: 36px !important;
+    border-radius: 10px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    padding: 0 !important;
+    background: light-dark(rgba(0, 0, 0, 0.04), rgba(255, 255, 255, 0.08)) !important;
+    border: none !important;
+  }
+
+  .sidebar-expand-btn .expand-btn-label {
+    display: none !important;
+  }
+
+  .ds-topbar-meta {
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    min-width: 0 !important;
+    overflow: hidden;
+  }
+
+  .ds-topbar-title {
+    font-size: 14.5px !important;
+    font-weight: 600 !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    max-width: min(180px, 45dvw) !important;
+    color: light-dark(#0f172a, #f1f5f9) !important;
+  }
+
+  .topbar-right {
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    flex: 0 0 auto !important;
+  }
+
+  /* 在手机端隐藏收起时的堆叠按钮、系统预览大按钮与非必要插件，保证极简 */
+  .collapsed-quick-nav,
+  .ds-preview-icon-btn,
+  #open-ds-artifacts-btn,
+  #open-ds-inspector-btn,
+  #ds-share-session-btn,
+  #ds-quick-theme-btn,
+  #topbar-script-switch-btn,
+  #topbar-chapters-btn {
+    display: none !important;
+  }
+
+  /* 原生 APK 内部无需在顶栏显示下载 APK 入口，自动把空间腾给对话操作 */
+  .in-native-apk #topbar-apk-download-btn,
+  .apk-topbar-pill-btn.in-native-apk {
+    display: none !important;
+  }
+
+  /* 顶栏右侧快捷按钮高触控规范 */
+  .topbar-right .icon-btn,
+  .topbar-right .soft-tool-btn {
+    height: 34px !important;
+    min-width: 34px !important;
+    padding: 0 8px !important;
+    border-radius: 9px !important;
+    font-size: 13px !important;
+  }
+
+  /* 输入舱针对手机软键盘与底部安全区全面优化 */
+  .composer-dock {
+    padding-bottom: max(12px, env(safe-area-inset-bottom, 12px)) !important;
+  }
+
+  .composer-card {
+    border-radius: 18px !important;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08) !important;
+  }
+
+  /* 深度思考 (R1) 胶囊在手机端醒目呈现 */
+  #ds-toggle-think {
+    display: inline-flex !important;
+    border-radius: 9999px !important;
+    font-size: 12px !important;
+    padding: 4px 10px !important;
+    background: light-dark(rgba(77, 107, 254, 0.08), rgba(77, 107, 254, 0.16)) !important;
+  }
+
+  #ds-toggle-think.active {
+    background: #4d6bfe !important;
+    color: #ffffff !important;
+    box-shadow: 0 2px 10px rgba(77, 107, 254, 0.35) !important;
+  }
+}
+

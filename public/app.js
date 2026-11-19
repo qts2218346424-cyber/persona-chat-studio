@@ -1,5 +1,5 @@
 (() => {
-  let initialUiMode = 'roleplay';
+  let initialUiMode = 'deepseek';
   let initialScriptId = 'script_classic';
   try {
     const searchParams = new URLSearchParams(window.location.search);
@@ -897,6 +897,7 @@
     state.streamingAbort = null;
     state.isStreaming = false;
     state.user = null;
+    window.__STAR_CURRENT_USER__ = null;
     state.personas = [];
     state.sessions = [];
     state.settings = {};
@@ -1029,6 +1030,7 @@
     authGate.classList.remove('hidden');
     setAuthError('');
   }
+  window.__showAuthScreen = showAuthScreen;
 
   signinForm.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -1074,30 +1076,11 @@
     }
   });
 
-  quickDemoLoginBtn.addEventListener('click', async () => {
-    setAuthError('');
-    const origLabel = quickDemoLoginBtn.textContent;
-    quickDemoLoginBtn.disabled = true;
-    quickDemoLoginBtn.textContent = '正在进入星语恋庭…';
-    try {
-      resetClientWorkspaceState();
-      const savedGuestId = window.__starAuthStore?.getGuestUserId() || '';
-      const res = await apiJson('/api/auth/demo-login', {
-        method: 'POST',
-        body: JSON.stringify({ guest_user_id: savedGuestId })
-      });
-      applyAuthLoginPayload(res, { persistDefault: true, rememberGuest: true });
-      await enterWorkspace();
-      if (res.is_new_guest) {
-        showToast('已为您开启独立访客空间，聊天记录与记忆将自动保存！');
-      }
-    } catch (err) {
-      setAuthError(err.message);
-    } finally {
-      quickDemoLoginBtn.disabled = false;
-      quickDemoLoginBtn.textContent = origLabel;
-    }
-  });
+  if (quickDemoLoginBtn) {
+    quickDemoLoginBtn.addEventListener('click', async () => {
+      setAuthError('系统已启用严格注册模式，请注册正式账号后登录进入');
+    });
+  }
 
   if (freshGuestLoginBtn) {
     freshGuestLoginBtn.addEventListener('click', async () => {
@@ -1157,9 +1140,7 @@
   }
 
   document.getElementById('auth-back-to-chat-btn')?.addEventListener('click', () => {
-    if (!dismissAccountSwitchOverlay()) {
-      document.getElementById('quick-demo-login-btn')?.click();
-    }
+    dismissAccountSwitchOverlay();
   });
   document.getElementById('auth-close-x-btn')?.addEventListener('click', () => {
     dismissAccountSwitchOverlay();
@@ -2145,22 +2126,26 @@
           </div>
 
           <div class="wallet-panels-stack">
-            <!-- 站长面板 1：账户只读总览 -->
+            <!-- 站长面板 1：用户全生命周期权限与账户管理 -->
             <div role="tabpanel" id="apanel-overview" aria-labelledby="atab-overview">
               <div class="wpanel-inner">
-                <div class="block-title-row" style="margin-bottom: 10px;">
-                  <h3 class="sub-sec-title" id="adm-users-heading">全站独立账户列表（会话与密码哈希已安全隔离）</h3>
-                  <button type="button" class="mini-btn" id="adm-refresh-dash-btn">刷新全站数据</button>
+                <div class="block-title-row" style="margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                  <h3 class="sub-sec-title" id="adm-users-heading">👥 全站注册用户与权限管理中心</h3>
+                  <div style="display: flex; gap: 8px; align-items: center;">
+                    <input type="search" id="adm-users-search-input" placeholder="🔍 搜索昵称或邮箱..." style="padding: 5px 12px; border-radius: 6px; border: 1px solid var(--border, #cbd5e1); font-size: 13px; min-width: 180px;" />
+                    <button type="button" class="mini-btn" id="adm-refresh-dash-btn">🔄 刷新列表</button>
+                  </div>
                 </div>
                 <div tabindex="0" role="region" aria-labelledby="adm-users-heading" class="responsive-table-wrap">
-                  <table class="wallet-data-table" style="--col-2:'账户角色'; --col-3:'会话统计'; --col-4:'累计对话';">
-                    <caption class="visually-hidden">全站注册与访客账户概览表</caption>
+                  <table class="wallet-data-table" style="--col-2:'状态'; --col-3:'角色'; --col-4:'统计'; --col-5:'操作';">
+                    <caption class="visually-hidden">全站注册用户管理概览表</caption>
                     <thead>
                       <tr>
-                        <th scope="col">账户昵称与邮箱</th>
-                        <th scope="col">账户角色</th>
-                        <th scope="col">会话数</th>
-                        <th scope="col">累计消息轮次</th>
+                        <th scope="col">用户身份与邮箱</th>
+                        <th scope="col">状态</th>
+                        <th scope="col">权限角色</th>
+                        <th scope="col">积分 / 会话</th>
+                        <th scope="col" style="min-width: 220px; text-align: center;">账户全生命周期管理</th>
                       </tr>
                     </thead>
                     <tbody id="adm-users-tbody"></tbody>
@@ -2472,6 +2457,8 @@
     }
   }
 
+  let adminUsersSearchKeyword = '';
+
   function renderAdminDashboardView() {
     const dash = state.adminDashboard;
     if (!dash || !adminConsoleDialog) return;
@@ -2483,28 +2470,69 @@
     };
     setTxt('adm-kpi-users', stats.total_users ?? 0);
 
-    const users = Array.isArray(dash.users) ? dash.users : [];
+    const rawUsers = Array.isArray(dash.users) ? dash.users : [];
+    const kw = String(adminUsersSearchKeyword || '').trim().toLowerCase();
+    const users = kw
+      ? rawUsers.filter(u =>
+          String(u.nickname || '').toLowerCase().includes(kw) ||
+          String(u.email || '').toLowerCase().includes(kw) ||
+          String(u.id || '').toLowerCase().includes(kw)
+        )
+      : rawUsers;
+
     const usersTbody = document.getElementById('adm-users-tbody');
     if (usersTbody) {
-      usersTbody.innerHTML =
-        users.length === 0
-          ? '<tr><th scope="row">暂无用户</th><td>-</td><td>-</td><td>-</td></tr>'
-          : users
-              .map((u) => {
-                const roleTag = u.is_admin ? '站长' : '普通用户';
-                return `
-                  <tr>
-                    <th scope="row">
-                      <div><strong>${escapeHtml(u.avatar || '🎀')} ${escapeHtml(u.nickname)}</strong></div>
-                      <div class="muted-count">${escapeHtml(u.email)}</div>
-                    </th>
-                    <td>${roleTag}</td>
-                    <td>${u.session_count || 0} 会话</td>
-                    <td>已聊 ${u.total_used || 0} 轮</td>
-                  </tr>
-                `;
-              })
-              .join('');
+      if (users.length === 0) {
+        usersTbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--text-muted,#94a3b8);">' + (kw ? '未找到匹配「' + escapeHtml(kw) + '」的用户' : '暂无注册用户') + '</td></tr>';
+      } else {
+        usersTbody.innerHTML = users
+          .map((u) => {
+            const isSelf = state.user && state.user.id === u.id;
+            const isProtected = u.id === 'user_admin' || isSelf;
+            const isBanned = Boolean(u.is_banned);
+            const statusHtml = isBanned
+              ? '<span class="status-pill status-banned" style="background:rgba(239,68,68,0.12);color:#ef4444;padding:2px 8px;border-radius:12px;font-size:12px;font-weight:600;">⛔ 已封禁</span>'
+              : '<span class="status-pill status-active" style="background:rgba(16,185,129,0.12);color:#10b981;padding:2px 8px;border-radius:12px;font-size:12px;font-weight:600;">🟢 正常</span>';
+            const roleBadge = u.role === 'admin'
+              ? '<span style="color:#d97706;font-weight:600;">👑 管理员</span>'
+              : '<span style="color:var(--text-muted,#64748b);">👤 普通用户</span>';
+            const dateStr = u.created_at ? new Date(u.created_at).toLocaleDateString() : '-';
+
+            let actionButtons = '';
+            if (isProtected) {
+              actionButtons = `<span style="font-size:12px;color:var(--text-muted,#94a3b8);">${u.id === 'user_admin' ? '🛡️ 系统主站长(受保护)' : '⭐ 当前登录账号'}</span>`;
+            } else {
+              actionButtons = `
+                <div style="display:flex;gap:6px;justify-content:center;flex-wrap:wrap;">
+                  <button type="button" class="mini-btn" data-action="reset-pwd" data-uid="${escapeHtml(u.id)}" data-name="${escapeHtml(u.nickname)}" title="为该用户重置新密码">🔑 改密</button>
+                  <button type="button" class="mini-btn" data-action="toggle-ban" data-uid="${escapeHtml(u.id)}" data-name="${escapeHtml(u.nickname)}" data-banned="${isBanned ? '1' : '0'}" style="${isBanned ? 'color:#10b981;font-weight:600;' : 'color:#ef4444;'}" title="${isBanned ? '解封此账号' : '立即封禁此账号并踢下线'}">${isBanned ? '🔓 解封' : '🚫 封禁'}</button>
+                  <button type="button" class="mini-btn" data-action="toggle-role" data-uid="${escapeHtml(u.id)}" data-role="${escapeHtml(u.role || 'user')}" title="变更账号角色">${u.role === 'admin' ? '降为用户' : '设为管理'}</button>
+                  <button type="button" class="mini-btn" data-action="delete-user" data-uid="${escapeHtml(u.id)}" data-name="${escapeHtml(u.nickname)}" style="color:#ef4444;" title="彻底删除此用户及全部数据">🗑️ 删除</button>
+                </div>
+              `;
+            }
+
+            return `
+              <tr style="${isBanned ? 'opacity:0.65;background:rgba(239,68,68,0.03);' : ''}">
+                <th scope="row">
+                  <div><strong>${escapeHtml(u.avatar || '🎀')} ${escapeHtml(u.nickname)}</strong></div>
+                  <div class="muted-count" style="font-size:12px;color:var(--text-muted,#64748b);">${escapeHtml(u.email)}</div>
+                  <div style="font-size:11px;color:var(--text-muted,#94a3b8);margin-top:2px;">注册时间: ${dateStr}</div>
+                </th>
+                <td style="vertical-align:middle;">${statusHtml}</td>
+                <td style="vertical-align:middle;">${roleBadge}</td>
+                <td style="vertical-align:middle;">
+                  <div>${u.session_count || 0} 个会话</div>
+                  <div style="font-size:12px;color:var(--text-muted,#64748b);">积分: ${u.points || 0}</div>
+                </td>
+                <td style="vertical-align:middle;text-align:center;">
+                  ${actionButtons}
+                </td>
+              </tr>
+            `;
+          })
+          .join('');
+      }
     }
 
     const secEmail = document.getElementById('adm-sec-email');
@@ -2547,6 +2575,90 @@
       await refreshAdminDashboard(false);
       showToast('全站账户列表已同步刷新');
     });
+
+    const searchInput = document.getElementById('adm-users-search-input');
+    if (searchInput) {
+      searchInput.addEventListener('input', (e) => {
+        adminUsersSearchKeyword = e.target.value;
+        renderAdminDashboardView();
+      });
+    }
+
+    const usersTbody = document.getElementById('adm-users-tbody');
+    if (usersTbody) {
+      usersTbody.addEventListener('click', async (e) => {
+        const btn = e.target.closest('button[data-action]');
+        if (!btn) return;
+        const action = btn.dataset.action;
+        const uid = btn.dataset.uid;
+        const name = btn.dataset.name || '该用户';
+
+        if (action === 'reset-pwd') {
+          const newPwd = prompt(`【管理员重置密码】\n请输入用户「${name}」的新密码（不少于 6 位）：`, '');
+          if (!newPwd || !newPwd.trim()) return;
+          if (newPwd.trim().length < 6) {
+            alert('新密码长度不能少于 6 位');
+            return;
+          }
+          try {
+            await apiJson(`/api/admin/users/${encodeURIComponent(uid)}/reset-password`, {
+              method: 'POST',
+              body: JSON.stringify({ new_password: newPwd.trim() })
+            });
+            showToast(`已成功为用户「${name}」重置密码！历史登录已强制下线。`);
+            await refreshAdminDashboard(false);
+          } catch (err) {
+            alert('重置密码失败：' + (err.message || '网络或权限异常'));
+          }
+        } else if (action === 'toggle-ban') {
+          const isBanned = btn.dataset.banned === '1';
+          const shouldBan = !isBanned;
+          const confirmText = shouldBan
+            ? `确定要封禁用户「${name}」吗？\n封禁后该用户将立即强制下线，且无法再次登录。`
+            : `确定要解封用户「${name}」吗？\n解封后该用户可正常登录使用。`;
+          if (!confirm(confirmText)) return;
+          try {
+            await apiJson(`/api/admin/users/${encodeURIComponent(uid)}/toggle-ban`, {
+              method: 'POST',
+              body: JSON.stringify({ ban: shouldBan })
+            });
+            showToast(shouldBan ? `已封禁用户「${name}」` : `已解封用户「${name}」`);
+            await refreshAdminDashboard(false);
+          } catch (err) {
+            alert('操作失败：' + (err.message || '网络异常'));
+          }
+        } else if (action === 'toggle-role') {
+          const curRole = btn.dataset.role || 'user';
+          const nextRole = curRole === 'admin' ? 'user' : 'admin';
+          const confirmText = nextRole === 'admin'
+            ? `确定要将用户「${name}」提升为【管理员】吗？该用户将获得管理控制台权限。`
+            : `确定要将用户「${name}」降级为【普通用户】吗？`;
+          if (!confirm(confirmText)) return;
+          try {
+            await apiJson(`/api/admin/users/${encodeURIComponent(uid)}/set-role`, {
+              method: 'POST',
+              body: JSON.stringify({ role: nextRole })
+            });
+            showToast(`用户「${name}」角色已变更为：${nextRole === 'admin' ? '管理员' : '普通用户'}`);
+            await refreshAdminDashboard(false);
+          } catch (err) {
+            alert('修改角色失败：' + (err.message || '网络异常'));
+          }
+        } else if (action === 'delete-user') {
+          const confirmText = `【高危操作警告】\n您正在永久删除用户「${name}」！\n此操作将彻底销毁该用户的所有账号资料、会话、聊天记录与记忆，且无法恢复。\n\n确定执行删除吗？`;
+          if (!confirm(confirmText)) return;
+          try {
+            await apiJson(`/api/admin/users/${encodeURIComponent(uid)}`, {
+              method: 'DELETE'
+            });
+            showToast(`用户「${name}」及其全部数据已成功删除！`);
+            await refreshAdminDashboard(false);
+          } catch (err) {
+            alert('删除用户失败：' + (err.message || '网络异常'));
+          }
+        }
+      });
+    }
 
     document.getElementById('adm-online-provider')?.addEventListener('change', (e) => {
       const isCustom = e.target.value === 'custom_gateway';
@@ -3822,7 +3934,7 @@
     if (msg.reasoning && !isSystemPlaceholderReasoning(msg.reasoning)) {
       const secNum = Math.max(1, Math.round((msg.duration_ms || 1200) / 1000));
       const summaryLabel = isDsUi
-        ? `已深度思考（用时 ${secNum} 秒）`
+        ? `已思考（用时 ${secNum} 秒）`
         : `${pPronoun}的心声独白${msg.duration_ms ? `（思考 ${(msg.duration_ms / 1000).toFixed(1)}s）` : ''}`;
       const details = document.createElement('details');
       details.className = 'thought-details';
@@ -4814,6 +4926,19 @@
 
   chatForm.addEventListener('submit', (e) => {
     e.preventDefault();
+    const val = (chatInput.value || '').trim();
+    if (!val) return;
+
+    // 📱 dsh-Go 纯净聊天模式分流：在手机辅助模式或识别为手机指令时直接由 Phone Agent 执行并回显
+    if (state.uiMode === 'phone-agent' || (window.PhoneAgent?.isNative && /^(回桌面|桌面|返回|后退|下滑|向上|向下|上滑|打开微信|微信|打开设置|设置|点击|点|输入|填入|最近任务)/.test(val))) {
+      chatInput.value = '';
+      chatInput.style.height = 'auto';
+      if (window.PhoneAgent && typeof window.PhoneAgent.executeTaskInChat === 'function') {
+        window.PhoneAgent.executeTaskInChat(val);
+      }
+      return;
+    }
+
     sendStreamMessage(chatInput.value, false);
   });
 
@@ -6177,12 +6302,155 @@
     syncFollowUpsToggleUi();
     activateSettingsTab('stab-key', false);
     setTimeout(() => {
+      // 📱 移动端 1:1 DeepSeek 正版全屏设置页面分流（对应官方 App 截屏 1）
+      if (window.innerWidth <= 860 || window.PhoneAgent?.isNative) {
+        openMobileFullscreenSettings(focusOwnApi);
+        return;
+      }
       if (!settingsDialog.open) settingsDialog.showModal();
       if (focusOwnApi === true && unlocked) {
         document.getElementById('st-own-ds-key')?.focus();
       }
     }, 10);
   }
+
+  function openMobileFullscreenSettings(focusOwnApi = false) {
+    const mfs = document.getElementById('mobile-fullscreen-settings');
+    if (!mfs) {
+      if (!settingsDialog.open) settingsDialog.showModal();
+      return;
+    }
+    mfs.classList.remove('hidden');
+
+    const accountSub = document.getElementById('mfs-account-sub');
+    if (accountSub) {
+      accountSub.textContent = state.user?.email || '本地纯净沙盒';
+    }
+
+    const themeVal = document.getElementById('mfs-theme-value');
+    if (themeVal) {
+      const curScheme = localStorage.getItem('color-scheme') || 'system';
+      themeVal.textContent = curScheme === 'dark' ? '深色' : (curScheme === 'light' ? '浅色' : '跟随系统');
+    }
+
+    const keyVal = document.getElementById('mfs-apikey-value');
+    const keyInput = document.getElementById('mfs-apikey-input');
+    const savedKey = localStorage.getItem('deepseek_user_api_key') || localStorage.getItem('own_deepseek_api_key') || '';
+    if (keyVal) {
+      keyVal.textContent = savedKey ? '已配置 (sk-...)' : '点击配置';
+    }
+    if (keyInput) {
+      keyInput.value = savedKey;
+      if (focusOwnApi) {
+        document.getElementById('mfs-apikey-drawer')?.classList.remove('hidden');
+        keyInput.focus();
+      }
+    }
+
+    const verVal = document.getElementById('mfs-version-value');
+    if (verVal && window.PhoneAgent) {
+      verVal.textContent = window.PhoneAgent.currentVersion + '(' + window.PhoneAgent.currentVersionCode + ')';
+    }
+  }
+
+  function initMobileFullscreenSettings() {
+    const mfs = document.getElementById('mobile-fullscreen-settings');
+    if (!mfs) return;
+
+    // 返回按钮
+    document.getElementById('mfs-back-btn')?.addEventListener('click', () => {
+      mfs.classList.add('hidden');
+    });
+
+    // 切换外观（跟随系统 -> 浅色 -> 深色 轮换）
+    document.getElementById('mfs-item-theme')?.addEventListener('click', () => {
+      const curScheme = localStorage.getItem('color-scheme') || 'system';
+      let nextScheme = 'light';
+      if (curScheme === 'light') nextScheme = 'dark';
+      else if (curScheme === 'dark') nextScheme = 'system';
+      else nextScheme = 'light';
+
+      localStorage.setItem('color-scheme', nextScheme);
+      const metaEl = document.querySelector('meta[name="color-scheme"]');
+      if (metaEl) metaEl.content = nextScheme === 'system' ? 'light dark' : nextScheme;
+      document.documentElement.style.colorScheme = nextScheme === 'system' ? 'light dark' : nextScheme;
+
+      const themeVal = document.getElementById('mfs-theme-value');
+      if (themeVal) themeVal.textContent = nextScheme === 'dark' ? '深色' : (nextScheme === 'light' ? '浅色' : '跟随系统');
+      showToast('已切换外观为：' + (nextScheme === 'dark' ? '深色模式' : (nextScheme === 'light' ? '浅色模式' : '跟随系统')));
+    });
+
+    // 展开/收起 API Key 输入抽屉
+    document.getElementById('mfs-item-apikey')?.addEventListener('click', () => {
+      const drawer = document.getElementById('mfs-apikey-drawer');
+      if (drawer) {
+        drawer.classList.toggle('hidden');
+        if (!drawer.classList.contains('hidden')) {
+          document.getElementById('mfs-apikey-input')?.focus();
+        }
+      }
+    });
+
+    // 保存 API Key
+    document.getElementById('mfs-save-apikey-btn')?.addEventListener('click', () => {
+      const input = document.getElementById('mfs-apikey-input');
+      const val = (input?.value || '').trim();
+      if (val) {
+        localStorage.setItem('deepseek_user_api_key', val);
+        localStorage.setItem('own_deepseek_api_key', val);
+        const desktopInput = document.getElementById('st-own-ds-key');
+        if (desktopInput) desktopInput.value = val;
+        const keyVal = document.getElementById('mfs-apikey-value');
+        if (keyVal) keyVal.textContent = '已配置 (sk-...)';
+        document.getElementById('mfs-apikey-drawer')?.classList.add('hidden');
+        showToast('🎉 DeepSeek 官方 API 密钥已保存至本地沙盒！');
+      } else {
+        localStorage.removeItem('deepseek_user_api_key');
+        localStorage.removeItem('own_deepseek_api_key');
+        const keyVal = document.getElementById('mfs-apikey-value');
+        if (keyVal) keyVal.textContent = '点击配置';
+        showToast('已清除个人 API Key，恢复免 API 模式');
+      }
+    });
+
+    // 手机端 Phone Agent 控制入口
+    document.getElementById('mfs-item-phoneagent')?.addEventListener('click', () => {
+      mfs.classList.add('hidden');
+      if (window.PhoneAgent) {
+        window.PhoneAgent.openModal();
+      }
+    });
+
+    // 检查更新
+    document.getElementById('mfs-item-checkupdate')?.addEventListener('click', () => {
+      if (window.PhoneAgent) {
+        window.PhoneAgent.checkUpdate(false);
+      }
+    });
+
+    // 数据管理（导出历史记录）
+    document.getElementById('mfs-item-datamanage')?.addEventListener('click', () => {
+      if (confirm('是否导出当前所有会话历史记录为 Markdown 文档？')) {
+        document.getElementById('export-history-btn')?.click();
+      }
+    });
+
+    // 帮助与反馈
+    document.getElementById('mfs-item-help')?.addEventListener('click', () => {
+      alert('【使用提示】\n1. 聊天界面支持 DeepSeek-V3 标准对话与 DeepSeek-R1 深度思考；\n2. 手机控制可在聊天框直接输入“回桌面”、“打开微信”等，或使用常驻打字悬浮球在其他 App 实时打字！');
+    });
+
+    // 退出登录 / 重置本地沙盒
+    document.getElementById('mfs-logout-btn')?.addEventListener('click', () => {
+      if (confirm('确定要清除本地对话缓存并重置吗？')) {
+        localStorage.clear();
+        sessionStorage.clear();
+        window.location.reload();
+      }
+    });
+  }
+
+  initMobileFullscreenSettings();
 
   document.getElementById('ds-suite-own-api-btn')?.addEventListener('click', () => {
     openSettingsModal(true);
@@ -7977,8 +8245,9 @@
 
   function applyUiModeVisuals(mode, { resetRightDrawer = false } = {}) {
     const prevMode = state.uiMode;
-    const isDs = mode === 'deepseek';
-    state.uiMode = isDs ? 'deepseek' : 'roleplay';
+    const isPhoneAgent = mode === 'phone-agent';
+    const isDs = mode === 'deepseek' || isPhoneAgent;
+    state.uiMode = isPhoneAgent ? 'phone-agent' : (isDs ? 'deepseek' : 'roleplay');
     try {
       localStorage.setItem('ui_mode_v5', state.uiMode);
     } catch {}
@@ -7995,17 +8264,32 @@
 
     const tabRp = document.getElementById('ws-mode-roleplay');
     const tabDs = document.getElementById('ws-mode-deepseek');
+    const tabPa = document.getElementById('ws-mode-phone-agent');
+    const paBanner = document.getElementById('phone-agent-banner');
     const quickJumpBtn = document.getElementById('quick-switch-mode-btn');
     const collapsedSwitchBtn = document.getElementById('collapsed-switch-mode-btn');
 
     if (tabRp) {
-      tabRp.classList.toggle('active', !isDs);
-      tabRp.setAttribute('aria-selected', String(!isDs));
+      tabRp.classList.toggle('active', state.uiMode === 'roleplay');
+      tabRp.setAttribute('aria-selected', String(state.uiMode === 'roleplay'));
     }
     if (tabDs) {
-      tabDs.classList.toggle('active', isDs);
-      tabDs.setAttribute('aria-selected', String(isDs));
+      tabDs.classList.toggle('active', state.uiMode === 'deepseek');
+      tabDs.setAttribute('aria-selected', String(state.uiMode === 'deepseek'));
     }
+    if (tabPa) {
+      tabPa.classList.toggle('active', isPhoneAgent);
+      tabPa.setAttribute('aria-selected', String(isPhoneAgent));
+    }
+
+    // 📱 控制聊天窗口顶部的 dsh-Go 风格手机辅助专属横幅
+    if (paBanner) {
+      paBanner.classList.toggle('hidden', !isPhoneAgent);
+      if (isPhoneAgent && window.PhoneAgent) {
+        window.PhoneAgent.syncStatus();
+      }
+    }
+
     if (quickJumpBtn) {
       quickJumpBtn.textContent = isDs ? '切换到剧本扮演模式' : '切换到 DeepSeek 问答模式';
     }
@@ -8017,9 +8301,11 @@
     }
 
     const pronoun = getPersonaPronoun(state.activePersona);
-    chatInput.placeholder = isDs
-      ? '给 DeepSeek 发送消息（支持深度思考、联网搜索、代码生成与网页预览）…'
-      : `和${pronoun}说点什么吧…（可用 *星号* 描写动作细节，Enter 发送）`;
+    chatInput.placeholder = isPhoneAgent
+      ? '下达手机控制指令（例如：回桌面、打开微信、向下翻页）或普通对话…'
+      : (isDs
+        ? '给 DeepSeek 发送消息（支持深度思考、联网搜索、代码生成与网页预览）…'
+        : `和${pronoun}说点什么吧…（可用 *星号* 描写动作细节，Enter 发送）`);
 
     const prefixInput = document.getElementById('ds-prefix-input');
     if (prefixInput) {
@@ -8060,7 +8346,8 @@
       showToast('请等待当前流式回复完成后再切换模式');
       return;
     }
-    const isDs = targetMode === 'deepseek';
+    const isPhoneAgent = targetMode === 'phone-agent';
+    const isDs = targetMode === 'deepseek' || isPhoneAgent;
     applyUiModeVisuals(targetMode);
 
     const matchingSessions = state.sessions.filter((s) =>
@@ -8078,7 +8365,9 @@
       if (firstRp) await startSessionWithPersona(firstRp.id);
     }
 
-    if (isDs) {
+    if (isPhoneAgent) {
+      showToast('已进入 Phone Agent 手机辅助聊天面板（点击快捷指令或打字直接操控手机）');
+    } else if (isDs) {
       showToast('已切换至 DeepSeek 问答模式（独立记忆、深度思考与联网搜索已就绪）');
     } else {
       showToast('已回到星语恋庭沉浸扮演模式');
@@ -8090,6 +8379,9 @@
   });
   document.getElementById('ws-mode-deepseek')?.addEventListener('click', () => {
     if (state.uiMode !== 'deepseek') switchWorkspaceMode('deepseek');
+  });
+  document.getElementById('ws-mode-phone-agent')?.addEventListener('click', () => {
+    if (state.uiMode !== 'phone-agent') switchWorkspaceMode('phone-agent');
   });
   document.getElementById('quick-switch-mode-btn')?.addEventListener('click', () => {
     switchWorkspaceMode(state.uiMode === 'deepseek' ? 'roleplay' : 'deepseek');
@@ -9819,6 +10111,8 @@
 
     const boot = await apiJson('/api/bootstrap');
     state.user = boot.user;
+    window.__STAR_CURRENT_USER__ = boot.user;
+    window.__showAuthScreen = showAuthScreen;
     if (boot.user?.id) {
       window.__starAuthStore?.setActiveUserId(boot.user.id);
     }
@@ -9918,10 +10212,9 @@
   async function bootCheck() {
     // 6 秒终极防白屏安全锁：任何极端情况下确保移除首屏遮罩
     const safetySplashTimer = setTimeout(dismissBootSplash, 6000);
-    let manualSwitch = false;
-    try {
-      manualSwitch = sessionStorage.getItem('manual_account_switch') === '1';
-    } catch {}
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const needLoginMsg = urlParams.get('msg') === 'download_login_required' || urlParams.get('auth') === 'login';
 
     try {
       const me = await apiJson('/api/auth/me');
@@ -9930,22 +10223,22 @@
         await enterWorkspace();
         return;
       }
-      // 小白零门槛直入：未主动点切换账号时，自动免注册静默进入游戏大厅！
-      if (!manualSwitch) {
-        const savedGuestId = window.__starAuthStore?.getGuestUserId() || '';
-        const demoRes = await apiJson('/api/auth/demo-login', {
-          method: 'POST',
-          body: JSON.stringify({ guest_user_id: savedGuestId })
-        });
-        applyAuthLoginPayload(demoRes, { persistDefault: true, rememberGuest: true });
-        await enterWorkspace();
-        return;
-      }
+      // 严格认证防护：免注册通道已关闭，所有未登录访客强制进入注册/登录门扉
       resetClientWorkspaceState();
       showAuthScreen();
+      if (needLoginMsg) {
+        setTimeout(() => {
+          setAuthError('【严格安全提示】请先注册或登录正式账号，以获取 APK 客户端下载权限');
+        }, 100);
+      }
     } catch {
       resetClientWorkspaceState();
       showAuthScreen();
+      if (needLoginMsg) {
+        setTimeout(() => {
+          setAuthError('【严格安全提示】请先注册或登录正式账号，以获取 APK 客户端下载权限');
+        }, 100);
+      }
     } finally {
       clearTimeout(safetySplashTimer);
       dismissBootSplash();

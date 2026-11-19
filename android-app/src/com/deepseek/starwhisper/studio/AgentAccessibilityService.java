@@ -2,6 +2,7 @@ package com.deepseek.starwhisper.studio;
 
 import android.accessibilityservice.AccessibilityService;
 import android.accessibilityservice.GestureDescription;
+import android.content.Intent;
 import android.graphics.Path;
 import android.graphics.Rect;
 import android.os.Build;
@@ -199,6 +200,158 @@ public class AgentAccessibilityService extends AccessibilityService {
 
         root.recycle();
         return false;
+    }
+
+    /**
+     * 免 API 本地规则执行引擎：无需配置 API Key 即可直接操控手机
+     * 支持全局系统键（回桌面/返回/最近任务/通知栏）、滑动手势、文字搜索点击、应用唤起与文字填入
+     */
+    public String executeLocalRule(String rawCmd) {
+        if (rawCmd == null || rawCmd.trim().isEmpty()) {
+            return "请输入命令";
+        }
+        String cmd = rawCmd.trim().toLowerCase();
+        int width = getResources().getDisplayMetrics().widthPixels;
+        int height = getResources().getDisplayMetrics().heightPixels;
+
+        // 1. 系统全局键
+        if (cmd.contains("桌面") || cmd.contains("主屏") || cmd.equals("home")) {
+            boolean ok = performGlobalAction(GLOBAL_ACTION_HOME);
+            return ok ? "✅ 已返回桌面" : "❌ 返回桌面失败";
+        }
+        if (cmd.contains("返回") || cmd.contains("后退") || cmd.equals("back")) {
+            boolean ok = performGlobalAction(GLOBAL_ACTION_BACK);
+            return ok ? "✅ 已执行返回键" : "❌ 返回键执行失败";
+        }
+        if (cmd.contains("任务") || cmd.contains("后台") || cmd.contains("最近") || cmd.equals("recents")) {
+            boolean ok = performGlobalAction(GLOBAL_ACTION_RECENTS);
+            return ok ? "✅ 已呼出多任务后台" : "❌ 呼出后台失败";
+        }
+        if (cmd.contains("通知") || cmd.equals("notifications")) {
+            boolean ok = performGlobalAction(GLOBAL_ACTION_NOTIFICATIONS);
+            return ok ? "✅ 已下拉通知栏" : "❌ 下拉通知栏失败";
+        }
+
+        // 2. 模拟滑动手势
+        if (cmd.contains("下滑") || cmd.contains("向下") || cmd.contains("下翻") || cmd.contains("翻下") || cmd.contains("看下面")) {
+            boolean ok = performSwipe(width / 2, (int) (height * 0.72), width / 2, (int) (height * 0.28), 350);
+            return ok ? "✅ 已向下翻页" : "❌ 滑动失败";
+        }
+        if (cmd.contains("上滑") || cmd.contains("向上") || cmd.contains("上翻") || cmd.contains("翻上") || cmd.contains("看上面")) {
+            boolean ok = performSwipe(width / 2, (int) (height * 0.28), width / 2, (int) (height * 0.72), 350);
+            return ok ? "✅ 已向上翻页" : "❌ 滑动失败";
+        }
+        if (cmd.contains("左滑") || cmd.contains("向左")) {
+            boolean ok = performSwipe((int) (width * 0.8), height / 2, (int) (width * 0.2), height / 2, 350);
+            return ok ? "✅ 已向左滑动" : "❌ 滑动失败";
+        }
+        if (cmd.contains("右滑") || cmd.contains("向右")) {
+            boolean ok = performSwipe((int) (width * 0.2), height / 2, (int) (width * 0.8), height / 2, 350);
+            return ok ? "✅ 已向右滑动" : "❌ 滑动失败";
+        }
+
+        // 3. 打开应用
+        if (cmd.contains("微信")) {
+            try {
+                Intent launchIntent = getPackageManager().getLaunchIntentForPackage("com.tencent.mm");
+                if (launchIntent != null) {
+                    launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    startActivity(launchIntent);
+                    return "✅ 已唤起微信";
+                }
+            } catch (Exception ignored) {}
+        }
+        if (cmd.contains("设置")) {
+            try {
+                Intent intent = new Intent(android.provider.Settings.ACTION_SETTINGS);
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                startActivity(intent);
+                return "✅ 已打开系统设置";
+            } catch (Exception ignored) {}
+        }
+
+        // 4. 文字输入匹配: "输入 xxx" / "填入 xxx"
+        if (cmd.startsWith("输入") || cmd.startsWith("填入") || cmd.startsWith("打字")) {
+            String textToInput = rawCmd.replaceFirst("^(输入|填入|打字)\\s*", "").trim();
+            boolean ok = performInputText(null, textToInput);
+            return ok ? "✅ 已在输入框填入「" + textToInput + "」" : "⚠️ 当前屏幕未找到处于焦点或可编辑的输入框";
+        }
+
+        // 5. 点击文字匹配: "点击 xxx" / "点 xxx" / "按下 xxx"
+        String targetText = rawCmd;
+        if (targetText.startsWith("点击")) targetText = targetText.substring(2).trim();
+        else if (targetText.startsWith("点")) targetText = targetText.substring(1).trim();
+        else if (targetText.startsWith("按下")) targetText = targetText.substring(2).trim();
+
+        if (!targetText.isEmpty()) {
+            boolean clickOk = clickNodeByText(targetText);
+            if (clickOk) {
+                return "✅ 已成功定位并点击屏幕文字「" + targetText + "」";
+            }
+        }
+
+        return "⚠️ 本地规则未匹配到动作。支持命令：回桌面、返回、下滑、上滑、打开微信、打开设置、点击[文字]、输入[文字]";
+    }
+
+    public boolean clickNodeByText(String targetText) {
+        AccessibilityNodeInfo root = getRootInActiveWindow();
+        if (root == null) return false;
+
+        List<AccessibilityNodeInfo> list = root.findAccessibilityNodeInfosByText(targetText);
+        if (list != null && !list.isEmpty()) {
+            for (AccessibilityNodeInfo node : list) {
+                if (node != null) {
+                    Rect bounds = new Rect();
+                    node.getBoundsInScreen(bounds);
+                    if (bounds.width() > 0 && bounds.height() > 0) {
+                        int cx = bounds.centerX();
+                        int cy = bounds.centerY();
+                        boolean ok = performClickCoordinate(cx, cy);
+                        node.recycle();
+                        root.recycle();
+                        return ok;
+                    }
+                    node.recycle();
+                }
+            }
+        }
+
+        AccessibilityNodeInfo fuzzyNode = findFuzzyNode(root, targetText.toLowerCase());
+        if (fuzzyNode != null) {
+            Rect bounds = new Rect();
+            fuzzyNode.getBoundsInScreen(bounds);
+            int cx = bounds.centerX();
+            int cy = bounds.centerY();
+            boolean ok = performClickCoordinate(cx, cy);
+            fuzzyNode.recycle();
+            root.recycle();
+            return ok;
+        }
+
+        root.recycle();
+        return false;
+    }
+
+    private AccessibilityNodeInfo findFuzzyNode(AccessibilityNodeInfo node, String query) {
+        if (node == null) return null;
+        CharSequence text = node.getText();
+        CharSequence desc = node.getContentDescription();
+        if (text != null && text.toString().toLowerCase().contains(query)) {
+            return node;
+        }
+        if (desc != null && desc.toString().toLowerCase().contains(query)) {
+            return node;
+        }
+        int count = node.getChildCount();
+        for (int i = 0; i < count; i++) {
+            AccessibilityNodeInfo child = node.getChild(i);
+            AccessibilityNodeInfo match = findFuzzyNode(child, query);
+            if (match != null) {
+                return match;
+            }
+            if (child != null) child.recycle();
+        }
+        return null;
     }
 
     /**

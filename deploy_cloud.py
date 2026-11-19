@@ -222,6 +222,9 @@ echo ""
 echo "=== Nginx HTTP/2 与静态文件零拷贝加速探针 (app.js) ==="
 curl -I -sSk --resolve star.claudexxb.online:443:127.0.0.1 -H "Accept-Encoding: gzip" https://star.claudexxb.online/app.js
 echo ""
+echo "=== 最新随身版 APK 下载探针 (deepseek-studio.apk) ==="
+curl -I -sSk --resolve star.claudexxb.online:443:127.0.0.1 https://star.claudexxb.online/downloads/deepseek-studio.apk
+echo ""
 echo "=== 知识库主站回归探针 (claudexxb.online / 127.0.0.1:3002) ==="
 curl -fsS http://127.0.0.1:3002/api/health
 echo ""

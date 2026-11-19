@@ -13,7 +13,7 @@
       const sMode = localStorage.getItem("ui_mode_v5");
       const initMode = (qMode === "roleplay" || qMode === "deepseek")
         ? qMode
-        : (sMode === "roleplay" || sMode === "deepseek") ? sMode : "roleplay";
+        : (sMode === "roleplay" || sMode === "deepseek") ? sMode : "deepseek";
       document.documentElement.dataset.uiMode = initMode;
     } catch {}
   </script>
@@ -27,8 +27,9 @@
   <link rel="stylesheet" href="./clean-ui.css?v=20261120v68_pure_art" />
   <link rel="stylesheet" href="./mobile-responsive.css?v=20261120v68_pure_art" />
   <link rel="stylesheet" href="./phone-agent.css?v=20261120v68_pure_art" />
+  <link rel="stylesheet" href="./mobile-deepseek.css?v=20261120v68_pure_art" />
 </head>
-<body data-ui-mode="roleplay">
+<body data-ui-mode="deepseek">
   <!-- 首屏零白屏过渡欢迎层（工作台或登录门扉就绪后立即平滑隐藏） -->
   <div id="boot-splash" class="boot-splash" role="status" aria-live="polite">
     <div class="boot-splash-card">
@@ -198,21 +199,17 @@
           </button>
         </form>
 
-        <div class="auth-divider"><span>免注册快速体验</span></div>
+        <div class="auth-strict-notice" style="margin-top: 18px; text-align: center; font-size: 13px; color: var(--text-muted, #64748b);">
+          <span>✦ 平台已开启严格注册认证防护 · 注册正式账号后畅享全量功能与客户端下载 ✦</span>
+        </div>
 
-        <div class="guest-auth-actions">
-          <button type="button" class="demo-login-btn full-width" id="quick-demo-login-btn">
-            免注册 · 直接进入星语恋庭
+        <div class="guest-auth-actions" style="margin-top: 10px;">
+          <button type="button" class="ghost-link-btn full-width hidden" id="auth-confirm-signout-btn" style="color: var(--accent-danger, #e11d48);">
+            退出当前已登录账号
           </button>
-        <button type="button" class="ghost-link-btn full-width" id="fresh-guest-login-btn" title="在当前标签页新建一个全新的空白访客账号，和之前的聊天记录互不干扰">
-          新开全新访客号（与旧记录互不干扰）
-        </button>
-        <button type="button" class="ghost-link-btn full-width hidden" id="auth-confirm-signout-btn" style="color: var(--accent-danger, #e11d48);">
-          退出当前已登录账号
-        </button>
+        </div>
       </div>
-    </div>
-  </section>
+    </section>
 
   <!-- 隐藏的快捷上传人设文件选择器与分组文件/文档/图片上传选择器（使用 safe-file-input 保障移动端 Safari/Android 兼容触发） -->
   <input type="file" id="quick-persona-file" accept=".txt,.md,.json" class="safe-file-input" />
@@ -238,7 +235,7 @@
   />
 
   <!-- ================= 主应用工作台 ================= -->
-  <div class="app-shell right-collapsed hidden" id="app-shell" data-ui-mode="roleplay">
+  <div class="app-shell right-collapsed hidden" id="app-shell" data-ui-mode="deepseek">
     <!-- 移动端抽屉半透明遮罩层（点击外侧自动收起侧栏/右侧抽屉） -->
     <div class="mobile-drawer-backdrop hidden" id="mobile-drawer-backdrop" aria-hidden="true"></div>
 
@@ -275,13 +272,16 @@
         </div>
       </div>
 
-      <!-- 双模式分段切换胶囊（支持在「恋庭剧场」与「原生 DeepSeek」间随时一键往返） -->
-      <div class="workspace-mode-bar" role="tablist" aria-label="切换对话工作台模式">
-        <button type="button" class="ws-mode-btn active" id="ws-mode-roleplay" role="tab" aria-selected="true">
-          恋庭剧场
+      <!-- 多模式分段切换导航栏 (参考 dsh-Go 设计，支持在「DeepSeek 原生助手」、「星语剧场」与「Phone Agent 手机辅助」间随时秒切) -->
+      <div class="workspace-mode-bar dsh-segmented-bar" role="tablist" aria-label="切换对话工作台模式">
+        <button type="button" class="ws-mode-btn active" id="ws-mode-deepseek" role="tab" aria-selected="true">
+          🐋 DeepSeek
         </button>
-        <button type="button" class="ws-mode-btn" id="ws-mode-deepseek" role="tab" aria-selected="false">
-          DeepSeek 问答
+        <button type="button" class="ws-mode-btn" id="ws-mode-roleplay" role="tab" aria-selected="false">
+          🌸 星语剧场
+        </button>
+        <button type="button" class="ws-mode-btn" id="ws-mode-phone-agent" role="tab" aria-selected="false">
+          🤖 手机辅助
         </button>
       </div>
 
@@ -513,7 +513,7 @@
               </svg>
             </span>
             <span class="apk-pill-label">安卓随身版</span>
-            <span class="apk-pill-tag">v1.5</span>
+            <span class="apk-pill-tag">v1.7</span>
           </button>
 
           <!-- 次级功能收纳进清晰统一的更多菜单（零重复、按模式严格分离，且不包含模式切换） -->
@@ -610,6 +610,34 @@
       <div class="stage-body-split">
         <!-- 对话消息滚动流 -->
         <div class="messages-viewport" id="messages-viewport">
+          <!-- 手机端 AI 辅助助理专属状态条与快捷指令胶囊栏 (dsh-Go 纯净聊天风格) -->
+          <div class="phone-agent-banner hidden" id="phone-agent-banner">
+            <div class="pa-banner-head">
+              <div class="pa-status-chips">
+                <span class="pa-chip pa-a11y-chip pending" id="pa-banner-a11y-chip">
+                  <span class="pa-dot"></span><span id="pa-banner-a11y-text">无障碍未授权</span>
+                </span>
+                <span class="pa-chip pa-float-chip disabled" id="pa-banner-float-chip">
+                  <span class="pa-dot"></span><span id="pa-banner-float-text">桌面悬浮球已停用</span>
+                </span>
+              </div>
+              <div class="pa-banner-actions">
+                <button type="button" class="pa-banner-btn" id="pa-banner-open-a11y-btn">👉 开启无障碍</button>
+                <button type="button" class="pa-banner-btn outline" id="pa-banner-toggle-float-btn">启动打字悬浮球</button>
+              </div>
+            </div>
+            <div class="pa-quick-chips-row">
+              <span class="pa-chips-label">快捷指令：</span>
+              <button type="button" class="pa-quick-chip" data-cmd="回桌面">🏠 回桌面</button>
+              <button type="button" class="pa-quick-chip" data-cmd="返回">◀ 返回</button>
+              <button type="button" class="pa-quick-chip" data-cmd="下滑">📜 向下滑动</button>
+              <button type="button" class="pa-quick-chip" data-cmd="上滑">🔼 向上滑动</button>
+              <button type="button" class="pa-quick-chip" data-cmd="打开微信">💬 打开微信</button>
+              <button type="button" class="pa-quick-chip" data-cmd="打开设置">⚙️ 系统设置</button>
+              <button type="button" class="pa-quick-chip" data-cmd="在屏幕上查找可点击按钮并尝试点按">🔍 智能识屏点按</button>
+            </div>
+          </div>
+
           <div class="messages-container" id="messages-container"></div>
         </div>
 
@@ -954,8 +982,9 @@
         </form>
 
         <!-- 底部极简提示行 -->
-        <div class="ds-disclaimer-note ds-only-block">
-          DeepSeek 问答模式 · 支持深度思考 (R1)、智能联网搜索、多格式文档解读与 HTML 网页实时预览
+        <div class="composer-disclaimer ds-only-block" style="text-align:center;font-size:11px;color:light-dark(#94a3b8,#64748b);margin-top:6px;">
+          回答由 AI 生成，仅供参考
+        </div>
         </div>
       </div>
     </main>
@@ -2544,20 +2573,20 @@
       </div>
 
       <div class="apk-modal-body">
-        <!-- 核心下载横幅卡片 -->
-        <div class="apk-hero-card">
+        <!-- 网页端访问时的核心下载横幅卡片 -->
+        <div class="apk-hero-card" id="apk-web-download-card">
           <div class="apk-hero-top">
             <div class="apk-meta-pills">
-              <span class="apk-meta-pill">版本 v1.5.0 正式版</span>
-              <span class="apk-meta-pill">极速包体 7.0 MB</span>
+              <span class="apk-meta-pill">版本 v1.7.0 (支持悬浮打字与免API控制)</span>
+              <span class="apk-meta-pill">极速包体 8.38 MB</span>
               <span class="apk-meta-pill">官方纯净 · 签名校验</span>
-              <span class="apk-meta-pill" id="pa-device-info-pill">支持 Android 7.0 ~ 14+</span>
+              <span class="apk-meta-pill" id="pa-device-info-pill">支持 Android 7.0 ~ 15+</span>
             </div>
           </div>
 
           <div class="apk-download-btn-group">
             <a
-              href="/downloads/deepseek-studio.apk"
+              href="/api/download/apk"
               download="DeepSeek_星语随身版.apk"
               class="apk-cta-download-btn"
               id="apk-primary-download-link"
@@ -2567,7 +2596,7 @@
                 <polyline points="19 12 12 19 5 12"></polyline>
               </svg>
               <span>一键高速下载 APK</span>
-              <span style="font-size:12px;opacity:0.85;">(7.0 MB)</span>
+              <span style="font-size:12px;opacity:0.85;">(最新版)</span>
             </a>
             <button type="button" class="apk-secondary-btn" id="apk-copy-link-btn">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -2577,12 +2606,43 @@
               <span>复制手机下载直链</span>
             </button>
             <a
-              href="/downloads/DeepSeek_星语随身版.apk"
+              href="/api/download/apk"
               download="DeepSeek_星语随身版.apk"
               class="apk-secondary-btn"
               style="text-decoration:none;display:inline-flex;align-items:center;"
             >
               备用下载镜像
+            </a>
+          </div>
+        </div>
+
+        <!-- 原生 APK 环境专属：版本状态与拉取最新版检查卡片（彻底消除在已安装 APK 中盲目展示下载按钮的痛点） -->
+        <div class="apk-native-version-card hidden" id="apk-native-version-card">
+          <div class="anv-head">
+            <div class="anv-title-row">
+              <span class="anv-badge">已安装原生随身版</span>
+              <span class="anv-version" id="anv-current-version">v1.7.0 (已就绪)</span>
+            </div>
+            <p class="anv-desc">您已在 Android 原生 APK 中运行。首页已为您切换为 dsh-Go 纯净聊天面板，可在聊天框直接下达手机控制指令或使用全局悬浮窗打字。</p>
+          </div>
+          <div class="anv-update-status-box" id="anv-update-status-box">
+            <div class="anv-status-icon" id="anv-status-icon">✓</div>
+            <div class="anv-status-info">
+              <div class="anv-status-title" id="anv-status-title">当前已是最新版本</div>
+              <div class="anv-status-sub" id="anv-status-sub">如云端发布新版本，此处将提示并支持一键拉取更新。</div>
+            </div>
+          </div>
+          <div class="anv-actions-row">
+            <button type="button" class="apk-cta-download-btn" id="anv-check-update-btn">
+              🔍 立即检查云端最新版本
+            </button>
+            <button type="button" class="apk-secondary-btn" id="anv-share-link-btn">
+              📤 复制下载链接分享给好友
+            </button>
+          </div>
+          <div class="anv-github-row" style="margin-top:12px;text-align:center;">
+            <a href="https://github.com/ccch1mneyyy/dsh-Go" target="_blank" rel="noopener" class="anv-github-link" style="font-size:12px;color:var(--text-subtle);text-decoration:underline;">
+              🐙 参考开源项目 dsh-Go (GitHub 仓库与 Releases)
             </a>
           </div>
         </div>
@@ -2622,6 +2682,22 @@
               <button type="button" class="phone-agent-action-btn primary" id="pa-run-task-btn">
                 ▶ 执行辅助
               </button>
+            </div>
+          </div>
+
+          <!-- 免 API 本地直控快捷按钮组（让用户无需配置 API Key 即可 100% 成功测试手机控制） -->
+          <div style="margin-top:8px;">
+            <div style="font-size:12px;font-weight:600;margin-bottom:6px;display:flex;align-items:center;gap:6px;">
+              <span>⚡ 免 API 本地控制测试（无需填 Key 直接验证控制）：</span>
+            </div>
+            <div class="phone-agent-quick-test-row" style="display:flex;gap:6px;flex-wrap:wrap;">
+              <button type="button" class="pa-quick-test-btn" data-cmd="回桌面">🏠 回桌面</button>
+              <button type="button" class="pa-quick-test-btn" data-cmd="返回">◀ 返回</button>
+              <button type="button" class="pa-quick-test-btn" data-cmd="下滑">📜 向下滑动</button>
+              <button type="button" class="pa-quick-test-btn" data-cmd="上滑">🔼 向上滑动</button>
+              <button type="button" class="pa-quick-test-btn" data-cmd="最近任务">📑 最近任务</button>
+              <button type="button" class="pa-quick-test-btn" data-cmd="打开设置">⚙️ 打开设置</button>
+              <button type="button" class="pa-quick-test-btn" data-cmd="打开微信">💬 打开微信</button>
             </div>
           </div>
 
@@ -2665,6 +2741,187 @@
       </div>
     </div>
   </dialog>
+
+  <!-- 移动端 1:1 DeepSeek 正版全屏设置页面（对应官方 App 截屏 1） -->
+  <div id="mobile-fullscreen-settings" class="mobile-fullscreen-settings hidden" role="region" aria-label="移动端设置中心">
+    <div class="mfs-header">
+      <button type="button" class="mfs-back-btn" id="mfs-back-btn" aria-label="返回对话主屏">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <polyline points="15 18 9 12 15 6"></polyline>
+        </svg>
+      </button>
+      <h2 class="mfs-title">设置</h2>
+    </div>
+
+    <div class="mfs-scroll-body">
+      <!-- 分组 1：账户 -->
+      <div class="mfs-group">
+        <div class="mfs-group-title">账户</div>
+        <div class="mfs-card">
+          <div class="mfs-item" id="mfs-item-profile">
+            <div class="mfs-item-left">
+              <div class="mfs-icon-wrap">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#4d6bfe" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+              </div>
+              <span class="mfs-label" id="mfs-account-label">DeepSeek 官方离线沙盒用户</span>
+            </div>
+            <div class="mfs-item-right">
+              <span class="mfs-value" id="mfs-account-sub">已就绪</span>
+              <span class="mfs-arrow">›</span>
+            </div>
+          </div>
+          <div class="mfs-item" id="mfs-item-datamanage">
+            <div class="mfs-item-left">
+              <div class="mfs-icon-wrap">
+                <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path></svg>
+              </div>
+              <span class="mfs-label">数据管理</span>
+            </div>
+            <div class="mfs-item-right">
+              <span class="mfs-arrow">›</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 分组 2：应用 -->
+      <div class="mfs-group">
+        <div class="mfs-group-title">应用</div>
+        <div class="mfs-card">
+          <div class="mfs-item" id="mfs-item-lang">
+            <div class="mfs-item-left">
+              <div class="mfs-icon-wrap">
+                <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+              </div>
+              <span class="mfs-label">语言</span>
+            </div>
+            <div class="mfs-item-right">
+              <span class="mfs-value">中文 (简体中文)</span>
+              <span class="mfs-arrow">›</span>
+            </div>
+          </div>
+
+          <div class="mfs-item" id="mfs-item-theme">
+            <div class="mfs-item-left">
+              <div class="mfs-icon-wrap">
+                <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
+              </div>
+              <span class="mfs-label">外观</span>
+            </div>
+            <div class="mfs-item-right">
+              <span class="mfs-value" id="mfs-theme-value">跟随系统</span>
+              <span class="mfs-arrow">›</span>
+            </div>
+          </div>
+
+          <div class="mfs-item" id="mfs-item-apikey">
+            <div class="mfs-item-left">
+              <div class="mfs-icon-wrap">
+                <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"></path></svg>
+              </div>
+              <span class="mfs-label">个人 API 密钥</span>
+            </div>
+            <div class="mfs-item-right">
+              <span class="mfs-value" id="mfs-apikey-value">点击配置</span>
+              <span class="mfs-arrow">›</span>
+            </div>
+          </div>
+
+          <!-- 抽屉：API 密钥快速输入 -->
+          <div class="mfs-expandable-drawer hidden" id="mfs-apikey-drawer">
+            <input type="password" class="mfs-input" id="mfs-apikey-input" placeholder="输入 DeepSeek 官网 API Key (sk-...)" />
+            <div class="mfs-btn-row">
+              <button type="button" class="mfs-mini-btn" id="mfs-save-apikey-btn">保存直连密钥</button>
+            </div>
+          </div>
+
+          <div class="mfs-item" id="mfs-item-phoneagent">
+            <div class="mfs-item-left">
+              <div class="mfs-icon-wrap">
+                <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect><line x1="12" y1="18" x2="12.01" y2="18"></line></svg>
+              </div>
+              <span class="mfs-label">手机辅助与悬浮打字</span>
+            </div>
+            <div class="mfs-item-right">
+              <span class="mfs-value" id="mfs-phoneagent-value">无障碍与悬浮球</span>
+              <span class="mfs-arrow">›</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 分组 3：语音 -->
+      <div class="mfs-group">
+        <div class="mfs-group-title">语音</div>
+        <div class="mfs-card">
+          <div class="mfs-item" id="mfs-item-voice">
+            <div class="mfs-item-left">
+              <div class="mfs-icon-wrap">
+                <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>
+              </div>
+              <span class="mfs-label">朗读音色</span>
+            </div>
+            <div class="mfs-item-right">
+              <span class="mfs-value">微软晓晓 (官方真声)</span>
+              <span class="mfs-arrow">›</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 分组 4：关于 -->
+      <div class="mfs-group">
+        <div class="mfs-group-title">关于</div>
+        <div class="mfs-card">
+          <div class="mfs-item" id="mfs-item-checkupdate">
+            <div class="mfs-item-left">
+              <div class="mfs-icon-wrap">
+                <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+              </div>
+              <span class="mfs-label">检查更新</span>
+            </div>
+            <div class="mfs-item-right">
+              <span class="mfs-value" id="mfs-version-value">1.7.2(109)</span>
+              <span class="mfs-arrow">›</span>
+            </div>
+          </div>
+
+          <div class="mfs-item" id="mfs-item-dshgo">
+            <div class="mfs-item-left">
+              <div class="mfs-icon-wrap">
+                <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+              </div>
+              <span class="mfs-label">服务协议与开源参考</span>
+            </div>
+            <div class="mfs-item-right">
+              <span class="mfs-value">dsh-Go</span>
+              <span class="mfs-arrow">›</span>
+            </div>
+          </div>
+
+          <div class="mfs-item" id="mfs-item-help">
+            <div class="mfs-item-left">
+              <div class="mfs-icon-wrap">
+                <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+              </div>
+              <span class="mfs-label">帮助与反馈</span>
+            </div>
+            <div class="mfs-item-right">
+              <span class="mfs-arrow">›</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 底部独立卡片：退出登录 / 重置 -->
+      <div class="mfs-action-card">
+        <button type="button" class="mfs-logout-btn" id="mfs-logout-btn">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+          <span>退出登录 / 重置本地沙盒</span>
+        </button>
+      </div>
+    </div>
+  </div>
 
   <!-- 全局 Top-Layer 顶层轻提示胶囊（popover="manual" 确保在任何模态 <dialog> 打开时依然 100% 可见，遵循 persistent-toast-notifications 规范） -->
   <div id="global-top-toast" popover="manual" class="global-top-toast" role="status" aria-live="polite"></div>

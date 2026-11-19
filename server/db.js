@@ -328,6 +328,7 @@ ensureColumn('sessions', 'ds_tools_enabled', 'INTEGER NOT NULL DEFAULT 1');
 ensureColumn('sessions', 'proactive_enabled', 'INTEGER NOT NULL DEFAULT 0');
 ensureColumn('sessions', 'pinned', 'INTEGER NOT NULL DEFAULT 0');
 ensureColumn('sessions', 'title_locked', 'INTEGER NOT NULL DEFAULT 0');
+ensureColumn('users', 'is_banned', 'INTEGER NOT NULL DEFAULT 0');
 ensureColumn('sessions', 'session_prompt', "TEXT NOT NULL DEFAULT ''");
 
 // 平滑修正旧版初始会话好感度默认值(18/22/15 -> 22/26/18)与默认关闭自动闲置插话
@@ -2090,6 +2091,7 @@ function sanitizeUser(row) {
     avatar: row.avatar || '我',
     role: row.role || 'user',
     is_admin: row.role === 'admin',
+    is_banned: row.is_banned === 1,
     onboarding_done: row.onboarding_done === 1,
     user_persona: {
       role: row.user_persona_role || '命中注定的重逢旅人',
@@ -2143,6 +2145,12 @@ function getUserByToken(token) {
     return null;
   }
   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(sess.user_id);
+  if (!user || user.is_banned === 1) {
+    if (user && user.is_banned === 1) {
+      db.prepare('DELETE FROM auth_sessions WHERE user_id = ?').run(user.id);
+    }
+    return null;
+  }
   return sanitizeUser(user);
 }
 
@@ -2198,6 +2206,9 @@ function loginUser({ email, password }) {
   const row = db.prepare('SELECT * FROM users WHERE email = ?').get(cleanEmail);
   if (!row || !verifyPassword(password, row.password_hash)) {
     throw new Error('邮箱账号或密码不正确，请检查后重试');
+  }
+  if (row.is_banned === 1) {
+    throw new Error('该账号已被管理员封禁，无法登录系统，请联系管理员处理');
   }
   const token = createAuthSessionToken(row.id);
   return { user: sanitizeUser(row), token };
@@ -3570,6 +3581,7 @@ function getAdminDashboardData() {
       nickname: u.nickname,
       avatar: u.avatar,
       role: u.role || 'user',
+      is_banned: u.is_banned === 1,
       points: snap.points,
       online_credits: snap.online_credits,
       tier_name: snap.tier_name,
@@ -3705,6 +3717,88 @@ function updateAdminCredentials(adminUserId, { current_password, new_email, new_
   }
 
   return sanitizeUser(db.prepare('SELECT * FROM users WHERE id = ?').get(adminUserId));
+}
+
+/**
+ * 管理员重置指定用户密码
+ */
+function adminResetUserPassword(adminUserId, targetUserId, newPassword) {
+  const row = db.prepare('SELECT * FROM users WHERE id = ?').get(targetUserId);
+  if (!row) throw new Error('目标用户不存在');
+  const cleanPwd = String(newPassword || '').trim();
+  if (cleanPwd.length < 6) {
+    throw new Error('新密码长度不能少于 6 位');
+  }
+  const nextHash = hashPassword(cleanPwd);
+  const now = Date.now();
+  db.prepare('UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?').run(nextHash, now, targetUserId);
+  // 踢除该用户所有的历史登录 token，要求其使用新密码重新登录
+  db.prepare('DELETE FROM auth_sessions WHERE user_id = ?').run(targetUserId);
+  return getAdminDashboardData();
+}
+
+/**
+ * 管理员一键封禁 / 解除封禁用户
+ */
+function adminToggleUserBan(adminUserId, targetUserId, shouldBan) {
+  const row = db.prepare('SELECT * FROM users WHERE id = ?').get(targetUserId);
+  if (!row) throw new Error('目标用户不存在');
+  if (row.role === 'admin' || row.id === 'user_admin' || row.id === adminUserId) {
+    throw new Error('无法封禁管理员或主账号');
+  }
+  const banVal = shouldBan ? 1 : 0;
+  const now = Date.now();
+  db.prepare('UPDATE users SET is_banned = ?, updated_at = ? WHERE id = ?').run(banVal, now, targetUserId);
+  if (banVal === 1) {
+    // 立即销毁该用户所有会话 token，迫使其下线
+    db.prepare('DELETE FROM auth_sessions WHERE user_id = ?').run(targetUserId);
+  }
+  return getAdminDashboardData();
+}
+
+/**
+ * 管理员修改用户角色 (user / admin)
+ */
+function adminSetUserRole(adminUserId, targetUserId, newRole) {
+  const row = db.prepare('SELECT * FROM users WHERE id = ?').get(targetUserId);
+  if (!row) throw new Error('目标用户不存在');
+  if (row.id === 'user_admin') {
+    throw new Error('主管理员账户角色受系统保护，不可更改');
+  }
+  const role = newRole === 'admin' ? 'admin' : 'user';
+  const now = Date.now();
+  db.prepare('UPDATE users SET role = ?, updated_at = ? WHERE id = ?').run(role, now, targetUserId);
+  return getAdminDashboardData();
+}
+
+/**
+ * 管理员删除指定违规用户及级联数据
+ */
+function adminDeleteUser(adminUserId, targetUserId) {
+  const row = db.prepare('SELECT * FROM users WHERE id = ?').get(targetUserId);
+  if (!row) throw new Error('目标用户不存在');
+  if (row.role === 'admin' || row.id === 'user_admin' || row.id === adminUserId) {
+    throw new Error('无法删除管理员账户');
+  }
+
+  // 级联删除该用户的会话与消息与记忆
+  const userSessions = db.prepare('SELECT id FROM sessions WHERE user_id = ?').all(targetUserId);
+  for (const s of userSessions) {
+    db.prepare('DELETE FROM messages WHERE session_id = ?').run(s.id);
+    db.prepare('DELETE FROM memories WHERE session_id = ?').run(s.id);
+  }
+  db.prepare('DELETE FROM sessions WHERE user_id = ?').run(targetUserId);
+  db.prepare('DELETE FROM user_settings WHERE user_id = ?').run(targetUserId);
+  db.prepare('DELETE FROM auth_sessions WHERE user_id = ?').run(targetUserId);
+  db.prepare('DELETE FROM recharge_orders WHERE user_id = ?').run(targetUserId);
+  db.prepare('DELETE FROM point_ledger WHERE user_id = ?').run(targetUserId);
+  db.prepare('DELETE FROM user_daily_events WHERE user_id = ?').run(targetUserId);
+  db.prepare('DELETE FROM user_checkins WHERE user_id = ?').run(targetUserId);
+  db.prepare('DELETE FROM user_task_claims WHERE user_id = ?').run(targetUserId);
+  db.prepare('DELETE FROM user_redeem_logs WHERE user_id = ?').run(targetUserId);
+  db.prepare('DELETE FROM users WHERE id = ?').run(targetUserId);
+
+  return getAdminDashboardData();
 }
 
 // 兼容内部旧函数签名
@@ -4322,5 +4416,9 @@ module.exports = {
   deleteAdminRedeemCode,
   getAdminDashboardData,
   adminAdjustUserAssets,
-  updateAdminCredentials
+  updateAdminCredentials,
+  adminResetUserPassword,
+  adminToggleUserBan,
+  adminSetUserRole,
+  adminDeleteUser
 };

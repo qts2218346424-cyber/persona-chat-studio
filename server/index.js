@@ -50,7 +50,11 @@ const {
   deleteAdminRedeemCode,
   getAdminDashboardData,
   adminAdjustUserAssets,
-  updateAdminCredentials
+  updateAdminCredentials,
+  adminResetUserPassword,
+  adminToggleUserBan,
+  adminSetUserRole,
+  adminDeleteUser
 } = require('./db');
 const {
   replaceRoleplayMacros,
@@ -365,19 +369,24 @@ function listSessionsForUser(userId) {
   });
 }
 
-function extractAuthToken(req) {
+function extractAuthToken(req, parsedUrl = null) {
   const authHeader = String(req.headers.authorization || '').trim();
   if (/^Bearer\s+/i.test(authHeader)) {
     const bearerToken = authHeader.replace(/^Bearer\s+/i, '').trim();
     if (bearerToken) return bearerToken;
   }
   const cookies = parseCookies(req);
-  return cookies[COOKIE_NAME] || '';
+  if (cookies[COOKIE_NAME]) return cookies[COOKIE_NAME];
+  if (parsedUrl && parsedUrl.searchParams) {
+    const qToken = parsedUrl.searchParams.get('token');
+    if (qToken) return qToken.trim();
+  }
+  return '';
 }
 
 async function handleApi(req, res, pathname, parsedUrl) {
   const method = req.method || 'GET';
-  const currentToken = extractAuthToken(req);
+  const currentToken = extractAuthToken(req, parsedUrl);
   const currentUser = getUserByToken(currentToken);
 
   // ========= 0. 服务健康探针公开接口 =========
@@ -389,6 +398,80 @@ async function handleApi(req, res, pathname, parsedUrl) {
       uptime: Math.round(process.uptime()),
       ts: Date.now()
     });
+  }
+
+  // ========= 0.1 客户端版本更新检查公开接口 =========
+  if (method === 'GET' && (pathname === '/api/app-version' || pathname === '/api/version')) {
+    const fs = require('fs');
+    const path = require('path');
+    const apkPath = path.join(__dirname, '../public/downloads/deepseek-studio.apk');
+    let apkSizeBytes = 8785578;
+    let apkMtime = Date.now();
+    try {
+      if (fs.existsSync(apkPath)) {
+        const stat = fs.statSync(apkPath);
+        apkSizeBytes = stat.size;
+        apkMtime = stat.mtimeMs;
+      }
+    } catch (e) {}
+
+    return sendJson(res, 200, {
+      ok: true,
+      latestVersion: '1.8.0',
+      versionCode: 110,
+      minSupportedVersion: '1.0.0',
+      releaseDate: '2026-11-20',
+      fileSize: (apkSizeBytes / (1024 * 1024)).toFixed(2) + ' MB',
+      fileSizeBytes: apkSizeBytes,
+      downloadUrl: '/api/download/apk',
+      fallbackDownloadUrl: 'https://star.claudexxb.online/api/download/apk',
+      githubReleasesUrl: 'https://github.com/ccch1mneyyy/dsh-Go/releases',
+      changelog: [
+        '严格安全认证：开启全站严格注册登录防护，未注册用户无法访问与下载',
+        '管理员后台全权限中心：支持查看所有用户、重置密码、一键封禁/解封、修改角色与删除违规账号',
+        '手机端 1:1 DeepSeek 正版全屏设置页面：卡片式结构与返回导航，极简易用',
+        '手机端 1:1 DeepSeek 沉浸全屏聊天流：消除边缘黑边与多余留白，官方淡蓝灰气泡',
+        '正版悬浮输入舱：大圆角悬浮卡片、深度思考与联网搜索切换药丸、安全区贴合防遮挡',
+        '官方思考折叠块：已思考 (用时 X 秒) 折叠框与极简操作栏',
+        '全局悬浮打字面板与免 API 离线规则手机控制'
+      ]
+    });
+  }
+
+  // ========= 0.2 受保护的 APK 官方客户端下载接口（严格鉴权，未注册/未登录拒绝下载） =========
+  if (method === 'GET' && (pathname === '/api/download/apk' || pathname === '/downloads/deepseek-studio.apk')) {
+    if (!currentUser) {
+      const accept = String(req.headers.accept || '');
+      if (accept.includes('application/json')) {
+        return sendJson(res, 401, {
+          error: '请先注册并登录正式账号后，再下载 APK 客户端',
+          code: 'LOGIN_REQUIRED'
+        });
+      }
+      // 浏览器直链点击拦截：重定向回首页并唤起注册登录面板
+      res.writeHead(302, {
+        Location: '/?auth=login&msg=download_login_required',
+        ...SECURITY_HEADERS
+      });
+      res.end();
+      return;
+    }
+
+    const apkPath = path.join(__dirname, '../public/downloads/deepseek-studio.apk');
+    if (!fs.existsSync(apkPath)) {
+      return sendJson(res, 404, { error: 'APK 安装包生成中，请稍后刷新重试' });
+    }
+
+    const stat = fs.statSync(apkPath);
+    res.writeHead(200, {
+      'Content-Type': 'application/vnd.android.package-archive',
+      'Content-Length': stat.size,
+      'Content-Disposition': 'attachment; filename="DeepSeek_StarWhisper_v1.8.0.apk"',
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      ...SECURITY_HEADERS
+    });
+    fs.createReadStream(apkPath).pipe(res);
+    return;
   }
 
   // ========= 1. 账号认证公开接口 =========
@@ -430,19 +513,16 @@ async function handleApi(req, res, pathname, parsedUrl) {
         password: body.password
       });
       return sendJson(res, 200, { user, token }, { 'Set-Cookie': buildAuthCookie(token) });
-    } catch {
-      return sendJson(res, 401, { error: '邮箱账号或密码不正确，请检查后重试' });
+    } catch (err) {
+      return sendJson(res, 401, { error: err.message || '邮箱账号或密码不正确，请检查后重试' });
     }
   }
 
   if (method === 'POST' && pathname === '/api/auth/demo-login') {
-    const ip = getClientIp(req);
-    if (!checkRateLimit(`guest:${ip}`, 15, 60000)) {
-      return sendJson(res, 429, { error: '访客创建过于频繁，请稍后再试' });
-    }
-    const body = await readJsonBody(req, 16 * 1024);
-    const { user, token, is_new_guest } = loginDemoAccount(body.guest_user_id || '');
-    return sendJson(res, 200, { user, token, is_new_guest }, { 'Set-Cookie': buildAuthCookie(token) });
+    return sendJson(res, 403, {
+      error: '系统已启用严格注册模式：免注册体验通道已关闭，请先注册正式账号登录后再使用',
+      code: 'REGISTRATION_REQUIRED'
+    });
   }
 
   if (method === 'POST' && pathname === '/api/auth/logout') {
@@ -820,6 +900,57 @@ async function handleApi(req, res, pathname, parsedUrl) {
       try {
         const dash = adminAdjustUserAssets(userId, targetUid, body);
         return sendJson(res, 200, dash);
+      } catch (err) {
+        return sendJson(res, 400, { error: err.message });
+      }
+    }
+
+    // 管理员重置指定用户密码
+    const resetPwdMatch = pathname.match(/^\/api\/admin\/users\/([^/]+)\/reset-password$/);
+    if (resetPwdMatch && method === 'POST') {
+      const targetUid = decodeURIComponent(resetPwdMatch[1]);
+      const body = await readJsonBody(req, 16 * 1024);
+      try {
+        const dash = adminResetUserPassword(userId, targetUid, body.new_password);
+        return sendJson(res, 200, { ok: true, message: '用户密码已重置成功', ...dash });
+      } catch (err) {
+        return sendJson(res, 400, { error: err.message });
+      }
+    }
+
+    // 管理员一键切换用户封禁/解封状态
+    const toggleBanMatch = pathname.match(/^\/api\/admin\/users\/([^/]+)\/toggle-ban$/);
+    if (toggleBanMatch && method === 'POST') {
+      const targetUid = decodeURIComponent(toggleBanMatch[1]);
+      const body = await readJsonBody(req, 16 * 1024);
+      try {
+        const dash = adminToggleUserBan(userId, targetUid, Boolean(body.ban));
+        return sendJson(res, 200, { ok: true, message: body.ban ? '账号已封禁并强制下线' : '账号已解除封禁', ...dash });
+      } catch (err) {
+        return sendJson(res, 400, { error: err.message });
+      }
+    }
+
+    // 管理员设置用户角色 (user / admin)
+    const setRoleMatch = pathname.match(/^\/api\/admin\/users\/([^/]+)\/set-role$/);
+    if (setRoleMatch && method === 'POST') {
+      const targetUid = decodeURIComponent(setRoleMatch[1]);
+      const body = await readJsonBody(req, 16 * 1024);
+      try {
+        const dash = adminSetUserRole(userId, targetUid, body.role);
+        return sendJson(res, 200, { ok: true, message: '用户角色已更新', ...dash });
+      } catch (err) {
+        return sendJson(res, 400, { error: err.message });
+      }
+    }
+
+    // 管理员删除指定用户账号及所有级联数据
+    const deleteUserMatch = pathname.match(/^\/api\/admin\/users\/([^/]+)$/);
+    if (deleteUserMatch && method === 'DELETE') {
+      const targetUid = decodeURIComponent(deleteUserMatch[1]);
+      try {
+        const dash = adminDeleteUser(userId, targetUid);
+        return sendJson(res, 200, { ok: true, message: '用户账号及所有关联数据已彻底删除', ...dash });
       } catch (err) {
         return sendJson(res, 400, { error: err.message });
       }
@@ -3557,6 +3688,21 @@ function serveStatic(req, res, pathname) {
   }
 
   const safePath = decodedPath === '/' ? 'index.html' : decodedPath.replace(/^[/\\]+/, '');
+
+  // 严格安全限制：禁止未登录用户直接静态下载 APK 文件
+  if (safePath.endsWith('.apk') || safePath.startsWith('downloads/')) {
+    const token = extractAuthToken(req);
+    const user = getUserByToken(token);
+    if (!user) {
+      res.writeHead(302, {
+        Location: '/?auth=login&msg=download_login_required',
+        ...SECURITY_HEADERS
+      });
+      res.end();
+      return;
+    }
+  }
+
   const resolvedPath = path.resolve(PUBLIC_DIR, safePath);
   const rel = path.relative(PUBLIC_DIR, resolvedPath);
 

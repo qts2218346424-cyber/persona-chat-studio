@@ -662,6 +662,9 @@
       if (!parsed.companions) parsed.companions = {};
       if (!parsed.memories) parsed.memories = {};
       if (!parsed.lorebooks) parsed.lorebooks = {};
+      if (parsed.settings && (parsed.settings.deepseek_model === 'deepseek-flash' || !parsed.settings.deepseek_model)) {
+        parsed.settings.deepseek_model = 'deepseek-chat';
+      }
       return parsed;
     }
 
@@ -694,7 +697,7 @@
       settings: {
         provider: 'demo',
         deepseek_base_url: 'https://api.deepseek.com/v1/chat/completions',
-        deepseek_model: 'deepseek-flash',
+        deepseek_model: 'deepseek-chat',
         deepseek_api_key: '',
         custom_gateway_url: '',
         custom_gateway_model: '',
@@ -960,7 +963,7 @@
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
         body: JSON.stringify({
-          model: model || 'deepseek-flash',
+          model: model || 'deepseek-chat',
           messages: [{ role: 'user', content: prompt }],
           temperature: 0.9,
           max_tokens: 240,
@@ -1449,7 +1452,7 @@
       }
       const rawBase = String(bodyObj?.own_api_base_url || dbObj.settings.deepseek_base_url || '').trim();
       const ep = resolveEndpoints(rawBase || 'https://api.deepseek.com/v1/chat/completions');
-      const targetModel = String(bodyObj?.own_deepseek_model || dbObj.settings.deepseek_model || 'deepseek-flash').trim();
+      const targetModel = String(bodyObj?.own_deepseek_model || dbObj.settings.deepseek_model || 'deepseek-chat').trim();
       try {
         if (ep.chatUrl.includes('deepseek.com')) {
           const r = await originalFetch(ep.balanceUrl, {
@@ -1587,7 +1590,7 @@
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
           body: JSON.stringify({
-            model: 'deepseek-flash',
+            model: 'deepseek-chat',
             messages: [
               {
                 role: 'system',
@@ -2048,7 +2051,7 @@
         replies = await generateDynamicFollowUpsOnline({
           apiKey,
           baseUrl: dbObj.settings.deepseek_base_url,
-          model: (dbObj.settings.deepseek_model || 'deepseek-flash').trim(),
+          model: (dbObj.settings.deepseek_model || 'deepseek-chat').trim(),
           isPure,
           persona: p,
           nickname: dbObj.user.nickname,
@@ -2194,11 +2197,13 @@
         if (apiKey) {
           const ep = resolveEndpoints(dbObj.settings.deepseek_base_url);
           const isOfficialDs = ep.chatUrl.includes('deepseek.com');
-          const savedModel = (dbObj.settings.deepseek_model || 'deepseek-flash').trim();
-          const model =
-            isOfficialDs && (savedModel === 'deepseek-chat' || savedModel === 'deepseek-reasoner')
-              ? (enableThink ? 'deepseek-reasoner' : 'deepseek-chat')
-              : savedModel || 'deepseek-flash';
+          const savedModel = (dbObj.settings.deepseek_model || '').trim();
+          let model = 'deepseek-chat';
+          if (isOfficialDs) {
+            model = enableThink ? 'deepseek-reasoner' : 'deepseek-chat';
+          } else {
+            model = (savedModel && savedModel !== 'deepseek-flash') ? savedModel : (enableThink ? 'deepseek-reasoner' : 'deepseek-chat');
+          }
           const memHint = (dbObj.memories[sid] || []).map((m) => `- ${m.content}`).join('\n');
           const sessPromptHint = sess.session_prompt && sess.session_prompt.trim()
             ? `\n【本对话专属独立设定】：\n${sess.session_prompt.trim()}\n`
@@ -2275,27 +2280,36 @@
           const reqBody = {
             model,
             messages: payloadMsgs,
-            stream: true,
-            stream_options: { include_usage: true }
+            stream: true
           };
-          if (/deepseek-flash|v4(?:\.1)?[-_]?flash/i.test(model)) {
-            if (isOfficialDs) {
-              reqBody.thinking = { type: enableThink ? 'enabled' : 'disabled' };
-            } else if (ep.chatUrl.includes('siliconflow.cn') || ep.chatUrl.includes('aliyuncs.com')) {
-              reqBody.enable_thinking = Boolean(enableThink);
-            }
+          if (!isOfficialDs) {
+            reqBody.stream_options = { include_usage: true };
           }
-          if (model !== 'deepseek-reasoner' && sess.ds_json_mode === 1) {
+          if (model === 'deepseek-chat' && sess.ds_json_mode === 1) {
             reqBody.response_format = { type: 'json_object' };
           }
 
-          const resp = await originalFetch(prefix ? ep.betaChatUrl : ep.chatUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-            body: JSON.stringify(reqBody),
-            signal
-          });
-          if (!resp.ok) throw new Error(`DeepSeek API (${resp.status})`);
+          let resp;
+          try {
+            resp = await originalFetch(prefix ? ep.betaChatUrl : ep.chatUrl, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+              body: JSON.stringify(reqBody),
+              signal
+            });
+          } catch (netErr) {
+            throw new Error(`连接 DeepSeek 官方服务超时或网络失败: ${netErr.message}`);
+          }
+          if (!resp.ok) {
+            let detail = '';
+            try {
+              const ej = await resp.json();
+              detail = ej.error?.message || JSON.stringify(ej);
+            } catch {
+              detail = await resp.text();
+            }
+            throw new Error(`DeepSeek 接口异常 (${resp.status}): ${detail}`);
+          }
           const dec = new TextDecoder();
           let buf = '';
           for await (const ch of resp.body) {
@@ -2402,7 +2416,7 @@
             dynFollowUps = await generateDynamicFollowUpsOnline({
               apiKey,
               baseUrl: ep.chatUrl,
-              model: (dbObj.settings.deepseek_model || 'deepseek-flash').trim(),
+              model: (dbObj.settings.deepseek_model || 'deepseek-chat').trim(),
               isPure,
               persona: p,
               nickname: dbObj.user.nickname,

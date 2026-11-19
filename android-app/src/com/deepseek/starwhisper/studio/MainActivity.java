@@ -459,6 +459,15 @@ public class MainActivity extends Activity {
         }
 
         @JavascriptInterface
+        public String executeLocalRule(String command) {
+            AgentAccessibilityService service = AgentAccessibilityService.getInstance();
+            if (service == null) {
+                return "❌ 无障碍服务未就绪，请先在系统设置中开启无障碍服务";
+            }
+            return service.executeLocalRule(command);
+        }
+
+        @JavascriptInterface
         public void showToast(final String message) {
             runOnUiThread(new Runnable() {
                 @Override

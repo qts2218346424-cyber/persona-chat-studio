@@ -308,15 +308,15 @@
     const hitRate = totalPrompt > 0 ? Math.round((monitorState.sessionHitTokens / totalPrompt) * 100) : null;
 
     const balPart = monitorState.loadingBalance && monitorState.totalBalance === null
-      ? '🐋 查余额…'
+      ? '查余额…'
       : monitorState.balanceSupported && monitorState.totalBalance !== null
-      ? `🐋 ${monitorState.symbol}${monitorState.totalBalance}`
-      : '🔑 个人API';
+      ? `${monitorState.symbol}${monitorState.totalBalance}`
+      : '个人 API';
 
     const cachePart =
       hitRate !== null
-        ? `<span class="oss-cache-tag">⚡ 缓冲 ${hitRate}%</span>`
-        : '<span class="oss-cache-tag">⚡ 缓冲就绪</span>';
+        ? `<span class="oss-cache-tag">缓存 ${hitRate}%</span>`
+        : '<span class="oss-cache-tag">缓存就绪</span>';
 
     const isLow =
       monitorState.balanceSupported &&
@@ -327,7 +327,7 @@
 
     const titleEl = pop.querySelector('#oss-mon-provider-title');
     if (titleEl) {
-      titleEl.textContent = `🐋 ${monitorState.providerLabel} 实时监控`;
+      titleEl.textContent = `${monitorState.providerLabel} 实时监控`;
     }
 
     const balNumEl = pop.querySelector('#oss-mon-bal-num');
@@ -336,7 +336,7 @@
     if (monitorState.balanceSupported && monitorState.totalBalance !== null) {
       if (balNumEl) balNumEl.textContent = `${monitorState.symbol} ${monitorState.totalBalance}`;
       if (balStatusEl) {
-        balStatusEl.textContent = monitorState.isAvailable ? '🟢 余额充足可用' : '🔴 余额不足';
+        balStatusEl.textContent = monitorState.isAvailable ? '余额充足可用' : '余额不足';
         balStatusEl.classList.toggle('warn', !monitorState.isAvailable);
       }
       if (balSubEl) {
@@ -348,7 +348,7 @@
     } else {
       if (balNumEl) balNumEl.textContent = monitorState.model || '直连就绪';
       if (balStatusEl) {
-        balStatusEl.textContent = monitorState.loadingBalance ? '⏳ 同步中…' : '🟢 个人密钥生效中';
+        balStatusEl.textContent = monitorState.loadingBalance ? '同步中…' : '个人密钥生效中';
         balStatusEl.classList.remove('warn');
       }
       if (balSubEl) {
@@ -398,7 +398,7 @@
 
     monitorState.loadingBalance = true;
     const refreshBtn = document.getElementById('oss-mon-refresh-btn');
-    if (refreshBtn) refreshBtn.textContent = '⏳ 查询中…';
+    if (refreshBtn) refreshBtn.textContent = '查询中…';
     renderMonitorUi();
 
     try {
@@ -429,7 +429,7 @@
       monitorState.errorMsg = '网络波动，稍后可点右上角重试';
     } finally {
       monitorState.loadingBalance = false;
-      if (refreshBtn) refreshBtn.textContent = '🔄 刷新余额';
+      if (refreshBtn) refreshBtn.textContent = '刷新余额';
       renderMonitorUi();
     }
   }

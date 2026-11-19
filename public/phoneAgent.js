@@ -51,7 +51,7 @@
         } else {
           a11yTag.className = 'phone-agent-status-tag pending';
           a11yTag.textContent = '○ 无障碍未授权';
-          if (a11yBtn) a11yBtn.textContent = '👉 开启无障碍服务';
+          if (a11yBtn) a11yBtn.textContent = '开启无障碍服务';
         }
       }
 
@@ -166,20 +166,20 @@
 
       var apiKey = this.getUserApiKey();
       if (!apiKey) {
-        alert('请先在「⚙️ 设置 ➔ 🔑 连接与密钥」中配置您自己的 DeepSeek API 密钥，以便让 AI 驱动手机自动化操作！');
+        alert('请先在「设置 ➔ 连接与密钥」中配置您自己的 DeepSeek API 密钥，以便让 AI 驱动手机自动化操作！');
         return;
       }
 
       this.isTaskRunning = true;
       bridge.resetEmergencyStop();
       bridge.updateFloatState('thinking', '正在理解任务与扫描屏幕...');
-      this.log('🚀 开始执行任务: ' + taskPrompt);
+      this.log('[开始] 执行任务: ' + taskPrompt);
 
       try {
         for (var step = 1; step <= 5; step++) {
           // 检查用户是否点击了物理急停
           if (bridge.isEmergencyStopRequested()) {
-            this.log('🛑 用户在屏幕悬浮球上触发了物理急停，自动化已立即终止！');
+            this.log('[急停] 用户在屏幕悬浮球上触发了物理急停，自动化已立即终止！');
             bridge.showToast('已安全急停');
             break;
           }
@@ -190,12 +190,12 @@
           try {
             hierarchyData = JSON.parse(hierarchyJsonStr);
           } catch (e) {
-            this.log('❌ 节点树解析失败: ' + e.message);
+            this.log('[错误] 节点树解析失败: ' + e.message);
             break;
           }
 
           if (hierarchyData.error) {
-            this.log('⚠️ ' + hierarchyData.error);
+            this.log('[警告] ' + hierarchyData.error);
             break;
           }
 
@@ -262,11 +262,11 @@
             }
           }
 
-          this.log('💡 AI 决策: ' + (actionObj.thought || actionObj.action));
+          this.log('[决策] AI 决策: ' + (actionObj.thought || actionObj.action));
           bridge.updateFloatState('executing', '执行动作: ' + actionObj.action);
 
           if (actionObj.action === 'finish') {
-            this.log('🎉 任务成功完成: ' + (actionObj.message || '目标达成'));
+            this.log('[完成] 任务成功完成: ' + (actionObj.message || '目标达成'));
             bridge.showToast('任务完成: ' + (actionObj.message || '目标达成'));
             break;
           } else if (actionObj.action === 'click') {
@@ -289,12 +289,12 @@
           await new Promise(function (resolve) { setTimeout(resolve, 1200); });
         }
       } catch (err) {
-        this.log('❌ 发生异常: ' + err.message);
+        this.log('[异常] 发生异常: ' + err.message);
         bridge.showToast('执行异常: ' + err.message);
       } finally {
         this.isTaskRunning = false;
         bridge.updateFloatState('idle', '星语 AI 待命');
-        this.log('🏁 自动化辅助流程结束');
+        this.log('[结束] 自动化辅助流程完成');
       }
     },
 

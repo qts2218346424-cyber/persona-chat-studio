@@ -4572,6 +4572,15 @@ dialog::backdrop {
   white-space: nowrap;
   text-align: center;
   transition: color 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.settings-tab svg {
+  flex-shrink: 0;
+  display: block;
 }
 
 .settings-tab:hover {

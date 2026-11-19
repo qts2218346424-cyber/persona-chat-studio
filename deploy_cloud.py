@@ -1,6 +1,8 @@
+import gzip
 import io
 import json
 import os
+import shutil
 import sys
 import tarfile
 import time
@@ -11,6 +13,26 @@ sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='repla
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 LOCAL_CRED_FILE = os.path.join(PROJECT_ROOT, '.deploy.local.json')
 KB_DEPLOY_SCRIPT = r'E:\知识库项目\deploy_all_update.py'
+
+
+def precompress_static_assets():
+    public_dir = os.path.join(PROJECT_ROOT, 'public')
+    exts = {'.js', '.css', '.html', '.svg', '.json'}
+    count = 0
+    for root, _, files in os.walk(public_dir):
+        for f in files:
+            if f.endswith('.gz'):
+                continue
+            ext = os.path.splitext(f)[1].lower()
+            if ext in exts:
+                fpath = os.path.join(root, f)
+                if os.path.getsize(fpath) < 512:
+                    continue
+                gz_path = fpath + '.gz'
+                with open(fpath, 'rb') as f_in, gzip.open(gz_path, 'wb', compresslevel=9) as f_out:
+                    shutil.copyfileobj(f_in, f_out)
+                count += 1
+    print(f'  [加速引擎] 已完成 {count} 个静态文件的极速 Gzip 预压缩 (.gz) 生成')
 
 
 def load_ssh_credentials():
@@ -66,7 +88,8 @@ def main():
     tar_name = f'star_whisper_pack_{int(time.time())}.tar.gz'
     tar_path = os.path.join(PROJECT_ROOT, tar_name)
 
-    print('Step 1: 正在打包 Persona Chat Studio · 星语恋庭 全栈部署包（保护云端 SQLite 存档不覆盖）...')
+    print('Step 1: 正在生成极速预压缩资产并打包 Persona Chat Studio · 星语恋庭 全栈部署包...')
+    precompress_static_assets()
     build_release_tar(tar_path)
     size_mb = os.path.getsize(tar_path) / (1024 * 1024)
     print(f'  打包完成，压缩包体积: {size_mb:.2f} MB')
@@ -195,6 +218,9 @@ curl -fsS http://127.0.0.1:3210/api/health
 echo ""
 echo "=== Nginx HTTPS SNI 路由探针 (star.claudexxb.online) ==="
 curl -fsSk --resolve star.claudexxb.online:443:127.0.0.1 https://star.claudexxb.online/api/health
+echo ""
+echo "=== Nginx HTTP/2 与静态文件零拷贝加速探针 (app.js) ==="
+curl -I -sSk --resolve star.claudexxb.online:443:127.0.0.1 -H "Accept-Encoding: gzip" https://star.claudexxb.online/app.js
 echo ""
 echo "=== 知识库主站回归探针 (claudexxb.online / 127.0.0.1:3002) ==="
 curl -fsS http://127.0.0.1:3002/api/health

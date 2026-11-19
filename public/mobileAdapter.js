@@ -61,10 +61,10 @@
     btn.innerHTML = `<span class="btn-full-lbl">${fullText}</span><span class="btn-short-lbl">${shortText}</span>`;
   }
 
-  applyResponsiveButtonLabels('topbar-script-switch-btn', '📖 换剧本', '📖 剧本');
-  applyResponsiveButtonLabels('toggle-right-btn', '💞 养成', '💞 养成');
-  applyResponsiveButtonLabels('topbar-companion-btn', '✨ 立绘', '✨ 立绘');
-  applyResponsiveButtonLabels('topbar-switch-ds-btn', '🐋 DeepSeek', '🐋 DS');
+  applyResponsiveButtonLabels('topbar-script-switch-btn', '换剧本', '剧本');
+  applyResponsiveButtonLabels('toggle-right-btn', '养成', '养成');
+  applyResponsiveButtonLabels('topbar-companion-btn', '立绘', '立绘');
+  applyResponsiveButtonLabels('topbar-switch-ds-btn', 'DeepSeek', 'DS');
   applyResponsiveButtonLabels('topbar-more-btn', '⋯', '⋯');
 
   // 顶栏左侧移动端空状态轻量品牌字标
@@ -161,7 +161,7 @@
       authSub.textContent = '沉浸互动剧本 · 立体陪伴配音 · 长效记忆对话馆';
     }
     if (signinSubmit) {
-      signinSubmit.textContent = '✨ 登录进入星语恋庭';
+      signinSubmit.textContent = '登录进入星语恋庭';
     }
   }
 

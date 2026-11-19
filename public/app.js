@@ -759,8 +759,19 @@
     clearTimeout(toastTimer);
     memoryToastEl.classList.add('hidden');
   });
+  function cleanUiEmojiText(raw) {
+    if (!raw) return '';
+    const s = String(raw);
+    return s
+      .replace(/[\u{1F300}-\u{1F9FF}\u{1FA00}-\u{1FAFF}\u{2600}-\u{27BF}\u{2300}-\u{23FF}\u{2B50}-\u{2B55}\u{3030}\u{303D}\u{3297}\u{3299}]/gu, '')
+      .replace(/\uFE0F/g, '')
+      .replace(/\s{2,}/g, ' ')
+      .trim();
+  }
+
   function showToast(text, durationMs = 3000) {
-    memoryToastEl.textContent = text;
+    const cleanText = cleanUiEmojiText(text);
+    memoryToastEl.textContent = cleanText;
     memoryToastEl.title = '点击可立即收起提示';
     memoryToastEl.classList.remove('hidden');
     clearTimeout(toastTimer);
@@ -771,7 +782,7 @@
     // 同步渲染至浏览器 Top Layer (popover="manual")，确保在任何模态 <dialog> 打开时依然 100% 清晰可见
     const topToast = document.getElementById('global-top-toast');
     if (topToast) {
-      topToast.textContent = text;
+      topToast.textContent = cleanText;
       try {
         if (typeof topToast.showPopover === 'function' && !topToast.matches(':popover-open')) {
           topToast.showPopover();
@@ -1001,7 +1012,7 @@
       signupForm.reset();
       document.getElementById('signup-avatar').value = '🎀';
       await enterWorkspace();
-      showToast('🎉 新账号创建成功！现在就可以开始体验角色扮演与智能对话！');
+      showToast('新账号创建成功！现在就可以开始体验角色扮演与智能对话！');
     } catch (err) {
       setAuthError(err.message);
     }
@@ -1011,7 +1022,7 @@
     setAuthError('');
     const origLabel = quickDemoLoginBtn.textContent;
     quickDemoLoginBtn.disabled = true;
-    quickDemoLoginBtn.textContent = '⏳ 正在进入星语恋庭…';
+    quickDemoLoginBtn.textContent = '正在进入星语恋庭…';
     try {
       resetClientWorkspaceState();
       const savedGuestId = window.__starAuthStore?.getGuestUserId() || '';
@@ -1022,7 +1033,7 @@
       applyAuthLoginPayload(res, { persistDefault: true, rememberGuest: true });
       await enterWorkspace();
       if (res.is_new_guest) {
-        showToast('🎀 已为您开启独立访客空间，聊天记录与记忆将自动保存！');
+        showToast('已为您开启独立访客空间，聊天记录与记忆将自动保存！');
       }
     } catch (err) {
       setAuthError(err.message);
@@ -1037,7 +1048,7 @@
       setAuthError('');
       const origLabel = freshGuestLoginBtn.textContent;
       freshGuestLoginBtn.disabled = true;
-      freshGuestLoginBtn.textContent = '⏳ 正在创建全新独立访客号，请稍候…';
+      freshGuestLoginBtn.textContent = '正在创建全新独立访客号，请稍候…';
       try {
         resetClientWorkspaceState();
         const res = await apiJson('/api/auth/demo-login', {
@@ -1047,7 +1058,7 @@
         // 新开测试访客仅绑定当前浏览器标签页，不影响其他打开的标签页账户
         applyAuthLoginPayload(res, { persistDefault: false, rememberGuest: false });
         await enterWorkspace();
-        showToast('🔒 已开启全新独立访客号，与之前的聊天记录完全隔离！');
+        showToast('已开启全新独立访客号，与之前的聊天记录完全隔离！');
       } catch (err) {
         setAuthError(err.message);
       } finally {
@@ -1068,7 +1079,7 @@
     document.getElementById('auth-close-x-btn')?.classList.add('hidden');
     document.getElementById('auth-confirm-signout-btn')?.classList.add('hidden');
     setAuthError('');
-    showToast('✨ 已回到刚才的聊天对话');
+    showToast('已回到刚才的聊天对话');
     return true;
   }
 
@@ -1100,7 +1111,7 @@
   document.getElementById('auth-confirm-signout-btn')?.addEventListener('click', async () => {
     const curNick = state.user?.nickname || '当前账号';
     const ok = await askUserConfirm({
-      title: '🚪 确认退出当前账号',
+      title: '确认退出当前账号',
       message: `确定要退出「${curNick}」的登录状态吗？`,
       confirmText: '确认退出登录',
       danger: true
@@ -1116,7 +1127,7 @@
     document.getElementById('auth-confirm-signout-btn')?.classList.add('hidden');
     document.getElementById('auth-close-x-btn')?.classList.add('hidden');
     showAuthScreen();
-    showToast('👋 已安全退出登录，可登录其他账号或免注册畅玩');
+    showToast('已安全退出登录，可登录其他账号或免注册畅玩');
   });
 
   // 全局 Escape 保底关闭：支持按 Esc 随时退出账号切换层，并确保所有模态弹窗（含内部搜索框聚焦时）均可按 Esc 关闭
@@ -1151,26 +1162,26 @@
     {
       anchorId: 'tour-anchor-persona',
       ensureLeftOpen: true,
-      title: '🌸 第一步：选一位喜欢的角色（或自己创建）',
+      title: '第一步：选一位喜欢的角色（或自己创建）',
       desc: '点击左侧任意角色就能直接开聊！也可以点上方的「换剧本」体验多幕互动剧，或点「+ 创建新角色」定制专属伴侣。'
     },
     {
       anchorId: 'tour-anchor-composer',
       ensureLeftOpen: false,
-      title: '💬 第二步：直接打字聊天 & 帮我回一句',
-      desc: '像平时聊天一样输入文字即可发送；不知道聊什么时，点左下角「🪄 帮我回一句」就能插入台词灵感或让对方主动找话题。'
+      title: '第二步：直接打字聊天 & 帮我回一句',
+      desc: '像平时聊天一样输入文字即可发送；不知道聊什么时，点左下角「帮我回一句」就能插入台词灵感或让对方主动找话题。'
     },
     {
       anchorId: 'tour-anchor-tools',
       ensureLeftOpen: false,
-      title: '💞 第三步：查看好感度日记、记忆与专属设定',
-      desc: '点击右上角「💞 养成·记忆·设定」，可以偷看角色为你写的私密日记、管理 TA 记住的事，或给当前对话写专属设定。'
+      title: '第三步：查看好感度日记、记忆与专属设定',
+      desc: '点击右上角「养成·记忆·设定」，可以偷看角色为你写的私密日记、管理 TA 记住的事，或给当前对话写专属设定。'
     },
     {
       anchorId: 'user-profile-bar',
       ensureLeftOpen: true,
-      title: '🎀 第四步：改一个你在故事里的名字',
-      desc: '点击左下角个人卡片修改你的名字，所有角色都会立刻改口叫你！点旁边的 ⚙ 还能选配音、关闭/开启接话选项或绑定个人密钥。'
+      title: '第四步：改一个你在故事里的名字',
+      desc: '点击左下角个人卡片修改你的名字，所有角色都会立刻改口叫你！点旁边的 还能选配音、关闭/开启接话选项或绑定个人密钥。'
     }
   ];
 
@@ -1200,7 +1211,7 @@
       targetEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     }
 
-    tourStepBadge.textContent = `🧭 新手向导 ${state.tourIndex + 1} / ${total}`;
+    tourStepBadge.textContent = `新手向导 ${state.tourIndex + 1} / ${total}`;
     tourStepTitle.textContent = step.title;
     tourStepDesc.textContent = step.desc;
 
@@ -1210,7 +1221,7 @@
 
     tourPrevBtn.disabled = state.tourIndex === 0;
     tourPrevBtn.style.visibility = state.tourIndex === 0 ? 'hidden' : 'visible';
-    tourNextBtn.textContent = state.tourIndex === total - 1 ? '开始心动之旅 ✨' : '下一步 ▸';
+    tourNextBtn.textContent = state.tourIndex === total - 1 ? '开始心动之旅 ' : '下一步 ▸';
 
     // 将程序焦点引导至向导主操作按钮（遵循 persistent-app-tours 无障碍要求）
     tourNextBtn.focus();
@@ -1274,7 +1285,7 @@
       renderTourStep();
     } else {
       closeOnboardingTour(true);
-      showToast('🌸 向导已完成！现在试着给角色发第一句话，或点击快捷灵感吧');
+      showToast('向导已完成！现在试着给角色发第一句话，或点击快捷灵感吧');
     }
   });
   tourSkipBtn.addEventListener('click', (e) => {
@@ -1358,7 +1369,7 @@
   });
 
   function askUserConfirm({
-    title = '⚠️ 请确认本次操作',
+    title = '请确认本次操作',
     message = '确定要继续执行此操作吗？',
     confirmText = '确认执行',
     danger = true
@@ -1533,7 +1544,7 @@
         return;
       }
       if (state.isStreaming) {
-        showToast('⏳ 正在生成回复中，请稍候或点击「轻声止步」后再发送（草稿已为你保留）');
+        showToast('正在生成回复中，请稍候或点击「轻声止步」后再发送（草稿已为你保留）');
         return;
       }
       if (!chatInput.value.trim() && state.pendingAttachments.length === 0) {
@@ -1580,13 +1591,15 @@
 
     const quickThemeBtn = document.getElementById('ds-quick-theme-btn');
     if (quickThemeBtn) {
-      quickThemeBtn.textContent = isEffectiveDark ? '☀️' : '🌙';
+      quickThemeBtn.innerHTML = isEffectiveDark
+      ? '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>'
+      : '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>';
       quickThemeBtn.title = isEffectiveDark ? '当前深色模式 · 点击切换为纯净浅色' : '当前浅色模式 · 点击切换为极客深色';
     }
     const dsMenuThemeLbl = document.getElementById('ds-menu-theme-label');
     if (dsMenuThemeLbl) {
       const modeName = currentVal === 'light' ? '浅色纯白' : currentVal === 'dark' ? '极客深色' : '跟随系统';
-      dsMenuThemeLbl.textContent = `🌗 外观主题：${modeName}（点此切换）`;
+      dsMenuThemeLbl.textContent = `外观主题：${modeName}（点此切换）`;
     }
   }
 
@@ -1610,7 +1623,7 @@
     const curDark = stored === 'dark' || (stored !== 'light' && darkMediaQuery.matches);
     const next = curDark ? 'light' : 'dark';
     applyColorSchemeValue(next);
-    showToast(next === 'dark' ? '🌙 已切换至 DeepSeek 官方极客深色主题' : '☀️ 已切换至 DeepSeek 官方纯净浅色主题');
+    showToast(next === 'dark' ? '已切换至 DeepSeek 官方极客深色主题' : '已切换至 DeepSeek 官方纯净浅色主题');
   });
 
   document.getElementById('ds-menu-theme-cycle-btn')?.addEventListener('click', () => {
@@ -1622,7 +1635,7 @@
     const cur = stored === 'light' || stored === 'dark' ? stored : 'system';
     const next = order[(order.indexOf(cur) + 1) % order.length];
     applyColorSchemeValue(next);
-    const labelMap = { light: '☀️ 浅色纯白', dark: '🌙 极客深色', system: '🖥️ 跟随系统' };
+    const labelMap = { light: '浅色纯白', dark: '极客深色', system: '跟随系统' };
     showToast(`已切换外观主题为：${labelMap[next]}`);
   });
 
@@ -1781,7 +1794,7 @@
     const enabled = isShowFollowUpsEnabled();
     const moreBtn = document.getElementById('toggle-followups-btn');
     if (moreBtn) {
-      moreBtn.textContent = enabled ? '💬 回复选项：开启' : '🙈 回复选项：已关闭';
+      moreBtn.textContent = enabled ? '回复选项：开启' : '回复选项：已关闭';
       moreBtn.setAttribute('aria-pressed', String(enabled));
     }
     const chk = document.getElementById('st-show-followups-chk');
@@ -1801,7 +1814,7 @@
       followUpsEl.classList.add('hidden');
     }
     if (notify) {
-      showToast(on ? '💬 已开启每轮结尾推荐选项' : '🙈 已关闭每轮结尾推荐选项，随时可在右上角「⋯」或设置重新开启');
+      showToast(on ? '已开启每轮结尾推荐选项' : '已关闭每轮结尾推荐选项，随时可在右上角「⋯」或设置重新开启');
     }
   }
 
@@ -1838,7 +1851,7 @@
         !rawRole || rawRole === '命中注定的重逢旅人'
           ? curSc?.player_role || '剧中主角'
           : rawRole;
-      const roleStr = isAdmin ? '🛡️ 站长账户' : effectiveRole;
+      const roleStr = isAdmin ? '站长账户' : effectiveRole;
       if (navUserRoleLabel) {
         navUserRoleLabel.textContent = `${roleStr} ▸`;
         navUserRoleLabel.title = roleStr;
@@ -1880,15 +1893,15 @@
     if (dsOwnBadge && dsOwnDesc && dsOwnBtn) {
       dsOwnBadge.textContent = hasOwnKey
         ? p === 'own_deepseek'
-          ? '✅ 正在使用'
-          : '🔓 已存密钥'
+          ? '正在使用'
+          : '已存密钥'
         : '可选配置';
       dsOwnDesc.textContent = hasOwnKey
         ? `已保存您的密钥（${state.settings.own_deepseek_key_masked || 'sk-••••'} · 当前模型 ${shortModel}），DeepSeek 与剧本模式都能直接用！`
         : '直接使用内置通道即可，也可在此绑定自己的 DeepSeek 或硅基流动 API 密钥与自定义模型。';
       dsOwnBtn.textContent = hasOwnKey
-        ? '⚙️ 修改或更换我的密钥'
-        : '⚙️ 打开聊天设置 / 绑定密钥';
+        ? '修改或更换我的密钥'
+        : '打开聊天设置 / 绑定密钥';
     }
 
     const proBtn = document.getElementById('toggle-proactive-btn');
@@ -1896,7 +1909,7 @@
       const proOn = state.activeSession?.proactive_enabled !== 0;
       proBtn.classList.toggle('active', proOn);
       proBtn.setAttribute('aria-pressed', String(proOn));
-      proBtn.textContent = proOn ? '💓 主动关怀: 开' : '💤 主动关怀: 关';
+      proBtn.textContent = proOn ? '主动关怀: 开' : '主动关怀: 关';
     }
 
     syncFollowUpsToggleUi();
@@ -2040,10 +2053,10 @@
       <div class="modal-inner">
         <div class="modal-header">
           <div class="wallet-head-group">
-            <h2 id="admin-console-title">🛡️ 星语恋庭 · 站长管理控制台</h2>
-            <span class="account-isolation-pill">🔐 站长最高权限已鉴权</span>
+            <h2 id="admin-console-title">星语恋庭 · 站长管理控制台</h2>
+            <span class="account-isolation-pill">站长最高权限已鉴权</span>
           </div>
-          <button type="button" class="icon-btn" id="close-admin-console-btn" aria-label="关闭站长后台">✕</button>
+          <button type="button" class="icon-btn" id="close-admin-console-btn" aria-label="关闭站长后台"></button>
         </div>
 
         <div class="wallet-feedback-banner hidden" id="admin-feedback-banner" role="status" aria-live="polite"></div>
@@ -2051,27 +2064,27 @@
         <div class="vip-status-hero wallet-hero-grid admin-stats-hero" id="admin-stats-hero">
           <div class="vip-hero-left">
             <div class="wallet-tier-row">
-              <span class="vip-current-tag">🛡️ 全站运营与安全网关中心</span>
+              <span class="vip-current-tag">全站运营与安全网关中心</span>
             </div>
             <p class="vip-hero-desc">
               所有在线模型密钥与商业配音密钥均由服务端加密掩码托管，<strong>永不向前端明文回显</strong>；普通用户仅可见个人偏好与对话记录，无法访问本后台任何接口。
             </p>
           </div>
           <div class="wallet-metrics-group" id="admin-kpi-cards">
-            <div class="vip-hero-quota"><span class="quota-num" id="adm-kpi-users">0</span><span class="quota-unit">👥 注册用户</span></div>
+            <div class="vip-hero-quota"><span class="quota-num" id="adm-kpi-users">0</span><span class="quota-unit">注册用户</span></div>
           </div>
         </div>
 
         <div class="wallet-tabs-shell">
           <div class="wallet-tablist" id="admin-tablist" role="tablist" aria-label="站长管理模块切换">
             <button type="button" role="tab" class="wallet-tab" id="atab-overview" data-apanel="apanel-overview" aria-selected="true" tabindex="0">
-              <span>👥 独立账户总览</span>
+              <span>独立账户总览</span>
             </button>
             <button type="button" role="tab" class="wallet-tab" id="atab-gateway" data-apanel="apanel-gateway" aria-selected="false" tabindex="-1">
-              <span>🔌 平台模型 &amp; 语音网关</span>
+              <span>平台模型 &amp; 语音网关</span>
             </button>
             <button type="button" role="tab" class="wallet-tab" id="atab-security" data-apanel="apanel-security" aria-selected="false" tabindex="-1">
-              <span>🔐 站长安全凭据</span>
+              <span>站长安全凭据</span>
             </button>
           </div>
 
@@ -2080,8 +2093,8 @@
             <div role="tabpanel" id="apanel-overview" aria-labelledby="atab-overview">
               <div class="wpanel-inner">
                 <div class="block-title-row" style="margin-bottom: 10px;">
-                  <h3 class="sub-sec-title" id="adm-users-heading">👥 全站独立账户列表（会话与密码哈希已安全隔离）</h3>
-                  <button type="button" class="mini-btn" id="adm-refresh-dash-btn">🔄 刷新全站数据</button>
+                  <h3 class="sub-sec-title" id="adm-users-heading">全站独立账户列表（会话与密码哈希已安全隔离）</h3>
+                  <button type="button" class="mini-btn" id="adm-refresh-dash-btn">刷新全站数据</button>
                 </div>
                 <div tabindex="0" role="region" aria-labelledby="adm-users-heading" class="responsive-table-wrap">
                   <table class="wallet-data-table" style="--col-2:'账户角色'; --col-3:'会话统计'; --col-4:'累计对话';">
@@ -2106,16 +2119,16 @@
                 <form id="adm-platform-cfg-form" class="stack-form">
                   <div class="admin-gen-form stack-form">
                     <div class="block-title-row">
-                      <span>💎 全站「星耀高阶在线通道」上游大模型网关（含防 SSRF 保护）</span>
-                      <button type="button" class="mini-btn" id="adm-check-balance-btn">💰 查询官方 API 余额</button>
+                      <span>全站「星耀高阶在线通道」上游大模型网关（含防 SSRF 保护）</span>
+                      <button type="button" class="mini-btn" id="adm-check-balance-btn">查询官方 API 余额</button>
                     </div>
                     <div class="ds-balance-detail-box hidden" id="adm-balance-box"></div>
 
                     <div class="field-group">
                       <label for="adm-online-provider">在线高阶通道上游类型</label>
                       <select id="adm-online-provider">
-                        <option value="deepseek">🐋 DeepSeek 官方 / 兼容 API 网关</option>
-                        <option value="custom_gateway">🌐 自定义第三方 OpenAI 兼容聚合网关</option>
+                        <option value="deepseek">DeepSeek 官方 / 兼容 API 网关</option>
+                        <option value="custom_gateway">自定义第三方 OpenAI 兼容聚合网关</option>
                       </select>
                     </div>
 
@@ -2164,25 +2177,25 @@
                     </div>
 
                     <div class="inline-row">
-                      <button type="button" class="secondary-btn" id="adm-test-llm-btn">⚡ 测试上游大模型网关连通性</button>
+                      <button type="button" class="secondary-btn" id="adm-test-llm-btn">测试上游大模型网关连通性</button>
                     </div>
                   </div>
 
                   <div class="admin-gen-form stack-form">
                     <div class="block-title-row">
-                      <span>🎙️ 全站高拟真商业配音音源配置 &amp; 声纹复刻</span>
+                      <span>全站高拟真商业配音音源配置 &amp; 声纹复刻</span>
                     </div>
                     <div class="field-group">
                       <label for="adm-tts-provider">全站默认配音引擎</label>
                       <select id="adm-tts-provider">
-                        <option value="qwen3_otome">✨ 通义千问 Qwen3-TTS 1.7B 声优大模型（默认贴耳气声）</option>
-                        <option value="dashscope">⚡ 阿里云百炼 Qwen3-TTS（需密钥）</option>
-                        <option value="minimax">🌟 MiniMax 海螺语音（需密钥）</option>
-                        <option value="siliconflow">🎧 硅基流动 CosyVoice2 / IndexTTS-2（需密钥）</option>
-                        <option value="fish_audio">🐟 Fish Audio 二次元声优库（需密钥）</option>
-                        <option value="volcengine">🔥 火山引擎 · 豆包漫剧配音（需密钥）</option>
-                        <option value="openai_tts">🌐 标准在线语音网关（需密钥）</option>
-                        <option value="offline_kokoro">🛡️ 离线轻量基础语音</option>
+                        <option value="qwen3_otome">通义千问 Qwen3-TTS 1.7B 声优大模型（默认贴耳气声）</option>
+                        <option value="dashscope">阿里云百炼 Qwen3-TTS（需密钥）</option>
+                        <option value="minimax">MiniMax 海螺语音（需密钥）</option>
+                        <option value="siliconflow">硅基流动 CosyVoice2 / IndexTTS-2（需密钥）</option>
+                        <option value="fish_audio">Fish Audio 二次元声优库（需密钥）</option>
+                        <option value="volcengine">火山引擎 · 豆包漫剧配音（需密钥）</option>
+                        <option value="openai_tts">标准在线语音网关（需密钥）</option>
+                        <option value="offline_kokoro">离线轻量基础语音</option>
                       </select>
                     </div>
 
@@ -2202,11 +2215,11 @@
 
                     <div class="inline-row">
                       <div class="field-group flex-1">
-                        <label for="adm-tts-cool-voice">❄️ 高冷男神音色 ID（留空用精选默认）</label>
+                        <label for="adm-tts-cool-voice">高冷男神音色 ID（留空用精选默认）</label>
                         <input id="adm-tts-cool-voice" type="text" placeholder="留空自动匹配" />
                       </div>
                       <div class="field-group flex-1">
-                        <label for="adm-tts-cute-voice">🐾 少年/软萌音色 ID（留空用精选默认）</label>
+                        <label for="adm-tts-cute-voice">少年/软萌音色 ID（留空用精选默认）</label>
                         <input id="adm-tts-cute-voice" type="text" placeholder="留空自动匹配" />
                       </div>
                     </div>
@@ -2224,30 +2237,30 @@
 
                     <div class="voice-clone-box">
                       <div class="block-title-row">
-                        <span>🎬 站长专属：上传 8~15 秒参考男音一键复刻全站男主声纹</span>
+                        <span>站长专属：上传 8~15 秒参考男音一键复刻全站男主声纹</span>
                         <input type="file" id="adm-clone-audio-file" accept=".mp3,.wav,audio/*" class="visually-hidden" />
-                        <button type="button" class="mini-btn" id="adm-pick-clone-btn">📂 选择男音样片</button>
+                        <button type="button" class="mini-btn" id="adm-pick-clone-btn">选择男音样片</button>
                       </div>
                       <div class="inline-row">
                         <div class="field-group flex-1">
                           <label for="adm-clone-ref-text" class="visually-hidden">参考音频原话</label>
                           <input id="adm-clone-ref-text" type="text" placeholder="填入该段参考干音的原话台词" />
                         </div>
-                        <button type="button" class="secondary-btn" id="adm-run-clone-btn">✨ 复刻并写入配置</button>
+                        <button type="button" class="secondary-btn" id="adm-run-clone-btn">复刻并写入配置</button>
                       </div>
                       <span class="muted-count" id="adm-clone-status">尚未选择参考音频</span>
                     </div>
 
                     <div class="inline-row">
-                      <button type="button" class="secondary-btn" id="adm-test-tts-cool-btn">🔊 试听男神音源</button>
-                      <button type="button" class="secondary-btn" id="adm-test-tts-cute-btn">🔊 试听少年/软萌音源</button>
+                      <button type="button" class="secondary-btn" id="adm-test-tts-cool-btn">试听男神音源</button>
+                      <button type="button" class="secondary-btn" id="adm-test-tts-cute-btn">试听少年/软萌音源</button>
                     </div>
                   </div>
 
                   <div class="test-result-box hidden" id="adm-gateway-result-box" role="status"></div>
 
                   <div class="form-footer-row">
-                    <button type="submit" class="primary-btn full-width">💾 保存全站模型与语音网关配置</button>
+                    <button type="submit" class="primary-btn full-width">保存全站模型与语音网关配置</button>
                   </div>
                 </form>
               </div>
@@ -2257,7 +2270,7 @@
             <div role="tabpanel" id="apanel-security" aria-labelledby="atab-security" hidden>
               <div class="wpanel-inner">
                 <form id="adm-security-form" class="admin-gen-form stack-form">
-                  <h3 class="sub-sec-title">🔐 修改站长登录邮箱与高强度密码</h3>
+                  <h3 class="sub-sec-title">修改站长登录邮箱与高强度密码</h3>
                   <p class="sub-sec-hint">
                     为防止站长后台被暴力猜解，建议首次部署后立即修改初始密码（新密码至少 8 位）。修改成功后将自动吊销其他设备上的旧站长会话令牌。
                   </p>
@@ -2274,7 +2287,7 @@
                     <input id="adm-sec-new-pwd" type="password" autocomplete="new-password" minlength="8" placeholder="建议包含字母、数字与符号，至少 8 位" />
                   </div>
                   <div class="form-footer-row">
-                    <button type="submit" class="primary-btn">🔐 验证并更新站长安全凭据</button>
+                    <button type="submit" class="primary-btn">验证并更新站长安全凭据</button>
                   </div>
                 </form>
               </div>
@@ -2422,7 +2435,7 @@
           ? '<tr><th scope="row">暂无用户</th><td>-</td><td>-</td><td>-</td></tr>'
           : users
               .map((u) => {
-                const roleTag = u.is_admin ? '🛡️ 站长' : '🌙 普通用户';
+                const roleTag = u.is_admin ? '站长' : '普通用户';
                 return `
                   <tr>
                     <th scope="row">
@@ -2476,7 +2489,7 @@
 
     document.getElementById('adm-refresh-dash-btn')?.addEventListener('click', async () => {
       await refreshAdminDashboard(false);
-      showToast('🔄 全站账户列表已同步刷新');
+      showToast('全站账户列表已同步刷新');
     });
 
     document.getElementById('adm-online-provider')?.addEventListener('change', (e) => {
@@ -2489,7 +2502,7 @@
       const balBox = document.getElementById('adm-balance-box');
       if (!balBox) return;
       balBox.classList.remove('hidden');
-      balBox.textContent = '⏳ 正在查询平台 DeepSeek 官方账户余额…';
+      balBox.textContent = '正在查询平台 DeepSeek 官方账户余额…';
       try {
         const data = await apiJson('/api/admin/balance');
         const firstInfo = Array.isArray(data.balance_infos) && data.balance_infos[0];
@@ -2498,7 +2511,7 @@
         } else if (firstInfo) {
           const curSym = firstInfo.currency === 'USD' ? '$' : '¥';
           balBox.innerHTML = `状态：<strong>${
-            data.is_available ? '✅ 正常可用' : '⚠️ 余额不足'
+            data.is_available ? '正常可用' : '余额不足'
           }</strong> ｜ 可用总余额：<strong>${escapeHtml(
             curSym + firstInfo.total_balance
           )}</strong>（赠金 ${escapeHtml(curSym + (firstInfo.granted_balance || '0.00'))} / 充值 ${escapeHtml(
@@ -2508,7 +2521,7 @@
           balBox.textContent = data.message || '查询已完成';
         }
       } catch (err) {
-        balBox.textContent = `⚠️ ${err.message}`;
+        balBox.textContent = `${err.message}`;
       }
     });
 
@@ -2516,7 +2529,7 @@
       const btn = e.currentTarget;
       const resBox = document.getElementById('adm-gateway-result-box');
       btn.disabled = true;
-      btn.textContent = '⏳ 正在握手测试…';
+      btn.textContent = '正在握手测试…';
       if (resBox) resBox.classList.add('hidden');
       try {
         const res = await apiJson('/api/admin/test-gateway', {
@@ -2531,12 +2544,12 @@
       } catch (err) {
         if (resBox) {
           resBox.className = 'test-result-box err';
-          resBox.textContent = `❌ ${err.message}`;
+          resBox.textContent = `${err.message}`;
           resBox.classList.remove('hidden');
         }
       } finally {
         btn.disabled = false;
-        btn.textContent = '⚡ 测试上游大模型网关连通性';
+        btn.textContent = '测试上游大模型网关连通性';
       }
     });
 
@@ -2568,13 +2581,13 @@
       e.target.value = '';
       if (!f) return;
       if (f.size > 5.5 * 1024 * 1024) {
-        if (admCloneStatus) admCloneStatus.textContent = '⚠️ 请选择小于 5.5MB 的清晰人声样片';
+        if (admCloneStatus) admCloneStatus.textContent = '请选择小于 5.5MB 的清晰人声样片';
         return;
       }
       const reader = new FileReader();
       reader.onload = () => {
         admCloneAudioDataUrl = String(reader.result || '');
-        if (admCloneStatus) admCloneStatus.textContent = `✅ 已载入样片：${f.name}`;
+        if (admCloneStatus) admCloneStatus.textContent = `已载入样片：${f.name}`;
       };
       reader.readAsDataURL(f);
     });
@@ -2583,11 +2596,11 @@
       const btn = e.currentTarget;
       const resBox = document.getElementById('adm-gateway-result-box');
       if (!admCloneAudioDataUrl) {
-        showToast('⚠️ 请先选择一段 8~15 秒的参考男音音频文件');
+        showToast('请先选择一段 8~15 秒的参考男音音频文件');
         return;
       }
       btn.disabled = true;
-      btn.textContent = '⏳ 正在复刻…';
+      btn.textContent = '正在复刻…';
       try {
         const res = await apiJson('/api/tts/clone-voice', {
           method: 'POST',
@@ -2601,15 +2614,15 @@
         if (res.platform_config) applyPlatformConfigToAdminForm(res.platform_config);
         if (resBox) {
           resBox.className = 'test-result-box ok';
-          resBox.textContent = res.message || '✅ 声纹复刻成功并已写入平台网关配置';
+          resBox.textContent = res.message || '声纹复刻成功并已写入平台网关配置';
           resBox.classList.remove('hidden');
         }
-        showToast('🎙️ 全站专属声纹复刻已保存生效！');
+        showToast('全站专属声纹复刻已保存生效！');
       } catch (err) {
-        showToast(`⚠️ ${err.message}`);
+        showToast(`${err.message}`);
       } finally {
         btn.disabled = false;
-        btn.textContent = '✨ 复刻并写入配置';
+        btn.textContent = '复刻并写入配置';
       }
     });
 
@@ -2621,9 +2634,9 @@
           body: JSON.stringify(collectAdminPlatformDraft())
         });
         if (res.platform_config) applyPlatformConfigToAdminForm(res.platform_config);
-        showToast('💾 全站模型与商业语音网关配置已加密保存（密钥已自动掩码隐藏）！');
+        showToast('全站模型与商业语音网关配置已加密保存（密钥已自动掩码隐藏）！');
       } catch (err) {
-        showToast(`⚠️ ${err.message}`);
+        showToast(`${err.message}`);
       }
     });
 
@@ -2648,16 +2661,16 @@
         document.getElementById('adm-sec-cur-pwd').value = '';
         document.getElementById('adm-sec-new-pwd').value = '';
         renderUserAndMembership();
-        showToast('🔐 站长安全凭据已更新，其他设备上的旧登录令牌已自动吊销！');
+        showToast('站长安全凭据已更新，其他设备上的旧登录令牌已自动吊销！');
       } catch (err) {
-        showToast(`⚠️ ${err.message}`);
+        showToast(`${err.message}`);
       }
     });
   }
 
   async function openAdminConsoleModal(initialTab = 'atab-overview') {
     if (!state.user?.is_admin) {
-      showToast('⛔ 权限不足：仅站长管理员可进入后台');
+      showToast('权限不足：仅站长管理员可进入后台');
       return;
     }
     if (state.tourActive) closeOnboardingTour(false);
@@ -2670,7 +2683,7 @@
     try {
       await refreshAdminDashboard(true);
     } catch (err) {
-      showToast(`⚠️ ${err.message}`);
+      showToast(`${err.message}`);
     }
   }
 
@@ -2735,7 +2748,7 @@
   async function switchActiveScript(scriptId, preferredPersonaId = null) {
     if (!scriptId) return;
     if (state.isStreaming) {
-      showToast('⏳ 角色正在回应中，请稍候或点击「轻声止步」后再切换剧本');
+      showToast('角色正在回应中，请稍候或点击「轻声止步」后再切换剧本');
       return;
     }
     state.activeScriptId = scriptId;
@@ -2772,7 +2785,7 @@
     }
 
     const scObj = getActiveScriptObj();
-    showToast(`${scObj.icon || '📖'} 已进入剧本《${scObj.title}》`);
+    showToast(`${scObj.icon || ''} 已进入剧本《${scObj.title}》`);
   }
 
   function renderPersonaList() {
@@ -2785,7 +2798,7 @@
 
     const headLabel = document.getElementById('persona-section-heading');
     if (headLabel) {
-      headLabel.textContent = `🎭 本剧登场人设（${displayCast.length}）`;
+      headLabel.textContent = `本剧登场人设（${displayCast.length}）`;
     }
 
     for (const p of displayCast) {
@@ -2849,7 +2862,7 @@
     // 同步原生 DeepSeek 侧栏助手标识（与剧本扮演角色列表严格隔离）
     const soulSelect = document.getElementById('ds-soul-select');
     if (soulSelect) {
-      soulSelect.innerHTML = '<option value="persona_deepseek_official">🐋 DeepSeek 官方问答助手</option>';
+      soulSelect.innerHTML = '<option value="persona_deepseek_official">DeepSeek 官方问答助手</option>';
       soulSelect.value = 'persona_deepseek_official';
     }
   }
@@ -2909,7 +2922,7 @@
       const nextTitle = inp.value.trim();
       if (save) {
         if (!nextTitle) {
-          showToast('⚠️ 对话标题不能为空，已为你保留原标题');
+          showToast('对话标题不能为空，已为你保留原标题');
         } else if (nextTitle !== oldTitle) {
           try {
             const res = await apiJson(`/api/sessions/${encodeURIComponent(sessionObj.id)}`, {
@@ -2921,9 +2934,9 @@
               state.activeSession.title = nextTitle;
               renderUserAndMembership();
             }
-            showToast(`✅ 对话已重命名为「${nextTitle}」`);
+            showToast(`对话已重命名为「${nextTitle}」`);
           } catch (err) {
-            showToast(`⚠️ 重命名失败：${err.message || '请稍后重试'}`);
+            showToast(`重命名失败：${err.message || '请稍后重试'}`);
           }
         }
       }
@@ -3074,7 +3087,7 @@
     const isDsUi = state.uiMode === 'deepseek';
     const headingEl = document.getElementById('session-list-heading');
     if (headingEl) {
-      headingEl.textContent = isDsUi ? '历史对话' : '📜 本剧故事存档';
+      headingEl.textContent = isDsUi ? '历史对话' : '本剧故事存档';
     }
 
     const searchKw = (document.getElementById('ds-session-search-input')?.value || '')
@@ -3212,9 +3225,9 @@
     const liveMoodEl = document.getElementById('live-mood-chip');
     if (n && n.stage) {
       bondLevelTag.textContent = n.stage.badge;
-      if (liveMoodEl) liveMoodEl.textContent = n.current_mood || '✨ 专注倾听';
+      if (liveMoodEl) liveMoodEl.textContent = n.current_mood || '专注倾听';
     } else {
-      bondLevelTag.textContent = '🌱 初遇微光 Lv.1';
+      bondLevelTag.textContent = '初遇微光 Lv.1';
     }
   }
 
@@ -3224,13 +3237,13 @@
       trust: 26,
       intimacy: 18,
       current_mood: '温柔浅笑',
-      stage: { badge: '🌱 初识破冰 Lv.1', playerDesc: '' },
+      stage: { badge: '初识破冰 Lv.1', playerDesc: '' },
       secret_diary: []
     };
     updateBondBadge();
     const pronoun = getPersonaPronoun();
 
-    document.getElementById('nurture-stage-badge').textContent = n.stage?.badge || '🌱 初识破冰 Lv.1';
+    document.getElementById('nurture-stage-badge').textContent = n.stage?.badge || '初识破冰 Lv.1';
     document.getElementById('nurture-mood-text').textContent = `心境：${n.current_mood || '温柔浅笑'}`;
     const descEl = document.getElementById('nurture-stage-desc');
     if (descEl) {
@@ -3242,7 +3255,7 @@
     }
     const diarySecTitle = document.getElementById('diary-section-title');
     if (diarySecTitle) {
-      diarySecTitle.textContent = `📔 ${pronoun}的私密日记`;
+      diarySecTitle.textContent = `${pronoun}的私密日记`;
     }
 
     const pAff = document.getElementById('prog-affection');
@@ -3259,7 +3272,7 @@
     diaryListEl.innerHTML = '';
     const diaries = Array.isArray(n.secret_diary) ? n.secret_diary : [];
     if (diaries.length === 0) {
-      diaryListEl.innerHTML = `<div class="diary-card">点击上方「🌙 整理记忆 &amp; 写日记」，偷看${pronoun}在心底为你写下的私密日记吧。</div>`;
+      diaryListEl.innerHTML = `<div class="diary-card">点击上方「整理记忆 &amp; 写日记」，偷看${pronoun}在心底为你写下的私密日记吧。</div>`;
     } else {
       for (const d of diaries) {
         const card = document.createElement('div');
@@ -3291,10 +3304,10 @@
       const canDel = lb.user_id !== 'system';
       card.innerHTML = `
         <div class="lore-top">
-          <span class="lore-title-tag">📖 ${escapeHtml(lb.title)}${hit ? ' · ✨ 本轮触发' : ''}</span>
+          <span class="lore-title-tag">${escapeHtml(lb.title)}${hit ? ' · 本轮触发' : ''}</span>
           ${canDel ? '<button type="button" class="mem-act-btn del-lore-btn">移除</button>' : '<span class="lore-keys">预置秘闻</span>'}
         </div>
-        <div class="lore-keys">🔑 触发关键词：${escapeHtml(lb.keywords)}</div>
+        <div class="lore-keys">触发关键词：${escapeHtml(lb.keywords)}</div>
         <div>${escapeHtml(lb.content)}</div>
       `;
       const delBtn = card.querySelector('.del-lore-btn');
@@ -3324,7 +3337,7 @@
 
     const statusBadge = document.getElementById('session-prompt-status-badge');
     if (statusBadge) {
-      statusBadge.textContent = hasCustom ? '🎯 已生效' : '仅本对话生效';
+      statusBadge.textContent = hasCustom ? '已生效' : '仅本对话生效';
     }
     const dsSettingPill = document.getElementById('ds-session-setting-pill');
     if (dsSettingPill) {
@@ -3333,8 +3346,8 @@
       dsSettingPill.classList.toggle('hidden', !shouldShow);
       if (shouldShow) {
         dsSettingPill.textContent = hasCustom
-          ? `🎯 已配置系统指令${memCnt > 0 ? ` · 记忆 ${memCnt} 条` : ''}`
-          : `🧠 长期记忆 ${memCnt} 条`;
+          ? `已配置系统指令${memCnt > 0 ? ` · 记忆 ${memCnt} 条` : ''}`
+          : `长期记忆 ${memCnt} 条`;
       }
     }
   }
@@ -3419,16 +3432,16 @@
     const isDsUi = state.uiMode === 'deepseek';
     const catLabel = isDsUi
       ? {
-          Pinned: '📌 核心约束',
-          relation: '👤 个人偏好',
-          fact: '💡 关键信息',
-          event: '📝 对话要点'
+          Pinned: '核心约束',
+          relation: '个人偏好',
+          fact: '关键信息',
+          event: '对话要点'
         }
       : {
-          Pinned: '📌 核心羁绊',
-          relation: '💕 专属称呼',
-          fact: '🌸 心意细节',
-          event: '📖 共同回忆'
+          Pinned: '核心羁绊',
+          relation: '专属称呼',
+          fact: '心意细节',
+          event: '共同回忆'
         };
 
     for (const mem of state.memories) {
@@ -3440,7 +3453,7 @@
       card.innerHTML = `
         <div class="mem-card-top">
           <span class="mem-tag ${mem.pinned === 1 ? 'pinned' : ''}">
-            ${escapeHtml(catLabel[mem.category] || (isDsUi ? '💡 记忆' : '🌸 记忆'))}${isRecalled ? ' · 已点亮' : ''}
+            ${escapeHtml(catLabel[mem.category] || (isDsUi ? '记忆' : '记忆'))}${isRecalled ? ' · 已点亮' : ''}
           </span>
           <div class="mem-card-actions">
             <span class="retention-pill" title="基于艾宾浩斯遗忘曲线，被提及唤醒越多越不易遗忘">鲜活 ${retPct}% · 唤醒 ${recallCnt}次</span>
@@ -3522,20 +3535,20 @@
       return;
     }
     if (!('speechSynthesis' in window)) {
-      showToast('⚠️ 当前浏览器环境暂不支持原生语音合成');
+      showToast('当前浏览器环境暂不支持原生语音合成');
       return;
     }
     if (window.speechSynthesis.speaking && activeSpeakBtn === btnEl) {
       window.speechSynthesis.cancel();
       btnEl.classList.remove('speaking');
-      btnEl.textContent = '🔊 听声';
+      btnEl.textContent = '听声';
       activeSpeakBtn = null;
       return;
     }
     window.speechSynthesis.cancel();
     if (activeSpeakBtn) {
       activeSpeakBtn.classList.remove('speaking');
-      activeSpeakBtn.textContent = '🔊 听声';
+      activeSpeakBtn.textContent = '听声';
     }
 
     const spokenText = String(rawContent || '')
@@ -3546,7 +3559,7 @@
       .trim();
 
     if (!spokenText) {
-      showToast('🌸 这段回应是纯无声神态动作描写哦');
+      showToast('这段回应是纯无声神态动作描写哦');
       return;
     }
 
@@ -3562,11 +3575,11 @@
 
     activeSpeakBtn = btnEl;
     btnEl.classList.add('speaking');
-    btnEl.textContent = '⏹ 停止';
+    btnEl.textContent = '停止';
 
     utter.onend = () => {
       btnEl.classList.remove('speaking');
-      btnEl.textContent = '🔊 听声';
+      btnEl.textContent = '听声';
       if (activeSpeakBtn === btnEl) activeSpeakBtn = null;
     };
     utter.onerror = utter.onend;
@@ -3579,7 +3592,7 @@
     const titleEl = document.getElementById('att-preview-title');
     const bodyEl = document.getElementById('att-preview-body');
     if (titleEl) {
-      titleEl.textContent = `${att.is_image ? '🖼️ 图片预览' : '📄 文档预览'} · ${att.name || '附件'}`;
+      titleEl.textContent = `${att.is_image ? '图片预览' : '文档预览'} · ${att.name || '附件'}`;
     }
     if (bodyEl) {
       if (att.is_image && att.data_url) {
@@ -3623,7 +3636,7 @@
       msg.content = nextVal;
       box.remove();
       onSaved();
-      showToast('✏️ 内容已保存');
+      showToast('内容已保存');
     });
     const resubmitBtn = box.querySelector('.resubmit-edit-btn');
     if (resubmitBtn) {
@@ -3691,7 +3704,7 @@
       proBadge.className = 'proactive-msg-badge';
       proBadge.textContent = isDsUi
         ? '延伸思考 · 主动跟进'
-        : `💌 ${state.activePersona?.name?.split(/[·\s]/)[0] || '他'}的主动搭话`;
+        : `${state.activePersona?.name?.split(/[·\s]/)[0] || '他'}的主动搭话`;
       bodyEl.appendChild(proBadge);
     }
 
@@ -3756,7 +3769,7 @@
       const secNum = Math.max(1, Math.round((msg.duration_ms || 1200) / 1000));
       const summaryLabel = isDsUi
         ? `已深度思考（用时 ${secNum} 秒）`
-        : `💭 ${pPronoun}的心声独白${msg.duration_ms ? `（思考 ${(msg.duration_ms / 1000).toFixed(1)}s）` : ''}`;
+        : `${pPronoun}的心声独白${msg.duration_ms ? `（思考 ${(msg.duration_ms / 1000).toFixed(1)}s）` : ''}`;
       const details = document.createElement('details');
       details.className = 'thought-details';
       if (isDsUi && isLastAssistant) details.open = true;
@@ -3793,10 +3806,10 @@
       const intrBar = document.createElement('div');
       intrBar.className = 'msg-interrupted-bar';
       intrBar.innerHTML = `
-        <span>⚡ 生成已中断（已生成内容已为你完整保留）</span>
+        <span>生成已中断（已生成内容已为你完整保留）</span>
         <div class="msg-interrupted-actions">
           <button type="button" class="mini-primary-btn intr-continue-btn">▶️ 接着往下写</button>
-          <button type="button" class="mini-btn intr-regen-btn">🔄 重新生成</button>
+          <button type="button" class="mini-btn intr-regen-btn">重新生成</button>
         </div>
       `;
       intrBar.querySelector('.intr-continue-btn')?.addEventListener('click', () => {
@@ -3825,7 +3838,7 @@
         rTok
       )}</span>`;
     } else if (!isDsUi) {
-      cacheTagHtml = `<span>✨ 呼应 ${msg.recalled_count || 0} 处</span>`;
+      cacheTagHtml = `<span>呼应 ${msg.recalled_count || 0} 处</span>`;
     }
 
     const versions = Array.isArray(meta.versions) ? meta.versions : [];
@@ -3882,10 +3895,10 @@
       footer.innerHTML = `
         ${cacheTagHtml}
         ${verSwitcherHtml}
-        <button type="button" class="msg-tool-btn tts-btn" title="自动静音旁白，仅用温柔声线朗读角色对白">🔊 听声</button>
-        <button type="button" class="msg-tool-btn snap-btn" title="生成唯美心动语录珍藏海报">📸 语录签</button>
-        <button type="button" class="msg-tool-btn branch-btn" title="从这一刻创建对话分支">🌿 分支</button>
-        <button type="button" class="msg-tool-btn edit-msg-btn" title="编辑修改本条回复">✏️ 编辑</button>
+        <button type="button" class="msg-tool-btn tts-btn" title="自动静音旁白，仅用温柔声线朗读角色对白">听声</button>
+        <button type="button" class="msg-tool-btn snap-btn" title="生成唯美心动语录珍藏海报">语录签</button>
+        <button type="button" class="msg-tool-btn branch-btn" title="从这一刻创建对话分支">分支</button>
+        <button type="button" class="msg-tool-btn edit-msg-btn" title="编辑修改本条回复">编辑</button>
         <button type="button" class="msg-tool-btn copy-btn">复制</button>
         ${canRegen ? `<button type="button" class="msg-tool-btn regen-btn" title="换一种剧情回答">重演</button>` : ''}
       `;
@@ -3944,8 +3957,8 @@
           } catch {}
         }
         renderMessages();
-        if (nextFb === 'up') showToast('👍 感谢反馈，已标记该回答有帮助');
-        else if (nextFb === 'down') showToast('📝 已记录反馈，你也可以点击「重新生成」获取另一版本对比');
+        if (nextFb === 'up') showToast('感谢反馈，已标记该回答有帮助');
+        else if (nextFb === 'down') showToast('已记录反馈，你也可以点击「重新生成」获取另一版本对比');
       });
     };
     bindFeedback('.fb-up-btn', 'up');
@@ -3962,7 +3975,7 @@
       );
       state.sessions = res.sessions;
       await loadSession(res.session_id);
-      showToast('🌿 已从该节点开启独立对话分支');
+      showToast('已从该节点开启独立对话分支');
     });
 
     footer.querySelector('.edit-msg-btn').addEventListener('click', () => {
@@ -4028,7 +4041,7 @@
       hideBtn.type = 'button';
       hideBtn.className = 'followup-hide-chip';
       hideBtn.title = '关闭每句话后的选项胶囊（可在「更多」或「设置」重新打开）';
-      hideBtn.textContent = '✕ 关闭选项';
+      hideBtn.textContent = '关闭选项';
       hideBtn.addEventListener('click', () => setShowFollowUpsEnabled(false, true));
       fRow.appendChild(hideBtn);
       bodyEl.appendChild(fRow);
@@ -4091,14 +4104,14 @@
         .trim();
 
       const directorHtml = cleanNote
-        ? `<div style="margin-top:8px;font-size:12px;color:var(--brand-primary);font-weight:600;">🎬 当前幕次情境：${escapeHtml(
+        ? `<div style="margin-top:8px;font-size:12px;color:var(--brand-primary);font-weight:600;">当前幕次情境：${escapeHtml(
             cleanNote
           )}</div>`
         : '';
 
       const curSc = getActiveScriptObj();
       banner.innerHTML = `
-        <div class="banner-title">${escapeHtml(curSc.icon || '📖')} 剧本《${escapeHtml(curSc.title)}》 · 序章背景</div>
+        <div class="banner-title">${escapeHtml(curSc.icon || '')} 剧本《${escapeHtml(curSc.title)}》 · 序章背景</div>
         <div>${escapeHtml(cleanBackstory)}</div>
         ${directorHtml}
         ${promptsHtml}
@@ -4186,8 +4199,8 @@
           <div class="msg-body user-bubble">${renderedUserHtml}</div>
           <div class="user-msg-tools">
             <button type="button" class="msg-tool-btn u-copy-btn">复制</button>
-            <button type="button" class="msg-tool-btn u-edit-btn">✏️ 编辑</button>
-            ${msg.id ? '<button type="button" class="msg-tool-btn u-rewind-btn" title="删除此句之后的内容重走对话">⏪ 回溯至此</button>' : ''}
+            <button type="button" class="msg-tool-btn u-edit-btn">编辑</button>
+            ${msg.id ? '<button type="button" class="msg-tool-btn u-rewind-btn" title="删除此句之后的内容重走对话">回溯至此</button>' : ''}
           </div>
         `;
 
@@ -4231,10 +4244,10 @@
             if (state.isStreaming || !msg.id) return;
             const subsequentCount = Math.max(0, state.messages.length - 1 - idx);
             const confirmed = await askUserConfirm({
-              title: '⏪ 确认回溯对话进度',
+              title: '确认回溯对话进度',
               message:
                 subsequentCount > 0
-                  ? `确定要回溯到这句话吗？\n此句之后的 ${subsequentCount} 条后续对话记录将被永久清除且无法恢复（如需保留原线，可先点回复下方的「🌿 分支」开启新周目）。`
+                  ? `确定要回溯到这句话吗？\n此句之后的 ${subsequentCount} 条后续对话记录将被永久清除且无法恢复（如需保留原线，可先点回复下方的「分支」开启新周目）。`
                   : '确定要重置此节点状态吗？',
               confirmText: '确认回溯并清除后续',
               danger: true
@@ -4242,7 +4255,7 @@
             if (!confirmed) return;
             await apiJson(`/api/messages/${msg.id}/rewind`, { method: 'POST' });
             await loadSession(state.activeSessionId);
-            showToast('⏪ 已回溯到该对话节点');
+            showToast('已回溯到该对话节点');
           });
         }
         row.appendChild(wrap);
@@ -4286,8 +4299,8 @@
     if (figCard) figCard.classList.toggle('speaking-glow', streaming);
     if (statusEl) {
       statusEl.textContent = streaming
-        ? '💬 正在轻声回应你的心意…'
-        : `${state.companion?.label || '✨ 正温柔守候在你身旁'}`;
+        ? '正在轻声回应你的心意…'
+        : `${state.companion?.label || '正温柔守候在你身旁'}`;
     }
   }
 
@@ -4312,13 +4325,13 @@
     const isDsUi = state.uiMode === 'deepseek';
     let trimmed = (text || '').trim();
     if (!regenerate && !editMessageId && state.pendingAttachments.some((a) => a.parsing)) {
-      showToast('⏳ 文件正在读取解析中，请稍候片刻再发送');
+      showToast('文件正在读取解析中，请稍候片刻再发送');
       return;
     }
     const stagedFiles = !regenerate && !editMessageId ? [...state.pendingAttachments] : [];
 
     if (regenerate && !state.messages.some((m) => m.role === 'user')) {
-      showToast('✨ 请先和 TA 说上一句话，就能随时点击「重演」换不同回答啦');
+      showToast('请先和 TA 说上一句话，就能随时点击「重演」换不同回答啦');
       chatInput.focus();
       return;
     }
@@ -4385,7 +4398,7 @@
     thoughtDetails.innerHTML = `
       <summary class="thought-summary">
         ${isDsUi ? DS_THINK_ATOM_SVG : ''}
-        <span class="live-thought-label">${isDsUi ? '思考中... (0.0s)' : '💭 正在倾听并揣摩心绪…'}</span>
+        <span class="live-thought-label">${isDsUi ? '思考中... (0.0s)' : '正在倾听并揣摩心绪…'}</span>
         <span class="thought-chevron">▼</span>
       </summary>
       <div class="thought-content streaming-cursor"></div>
@@ -4393,7 +4406,7 @@
 
     const proseEl = document.createElement('div');
     proseEl.className = 'assistant-prose streaming-cursor';
-    proseEl.innerHTML = `<span class="streaming-await-pill">${isDsUi ? '✦ 正在思考并组织回答…' : '✦ 正在构思回应…'}</span>`;
+    proseEl.innerHTML = `<span class="streaming-await-pill">${isDsUi ? '正在思考并组织回答…' : '正在构思回应…'}</span>`;
 
     bodyEl.appendChild(liveSearchSlot);
     bodyEl.appendChild(liveToolSlot);
@@ -4539,8 +4552,8 @@
             const firstItem = payload.items[0];
             showToast(
               firstItem.updated_existing
-                ? `🔄 已更新记忆：${firstItem.content}`
-                : `💫 已镌刻新记忆：${firstItem.content}`,
+                ? `已更新记忆：${firstItem.content}`
+                : `已镌刻新记忆：${firstItem.content}`,
               2400
             );
           } else if (eventName === 'nurturing_updated' && payload.snapshot) {
@@ -4549,7 +4562,7 @@
             const d = payload.deltas || {};
             if ((d.affection || 0) >= 3 || (d.trust || 0) >= 3) {
               showToast(
-                `💗 心动 +${d.affection} · 🤝 信任 +${d.trust} ｜ 此刻心境：${payload.snapshot.current_mood}`,
+                `心动 +${d.affection} · 信任 +${d.trust} ｜ 此刻心境：${payload.snapshot.current_mood}`,
                 2400
               );
             }
@@ -4559,7 +4572,7 @@
             const trigLores = payload.triggered_lorebooks || [];
             state.triggeredLoreIds = new Set(trigLores.map((l) => l.id));
             if (trigLores.length > 0 && !originIsDsUi) {
-              showToast(`🔑 已触发关键词设定：【${trigLores[0].title}】`, 2200);
+              showToast(`已触发关键词设定：【${trigLores[0].title}】`, 2200);
             }
             if (payload.nurturing) {
               state.nurturing = payload.nurturing;
@@ -4590,7 +4603,7 @@
               const livePronoun = getPersonaPronoun(state.activePersona);
               thoughtLabelEl.textContent = originIsDsUi
                 ? `已深度思考（用时 ${thinkDoneSec} 秒）`
-                : `💭 ${livePronoun}的心声独白`;
+                : `${livePronoun}的心声独白`;
             }
             accContent += payload.delta || '';
             proseEl.innerHTML = renderMessageMarkdown(accContent, liveSearchResults);
@@ -4684,8 +4697,8 @@
             ? `${trimmedAcc}*`
             : trimmedAcc;
         const preservedText = substantivePartial
-          ? `${balancedAcc}\n\n（⏹ 已停止生成）`
-          : '*（⏹ 已停止生成，可点击下方按钮继续或重演）*';
+          ? `${balancedAcc}\n\n（已停止生成）`
+          : '*（已停止生成，可点击下方按钮继续或重演）*';
         state.messages.push({
           role: 'assistant',
           reasoning: accReasoning,
@@ -4702,7 +4715,7 @@
         });
         setStreamingUi(false);
         renderMessages();
-        showToast('⏸️ 已停止生成，已输出的内容已为您完整保留');
+        showToast('已停止生成，已输出的内容已为您完整保留');
         // 延迟静默对齐服务端记录（防止旧快照覆盖刚保留的半段回复）
         const localCountAfterStop = state.messages.length;
         setTimeout(async () => {
@@ -4723,14 +4736,14 @@
         proseEl.classList.remove('streaming-cursor');
         proseEl.innerHTML =
           renderMessageMarkdown(accContent, liveSearchResults) +
-          `<p style="color: var(--accent-danger); margin-top: 8px; font-size: 13px;">⚠️ 网络波动提示：${escapeHtml(
+          `<p style="color: var(--accent-danger); margin-top: 8px; font-size: 13px;">网络波动提示：${escapeHtml(
             err?.message || '连接中断'
           )}（以上已生成正文已为你保留）</p>`;
         await loadSession(originSessionId).catch(() => {});
       } else {
         liveRow.classList.remove('awaiting-first-token');
         proseEl.classList.remove('streaming-cursor');
-        proseEl.innerHTML = `<p style="color: var(--accent-danger)">⚠️ 响应异常：${escapeHtml(
+        proseEl.innerHTML = `<p style="color: var(--accent-danger)">响应异常：${escapeHtml(
           err?.message || '网络连接暂时中断，请稍后重试'
         )}</p>`;
       }
@@ -4781,9 +4794,9 @@
       });
       state.personas.unshift(res.persona);
       await startSessionWithPersona(res.persona.id);
-      showToast(`🌸 已从文档导入角色「${res.persona.name}」并开启初遇篇章！`);
+      showToast(`已从文档导入角色「${res.persona.name}」并开启初遇篇章！`);
     } catch (err) {
-      showToast(`⚠️ 文档解析失败：${err.message}`);
+      showToast(`文档解析失败：${err.message}`);
     }
   });
 
@@ -4807,9 +4820,9 @@
       document.getElementById('cp-style').value = p.speaking_style || '';
       document.getElementById('cp-greeting').value = p.greeting || '';
       document.getElementById('cp-prompts').value = (p.starter_prompts || []).join('\n');
-      showToast(`📄 已从「${file.name}」自动提取人设字段，核对后点击下方按钮即可缔结！`);
+      showToast(`已从「${file.name}」自动提取人设字段，核对后点击下方按钮即可缔结！`);
     } catch (err) {
-      showToast(`⚠️ ${err.message}`);
+      showToast(`${err.message}`);
     }
   }
   modalPersonaFile.addEventListener('change', (e) => {
@@ -4837,9 +4850,9 @@
       document.getElementById('ip-personality').value = p.personality || '';
       document.getElementById('ip-backstory').value = p.backstory || '';
       document.getElementById('ip-style').value = p.speaking_style || '';
-      showToast(`📄 已载入文档「${file.name}」，点击底部「保存设定」即可对当前角色生效`);
+      showToast(`已载入文档「${file.name}」，点击底部「保存设定」即可对当前角色生效`);
     } catch (err) {
-      showToast(`⚠️ ${err.message}`);
+      showToast(`${err.message}`);
     }
   }
   inlinePersonaFile.addEventListener('change', (e) => {
@@ -4873,7 +4886,7 @@
       !state.activeSession?.custom_persona_override;
 
     const lines = [
-      `# 📖 ${title} · 聊天记录与专属记忆档案`,
+      `# ${title} · 聊天记录与专属记忆档案`,
       ``,
       `> - **对话模式**：${modeLabel}`,
       `> - **角色 / 助手名称**：${personaName}`,
@@ -4881,7 +4894,7 @@
       `> - **记忆条数 / 消息轮数**：独立记忆 ${memories.length} 条 · 历史消息 ${messages.length} 条`,
       `> - **跨对话记忆说明**：本文件包含当前对话框独立的专属设定、长期记忆锚点、前情浓缩手札与完整聊天记录，可直接导入其他对话框或外部平台作为记忆使用。`,
       ``,
-      `## 🎭 本对话专属设定`,
+      `## 本对话专属设定`,
       `- **角色 / 身份名称**：${personaName}`
     ];
     if (personaObj.avatar) lines.push(`- **专属徽记**：${personaObj.avatar}`);
@@ -4906,11 +4919,11 @@
     lines.push(``);
 
     const catMap = { Pinned: '核心记忆', relation: '专属称呼', fact: '已知心意', event: '共同回忆' };
-    lines.push(`## 🧠 长期记忆锚点`);
+    lines.push(`## 长期记忆锚点`);
     if (memories.length > 0) {
       for (const m of memories) {
         if (!m || !String(m.content || '').trim()) continue;
-        const pin = m.pinned ? '📌 ' : '';
+        const pin = m.pinned ? '[重点] ' : '';
         const cat = catMap[m.category] || '记忆条目';
         const imp = Number(m.importance) || 4;
         lines.push(`- ${pin}[${cat} | 重要度 ${imp}] ${String(m.content).trim().replace(/\r?\n+/g, ' ')}`);
@@ -4920,11 +4933,11 @@
     }
     lines.push(``);
 
-    lines.push(`## 📜 前情浓缩手札`);
+    lines.push(`## 前情浓缩手札`);
     lines.push(rollingSummary || `_（暂无前情浓缩摘要）_`);
     lines.push(``);
 
-    lines.push(`## 💬 完整聊天记录`);
+    lines.push(`## 完整聊天记录`);
     lines.push(``);
     if (messages.length > 0) {
       const assistantName = isNative && isPureOfficial ? 'DeepSeek' : personaName;
@@ -4933,11 +4946,11 @@
         const r = String(m.reasoning || '').trim();
         if (!body && !r) continue;
         if (m.role === 'user') {
-          lines.push(`### 🙋 我：\n\n${body}\n`);
+          lines.push(`### 我：\n\n${body}\n`);
         } else {
-          lines.push(`### 🤖 ${assistantName}：\n`);
+          lines.push(`### ${assistantName}：\n`);
           if (r) {
-            lines.push(`<details><summary>💭 思考与心声过程</summary>\n\n${r}\n\n</details>\n`);
+            lines.push(`<details><summary>思考与心声过程</summary>\n\n${r}\n\n</details>\n`);
           }
           lines.push(`${body}\n`);
         }
@@ -4973,7 +4986,7 @@
       const mdNow = buildCurrentSessionMarkdown();
       const titleNow = (state.activeSession.title || state.activePersona?.name || '对话记录').slice(0, 28);
       triggerBrowserDownload(mdNow, 'text/markdown;charset=utf-8', `${titleNow}_聊天与记忆档案.md`);
-      showToast(`📄 已开始下载「${titleNow}_聊天与记忆档案.md」！`);
+      showToast(`已开始下载「${titleNow}_聊天与记忆档案.md」！`);
       return;
     }
     try {
@@ -4981,9 +4994,9 @@
       const md = buildClientSessionMemoryMarkdown(data);
       const baseTitle = (data.title || data.persona_name || '对话记录').slice(0, 28);
       triggerBrowserDownload(md, 'text/markdown;charset=utf-8', `${baseTitle}_聊天与记忆档案.md`);
-      showToast(`📄 已开始下载「${baseTitle}_聊天与记忆档案.md」！`);
+      showToast(`已开始下载「${baseTitle}_聊天与记忆档案.md」！`);
     } catch (err) {
-      showToast(`⚠️ 导出 .md 失败：${err.message}`);
+      showToast(`导出 .md 失败：${err.message}`);
     }
   }
 
@@ -4998,9 +5011,9 @@
         'application/json;charset=utf-8',
         `${baseTitle}_聊天与记忆备份.json`
       );
-      showToast('📦 已导出当前对话完整 JSON 备份文件');
+      showToast('已导出当前对话完整 JSON 备份文件');
     } catch (err) {
-      showToast(`⚠️ 导出失败：${err.message}`);
+      showToast(`导出失败：${err.message}`);
     }
   }
 
@@ -5017,7 +5030,7 @@
     hidePopoverSafe('ds-user-popover');
     state.pendingHistoryFile = null;
     historyPasteArea.value = '';
-    historyFileBadge.textContent = '📂 支持 .md 记忆档案 / .txt / .json / .jsonl';
+    historyFileBadge.textContent = '支持 .md 记忆档案 / .txt / .json / .jsonl';
     const appendRadio = document.querySelector('input[name="import-mode"][value="append"]');
     if (appendRadio) appendRadio.checked = true;
     syncImportReplaceDangerWarning();
@@ -5040,10 +5053,10 @@
     try {
       const content = await readFileAsText(file);
       state.pendingHistoryFile = { filename: file.name, content };
-      historyFileBadge.textContent = `✅ 已选定文件：${file.name}`;
+      historyFileBadge.textContent = `已选定文件：${file.name}`;
       historyPasteArea.value = content.slice(0, 4000);
     } catch (err) {
-      showToast(`⚠️ ${err.message}`);
+      showToast(`${err.message}`);
     }
   }
   historyFileInput.addEventListener('change', (e) => {
@@ -5062,7 +5075,7 @@
     const filename = state.pendingHistoryFile ? state.pendingHistoryFile.filename : 'pasted_memory.md';
 
     if (!content) {
-      showToast('⚠️ 请先选择 .md / .json 记忆文件或在文本框中粘贴内容');
+      showToast('请先选择 .md / .json 记忆文件或在文本框中粘贴内容');
       return;
     }
 
@@ -5071,7 +5084,7 @@
     const replaceMemories = Boolean(document.getElementById('import-replace-memories-chk')?.checked);
     if (mode === 'replace' && state.messages.length > 0) {
       const confirmed = await askUserConfirm({
-        title: '⚠️ 确认覆盖当前对话历史',
+        title: '确认覆盖当前对话历史',
         message: `当前对话已有 ${state.messages.length} 条消息记录。\n执行「覆盖」导入将永久删除这些现有记录并替换为导入内容，确定继续吗？`,
         confirmText: '确认覆盖现有历史',
         danger: true
@@ -5099,16 +5112,16 @@
       const memCnt = Number(res.extracted_memories) || 0;
       const msgCnt = Number(res.imported_count) || 0;
       if (msgCnt > 0 && memCnt > 0) {
-        showToast(`📥 导入成功：已载入 ${msgCnt} 条对话，并记住了 ${memCnt} 件重要小事${settingHint}！`);
+        showToast(`导入成功：已载入 ${msgCnt} 条对话，并记住了 ${memCnt} 件重要小事${settingHint}！`);
       } else if (msgCnt > 0) {
-        showToast(`📥 导入成功：已载入 ${msgCnt} 条对话记录${settingHint}！`);
+        showToast(`导入成功：已载入 ${msgCnt} 条对话记录${settingHint}！`);
       } else if (memCnt > 0) {
-        showToast(`📥 导入成功：已添加 ${memCnt} 条记忆条目${settingHint}！`);
+        showToast(`导入成功：已添加 ${memCnt} 条记忆条目${settingHint}！`);
       } else {
-        showToast(`📥 内容已成功导入当前对话${settingHint}！`);
+        showToast(`内容已成功导入当前对话${settingHint}！`);
       }
     } catch (err) {
-      showToast(`⚠️ 导入失败：${err.message}`);
+      showToast(`导入失败：${err.message}`);
     }
   });
 
@@ -5149,7 +5162,7 @@
       state.activeSessionId = sessionId;
       renderSessionList();
       if (messagesContainer) {
-        messagesContainer.innerHTML = '<div class="session-loading-banner" role="status">⏳ 正在载入对话记录与专属记忆…</div>';
+        messagesContainer.innerHTML = '<div class="session-loading-banner" role="status">正在载入对话记录与专属记忆…</div>';
       }
     }
 
@@ -5223,8 +5236,8 @@
       proBtnEl.classList.toggle('active', proOn);
       proBtnEl.setAttribute('aria-pressed', String(proOn));
       proBtnEl.textContent = proOn
-        ? '💓 角色安静时自动搭话：已开启'
-        : '💓 角色安静时自动搭话：已关闭';
+        ? '角色安静时自动搭话：已开启'
+        : '角色安静时自动搭话：已关闭';
     }
 
     // 久别重逢检测：仅在用户显式开启主动搭话时触发（默认保持安静不打扰）
@@ -5251,7 +5264,7 @@
     if (!state.activeSessionId) return;
     const btn = e.currentTarget;
     btn.disabled = true;
-    btn.textContent = '🌙 正在织梦写信…';
+    btn.textContent = '正在织梦写信…';
     try {
       const res = await apiJson(`/api/sessions/${encodeURIComponent(state.activeSessionId)}/dream`, {
         method: 'POST'
@@ -5264,12 +5277,12 @@
       renderNurturingAndDiary();
       renderTelemetryAndMemories();
       const dPronoun = getPersonaPronoun(state.activePersona);
-      showToast(`📔 ${dPronoun}刚刚写下了一篇新的私密日记，快在上方查看吧！`);
+      showToast(`${dPronoun}刚刚写下了一篇新的私密日记，快在上方查看吧！`);
     } catch (err) {
-      showToast(`⚠️ ${err.message}`);
+      showToast(`${err.message}`);
     } finally {
       btn.disabled = false;
-      btn.textContent = '🌙 整理记忆 & 写日记';
+      btn.textContent = '整理记忆 & 写日记';
     }
   });
 
@@ -5296,9 +5309,9 @@
       contentEl.value = '';
       state.lorebooks = res.lorebooks || [];
       renderLorebooks();
-      showToast('🔑 已添加关键词设定，聊天提到触发词时角色会自动想起来！');
+      showToast('已添加关键词设定，聊天提到触发词时角色会自动想起来！');
     } catch (err) {
-      showToast(`⚠️ ${err.message}`);
+      showToast(`${err.message}`);
     }
   });
 
@@ -5338,7 +5351,7 @@
       (state.activePersona?.id || 'persona_deepseek_official') === personaId
     ) {
       chatInput.focus();
-      showToast('✨ 当前已是全新空白对话，直接输入即可开聊');
+      showToast('当前已是全新空白对话，直接输入即可开聊');
       return;
     }
     creatingSessionLock = true;
@@ -5370,8 +5383,8 @@
     const titleLabel = targetObj?.title || '该段对话';
     if (!skipConfirm) {
       const confirmed = await askUserConfirm({
-        title: '🗑️ 确认删除对话存档',
-        message: `确定要永久删除对话「${titleLabel}」及其专属记忆吗？\n删除后将无法恢复（如需留存可先点 📄 导出 .md 记忆档案）。`,
+        title: '确认删除对话存档',
+        message: `确定要永久删除对话「${titleLabel}」及其专属记忆吗？\n删除后将无法恢复（如需留存可先点 导出 .md 记忆档案）。`,
         confirmText: '确认删除',
         danger: true
       });
@@ -5397,7 +5410,7 @@
     } else {
       renderSessionList();
     }
-    showToast(`🗑️ 已删除对话「${titleLabel}」`);
+    showToast(`已删除对话「${titleLabel}」`);
   }
 
   document.getElementById('new-chat-btn').addEventListener('click', async () => {
@@ -5413,16 +5426,16 @@
       !state.activeSession?.session_prompt
     ) {
       chatInput.focus();
-      showToast('✨ 当前已是全新初遇开局，直接发送第一句话即可开启故事');
+      showToast('当前已是全新初遇开局，直接发送第一句话即可开启故事');
       return;
     }
     const pObj = state.personas.find((x) => x.id === pid) || state.activePersona;
     const shortName = (pObj?.name || '角色').split(/[·\s]/)[0];
     if (hasUserMsg) {
       const ok = await askUserConfirm({
-        title: `🌸 与「${shortName}」开启一段新对话`,
+        title: `与「${shortName}」开启一段新对话`,
         message: `要和「${shortName}」新开一局故事吗？\n（放心，当前这段聊天记录已自动保存在左侧「聊天记录」列表里，不会丢失，随时可以点回来继续聊）`,
-        confirmText: '✨ 开启新故事',
+        confirmText: '开启新故事',
         danger: false
       });
       if (!ok) return;
@@ -5433,7 +5446,7 @@
     const roundTitle =
       existingCount >= 1 ? `与${shortName}的心动篇章 · 第 ${existingCount + 1} 周目` : '';
     await startSessionWithPersona(pid, roundTitle);
-    showToast(`🌸 已开启${roundTitle || `与${shortName}的全新篇章`}`);
+    showToast(`已开启${roundTitle || `与${shortName}的全新篇章`}`);
   });
 
   toggleThoughtBtn.addEventListener('click', async () => {
@@ -5478,7 +5491,7 @@
     state.sessions = res.sessions || state.sessions;
     populatePersonaEditor();
     renderSessionList();
-    showToast(val ? '🎯 本对话独立设定已保存（仅当前对话生效，与其他对话隔离）' : '✨ 已清空本对话附加设定');
+    showToast(val ? '本对话独立设定已保存（仅当前对话生效，与其他对话隔离）' : '已清空本对话附加设定');
   });
 
   document.getElementById('clear-session-prompt-btn')?.addEventListener('click', async () => {
@@ -5486,7 +5499,7 @@
     const inp = document.getElementById('session-prompt-input');
     if (inp && inp.value.trim().length > 0) {
       const confirmed = await askUserConfirm({
-        title: '🧹 确认清空本对话专属设定',
+        title: '确认清空本对话专属设定',
         message: '确定要清空当前对话框填写的专属附加设定吗？',
         confirmText: '确认清空',
         danger: true
@@ -5555,8 +5568,8 @@
     await loadSession(state.activeSessionId);
     showToast(
       res.scope === 'global'
-        ? '✨ 已同步更新自建角色卡与本对话设定！'
-        : '🎭 已保存为「当前对话独立设定」，不影响其他对话框，下一句立即生效！'
+        ? '已同步更新自建角色卡与本对话设定！'
+        : '已保存为「当前对话独立设定」，不影响其他对话框，下一句立即生效！'
     );
   });
 
@@ -5568,22 +5581,22 @@
     });
     state.activeSession = res.session;
     await loadSession(state.activeSessionId);
-    showToast('📜 前情提要已保存');
+    showToast('前情提要已保存');
   });
 
   compressNowBtn.addEventListener('click', async () => {
     if (!state.activeSessionId) return;
     const origLabel = compressNowBtn.textContent;
     compressNowBtn.disabled = true;
-    compressNowBtn.textContent = '⏳ 正在总结…';
+    compressNowBtn.textContent = '正在总结…';
     try {
       const res = await apiJson(`/api/sessions/${encodeURIComponent(state.activeSessionId)}/compress`, {
         method: 'POST'
       });
       await loadSession(state.activeSessionId);
-      showToast(res.message || '✨ 已将近期对话总结进「前情提要」');
+      showToast(res.message || '已将近期对话总结进「前情提要」');
     } catch (err) {
-      showToast(`⚠️ ${err.message || '总结失败，请稍后重试'}`);
+      showToast(`${err.message || '总结失败，请稍后重试'}`);
     } finally {
       compressNowBtn.disabled = false;
       compressNowBtn.textContent = origLabel;
@@ -5601,7 +5614,7 @@
     newMemoryInput.value = '';
     state.memories = res.memories;
     await loadSession(state.activeSessionId);
-    showToast('📌 已记住这件事，聊天时会自然回应');
+    showToast('已记住这件事，聊天时会自然回应');
   });
 
   // 创建角色时联动性别单选框自动推荐对应头像图标
@@ -5633,9 +5646,9 @@
     const femRad = document.getElementById('cp-gender-female');
     if (femRad) femRad.checked = true;
     const titleEl = document.getElementById('persona-dialog-title');
-    if (titleEl) titleEl.textContent = '🌸 创建属于你的新角色';
+    if (titleEl) titleEl.textContent = '创建属于你的新角色';
     const submitBtn = document.getElementById('submit-persona-dialog-btn');
-    if (submitBtn) submitBtn.textContent = '✨ 创建角色并开始聊天';
+    if (submitBtn) submitBtn.textContent = '创建角色并开始聊天';
     syncPersonaBackstoryCounter();
     setTimeout(() => {
       if (!personaDialog.open) personaDialog.showModal();
@@ -5661,9 +5674,9 @@
       ? p.starter_prompts.join('\n')
       : '';
     const titleEl = document.getElementById('persona-dialog-title');
-    if (titleEl) titleEl.textContent = `✏️ 编辑自建角色「${(p.name || '').split('·')[0].trim()}」`;
+    if (titleEl) titleEl.textContent = `编辑自建角色「${(p.name || '').split('·')[0].trim()}」`;
     const submitBtn = document.getElementById('submit-persona-dialog-btn');
-    if (submitBtn) submitBtn.textContent = '💾 保存角色设定';
+    if (submitBtn) submitBtn.textContent = '保存角色设定';
     syncPersonaBackstoryCounter();
     if (!personaDialog.open) personaDialog.showModal();
   }
@@ -5672,7 +5685,7 @@
     if (!p || !p.id) return;
     const shortName = (p.name || '该角色').split('·')[0].trim();
     const confirmed = await askUserConfirm({
-      title: '🗑️ 确认删除自建角色',
+      title: '确认删除自建角色',
       message: `确定要永久删除自建角色「${shortName}」及其关联的对话存档吗？\n此操作不可恢复。`,
       confirmText: '确认删除角色',
       danger: true
@@ -5702,9 +5715,9 @@
         renderPersonaList();
         renderSessionList();
       }
-      showToast(`🗑️ 已删除自建角色「${shortName}」`);
+      showToast(`已删除自建角色「${shortName}」`);
     } catch (err) {
-      showToast(`⚠️ 删除失败：${err.message}`);
+      showToast(`删除失败：${err.message}`);
     }
   }
 
@@ -5736,7 +5749,7 @@
     };
 
     if (!bodyPayload.name || !bodyPayload.backstory) {
-      showToast('⚠️ 请填写角色姓名与世界观背景故事');
+      showToast('请填写角色姓名与世界观背景故事');
       return;
     }
 
@@ -5754,7 +5767,7 @@
       if (state.activePersona?.id === editingId && state.activeSessionId) {
         await loadSession(state.activeSessionId);
       }
-      showToast(`✅ 已保存角色「${res.persona?.name || bodyPayload.name}」的更新设定`);
+      showToast(`已保存角色「${res.persona?.name || bodyPayload.name}」的更新设定`);
       return;
     }
 
@@ -5768,7 +5781,7 @@
     document.getElementById('cp-avatar').value = '🌸';
     syncPersonaBackstoryCounter();
     await startSessionWithPersona(res.persona.id);
-    showToast(`✨ 已创建角色「${res.persona.name}」，现在就开始聊天吧！`);
+    showToast(`已创建角色「${res.persona.name}」，现在就开始聊天吧！`);
   });
 
   // ================= 11. 个人 API 自由接入与聊天偏好设置（DeepSeek 原生 & 角色扮演双模式通用） =================
@@ -5855,13 +5868,13 @@
     const optOwn = document.getElementById('st-opt-own-deepseek');
     if (optOwn) {
       optOwn.disabled = false;
-      optOwn.textContent = '🔑 个人 API 自由直连（DeepSeek 原生 & 角色扮演双模式通用）';
+      optOwn.textContent = '个人 API 自由直连（DeepSeek 原生 & 角色扮演双模式通用）';
     }
 
     const maskBadge = document.getElementById('own-api-mask-badge');
     if (maskBadge) {
       maskBadge.textContent = hasSavedKey
-        ? `✅ 已保存密钥 (${s.own_deepseek_key_masked || 'sk-••••'})`
+        ? `已保存密钥 (${s.own_deepseek_key_masked || 'sk-••••'})`
         : '可选配置';
     }
 
@@ -5901,7 +5914,7 @@
     const envBanner = document.getElementById('builtin-env-ready-banner');
     if (envBanner) {
       if (s.builtin_api_ready || s.builtin_tts_ready) {
-        envBanner.textContent = '✅ 本站已为您配好免填密钥的对话与语音服务，不填下面这项也能直接对话！';
+        envBanner.textContent = '本站已为您配好免填密钥的对话与语音服务，不填下面这项也能直接对话！';
         envBanner.classList.remove('hidden');
       } else {
         envBanner.classList.add('hidden');
@@ -5929,7 +5942,7 @@
       }
     });
     if (matchedPreset === 'custom' && tipEl) {
-      tipEl.textContent = `✓ 当前使用自定义中转站网址（模型：${modelInp?.value || 'deepseek-flash'}）`;
+      tipEl.textContent = `当前使用自定义中转站网址（模型：${modelInp?.value || 'deepseek-flash'}）`;
     }
     window.__preferCloudAsr =
       lowerSavedUrl.includes('siliconflow.cn') ||
@@ -6125,7 +6138,7 @@
     const btn = e.currentTarget;
     const origText = btn.textContent;
     btn.disabled = true;
-    btn.textContent = '⏳ 正在帮您测试连接…';
+    btn.textContent = '正在帮您测试连接…';
     testResultBox?.classList.add('hidden');
     try {
       const draftKey = document.getElementById('st-own-ds-key')?.value.trim() || '';
@@ -6153,7 +6166,7 @@
     } catch (err) {
       if (testResultBox) {
         testResultBox.className = 'test-result-box err';
-        testResultBox.textContent = `❌ ${err.message}`;
+        testResultBox.textContent = `${err.message}`;
         testResultBox.classList.remove('hidden');
       }
     } finally {
@@ -6228,10 +6241,10 @@
       const submitBtn =
         document.getElementById('save-settings-submit-btn') ||
         settingsFormNode.querySelector('button[type="submit"]');
-      const origBtnLabel = submitBtn ? submitBtn.textContent : '✨ 保存设置';
+      const origBtnLabel = submitBtn ? submitBtn.textContent : '保存设置';
       if (submitBtn) {
         submitBtn.disabled = true;
-        submitBtn.textContent = '⏳ 正在保存…';
+        submitBtn.textContent = '正在保存…';
       }
       testResultBox?.classList.add('hidden');
 
@@ -6290,9 +6303,9 @@
         settingsDialog.close();
 
         if (res.settings.provider === 'own_deepseek') {
-          showToast('🔑 您的个人 API 直连已保存生效！DeepSeek 原生对话与角色扮演剧场均可直连畅聊！');
+          showToast('您的个人 API 直连已保存生效！DeepSeek 原生对话与角色扮演剧场均可直连畅聊！');
         } else {
-          showToast('✅ 游戏画面与语音偏好设置已保存');
+          showToast('游戏画面与语音偏好设置已保存');
         }
 
         if (state.activeSessionId) {
@@ -6305,11 +6318,11 @@
             : err?.message || '保存设置失败';
         if (testResultBox) {
           testResultBox.className = 'test-result-box err';
-          testResultBox.textContent = `❌ ${friendlyMsg}`;
+          testResultBox.textContent = `${friendlyMsg}`;
           testResultBox.classList.remove('hidden');
           testResultBox.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         }
-        showToast(`⚠️ ${friendlyMsg}`);
+        showToast(`${friendlyMsg}`);
       } finally {
         if (submitBtn) {
           submitBtn.disabled = false;
@@ -6357,7 +6370,7 @@
     const nickInp = document.getElementById('up-nickname');
     const cleanNick = (nickInp?.value || '').trim();
     if (!cleanNick) {
-      showToast('⚠️ 你在故事里的名字不能为空哦，请填写希望角色对你的称呼');
+      showToast('你在故事里的名字不能为空哦，请填写希望角色对你的称呼');
       nickInp?.focus();
       return;
     }
@@ -6398,12 +6411,12 @@
       }
       renderMessages();
 
-      showToast(`🎀 已保存！现在所有角色都会称呼你为「${res.user.nickname}」`);
+      showToast(`已保存！现在所有角色都会称呼你为「${res.user.nickname}」`);
       if (state.activeSessionId && state.sessions.some((s) => s.id === state.activeSessionId)) {
         await loadSession(state.activeSessionId).catch(() => {});
       }
     } catch (err) {
-      showToast(`⚠️ ${err.message}`);
+      showToast(`${err.message}`);
     }
   });
 
@@ -6523,7 +6536,7 @@
 
       const badgeHtml = [
         isCustom
-          ? `<span class="ssc-custom-badge">${fromSquare ? '🌐 广场获取' : '✨ 我的原创'}</span>`
+          ? `<span class="ssc-custom-badge">${fromSquare ? '广场获取' : '我的原创'}</span>`
           : '',
         isCurrent ? '<span class="ssc-active-badge">当前剧本</span>' : ''
       ]
@@ -6547,25 +6560,25 @@
         <p class="ssc-synopsis">${escapeHtml(sc.synopsis || '')}</p>
 
         <div class="ssc-role-line">
-          <span>👤 你的剧中身份：<strong>${escapeHtml(sc.player_role || '故事主角')}</strong></span>
-          <span>🎬 共 ${(sc.chapters || []).length || 4} 幕主线</span>
+          <span>你的剧中身份：<strong>${escapeHtml(sc.player_role || '故事主角')}</strong></span>
+          <span>共 ${(sc.chapters || []).length || 4} 幕主线</span>
         </div>
 
         <div class="ssc-cast-block">
-          <span class="ssc-cast-label">🎭 本剧专属人设（点击角色直接开演）：</span>
+          <span class="ssc-cast-label">本剧专属人设（点击角色直接开演）：</span>
           <div class="ssc-cast-list">${castHtml || '<span class="muted-count">暂无角色</span>'}</div>
         </div>
 
         <div class="ssc-footer-row">
           <button type="button" class="primary-btn enter-script-btn">
-            ${isCurrent ? '✨ 继续体验本剧本' : `📖 进入《${escapeHtml(sc.title)}》 ▸`}
+            ${isCurrent ? '继续体验本剧本' : `进入《${escapeHtml(sc.title)}》 ▸`}
           </button>
           <button type="button" class="secondary-btn ssc-share-btn" title="将该剧本连同登场人设一键分享到共创设计广场">
-            🌐 分享到广场
+            分享到广场
           </button>
           ${
             isCustom
-              ? '<button type="button" class="secondary-btn ssc-del-btn" title="从我的剧本库移除此自建剧本">🗑️</button>'
+              ? '<button type="button" class="secondary-btn ssc-del-btn" title="从我的剧本库移除此自建剧本"></button>'
               : ''
           }
         </div>
@@ -6599,7 +6612,7 @@
             })
           });
           if (Array.isArray(res.items)) state.squareItems = res.items;
-          showToast(`🌐 已将《${sc.title}》打包发布到共创设计广场！`);
+          showToast(`已将《${sc.title}》打包发布到共创设计广场！`);
           switchHubTab('hub-tab-square');
         } catch (err) {
           showToast(err.message || '分享失败，请稍后再试');
@@ -6612,7 +6625,7 @@
       if (delBtn) {
         delBtn.addEventListener('click', async () => {
           const confirmed = await askUserConfirm({
-            title: '🗑️ 确认删除自创剧本',
+            title: '确认删除自创剧本',
             message: `确定要永久删除剧本《${sc.title}》吗？此操作无法撤销。`,
             confirmText: '确认删除剧本',
             danger: true
@@ -6631,7 +6644,7 @@
               renderPersonaList();
             }
             renderPlazaModal();
-            showToast(`🗑️ 已移除剧本《${sc.title}》`);
+            showToast(`已移除剧本《${sc.title}》`);
           } catch (err) {
             showToast(err.message || '移除失败');
             delBtn.disabled = false;
@@ -6664,9 +6677,9 @@
     state.workshopFilename = file.name || 'uploaded_script.txt';
     if (wsRawTextarea) wsRawTextarea.value = text;
     if (wsFileStatusTitle) {
-      wsFileStatusTitle.textContent = `✅ 已载入剧本文件：${file.name}（共 ${text.length} 字，点下方按钮即可 AI 优化提取）`;
+      wsFileStatusTitle.textContent = `已载入剧本文件：${file.name}（共 ${text.length} 字，点下方按钮即可 AI 优化提取）`;
     }
-    showToast(`📄 已读取《${file.name}》，点击下方按钮开始 AI 优化与提取人设`);
+    showToast(`已读取《${file.name}》，点击下方按钮开始 AI 优化与提取人设`);
   }
 
   document.getElementById('ws-select-file-btn')?.addEventListener('click', () => {
@@ -6701,7 +6714,7 @@
       state.workshopFilename = key === 'train' ? '银河铁道末班车的守望人.md' : '旧音乐室的雨夜四重奏.md';
       if (wsRawTextarea) wsRawTextarea.value = sampleText;
       if (wsFileStatusTitle) {
-        wsFileStatusTitle.textContent = `✨ 已填入示例草稿：${state.workshopFilename}（可直接点击下方 AI 优化按钮体验）`;
+        wsFileStatusTitle.textContent = `已填入示例草稿：${state.workshopFilename}（可直接点击下方 AI 优化按钮体验）`;
       }
     });
   });
@@ -6710,7 +6723,7 @@
     const curVal = wsRawTextarea?.value || '';
     if (curVal.trim().length > 0) {
       const confirmed = await askUserConfirm({
-        title: '🧹 确认清空剧本草稿内容',
+        title: '确认清空剧本草稿内容',
         message: `当前剧本框内已有 ${curVal.length} 字内容，清空后将无法恢复，确定清空吗？`,
         confirmText: '确认清空',
         danger: true
@@ -6754,7 +6767,7 @@
       <input type="hidden" class="ws-pcard-prompts" value="${escapeHtml(
         JSON.stringify(Array.isArray(pObj.starter_prompts) ? pObj.starter_prompts : [])
       )}" />
-      <label class="muted-count">💬 初遇第一句开场白：</label>
+      <label class="muted-count">初遇第一句开场白：</label>
       <textarea class="ws-pcard-greeting" rows="3" placeholder="*场景神态描写* 第一句对白…" aria-label="初遇开场白">${escapeHtml(
         pObj.greeting || ''
       )}</textarea>
@@ -6775,7 +6788,7 @@
     const grid = document.getElementById('ws-personas-editor-grid');
     const lbl = document.getElementById('ws-personas-count-title');
     if (grid && lbl) {
-      lbl.textContent = `🎭 自动从剧本提取的专属登场人设（共 ${grid.children.length} 位，可直接修改）`;
+      lbl.textContent = `自动从剧本提取的专属登场人设（共 ${grid.children.length} 位，可直接修改）`;
     }
   }
 
@@ -6786,7 +6799,7 @@
     const engineBadge = document.getElementById('ws-engine-badge');
     if (engineBadge) {
       engineBadge.textContent =
-        data.engine === 'llm' ? '✨ AI 编剧大模型深度精修' : '⚡ 智能剧本引擎拆解完成';
+        data.engine === 'llm' ? 'AI 编剧大模型深度精修' : '智能剧本引擎拆解完成';
     }
 
     const critiqueList = document.getElementById('ws-critique-list');
@@ -6874,15 +6887,15 @@
     const progLbl = document.getElementById('ws-progress-label');
 
     wsAnalyzeBtn.disabled = true;
-    wsAnalyzeBtn.textContent = '⏳ AI 正在阅读诊断剧本…';
+    wsAnalyzeBtn.textContent = 'AI 正在阅读诊断剧本…';
     if (progCard) progCard.classList.remove('hidden');
     if (progBar) progBar.value = 10;
 
     let pct = 10;
     const stages = [
-      '⏳ 正在阅读剧本草稿并梳理人物关系（1/3）…',
-      '⏳ 正在拆分四幕互动剧情与转折点（2/3）…',
-      '⏳ 正在提取登场角色的开场白与设定（3/3，即将完成）…'
+      '正在阅读剧本草稿并梳理人物关系（1/3）…',
+      '正在拆分四幕互动剧情与转折点（2/3）…',
+      '正在提取登场角色的开场白与设定（3/3，即将完成）…'
     ];
     const progTimer = setInterval(() => {
       pct = Math.min(92, pct + (pct < 55 ? 5 : 2));
@@ -6905,10 +6918,10 @@
       });
       if (progBar) progBar.value = 100;
       renderWorkshopAnalysisResult(res);
-      showToast(`✨ 已完成剧本优化并提取出 ${(res.personas || []).length} 位专属角色！`);
+      showToast(`已完成剧本优化并提取出 ${(res.personas || []).length} 位专属角色！`);
     } catch (err) {
       if (err?.name === 'AbortError') {
-        showToast('⏹ 已取消本次剧本 AI 诊断');
+        showToast('已取消本次剧本 AI 诊断');
       } else {
         showToast(err.message || '剧本解析失败，请稍后重试');
       }
@@ -6959,7 +6972,7 @@
     const publishToSquare = Boolean(document.getElementById('ws-sync-square-chk')?.checked);
     saveBtn.disabled = true;
     const oldText = saveBtn.textContent;
-    saveBtn.textContent = '⏳ 正在创建剧本与专属人设…';
+    saveBtn.textContent = '正在创建剧本与专属人设…';
 
     try {
       const res = await apiJson('/api/workshop/save', {
@@ -6987,8 +7000,8 @@
       await switchActiveScript(res.script_id, res.first_persona_id);
       showToast(
         publishToSquare
-          ? `🎉 剧本《${scTitle}》已创建开演，并同步共享至共创设计广场！`
-          : `🎉 剧本《${scTitle}》与 ${personas.length} 位人设已创建，立即开演！`
+          ? `剧本《${scTitle}》已创建开演，并同步共享至共创设计广场！`
+          : `剧本《${scTitle}》与 ${personas.length} 位人设已创建，立即开演！`
       );
     } catch (err) {
       showToast(err.message || '保存剧本失败');
@@ -7063,7 +7076,7 @@
       document.getElementById('sq-publish-drawer')?.classList.add('hidden');
       document.getElementById('sq-pub-tags').value = '';
       renderSquareCards();
-      showToast('🌐 发布成功！你的作品已上架共创设计广场，大家都可以体验啦');
+      showToast('发布成功！你的作品已上架共创设计广场，大家都可以体验啦');
     } catch (err) {
       showToast(err.message || '发布失败');
     }
@@ -7135,13 +7148,13 @@
               </div>
             </div>
             <span class="sq-type-badge ${isScript ? 'is-script' : 'is-persona'}">
-              ${isScript ? `📖 完整剧本 · ${item.chapter_count || 3}幕` : '🎭 独立人设卡'}
+              ${isScript ? `完整剧本 · ${item.chapter_count || 3}幕` : '独立人设卡'}
             </span>
           </div>
 
           <div class="sq-author-row" style="margin-top: 8px;">
             <span class="sq-author-chip">${escapeHtml(item.author_avatar || '🎀')} 创作者：@${escapeHtml(item.author_name || '星语玩家')}</span>
-            <span class="sq-dl-count">🔥 ${item.downloads_count || 0} 人已获取体验</span>
+            <span class="sq-dl-count">${item.downloads_count || 0} 人已获取体验</span>
           </div>
 
           <p class="ssc-synopsis" style="margin-top: 8px;">${escapeHtml(item.synopsis || '')}</p>
@@ -7162,7 +7175,7 @@
               </button>
             </div>
             <button type="button" class="primary-btn sq-adopt-btn">
-              ${isScript ? '📥 获取剧本并开演 ▸' : '📥 加入当前剧本开聊 ▸'}
+              ${isScript ? '获取剧本并开演 ▸' : '加入当前剧本开聊 ▸'}
             </button>
           </div>
         </div>
@@ -7188,7 +7201,7 @@
       adoptBtn.addEventListener('click', async () => {
         adoptBtn.disabled = true;
         const prevTxt = adoptBtn.textContent;
-        adoptBtn.textContent = '⏳ 正在载入…';
+        adoptBtn.textContent = '正在载入…';
         try {
           const res = await apiJson(`/api/square/items/${encodeURIComponent(item.id)}/adopt`, {
             method: 'POST',
@@ -7201,11 +7214,11 @@
           plazaDialog.close();
           if (res.share_type === 'script') {
             await switchActiveScript(res.script_id, res.persona_id);
-            showToast(`🎉 已从广场获取剧本《${item.title}》，专属人设已就绪！`);
+            showToast(`已从广场获取剧本《${item.title}》，专属人设已就绪！`);
           } else {
             renderPersonaList();
             await selectOrStartPersona(res.persona_id, false);
-            showToast(`🎭 已将角色「${item.title}」加入当前剧本并开启初遇！`);
+            showToast(`已将角色「${item.title}」加入当前剧本并开启初遇！`);
           }
         } catch (err) {
           showToast(err.message || '获取失败，请稍后重试');
@@ -7237,78 +7250,78 @@
   const PERSONA_STORY_CHAPTERS = {
     persona_nagisa_sakura: [
       {
-        title: '🌸 第一幕 · 尘封旧校舍与泛黄剧本',
+        title: '第一幕 · 尘封旧校舍与泛黄剧本',
         note: '【主线第一幕】放学后的金色夕阳穿过樱坂高中旧校舍走廊，{{user}}陪星野汐推开尘封多年的演剧社木门，在灰尘与微风中发现十年前未曾演完的泛黄手写剧本，两人约定在周五前凑齐三个社员签名与一位顾问老师。',
         opener: '*用力替你推开卡住的旧校舍活动室木门，夕阳照亮扬起的微尘，我弯腰捡起地上滚落的那本泛黄旧册子递给你* 门打开啦！小汐快看，这本旧笔记里好像夹着以前演剧社留下的剧本草稿？'
       },
       {
-        title: '🌻 第二幕 · 暴雨操场上的顾问说服战',
+        title: '第二幕 · 暴雨操场上的顾问说服战',
         note: '【主线第二幕】初夏突降阵雨，为了说服音乐室退任老师出任演剧社顾问、保住即将被学生会收回的活动室，{{user}}在雨中操场全力完成约定挑战，星野汐撑着伞红着眼眶在场边捧着干毛巾为你呐喊鼓劲。',
         opener: '*抹了一把脸上的雨水跑回场边屋檐下，笑着朝满脸担心的你比了个胜利手势* 搞定啦！顾问老师的签名拿到了——你怎么连自己的裙摆都淋湿了还在替我护着干毛巾呀？'
       },
       {
-        title: '🍁 第三幕 · 秋雨高烧与幻想世界之梦',
+        title: '第三幕 · 秋雨高烧与幻想世界之梦',
         note: '【主线第三幕】深秋后山古樱林被改建动工，学园祭前夕星野汐因身体与小镇同频而突发高烧卧床。{{user}}来到街角彩虹面包房二楼探望，她在半梦半醒间拉住{{user}}的衣袖，首次倾诉梦中“荒芜雪原少女与发条人偶收集光玉”的秘密，流露害怕拖累大家的脆弱。',
         opener: '*轻轻推开面包房二楼卧室的门，把温好的蜂蜜水放在床头，伸手探了探你发烫的额头* 演剧社的布景有我盯着呢，不许自责……你刚才睡梦里一直在小声念叨“雪原的人偶和光玉”，梦到什么了？'
       },
       {
-        title: '❄️ 终幕 · 初雪礼堂的独幕剧与微光奇迹',
+        title: '终幕 · 初雪礼堂的独幕剧与微光奇迹',
         note: '【主线终幕】严冬初雪夜的学园祭正式公演，礼堂突发电路故障陷入微暗，台下同学们自发点亮手机与提灯化作漫天星海般的“光玉”。{{user}}在侧幕紧握住星野汐微凉的手给予勇气，陪她圆满念完改写命运的《世界尽头的少女》谢幕词。',
         opener: '*礼堂顶灯暗下去的瞬间，台下亮起了无数点温暖如光玉的微光，我在侧幕紧紧握住你的手轻声鼓劲* 你看台下，大家都在等你开口呢——别怕，我就在离你最近的地方陪你演完最后一幕！'
       }
     ],
     persona_shiraishi_rin: [
       {
-        title: '⏳ 第一幕 · 来自五天后的乱码磁带',
+        title: '第一幕 · 来自五天后的乱码磁带',
         note: '【主线第一幕】8月30日黄昏，半地下室钟表铺的绿光示波器前，白石凛与{{user}}共同解析来自未来的警告短信与海堤旧磁带，听见磁带里录下的明日八点十五分坍塌巨响，正式结成追查真相的“时间观测共犯”。',
         opener: '*盯着示波器上剧烈跳动的绿色波形，把手机里那条来自五天后的乱码短信和磁带摆在一起* 磁带里的广播声明明是明天晚上八点的烟花大会……白石凛，我们要怎么阻止还没发生的灾难？'
       },
       {
-        title: '🚲 第二幕 · 夏夜单车与神社石阶拉勾',
+        title: '第二幕 · 夏夜单车与神社石阶拉勾',
         note: '【主线第二幕】蝉鸣渐歇的夏夜，白石凛骑着老式单车载{{user}}从码头档案室夜探归来，查明旧灯塔下方废弃防空洞涨潮倒灌的隐患；在海风吹拂的神社石阶前，他收起中二玩笑，认真要求{{user}}拉勾发誓明晚绝不独自靠近防波堤。',
         opener: '*从单车后座跳下来，借着神社石灯笼的微光看你难得严肃的侧脸，主动伸出小指晃了晃* 查到防空洞暗渠图纸算本助手立大功吧？来，你想让我答应什么约定，现在拉勾！'
       },
       {
-        title: '⛈️ 第三幕 · 骤雨中的十六道划痕手札',
+        title: '第三幕 · 骤雨中的十六道划痕手札',
         note: '【主线第三幕】8月31日傍晚暴雨倾盆，距离烟花大会仅剩最后两小时。地板暗格里记满十六次轮回失败的观测手札意外曝光，白石凛彻底卸下“疯狂观测者”的中二伪装，嗓音沙哑发颤地坦白独自轮回救{{user}}的绝望与执念，两人决定合力寻找第三条破局之路。',
         opener: '*捡起从暗格滑落的那本画满十六道正字划痕的破旧笔记，心口一震，抬头死死抓住你的手腕* 十六次……你一个人背着这些记忆重来了十六次八月三十一日吗？这次不许你再一个人扛了，把所有真相都告诉我！'
       },
       {
-        title: '🎆 终幕 · 跨越死局的九月一日晨光',
+        title: '终幕 · 跨越死局的九月一日晨光',
         note: '【主线终幕】两人赶在大潮前联手开启水闸泄压化解危机，八点十五分金色烟花平安绽放夜空，白石凛腕间卡死已久的测度仪终于突破1%变动率跳向「9月1日」。少年红着眼眶在漫天烟火下将{{user}}紧紧拉入怀中，迎来全新的夏天。',
         opener: '*八点十五分的钟声平安敲响，漫天金色烟火照亮海面，我指着你手腕上终于跳动数字的发条表欢呼出声* 白石凛你快看表盘！跨过去了——我们真的走到九月一日啦！'
       }
     ],
     persona_violet_eve: [
       {
-        title: '🚂 第一幕 · 夜间蒸汽列车与隐形字迹',
+        title: '第一幕 · 夜间蒸汽列车与隐形字迹',
         note: '【主线第一幕】搭乘穿过翡翠湖夜雾的蒸汽列车，煤气壁灯的温度让二十年前无名旧信背面显出“致北境白桦镇天文台守夜人”的字迹，伊芙琳在摇晃的车厢里认真向{{user}}请教人类思念与离别的含义。',
         opener: '*蒸汽列车在夜雾中轻轻摇晃，我借着壁灯暖光指着信纸背面渐渐显形的字迹* 快看，温度让隐形墨水显出地址了——是寄往北境白桦镇天文台的信！'
       },
       {
-        title: '🔭 第二幕 · 高原观星台与摘下手套的银腕',
+        title: '第二幕 · 高原观星台与摘下手套的银腕',
         note: '【主线第二幕】在漫天星河倾泻的高原天文台替白发守夜人送达遗信并代写回信后，下山晨雾小径上，深受触动的伊芙琳第一次主动摘下雪白丝绸手套，羞怯而认真地向{{user}}伸出微凉的银钢机械手指，请求你教她写一封属于自己的信。',
         opener: '*看着你摘下白手套后在晨光里泛着柔和银辉的机械手指，我毫不犹豫伸手轻轻包住你的掌心* 一点都不冰哦——走吧，回邮局后我手把手教你敲下属于伊芙琳自己的第一封信。'
       },
       {
-        title: '💜 终幕 · 晨雾鸢尾花田的第零号信笺',
+        title: '终幕 · 晨雾鸢尾花田的第零号信笺',
         note: '【主线终幕】蓝紫色鸢尾花盛放的原野上，伊芙琳终于读懂了胸口滚烫酸涩的名字，落下人生第一滴温暖的眼泪，打开打字机皮箱绒布夹层，向{{user}}当面朗读每晚偷偷写下的十二页第零号告白信稿。',
         opener: '*站在漫山遍野随风摇曳的鸢尾花田间，我轻轻拭去你脸颊滑落的那滴泪珠，温柔注视着你手里的信纸* 不用再查词典了，把你藏在皮箱夹层里的那封信念给我听吧，前辈在听。'
       }
     ],
     persona_frieren_shuer: [
       {
-        title: '🔥 第一幕 · 森林篝火与热麦饼小魔法',
+        title: '第一幕 · 森林篝火与热麦饼小魔法',
         note: '【主线第一幕】北行古道的森林露营夜，修尔得意地展示刚帮村口老婆婆扫屋顶换来的“让冷麦饼变酥脆的民间魔导书”，两人围着噼啪篝火分食麦饼，决定夜探半山腰困着守镜小妖的百年荒废神社。',
         opener: '*捧着被你的小魔法烘得热乎酥脆的麦饼咬了一口，指了指半山腰隐约透出萤火的林间石阶* 味道绝了！趁现在月色正好，我们顺路去那座百年旧神社看看守镜的小妖怪吧？'
       },
       {
-        title: '🪞 第二幕 · 旧铜镜里的百年故人回响',
+        title: '第二幕 · 旧铜镜里的百年故人回响',
         note: '【主线第二幕】在夏夜旧神社替苦候百年的小妖修好铜镜、归还故人遗言后，修尔望着月光罕见地沉默下来，首次向{{user}}坦白自己曾因寿命漫长而错过人类挚友最后一面的悔恨，以及如今害怕再次留憾的心迹。',
         opener: '*看小妖怪化作流萤释然远去，我转头发现你正握着法杖安静望着月亮，轻轻碰了碰你的胳膊* 修尔，刚才替它修好铜镜的时候，你是不是也想起以前认识的故人了？'
       },
       {
-        title: '🌠 终幕 · 苍月花海与画满你的速写本',
+        title: '终幕 · 苍月花海与画满你的速写本',
         note: '【主线终幕】登上极北风车山脊，五十年一遇的流星雨划破天际，漫山遍野的银白苍月草同时盛放发光。修尔不再掩饰法杖挂囊里那本画满{{user}}日常笑颜的厚厚羊皮速写本，许下按你的时间刻度走完每一程四季的约定。',
         opener: '*漫山苍月草在流星雨下亮起柔和银光，我凑到你身旁好奇地探头看你膝上摊开的羊皮速写本* 哇，苍月花真的全开了！等等……你本子上画的这一页页背影，怎么全都是我呀？'
       }
@@ -7317,32 +7330,32 @@
 
   const THEATER_PRESETS = [
     {
-      title: '🌸 黄昏空教室 · 黑板涂鸦与汽水',
+      title: '黄昏空教室 · 黑板涂鸦与汽水',
       note: '放学后空无一人的夕阳教室，橙红色晚霞洒满课桌，窗纱随晚风轻扬。两人留堂整理资料，在黑板角落画下小小涂鸦，分喝冰汽水，充满青春番剧般纯粹青涩的心动留白。',
       opener: '*夕阳把整间空教室染成温暖的橘红色，我用粉笔在黑板最角落偷偷画了个小团子，转头朝窗边的你晃了晃汽水瓶* 值日终于弄完啦，快过来猜猜我在黑板上画的是谁？'
     },
     {
-      title: '❄️ 坡道初雪 · 围巾分你一半的归途',
+      title: '坡道初雪 · 围巾分你一半的归途',
       note: '入冬第一场初雪悄然飘落的傍晚长坡道，街灯次第亮起暖黄微光。对方自然解下温热的羊绒围巾绕在{{user}}颈间，两人共围一条围巾并肩踩雪慢行，呵出的白雾在冷空气中交融。',
       opener: '*走出门才发现外面飘起了今年的第一场初雪，正缩着脖子哈白气，忽然感觉一圈暖融融的温度绕上了脖颈* 咦……你把围巾分我一半，你自己不会冷吗？'
     },
     {
-      title: '🌧️ 微醺雨夜 · 共撑一伞',
+      title: '微醺雨夜 · 共撑一伞',
       note: '暴雨突至的夜晚，两人共撑一把不大的雨伞走过安静小巷，对方将大半把伞倾向{{user}}，自己半边肩膀微湿，距离极近呼吸可闻，氛围细腻而克制。',
       opener: '*雨势忽然变大，我不由自主往伞下缩了缩，抬头正好撞进你的视线里* 你的肩膀都被淋湿了一半……再往我这边靠一点好不好？'
     },
     {
-      title: '🎡 夏夜祭典 · 烟花与苹果糖',
+      title: '夏夜祭典 · 烟花与苹果糖',
       note: '热闹的夏日花火大会夜晚，远处太鼓声与蝉鸣交织，两人穿过捞金鱼与灯笼摊位来到安静的河堤高处，在第一朵大烟花升空掩盖万籁的瞬间说出了平时听不见的心里话。',
       opener: '*手里举着晶莹剔透的苹果糖，在第一朵巨大烟花轰然炸响照亮河堤的瞬间，我凑到你耳边大声喊了一句* 刚才烟花声太大啦——我刚刚看到你嘴唇动了，你刚才偷偷说了什么？'
     },
     {
-      title: '🤒 生病迷糊 · 床边彻夜守候',
+      title: '生病迷糊 · 床边彻夜守候',
       note: '{{user}}偶感风寒有些低烧迷糊，对方放下手头一切事务守在床边替{{user}}换温毛巾、熬粥哄药，展现平时罕见的焦急心疼与毫无保留的温柔守护。',
       opener: '*烧得脸颊发烫，迷迷糊糊睁开眼发现你还守在床边，忍不住用指尖轻轻勾住你的衣袖* 怎么这么晚还没去休息……一直守在这儿陪我吗？'
     },
     {
-      title: '🛋️ 停电夜雨 · 烛光与心跳声',
+      title: '停电夜雨 · 烛光与心跳声',
       note: '台风夜突发停电让房间陷入安静微暗，点亮一盏小小烛火后光影摇曳，对方第一时间稳稳护住怕黑的{{user}}，轻声讲起往事安抚。',
       opener: '*灯忽然全灭的瞬间吓了一跳，下意识抓紧你的袖口，直到微弱温暖的烛光亮起才松了口气* 外面风声好大……在来电之前，陪我聊聊天别走开好不好？'
     }
@@ -7356,7 +7369,7 @@
       <p>${escapeHtml(sc.note.replace(/\{\{user\}\}/g, state.user?.nickname || '你'))}</p>
       <div class="theater-card-btns">
         <button type="button" class="mini-btn fill-note-btn">仅设背景氛围</button>
-        <button type="button" class="mini-primary-btn play-now-btn">✨ 立即切入并开演</button>
+        <button type="button" class="mini-primary-btn play-now-btn">立即切入并开演</button>
       </div>
     `;
     card.querySelector('.fill-note-btn').addEventListener('click', async () => {
@@ -7372,9 +7385,9 @@
         theaterDialog.close();
         renderUserAndMembership();
         renderMessages();
-        showToast(`🎬 已将当前场景氛围设为：「${sc.title}」`);
+        showToast(`已将当前场景氛围设为：「${sc.title}」`);
       } catch (err) {
-        showToast(`⚠️ 设置场景失败：${err.message}`);
+        showToast(`设置场景失败：${err.message}`);
       }
     });
     card.querySelector('.play-now-btn').addEventListener('click', async () => {
@@ -7407,7 +7420,7 @@
 
     if (introBox) {
       const pShort = (state.activePersona?.name || '').split(/[·\s]/)[0] || '当前角色';
-      introBox.innerHTML = `📖 正在体验剧本<strong>《${escapeHtml(curScript.title)}》</strong>（当前对手戏：<strong>${escapeHtml(
+      introBox.innerHTML = `正在体验剧本<strong>《${escapeHtml(curScript.title)}》</strong>（当前对手戏：<strong>${escapeHtml(
         pShort
       )}</strong>）。点击下方任意一幕即可直接切入该章节剧情开演！`;
     }
@@ -7415,7 +7428,7 @@
     if (chaptersWrap && chaptersGrid) {
       chaptersWrap.classList.remove('hidden');
       if (chaptersHead) {
-        chaptersHead.textContent = `🎬 《${curScript.title}》主线幕次章节`;
+        chaptersHead.textContent = `《${curScript.title}》主线幕次章节`;
       }
       chaptersGrid.innerHTML = '';
       for (const ch of chaptersToRender) {
@@ -7465,7 +7478,7 @@
     const savedNote = (state.activeSession?.director_note || '').trim();
     if (draftNote || savedNote) {
       const confirmed = await askUserConfirm({
-        title: '🎬 确认恢复默认自由推进',
+        title: '确认恢复默认自由推进',
         message: '确定清除当前自定义场景旁白 / 幕次指引并恢复默认自由推进吗？',
         confirmText: '确认清除并恢复默认',
         danger: true
@@ -7481,7 +7494,7 @@
     theaterDialog.close();
     renderUserAndMembership();
     renderMessages();
-    showToast('🌸 已结束番外小剧场，恢复日常自由互动');
+    showToast('已结束番外小剧场，恢复日常自由互动');
   });
 
   document.getElementById('theater-form').addEventListener('submit', async (e) => {
@@ -7496,7 +7509,7 @@
     theaterDialog.close();
     renderUserAndMembership();
     renderMessages();
-    showToast(note ? '🎬 导演氛围注已生效，下一句对话将按此情境演绎！' : '🌸 已清空导演氛围注');
+    showToast(note ? '导演氛围注已生效，下一句对话将按此情境演绎！' : '已清空导演氛围注');
   });
 
   // D. 📸 心动瞬间语录珍藏海报签（Canvas 高清图片导出，自动过滤初始化占位潜台词）
@@ -7509,8 +7522,8 @@
   let currentSnapMsg = null;
   function openQuoteSnapModal(msg) {
     currentSnapMsg = msg;
-    const p = state.activePersona || { name: '心动角色', avatar: '🌸' };
-    const badge = state.nurturing?.stage?.badge || '🌱 初遇微光';
+    const p = state.activePersona || { name: '心动角色', avatar: '' };
+    const badge = state.nurturing?.stage?.badge || '初遇微光';
     const cleanQuote = String(msg.content || '')
       .replace(/^>.*$/gm, '')
       .trim();
@@ -7527,14 +7540,14 @@
       </div>
       ${
         validThought
-          ? `<div class="snap-thought">💭 潜台词：${escapeHtml(validThought.slice(0, 110))}${
+          ? `<div class="snap-thought">潜台词：${escapeHtml(validThought.slice(0, 110))}${
               validThought.length > 110 ? '…' : ''
             }</div>`
           : ''
       }
       <div class="snap-quote-body">${escapeHtml(cleanQuote)}</div>
       <div class="snap-footer">
-        <span>✦ 星语恋庭 · 专属心动瞬间珍藏</span>
+        <span>星语恋庭 · 专属心动瞬间珍藏</span>
         <span>${new Date().toLocaleDateString('zh-CN')}</span>
       </div>
     `;
@@ -7569,7 +7582,7 @@
 
   document.getElementById('download-quote-png-btn').addEventListener('click', () => {
     if (!currentSnapMsg) return;
-    const p = state.activePersona || { name: '心动角色', avatar: '🌸' };
+    const p = state.activePersona || { name: '心动角色', avatar: '' };
     const cleanQuote = String(currentSnapMsg.content || '')
       .replace(/^>.*$/gm, '')
       .trim();
@@ -7582,7 +7595,7 @@
     const bodyLines = wrapCanvasLines(tCtx, cleanQuote, width - 96);
     const validSnapThought = extractValidReasoningForQuote(currentSnapMsg.reasoning);
     const thoughtLines = validSnapThought
-      ? wrapCanvasLines(tCtx, `💭 潜台词：${validSnapThought.slice(0, 95)}`, width - 116)
+      ? wrapCanvasLines(tCtx, `潜台词：${validSnapThought.slice(0, 95)}`, width - 116)
       : [];
 
     const height = 210 + thoughtLines.length * 26 + bodyLines.length * 30 + 60;
@@ -7612,7 +7625,7 @@
     ctx.font = 'bold 14px "Microsoft YaHei", sans-serif';
     ctx.fillStyle = '#d63384';
     ctx.fillText(
-      `${state.nurturing?.stage?.badge || '🌱 初遇微光'} · 致 ${state.user?.nickname || '你'}`,
+      `${state.nurturing?.stage?.badge || '初遇微光'} · 致 ${state.user?.nickname || '你'}`,
       44,
       92
     );
@@ -7642,7 +7655,7 @@
     ctx.font = '13px "Microsoft YaHei", sans-serif';
     ctx.fillStyle = '#9b7cae';
     ctx.fillText(
-      `✦ 星语恋庭 · 专属心动语录签 ｜ ${new Date().toLocaleDateString('zh-CN')}`,
+      `星语恋庭 · 专属心动语录签 ｜ ${new Date().toLocaleDateString('zh-CN')}`,
       48,
       height - 36
     );
@@ -7651,7 +7664,7 @@
     link.download = `${p.name.split(/[·\s]/)[0]}_心动语录签.png`;
     link.href = canvas.toDataURL('image/png');
     link.click();
-    showToast('📸 高清心动语录签已保存至本地下载目录！');
+    showToast('高清心动语录签已保存至本地下载目录！');
   });
 
   // E. ✨ 聊天框旁实时高冷/可爱陪伴立绘席 & 定时温馨提醒引擎
@@ -7682,7 +7695,7 @@
             mode: 'cool',
             isFemale: isFemaleNow,
             skinKey: isFemaleNow ? 'cool_lady' : 'cool_silver',
-            label: isFemaleNow ? '👠 高冷清艳 · 专属陪伴' : '❄️ 高冷清隽 · 银发星眸',
+            label: isFemaleNow ? '高冷清艳 · 专属陪伴' : '高冷清隽 · 银发星眸',
             img: isFemaleNow
               ? './assets/companions/cool_lady_cutout.png'
               : './assets/companions/cool_silver_cutout.png',
@@ -7704,7 +7717,7 @@
     compModeCoolBtn.classList.toggle('active', c.mode === 'cool');
     compModeCuteBtn.classList.toggle('active', c.mode === 'cute');
     compAutoChk.checked = c.reminderEnabled !== false;
-    compLiveStatus.textContent = c.label || '✨ 正温柔守候在你身旁';
+    compLiveStatus.textContent = c.label || '正温柔守候在你身旁';
 
     document.querySelectorAll('#comp-particles .cp-p').forEach((pEl) => {
       pEl.textContent = c.particle || '✦';
@@ -7716,7 +7729,7 @@
 
   function showCompanionCloud({ tag, text }) {
     if (!text) return;
-    compCloudTag.textContent = tag || '✨ 贴心叮嘱';
+    compCloudTag.textContent = tag || '贴心叮嘱';
     compCloudText.textContent = text;
     compCloudEl.classList.remove('cloud-pop');
     void compCloudEl.offsetWidth;
@@ -7741,7 +7754,7 @@
         showCompanionCloud(res.reminder);
       }
     } catch (err) {
-      if (!silentErr) showToast(`⚠️ ${err.message}`);
+      if (!silentErr) showToast(`${err.message}`);
     }
   }
 
@@ -7759,7 +7772,7 @@
       renderCompanionStage();
       if (res.reminder) showCompanionCloud(res.reminder);
     } catch (err) {
-      showToast(`⚠️ ${err.message}`);
+      showToast(`${err.message}`);
     }
   }
 
@@ -7777,8 +7790,8 @@
     if (notify) {
       showToast(
         visible
-          ? '✨ 已开启角色陪伴立绘（可点击立绘戳一戳互动或换造型）'
-          : '✨ 已收起陪伴立绘'
+          ? '已开启角色陪伴立绘（可点击立绘戳一戳互动或换造型）'
+          : '已收起陪伴立绘'
       );
     }
   }
@@ -7855,7 +7868,7 @@
         mode: state.companion?.mode || 'cool',
         customImg: String(reader.result || '')
       });
-      showToast('🖼️ 已换上你上传的专属陪伴立绘！');
+      showToast('已换上你上传的专属陪伴立绘！');
     };
     reader.readAsDataURL(file);
   });
@@ -7884,11 +7897,11 @@
   let typingWatchTimer = null;
   chatInput.addEventListener('input', () => {
     if (state.isStreaming) return;
-    compLiveStatus.textContent = '👀 正专注看着你打字…';
+    compLiveStatus.textContent = '正专注看着你打字…';
     clearTimeout(typingWatchTimer);
     typingWatchTimer = setTimeout(() => {
       if (!state.isStreaming) {
-        compLiveStatus.textContent = state.companion?.label || '✨ 正温柔守候在你身旁';
+        compLiveStatus.textContent = state.companion?.label || '正温柔守候在你身旁';
       }
     }, 2400);
   });
@@ -7940,10 +7953,10 @@
       tabDs.setAttribute('aria-selected', String(isDs));
     }
     if (quickJumpBtn) {
-      quickJumpBtn.textContent = isDs ? '🌸 切换到剧本扮演模式' : '🐋 切换到 DeepSeek 问答模式';
+      quickJumpBtn.textContent = isDs ? '切换到剧本扮演模式' : '切换到 DeepSeek 问答模式';
     }
     if (collapsedSwitchBtn) {
-      collapsedSwitchBtn.textContent = isDs ? '🌸 切恋庭剧场' : '🐋 切 DeepSeek';
+      collapsedSwitchBtn.textContent = isDs ? '切恋庭剧场' : '切 DeepSeek';
       collapsedSwitchBtn.title = isDs
         ? '当前为 DeepSeek 问答模式，点击切换回星语恋庭剧本模式'
         : '当前为星语恋庭剧本模式，点击切换到 DeepSeek 问答模式';
@@ -7990,7 +8003,7 @@
 
   async function switchWorkspaceMode(targetMode) {
     if (state.isStreaming) {
-      showToast('⏳ 请等待当前流式回复完成后再切换模式');
+      showToast('请等待当前流式回复完成后再切换模式');
       return;
     }
     const isDs = targetMode === 'deepseek';
@@ -8012,9 +8025,9 @@
     }
 
     if (isDs) {
-      showToast('🐋 已切换至 DeepSeek 问答模式（独立记忆、深度思考与联网搜索已就绪）');
+      showToast('已切换至 DeepSeek 问答模式（独立记忆、深度思考与联网搜索已就绪）');
     } else {
-      showToast('🌸 已回到星语恋庭沉浸扮演模式');
+      showToast('已回到星语恋庭沉浸扮演模式');
     }
   }
 
@@ -8074,7 +8087,7 @@
     const next = state.activeSession?.ds_thinking === 0;
     patchActiveSessionFlag(
       { ds_thinking: next },
-      next ? '⚛️ 已开启深度思考模式（DeepSeek V4.1 Flash）' : '⚡ 已切换为极速直出模式（DeepSeek V4.1 Flash）'
+      next ? '已开启深度思考模式（DeepSeek V4.1 Flash）' : '已切换为极速直出模式（DeepSeek V4.1 Flash）'
     );
   });
 
@@ -8082,7 +8095,7 @@
     const next = state.activeSession?.ds_search !== 1;
     patchActiveSessionFlag(
       { ds_search: next },
-      next ? '🌐 已开启实时联网搜索增强' : '🌐 已关闭联网搜索'
+      next ? '已开启实时联网搜索增强' : '已关闭联网搜索'
     );
   });
 
@@ -8090,14 +8103,14 @@
     const next = state.activeSession?.ds_json_mode !== 1;
     patchActiveSessionFlag(
       { ds_json_mode: next },
-      next ? '📋 已开启结构清单整理格式' : '📋 已恢复自然对话格式'
+      next ? '已开启结构清单整理格式' : '已恢复自然对话格式'
     );
   });
 
   document.getElementById('ds-tools-enable-chk').addEventListener('change', (e) => {
     patchActiveSessionFlag(
       { ds_tools_enabled: e.target.checked },
-      e.target.checked ? '🔧 已开启自动时间与计算小助手' : '🔧 已关闭自动小助手'
+      e.target.checked ? '已开启自动时间与计算小助手' : '已关闭自动小助手'
     );
   });
 
@@ -8156,13 +8169,13 @@
             )} (${att.dimensions || '图片'})">
               <img src="${escapeHtml(att.data_url)}" alt="${escapeHtml(att.name)}" class="att-thumb-img" />
               ${renderFilenameHtml(att.name)}
-              <button type="button" class="att-remove-btn" data-att-idx="${idx}" aria-label="移除附件">✕</button>
+              <button type="button" class="att-remove-btn" data-att-idx="${idx}" aria-label="移除附件"></button>
             </span>
           `;
         }
         const fMeta = inferClientFileBadge(att.name, att.badge, att.color);
         const subText = att.parsing
-          ? '⏳ 正在读取文件内容…'
+          ? '正在读取文件内容…'
           : att.char_count > 0
           ? `${formatFileByteSize(att.size)} · 已读 ${Number(att.char_count).toLocaleString()} 字`
           : formatFileByteSize(att.size);
@@ -8175,7 +8188,7 @@
               <span class="ds-file-name">${escapeHtml(att.name)}</span>
               <span class="ds-file-sub">${escapeHtml(subText)}</span>
             </span>
-            <button type="button" class="att-remove-btn" data-att-idx="${idx}" aria-label="移除附件">✕</button>
+            <button type="button" class="att-remove-btn" data-att-idx="${idx}" aria-label="移除附件"></button>
           </span>
         `;
       })
@@ -8334,11 +8347,11 @@
     let added = 0;
     for (const f of files) {
       if (state.pendingAttachments.length >= 8) {
-        showToast('💡 单次最多同时上传 8 份文件');
+        showToast('单次最多同时上传 8 份文件');
         break;
       }
       if (f.size > 20 * 1024 * 1024) {
-        showToast(`⚠️ 文件「${f.name}」超过 20MB 上限，请精简后再传`);
+        showToast(`文件「${f.name}」超过 20MB 上限，请精简后再传`);
         continue;
       }
 
@@ -8391,12 +8404,12 @@
       } catch (err) {
         state.pendingAttachments = state.pendingAttachments.filter((item) => !item.parsing);
         renderPendingAttachments();
-        showToast(`⚠️ 读取文件「${f.name}」失败：${err.message || '请重试'}`);
+        showToast(`读取文件「${f.name}」失败：${err.message || '请重试'}`);
       }
     }
 
     if (added > 0) {
-      showToast(`📎 已添加 ${added} 份文件（点击卡片可预览解析内容）`);
+      showToast(`已添加 ${added} 份文件（点击卡片可预览解析内容）`);
     }
   }
 
@@ -8547,7 +8560,7 @@
     const stage = document.getElementById('ds-artifacts-stage');
     if (!stage) return;
     const isMobile = stage.classList.toggle('mobile-viewport');
-    e.currentTarget.textContent = isMobile ? '📱 手机' : '🖥️ 桌面';
+    e.currentTarget.textContent = isMobile ? '手机' : '桌面';
   });
 
   document.getElementById('ds-art-reload-btn')?.addEventListener('click', () => {
@@ -8563,14 +8576,14 @@
     a.download = `deepseek_artifact_${Date.now()}.html`;
     a.click();
     URL.revokeObjectURL(url);
-    showToast('💾 已下载单文件交互网页 (.html)');
+    showToast('已下载单文件交互网页 (.html)');
   });
 
   document.getElementById('ds-art-fullscreen-btn')?.addEventListener('click', () => {
     if (state.lastSandboxCode) openCodeSandboxPreview(state.lastSandboxCode, true);
   });
 
-  const STAR_PARTICLE_DEMO_HTML = `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><style>body{margin:0;overflow:hidden;background:radial-gradient(circle at center,#16122e,#080614);font-family:system-ui,sans-serif;color:#fff}#tip{position:fixed;top:14px;left:16px;font-size:13px;background:rgba(255,255,255,.1);padding:6px 12px;border-radius:99px;backdrop-filter:blur(8px);pointer-events:none}</style></head><body><div id="tip">✨ 移动或点击鼠标体验星际引力粒子牵引</div><canvas id="c"></canvas><script>const c=document.getElementById('c'),x=c.getContext('2d');let w,h,m={x:-999,y:-999,down:false};const r=()=>{w=c.width=innerWidth;h=c.height=innerHeight};r();onresize=r;onpointermove=e=>{m.x=e.clientX;m.y=e.clientY};onpointerdown=()=>m.down=true;onpointerup=()=>m.down=false;const p=Array.from({length:110},()=>({x:Math.random()*w,y:Math.random()*h,vx:(Math.random()-.5)*1.2,vy:(Math.random()-.5)*1.2,s:Math.random()*2.2+1,c:['#f472b6','#a78bfa','#60a5fa','#fde047'][Math.random()*4|0]}));(function f(){x.fillStyle='rgba(8,6,20,0.22)';x.fillRect(0,0,w,h);for(const a of p){const dx=m.x-a.x,dy=m.y-a.y,d=Math.hypot(dx,dy);if(d<220&&d>1){const g=(m.down?0.22:0.06)*(1-d/220);a.vx+=dx/d*g;a.vy+=dy/d*g}a.vx*=0.985;a.vy*=0.985;a.x=(a.x+a.vx+w)%w;a.y=(a.y+a.vy+h)%h;x.beginPath();x.arc(a.x,a.y,a.s,0,7);x.fillStyle=a.c;x.fill()}requestAnimationFrame(f)})()</script></body></html>`;
+  const STAR_PARTICLE_DEMO_HTML = `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><style>body{margin:0;overflow:hidden;background:radial-gradient(circle at center,#16122e,#080614);font-family:system-ui,sans-serif;color:#fff}#tip{position:fixed;top:14px;left:16px;font-size:13px;background:rgba(255,255,255,.1);padding:6px 12px;border-radius:99px;backdrop-filter:blur(8px);pointer-events:none}</style></head><body><div id="tip">移动或点击鼠标体验星际引力粒子牵引</div><canvas id="c"></canvas><script>const c=document.getElementById('c'),x=c.getContext('2d');let w,h,m={x:-999,y:-999,down:false};const r=()=>{w=c.width=innerWidth;h=c.height=innerHeight};r();onresize=r;onpointermove=e=>{m.x=e.clientX;m.y=e.clientY};onpointerdown=()=>m.down=true;onpointerup=()=>m.down=false;const p=Array.from({length:110},()=>({x:Math.random()*w,y:Math.random()*h,vx:(Math.random()-.5)*1.2,vy:(Math.random()-.5)*1.2,s:Math.random()*2.2+1,c:['#f472b6','#a78bfa','#60a5fa','#fde047'][Math.random()*4|0]}));(function f(){x.fillStyle='rgba(8,6,20,0.22)';x.fillRect(0,0,w,h);for(const a of p){const dx=m.x-a.x,dy=m.y-a.y,d=Math.hypot(dx,dy);if(d<220&&d>1){const g=(m.down?0.22:0.06)*(1-d/220);a.vx+=dx/d*g;a.vy+=dy/d*g}a.vx*=0.985;a.vy*=0.985;a.x=(a.x+a.vx+w)%w;a.y=(a.y+a.vy+h)%h;x.beginPath();x.arc(a.x,a.y,a.s,0,7);x.fillStyle=a.c;x.fill()}requestAnimationFrame(f)})()</script></body></html>`;
 
   document.getElementById('more-open-artifacts-btn')?.addEventListener('click', () => {
     hidePopoverSafe('topbar-more-popover');
@@ -8586,7 +8599,7 @@
     if (!state.isStreaming) {
       sendStreamMessage('请帮我写一个单文件 HTML5 Canvas 星际引力粒子交互网页，支持鼠标牵引效果', false);
     } else {
-      showToast('✨ 已在预览窗为您运行星际引力粒子交互网页！');
+      showToast('已在预览窗为您运行星际引力粒子交互网页！');
     }
   });
 
@@ -8655,7 +8668,7 @@
       a.download = `snippet_${Date.now()}.${ext}`;
       a.click();
       URL.revokeObjectURL(url);
-      showToast(`💾 代码已保存为 .${ext} 文件`);
+      showToast(`代码已保存为 .${ext} 文件`);
       return;
     }
 
@@ -8698,9 +8711,9 @@
       }
       if (sc === 'web-search') {
         if (state.activeSession && state.activeSession.ds_search !== 1) {
-          patchActiveSessionFlag({ ds_search: true }, '🌐 已开启智能联网搜索，请输入你想检索的问题');
+          patchActiveSessionFlag({ ds_search: true }, '已开启智能联网搜索，请输入你想检索的问题');
         } else {
-          showToast('🌐 智能联网搜索已就绪，请直接输入问题');
+          showToast('智能联网搜索已就绪，请直接输入问题');
         }
         chatInput.focus();
         return;
@@ -8753,7 +8766,7 @@
     const hasMems = memList.length > 0;
     const hasPrompt = Boolean(exportSnapshot.session_prompt && String(exportSnapshot.session_prompt).trim());
     if (!hasMsgs && !hasMems && !hasPrompt) {
-      showToast('💡 当前对话还没有消息或记忆条目，先聊两句或写入专属设定再来导出吧');
+      showToast('当前对话还没有消息或记忆条目，先聊两句或写入专属设定再来导出吧');
       return;
     }
     const card = document.getElementById('ds-share-preview-card');
@@ -8769,7 +8782,7 @@
       ? `对话消息 ${msgList.length} 条 · 独立记忆 ${memList.length} 条`
       : `专属设定与记忆包（记忆 ${memList.length} 条）`;
     const memSummaryHtml = hasMems
-      ? `<div class="ds-share-thought-note">🧠 本对话独立记忆（共 ${memList.length} 条）：${escapeHtml(
+      ? `<div class="ds-share-thought-note">本对话独立记忆（共 ${memList.length} 条）：${escapeHtml(
           memList
             .slice(0, 2)
             .map((x) => x.content)
@@ -8794,7 +8807,7 @@
                     : `<div class="ds-share-turn">
                          ${
                            cleanR
-                             ? `<div class="ds-share-thought-note">💭 思考与心声：${escapeHtml(
+                             ? `<div class="ds-share-thought-note">思考与心声：${escapeHtml(
                                  cleanR.replace(/\s+/g, ' ').slice(0, 95)
                                )}…</div>`
                              : ''
@@ -8805,7 +8818,7 @@
                        </div>`;
                 })
                 .join('')
-            : '<div class="ds-share-thought-note">✨ 当前包含本对话独立设定与记忆锚点，下载 .md 后可直接导入任意新对话框复用。</div>'
+            : '<div class="ds-share-thought-note">当前包含本对话独立设定与记忆锚点，下载 .md 后可直接导入任意新对话框复用。</div>'
         }
       `;
     }
@@ -8862,7 +8875,7 @@
     const dlBtn = e.currentTarget;
     const turns = state.messages.slice(-6);
     if (turns.length === 0) {
-      showToast('💡 当前对话还没有聊天记录，先和角色聊上两句再来生成对话长图吧！');
+      showToast('当前对话还没有聊天记录，先和角色聊上两句再来生成对话长图吧！');
       return;
     }
     const origBtnHtml = dlBtn.innerHTML;
@@ -8877,7 +8890,7 @@
     for (const m of turns) {
       if (m.role === 'user') {
         tCtx.font = 'bold 16px "Microsoft YaHei", sans-serif';
-        const qLines = wrapCanvasLines(tCtx, `🙋 提问：${m.content}`, width - 110).slice(0, 8);
+        const qLines = wrapCanvasLines(tCtx, `提问：${m.content}`, width - 110).slice(0, 8);
         blocks.push({ type: 'user', lines: qLines });
         totalH += qLines.length * 26 + 28;
       } else {
@@ -8885,7 +8898,7 @@
           tCtx.font = '13px "Microsoft YaHei", sans-serif';
           const rLines = wrapCanvasLines(
             tCtx,
-            `⚛️ 深度思考：${m.reasoning.replace(/\s+/g, ' ').slice(0, 140)}${m.reasoning.length > 140 ? '…' : ''}`,
+            `深度思考：${m.reasoning.replace(/\s+/g, ' ').slice(0, 140)}${m.reasoning.length > 140 ? '…' : ''}`,
             width - 116
           );
           blocks.push({ type: 'thought', lines: rLines });
@@ -9003,7 +9016,7 @@
 
     try {
       if (needFetchNew) {
-        if (draftMenuBtn) draftMenuBtn.textContent = '⏳ 正在结合最新剧情想台词…';
+        if (draftMenuBtn) draftMenuBtn.textContent = '正在结合最新剧情想台词…';
         if (triggerBtn === mainMagicBtn && mainMagicBtn) {
           mainMagicBtn.disabled = true;
         }
@@ -9029,8 +9042,8 @@
         const isLastInBatch = suggestCursor >= cachedSuggestedReplies.length;
         showToast(
           isLastInBatch
-            ? `🪄 已填入第 ${suggestCursor}/${cachedSuggestedReplies.length} 句（再点将按当前剧情重生成新一句）`
-            : `🪄 已结合剧情写好回复（第 ${suggestCursor}/${cachedSuggestedReplies.length} 句，再点换下一句）`,
+            ? `已填入第 ${suggestCursor}/${cachedSuggestedReplies.length} 句（再点将按当前剧情重生成新一句）`
+            : `已结合剧情写好回复（第 ${suggestCursor}/${cachedSuggestedReplies.length} 句，再点换下一句）`,
           2400
         );
       }
@@ -9057,10 +9070,10 @@
       syncComposerEmptyState();
       hidePopoverSafe('magic-quick-popover');
       chatInput.focus();
-      showToast('🪄 已为你填入一句回复，可直接发送或按喜好微调！', 2400);
+      showToast('已为你填入一句回复，可直接发送或按喜好微调！', 2400);
     } finally {
       if (draftMenuBtn) {
-        draftMenuBtn.textContent = '✨ 帮我想一句回复填入输入框（可连点换一句）';
+        draftMenuBtn.textContent = '帮我想一句回复填入输入框（可连点换一句）';
       }
       if (mainMagicBtn) {
         mainMagicBtn.disabled = false;
@@ -9290,7 +9303,7 @@
     if (draftInBox) {
       fimPromptInput.value = draftInBox;
       fimSuffixInput.value = `听完我的话，${cleanActor}的眼神渐渐柔和下来，轻轻握住了我的指尖。`;
-      showToast('💬 已带入你输入框里写了一半的草稿，点右下角即可帮你接上！');
+      showToast('已带入你输入框里写了一半的草稿，点右下角即可帮你接上！');
     } else if (state.messages.length > 0) {
       const lastMsg = state.messages[state.messages.length - 1];
       const snippet = String(lastMsg.content || '')
@@ -9299,12 +9312,12 @@
         .slice(-140);
       fimPromptInput.value = snippet || `看着眼前的${cleanActor}，我一时不知道该怎么开口接话。`;
       fimSuffixInput.value = `我深吸了一口气，终于抬起眼眸认真地回应了${cleanActor}的心意。`;
-      showToast('💬 已自动带入当前聊天的最新进展，可直接生成过渡回复！');
+      showToast('已自动带入当前聊天的最新进展，可直接生成过渡回复！');
     } else {
       const intro = state.activePersona?.tagline || '微风吹过安静的街角，我们的目光刚好撞在一起。';
       fimPromptInput.value = intro;
       fimSuffixInput.value = `${cleanActor}率先打破了沉默，朝我露出了温柔的浅笑。`;
-      showToast('🌸 已结合当前角色设定生成开头与结尾，点右下角试试吧！');
+      showToast('已结合当前角色设定生成开头与结尾，点右下角试试吧！');
     }
     fimOutputWrap.classList.add('hidden');
   });
@@ -9328,7 +9341,7 @@
       if (!targetEl) return;
       if (targetEl.value.trim().length > 20) {
         const confirmed = await askUserConfirm({
-          title: '🧹 确认清空输入内容',
+          title: '确认清空输入内容',
           message: '确定要清空此文本框内已编写的内容吗？',
           confirmText: '确认清空',
           danger: true
@@ -9360,7 +9373,7 @@
     }
     runBtn.disabled = true;
     if (rerunBtn) rerunBtn.disabled = true;
-    runBtn.textContent = '⏳ 正在为你构思过渡情节…';
+    runBtn.textContent = '正在为你构思过渡情节…';
     if (progCard) progCard.classList.remove('hidden');
     if (progBar) progBar.value = 15;
 
@@ -9371,8 +9384,8 @@
       if (progLbl) {
         progLbl.textContent =
           pct < 55
-            ? '⏳ 正在结合开头与结尾构思自然衔接细节…'
-            : '⏳ 正在润色人物动作与语气，马上就好…';
+            ? '正在结合开头与结尾构思自然衔接细节…'
+            : '正在润色人物动作与语气，马上就好…';
       }
     }, 800);
 
@@ -9397,12 +9410,12 @@
       )}</mark>${escapeHtml(fimSuffixInput.value)}`;
       fimOutputWrap.classList.remove('hidden');
       const toneLabel = FIM_TONE_LABELS[currentFimTone] || '细腻温柔';
-      document.getElementById('fim-usage-hint').textContent = `✨ 已按「${toneLabel}」感觉补齐 ${
+      document.getElementById('fim-usage-hint').textContent = `已按「${toneLabel}」感觉补齐 ${
         (res.completion || '').trim().length
       } 字 · 点上方「一键填入聊天框」即可直接使用`;
     } catch (err) {
       if (err?.name === 'AbortError') {
-        showToast('⏹ 已取消本次灵感补写');
+        showToast('已取消本次灵感补写');
       } else {
         showToast(`🌸 ${err.message}`);
       }
@@ -9412,7 +9425,7 @@
       if (progCard) progCard.classList.add('hidden');
       runBtn.disabled = false;
       if (rerunBtn) rerunBtn.disabled = false;
-      runBtn.textContent = '✨ 帮我补齐中间剧情';
+      runBtn.textContent = '帮我补齐中间剧情';
     }
   }
 
@@ -9428,7 +9441,7 @@
   document.getElementById('copy-fim-merged-btn').addEventListener('click', async () => {
     if (!latestFimMerged) return;
     await navigator.clipboard.writeText(latestFimMerged).catch(() => {});
-    showToast('✅ 已复制整段内容，随时可粘贴使用');
+    showToast('已复制整段内容，随时可粘贴使用');
   });
 
   document.getElementById('send-fim-to-chat-btn')?.addEventListener('click', () => {
@@ -9437,7 +9450,7 @@
     syncComposerEmptyState();
     fimDialog.close();
     chatInput.focus();
-    showToast('💬 已填入下方聊天框，可直接发送或按喜好微调哦！');
+    showToast('已填入下方聊天框，可直接发送或按喜好微调哦！');
   });
 
   // 🌟 多一点主动性核心引擎：仅在恋庭沉浸扮演模式下发起主动关怀（锁定发起会话 ID 严防串台）
@@ -9467,7 +9480,7 @@
     proBadge.className = 'proactive-msg-badge';
     proBadge.textContent = isDsUi
       ? '延伸思考 · 主动跟进'
-      : `💌 ${state.activePersona?.name?.split(/[·\s]/)[0] || '他'}正在主动向你搭话…`;
+      : `${state.activePersona?.name?.split(/[·\s]/)[0] || '他'}正在主动向你搭话…`;
     bodyEl.appendChild(proBadge);
 
     const thoughtDetails = document.createElement('details');
@@ -9476,7 +9489,7 @@
     thoughtDetails.innerHTML = `
       <summary class="thought-summary">
         ${isDsUi ? DS_THINK_ATOM_SVG : ''}
-        <span class="live-thought-label">${isDsUi ? '思考中...' : '💭 主动搭话前的潜台词…'}</span>
+        <span class="live-thought-label">${isDsUi ? '思考中...' : '主动搭话前的潜台词…'}</span>
         <span class="thought-chevron">▼</span>
       </summary>
       <div class="thought-content streaming-cursor"></div>
@@ -9484,7 +9497,7 @@
 
     const proseEl = document.createElement('div');
     proseEl.className = 'assistant-prose streaming-cursor';
-    proseEl.innerHTML = '<span class="streaming-await-pill">✦ 正在走近你…</span>';
+    proseEl.innerHTML = '<span class="streaming-await-pill">正在走近你…</span>';
 
     bodyEl.appendChild(thoughtDetails);
     bodyEl.appendChild(proseEl);
@@ -9574,9 +9587,9 @@
           renderSessionList();
           renderMessages();
           if (triggerReason === 'idle') {
-            showToast('💌 看你安静了一会儿，TA 主动给你发来了一条新消息');
+            showToast('看你安静了一会儿，TA 主动给你发来了一条新消息');
           } else if (triggerReason === 'return') {
-            showToast('💌 欢迎回来！TA 一看到你就主动迎上来打招呼啦');
+            showToast('欢迎回来！TA 一看到你就主动迎上来打招呼啦');
           }
         }
       };
@@ -9632,14 +9645,14 @@
       proBtnEl.classList.toggle('active', next);
       proBtnEl.setAttribute('aria-pressed', String(next));
       proBtnEl.textContent = next
-        ? '💓 角色安静时自动搭话：已开启'
-        : '💓 角色安静时自动搭话：已关闭';
+        ? '角色安静时自动搭话：已开启'
+        : '角色安静时自动搭话：已关闭';
     }
     await patchActiveSessionFlag(
       { proactive_enabled: next },
       next
-        ? '💓 已开启空闲主动搭话（停顿较久时角色会主动开口找你）'
-        : '💤 已关闭自动主动搭话（默认安静不打断，可随时点「👋 让 TA 开口」）'
+        ? '已开启空闲主动搭话（停顿较久时角色会主动开口找你）'
+        : '已关闭自动主动搭话（默认安静不打断，可随时点「让 TA 开口」）'
     );
   });
 
@@ -9843,7 +9856,7 @@
     } else if (isLiveDemoEntry) {
       if (!sessionStorage.getItem('star_demo_welcomed')) {
         sessionStorage.setItem('star_demo_welcomed', '1');
-        showToast('💖 欢迎来到星语恋庭 · 点击左侧任意角色即可开启沉浸对话与真声陪伴');
+        showToast('欢迎来到星语恋庭 · 点击左侧任意角色即可开启沉浸对话与真声陪伴');
       }
     }
   }

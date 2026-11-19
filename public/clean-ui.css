@@ -264,10 +264,21 @@ details.sidebar-fold:not([open]) .fold-caret {
 }
 
 .attach-picker-icon {
-  font-size: 16px;
-  line-height: 1.2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
-  margin-top: 1px;
+  margin-top: 2px;
+  color: var(--text-secondary);
+  transition: color 0.12s ease;
+}
+
+.attach-picker-icon svg {
+  display: block;
+}
+
+.attach-picker-item:hover .attach-picker-icon {
+  color: var(--brand-primary);
 }
 
 .attach-picker-text {
@@ -306,6 +317,16 @@ details.sidebar-fold:not([open]) .fold-caret {
   text-align: left;
   cursor: pointer;
   transition: background 0.14s ease, color 0.14s ease;
+}
+
+.popover-action-item svg {
+  flex-shrink: 0;
+  color: var(--text-secondary);
+  transition: color 0.14s ease;
+}
+
+.popover-action-item:hover svg {
+  color: currentColor;
 }
 
 .popover-action-item:hover {
@@ -1990,6 +2011,11 @@ dialog::backdrop {
   flex-shrink: 0;
 }
 
+.clean-bottom-icons .icon-btn svg,
+.clean-bottom-icons .admin-entry-mini-btn svg {
+  display: block;
+}
+
 /* 互动剧本选集大厅大卡片网格 */
 .script-select-grid {
   display: grid;
@@ -2767,12 +2793,20 @@ dialog::backdrop {
    LaTeX数学公式 · 右侧伴生Artifacts实时预览 · 粘贴截图多模态预览 · 回到底部圆钮
    ========================================================================== */
 
-/* 14.1 侧边栏会话置顶、重命名与 ··· 悬浮上下文菜单 */
+/* 14.1 侧边栏会话置顶、重命名与 ··· 悬浮上下文菜单（原生 DeepSeek 极简矢量风） */
 .session-item .ds-pin-glyph {
-  font-size: 11px;
-  margin-right: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 6px;
+  color: var(--text-secondary);
   opacity: 0.85;
   flex-shrink: 0;
+}
+
+.session-item .ds-pin-glyph svg {
+  display: block;
+  stroke: currentColor;
 }
 
 .session-row-actions {
@@ -2783,18 +2817,23 @@ dialog::backdrop {
 }
 
 .ds-session-more-btn {
-  min-inline-size: 24px;
-  min-block-size: 24px;
-  padding: 0 5px;
+  min-inline-size: 26px;
+  min-block-size: 26px;
+  padding: 0;
   border: none;
   border-radius: 6px;
   background: transparent;
   color: var(--text-secondary);
-  font-size: 14px;
-  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   cursor: pointer;
   opacity: 0;
-  transition: opacity 0.14s ease, background-color 0.14s ease;
+  transition: opacity 0.14s ease, background-color 0.14s ease, color 0.14s ease;
+}
+
+.ds-session-more-btn svg {
+  display: block;
 }
 
 .session-item:hover .ds-session-more-btn,
@@ -2805,12 +2844,13 @@ dialog::backdrop {
 
 @media (hover: none) {
   .ds-session-more-btn {
-    opacity: 0.8;
+    opacity: 0.85;
   }
 }
 
-.ds-session-more-btn:hover {
-  background: var(--bg-surface);
+.ds-session-more-btn:hover,
+.session-item.menu-open .ds-session-more-btn {
+  background: var(--bg-surface-hover);
   color: var(--text-primary);
 }
 
@@ -2829,43 +2869,86 @@ dialog::backdrop {
 .ds-session-ctx-menu {
   position: fixed;
   z-index: 220;
-  min-width: 158px;
-  padding: 6px;
+  min-width: 168px;
+  padding: 5px;
   border-radius: 12px;
   background: var(--bg-composer);
   border: 1px solid var(--border-strong);
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.18);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.16), 0 2px 8px rgba(0, 0, 0, 0.06);
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  animation: dsMenuFadeIn 0.12s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes dsMenuFadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
 }
 
 .ds-ctx-item {
   width: 100%;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 7px 10px;
+  gap: 10px;
+  padding: 7px 11px;
   border: none;
   border-radius: 8px;
   background: transparent;
   color: var(--text-primary);
   font: inherit;
-  font-size: 12.5px;
+  font-size: 13px;
+  font-weight: 450;
   text-align: left;
   cursor: pointer;
+  transition: background-color 0.12s ease, color 0.12s ease;
+  white-space: nowrap;
+}
+
+.ds-ctx-item svg {
+  flex-shrink: 0;
+  color: var(--text-secondary);
+  transition: color 0.12s ease;
 }
 
 .ds-ctx-item:hover {
   background: var(--bg-surface-hover);
+  color: var(--text-primary);
+}
+
+.ds-ctx-item:hover svg {
+  color: var(--text-primary);
 }
 
 .ds-ctx-item.danger {
   color: #ef4444;
 }
 
+.ds-ctx-item.danger svg {
+  color: #ef4444;
+}
+
 .ds-ctx-item.danger:hover {
-  background: rgba(239, 68, 68, 0.1);
+  background: rgba(239, 68, 68, 0.08);
+  color: #dc2626;
+}
+
+.ds-ctx-item.danger:hover svg {
+  color: #dc2626;
+}
+
+.ds-ctx-divider {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--border-light, rgba(140, 150, 170, 0.15));
 }
 
 /* 14.2 空对话居中欢迎态快捷胶囊与底部微字提示 */

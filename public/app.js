@@ -1866,11 +1866,11 @@
     const dsComposerChip = document.getElementById('ds-composer-api-chip');
     if (dsComposerChip) {
       if (p === 'own_deepseek' && hasOwnKey) {
-        dsComposerChip.textContent = `🔑 我的密钥 (${shortModel})`;
+        dsComposerChip.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"></path></svg><span>我的密钥 (${escapeHtml(shortModel)})</span>`;
       } else if (hasOwnKey) {
-        dsComposerChip.textContent = '🔑 切回我的密钥';
+        dsComposerChip.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"></path></svg><span>切回我的密钥</span>`;
       } else {
-        dsComposerChip.textContent = '⚙️ 聊天设置';
+        dsComposerChip.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg><span>聊天设置</span>`;
       }
     }
 
@@ -2803,8 +2803,12 @@
       const subText = p.tagline || p.backstory || '点击切入角色故事线';
       const customActionsHtml = isCustomOwned
         ? `<div class="persona-card-actions">
-             <button type="button" class="persona-mini-act-btn p-edit-btn" title="编辑自建角色设定" aria-label="编辑角色 ${escapeHtml(shortName)}">✏️</button>
-             <button type="button" class="persona-mini-act-btn danger p-del-btn" title="删除此自建角色" aria-label="删除角色 ${escapeHtml(shortName)}">🗑️</button>
+             <button type="button" class="persona-mini-act-btn p-edit-btn" title="编辑自建角色设定" aria-label="编辑角色 ${escapeHtml(shortName)}">
+               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+             </button>
+             <button type="button" class="persona-mini-act-btn danger p-del-btn" title="删除此自建角色" aria-label="删除角色 ${escapeHtml(shortName)}">
+               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+             </button>
            </div>`
         : '';
       item.innerHTML = `
@@ -2869,7 +2873,7 @@
   });
 
   function resolveDsTimelineGroup(session) {
-    if (session.pinned === 1) return '📌 已置顶';
+    if (session.pinned === 1) return '置顶';
     const ts = Number(session.updated_at || Date.now());
     const now = new Date();
     const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
@@ -2949,32 +2953,75 @@
     menu.className = 'ds-session-ctx-menu';
     menu.setAttribute('role', 'menu');
     menu.innerHTML = `
-      <button type="button" class="ds-ctx-item" data-act="export-md" role="menuitem">
-        <span>📄 导出对话与记忆 (.md)</span>
-      </button>
-      <button type="button" class="ds-ctx-item" data-act="import-md" role="menuitem">
-        <span>📥 导入 .md 记忆到此对话</span>
-      </button>
-      <button type="button" class="ds-ctx-item" data-act="session-setting" role="menuitem">
-        <span>${isDsSess ? '🎯 本对话系统指令与记忆' : '🎭 本对话独立设定与记忆'}</span>
-      </button>
-      <button type="button" class="ds-ctx-item" data-act="share" role="menuitem">
-        <span>📤 分享长图 / 多格式导出</span>
+      <button type="button" class="ds-ctx-item" data-act="rename" role="menuitem">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M12 20h9"></path>
+          <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+        </svg>
+        <span>重命名</span>
       </button>
       <button type="button" class="ds-ctx-item" data-act="pin" role="menuitem">
-        <span>${isPinned ? '📍 取消置顶' : '📌 置顶对话'}</span>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <line x1="12" y1="17" x2="12" y2="22"></line>
+          <path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a1 1 0 0 0 0-2H8a1 1 0 0 0 0 2h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V17z"></path>
+        </svg>
+        <span>${isPinned ? '取消置顶' : '置顶会话'}</span>
       </button>
-      <button type="button" class="ds-ctx-item" data-act="rename" role="menuitem">
-        <span>✏️ 重命名</span>
+
+      <div class="ds-ctx-divider" role="separator"></div>
+
+      <button type="button" class="ds-ctx-item" data-act="share" role="menuitem">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="18" cy="5" r="3"></circle>
+          <circle cx="6" cy="12" r="3"></circle>
+          <circle cx="18" cy="19" r="3"></circle>
+          <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
+          <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
+        </svg>
+        <span>分享与导出</span>
       </button>
+      <button type="button" class="ds-ctx-item" data-act="export-md" role="menuitem">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+          <polyline points="14 2 14 8 20 8"></polyline>
+          <line x1="12" y1="18" x2="12" y2="12"></line>
+          <polyline points="9 15 12 18 15 15"></polyline>
+        </svg>
+        <span>导出为 .md</span>
+      </button>
+      <button type="button" class="ds-ctx-item" data-act="import-md" role="menuitem">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+          <polyline points="14 2 14 8 20 8"></polyline>
+          <line x1="12" y1="12" x2="12" y2="18"></line>
+          <polyline points="9 15 12 12 15 15"></polyline>
+        </svg>
+        <span>导入记忆档案</span>
+      </button>
+      <button type="button" class="ds-ctx-item" data-act="session-setting" role="menuitem">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="3"></circle>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+        </svg>
+        <span>${isDsSess ? '系统提示词设定' : '专属人设设定'}</span>
+      </button>
+
+      <div class="ds-ctx-divider" role="separator"></div>
+
       <button type="button" class="ds-ctx-item danger" data-act="delete" role="menuitem">
-        <span>🗑️ 删除对话</span>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <polyline points="3 6 5 6 21 6"></polyline>
+          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+          <line x1="10" y1="11" x2="10" y2="17"></line>
+          <line x1="14" y1="11" x2="14" y2="17"></line>
+        </svg>
+        <span>删除会话</span>
       </button>
     `;
     document.body.appendChild(menu);
 
     const rect = btnEl.getBoundingClientRect();
-    const top = Math.min(window.innerHeight - 280, rect.bottom + 4);
+    const top = Math.min(window.innerHeight - 300, rect.bottom + 4);
     const left = Math.min(window.innerWidth - 205, Math.max(8, rect.left));
     menu.style.top = `${Math.max(8, top)}px`;
     menu.style.left = `${left}px`;
@@ -3005,7 +3052,7 @@
         });
         state.sessions = res.sessions || state.sessions;
         renderSessionList();
-        showToast(!isPinned ? '📌 已置顶该对话' : '📍 已取消置顶');
+        showToast(!isPinned ? '已置顶该对话' : '已取消置顶');
       } else if (act === 'rename') {
         startInlineSessionRename(itemEl, sessionObj);
       } else if (act === 'share') {
@@ -3084,11 +3131,17 @@
       if (isActiveSession) {
         item.setAttribute('aria-current', 'true');
       }
+      const pinSvg = `<span class="ds-pin-glyph" title="已置顶" aria-hidden="true">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="12" y1="17" x2="12" y2="22"></line>
+          <path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a1 1 0 0 0 0-2H8a1 1 0 0 0 0 2h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V17z"></path>
+        </svg>
+      </span>`;
       const prefixSpan = isDsUi
         ? s.pinned === 1
-          ? '<span class="ds-pin-glyph" aria-hidden="true">📌</span>'
+          ? pinSvg
           : ''
-        : `${s.pinned === 1 ? '<span class="ds-pin-glyph" aria-hidden="true">📌</span>' : ''}<span>${escapeHtml(
+        : `${s.pinned === 1 ? pinSvg : ''}<span>${escapeHtml(
             s.persona_avatar || '🌸'
           )}</span>`;
 
@@ -3108,15 +3161,19 @@
           ${customBadgeHtml}
         </div>
         <div class="session-row-actions">
-          <button type="button" class="session-export-quick-btn" title="导出此对话的聊天记录与记忆 (.md)" aria-label="导出此对话为 Markdown 记忆文件">📄</button>
-          <button type="button" class="ds-session-more-btn" title="导出 .md 记忆、导入记忆、独立设定、置顶或删除" aria-label="对话更多操作">···</button>
+          <button type="button" class="ds-session-more-btn" title="更多操作" aria-label="对话更多操作">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="12" cy="12" r="1.5"></circle>
+              <circle cx="19" cy="12" r="1.5"></circle>
+              <circle cx="5" cy="12" r="1.5"></circle>
+            </svg>
+          </button>
         </div>
       `;
 
       item.addEventListener('click', (e) => {
         if (
           e.target.closest('.session-del-btn') ||
-          e.target.closest('.session-export-quick-btn') ||
           e.target.closest('.ds-session-more-btn') ||
           e.target.closest('.ds-session-rename-input')
         ) {
@@ -3136,11 +3193,6 @@
       item.querySelector('.session-title-text')?.addEventListener('dblclick', (e) => {
         e.stopPropagation();
         startInlineSessionRename(item, s);
-      });
-
-      item.querySelector('.session-export-quick-btn')?.addEventListener('click', async (e) => {
-        e.stopPropagation();
-        await exportSessionMarkdownById(s.id);
       });
 
       const moreBtn = item.querySelector('.ds-session-more-btn');
@@ -8774,7 +8826,7 @@
 
   document.getElementById('ds-copy-markdown-btn')?.addEventListener('click', async (e) => {
     const copyBtn = e.currentTarget;
-    const origText = copyBtn.textContent;
+    const origHtml = copyBtn.innerHTML;
     let md = '';
     try {
       if (state.activeSessionId) {
@@ -8791,11 +8843,11 @@
     } catch {
       fallbackLegacyCopy(md);
     }
-    copyBtn.textContent = '✅ 已复制 .md！';
+    copyBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"></polyline></svg><span>已复制 .md</span>`;
     setTimeout(() => {
-      copyBtn.textContent = origText;
+      copyBtn.innerHTML = origHtml;
     }, 2200);
-    showToast('📋 已复制完整对话与记忆 Markdown，可直接粘贴使用！');
+    showToast('已复制完整对话与记忆 Markdown，可直接粘贴使用！');
   });
 
   document.getElementById('ds-export-md-file-btn')?.addEventListener('click', () => {
@@ -8813,8 +8865,8 @@
       showToast('💡 当前对话还没有聊天记录，先和角色聊上两句再来生成对话长图吧！');
       return;
     }
-    const origBtnText = dlBtn.textContent;
-    dlBtn.textContent = '⏳ 正在生成长图…';
+    const origBtnHtml = dlBtn.innerHTML;
+    dlBtn.innerHTML = `<span>正在生成长图…</span>`;
     const dpr = 2;
     const width = 680;
     const tmp = document.createElement('canvas');
@@ -8922,11 +8974,11 @@
     document.body.appendChild(link);
     link.click();
     link.remove();
-    dlBtn.textContent = '✅ 长图已下载！';
+    dlBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"></polyline></svg><span>长图已下载</span>`;
     setTimeout(() => {
-      dlBtn.textContent = origBtnText;
+      dlBtn.innerHTML = origBtnHtml;
     }, 2200);
-    showToast('🖼️ 高清对话分享长图已生成并开始下载！');
+    showToast('高清对话分享长图已生成并开始下载！');
   });
 
   // 「🪄 帮我回一句」一键直接结合当前最新剧情填入输入框（点完一轮再点自动向后台换新一批）

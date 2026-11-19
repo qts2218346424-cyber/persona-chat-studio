@@ -340,8 +340,12 @@
           <span class="ds-user-avatar" id="ds-nav-avatar">🍀</span>
           <span class="ds-user-name" id="ds-nav-nickname">超级无敌幸运星</span>
         </button>
-        <button type="button" class="ds-dots-btn" popovertarget="ds-user-popover" aria-label="打开更多功能菜单" title="网页预览、系统指令、记忆导出与模式切换">
-          ···
+        <button type="button" class="ds-dots-btn" popovertarget="ds-user-popover" aria-label="打开更多功能菜单" title="更多设置与账户">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="1.5"></circle>
+            <circle cx="19" cy="12" r="1.5"></circle>
+            <circle cx="5" cy="12" r="1.5"></circle>
+          </svg>
         </button>
 
         <div id="ds-user-popover" popover="auto" class="anchored-popover ds-user-menu-popover">
@@ -352,13 +356,16 @@
             </select>
           </div>
           <button type="button" class="popover-action-item hidden" id="ds-menu-admin-btn">
-            <span>🛡️ 站长管理后台</span>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+            <span>站长管理后台</span>
           </button>
           <button type="button" class="popover-action-item" id="ds-menu-settings-btn">
-            <span>⚙️ 设置（密钥 / 外观 / 偏好）</span>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+            <span>设置（模型 / 外观 / 偏好）</span>
           </button>
           <button type="button" class="popover-action-item" id="ds-menu-logout-btn">
-            <span>🔄 切换账号 / 退出登录</span>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+            <span>切换账号 / 退出登录</span>
           </button>
           <!-- 保留历史节点供脚本安全兼容，不在左下角与右上角重复堆砌 -->
           <button type="button" class="popover-action-item hidden" id="ds-menu-artifacts-btn"></button>
@@ -385,9 +392,15 @@
             </div>
           </button>
           <div class="clean-bottom-icons">
-            <button type="button" class="admin-entry-mini-btn hidden" id="open-admin-console-btn" title="站长管理后台">🛡️</button>
-            <button type="button" class="icon-btn" id="sidebar-apk-download-btn" title="下载 Android 原生随身版 (APK) · 含 Phone Agent">📱</button>
-            <button type="button" class="icon-btn" id="open-settings-btn" title="画面、配音与个人 API 密钥设置" aria-label="设置">⚙</button>
+            <button type="button" class="admin-entry-mini-btn hidden" id="open-admin-console-btn" title="站长管理后台" aria-label="管理后台">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+            </button>
+            <button type="button" class="icon-btn" id="sidebar-apk-download-btn" title="下载 Android 原生随身版 (APK) · 含 Phone Agent" aria-label="安卓随身版">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect><line x1="12" y1="18" x2="12.01" y2="18"></line></svg>
+            </button>
+            <button type="button" class="icon-btn" id="open-settings-btn" title="画面、配音与个人 API 密钥设置" aria-label="设置">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+            </button>
             <button type="button" class="logout-mini-btn" id="logout-btn" title="切换账号或退出">换号</button>
           </div>
           <span class="hidden" id="gateway-dot"></span>
@@ -408,12 +421,12 @@
 
           <!-- 左侧栏收起时的极简兜底入口（仅左栏收起时才显现，与左栏模式切换互斥不重复） -->
           <div class="collapsed-quick-nav hidden" id="collapsed-quick-nav" aria-label="侧栏收起快捷入口">
-            <button type="button" class="mini-btn" id="collapsed-switch-mode-btn" title="切换工作台模式">🐋 切 DeepSeek</button>
+            <button type="button" class="mini-btn" id="collapsed-switch-mode-btn" title="切换工作台模式">切换模式</button>
             <button type="button" class="mini-btn hidden" id="topbar-collapsed-new-chat-btn">+ 新对话</button>
             <button type="button" class="mini-btn hidden" id="topbar-collapsed-create-persona-btn">+ 创建角色</button>
-            <button type="button" class="mini-btn hidden" id="topbar-collapsed-plaza-btn">📖 换剧本</button>
-            <button type="button" class="mini-btn hidden" id="topbar-collapsed-settings-btn">⚙️ 设置</button>
-            <button type="button" class="mini-btn hidden" id="topbar-collapsed-account-btn">🔄 换号</button>
+            <button type="button" class="mini-btn hidden" id="topbar-collapsed-plaza-btn">换剧本</button>
+            <button type="button" class="mini-btn hidden" id="topbar-collapsed-settings-btn">设置</button>
+            <button type="button" class="mini-btn hidden" id="topbar-collapsed-account-btn">换号</button>
           </div>
 
           <!-- 恋庭模式顶栏信息 -->
@@ -435,21 +448,24 @@
           <div class="ds-topbar-meta ds-only-flex">
             <span class="ds-topbar-title" id="ds-topbar-title">新对话</span>
             <span class="ds-model-badge" id="ds-model-pill">DeepSeek · 深度思考</span>
-            <span class="ds-soul-pill hidden" id="ds-session-setting-pill">🎯 本对话系统指令</span>
+            <span class="ds-soul-pill hidden" id="ds-session-setting-pill">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+              <span>本对话系统指令</span>
+            </span>
           </div>
         </div>
 
         <div class="topbar-right" id="tour-anchor-tools">
           <!-- 保留历史节点供脚本兼容，桌面顶栏极简克制不堆砌重复入口 -->
-          <button type="button" class="soft-tool-btn hidden" id="topbar-script-switch-btn">📖 换剧本</button>
-          <button type="button" class="studio-drawer-toggle hidden" id="topbar-chapters-btn">🎬 选幕次</button>
-          <button type="button" class="soft-tool-btn hidden" id="rp-quick-memory-btn">🧠 设定与记忆</button>
-          <button type="button" class="proactive-trigger-btn hidden" id="proactive-now-btn">👋 让 TA 开口</button>
-          <button type="button" class="ds-inspector-btn hidden" id="open-ds-inspector-btn">⚡ 引擎状态</button>
-          <button type="button" class="soft-tool-btn hidden" id="ds-share-session-btn">📤 导出/分享</button>
-          <button type="button" class="soft-tool-btn hidden" id="ds-quick-theme-btn" aria-label="切换浅色或深色外观">🌗</button>
-          <button type="button" class="soft-tool-btn hidden" id="ds-topbar-settings-btn">⚙️ 设置</button>
-          <button type="button" class="soft-tool-btn hidden" id="topbar-switch-ds-btn">🐋 DeepSeek</button>
+          <button type="button" class="soft-tool-btn hidden" id="topbar-script-switch-btn">换剧本</button>
+          <button type="button" class="studio-drawer-toggle hidden" id="topbar-chapters-btn">选幕次</button>
+          <button type="button" class="soft-tool-btn hidden" id="rp-quick-memory-btn">设定与记忆</button>
+          <button type="button" class="proactive-trigger-btn hidden" id="proactive-now-btn">让 TA 开口</button>
+          <button type="button" class="ds-inspector-btn hidden" id="open-ds-inspector-btn">引擎状态</button>
+          <button type="button" class="soft-tool-btn hidden" id="ds-share-session-btn">导出/分享</button>
+          <button type="button" class="soft-tool-btn hidden" id="ds-quick-theme-btn" aria-label="切换浅色或深色外观">外观</button>
+          <button type="button" class="soft-tool-btn hidden" id="ds-topbar-settings-btn">设置</button>
+          <button type="button" class="soft-tool-btn hidden" id="topbar-switch-ds-btn">DeepSeek</button>
 
           <!-- DeepSeek 问答模式顶栏主按钮（系统预览独立图标 + ⋯） -->
           <button
@@ -487,7 +503,12 @@
             title="下载 Android 原生随身版 (APK) · 含 Phone Agent 手机端 AI 辅助助理"
             aria-label="下载安卓版"
           >
-            <span class="apk-pill-icon">📱</span>
+            <span class="apk-pill-icon" aria-hidden="true">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect>
+                <line x1="12" y1="18" x2="12.01" y2="18"></line>
+              </svg>
+            </span>
             <span class="apk-pill-label">安卓随身版</span>
             <span class="apk-pill-tag">v1.5</span>
           </button>
@@ -501,31 +522,54 @@
             aria-label="更多功能菜单"
             title="更多功能"
           >
-            ⋯
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="12" cy="12" r="1.5"></circle>
+              <circle cx="19" cy="12" r="1.5"></circle>
+              <circle cx="5" cy="12" r="1.5"></circle>
+            </svg>
           </button>
 
           <div id="topbar-more-popover" popover="auto" class="anchored-popover topbar-more-panel">
             <!-- 随身版快速下载与控制入口 -->
             <button type="button" class="popover-action-item" id="more-apk-download-btn">
-              <span>📱 安卓随身版与 Phone Agent</span>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect>
+                <line x1="12" y1="18" x2="12.01" y2="18"></line>
+              </svg>
+              <span>安卓随身版与 Phone Agent</span>
             </button>
             <!-- DeepSeek 模式：引擎 + 记忆 + 导入导出合一，外加设置 -->
             <button type="button" class="popover-action-item ds-only-flex" id="more-ds-suite-btn">
-              <span>⚡ 引擎、记忆与导入导出</span>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+              </svg>
+              <span>引擎、记忆与导入导出</span>
             </button>
 
             <!-- 恋庭剧本模式精简次级菜单 -->
             <button type="button" class="popover-action-item rp-only-flex" id="more-open-workshop-btn">
-              <span>🪄 AI 改剧本与共创工坊</span>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"></path>
+              </svg>
+              <span>AI 改剧本与共创工坊</span>
             </button>
             <button type="button" class="popover-action-item rp-only-flex" id="more-ds-memory-btn">
-              <span>📦 记忆与记录导入导出</span>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+                <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+                <line x1="12" y1="22.08" x2="12" y2="12"></line>
+              </svg>
+              <span>记忆与记录导入导出</span>
             </button>
 
             <!-- 通用设置入口 -->
             <button type="button" class="popover-action-item" id="more-open-prefs-btn">
-              <span class="rp-only-inline">⚙️ 设置、开关与工具</span>
-              <span class="ds-only-inline">⚙️ 密钥、模型与设置</span>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="12" cy="12" r="3"></circle>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+              </svg>
+              <span class="rp-only-inline">设置、开关与工具</span>
+              <span class="ds-only-inline">密钥、模型与设置</span>
             </button>
 
             <!-- 收纳次级/低频及兼容节点（已归并到工作台抽屉与设置面板，保持零报错） -->
@@ -833,21 +877,39 @@
 
               <div id="attach-picker-popover" popover="auto" class="anchored-popover attach-picker-panel" aria-label="选择上传文件类型">
                 <label for="ds-doc-attachment-input" role="button" tabindex="0" class="popover-action-item attach-picker-item">
-                  <span class="attach-picker-icon" aria-hidden="true">📄</span>
+                  <span class="attach-picker-icon" aria-hidden="true">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                      <polyline points="14 2 14 8 20 8"></polyline>
+                      <line x1="16" y1="13" x2="8" y2="13"></line>
+                      <line x1="16" y1="17" x2="8" y2="17"></line>
+                      <polyline points="10 9 9 9 8 9"></polyline>
+                    </svg>
+                  </span>
                   <span class="attach-picker-text">
                     <strong>上传文档 / PDF / Word / 代码</strong>
                     <small>直接打开手机文件管理器与文档目录</small>
                   </span>
                 </label>
                 <label for="ds-attachment-input" role="button" tabindex="0" class="popover-action-item attach-picker-item">
-                  <span class="attach-picker-icon" aria-hidden="true">📂</span>
+                  <span class="attach-picker-icon" aria-hidden="true">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                    </svg>
+                  </span>
                   <span class="attach-picker-text">
                     <strong>选择任意格式文件</strong>
                     <small>不限后缀名浏览系统文件夹</small>
                   </span>
                 </label>
                 <label for="ds-image-attachment-input" role="button" tabindex="0" class="popover-action-item attach-picker-item">
-                  <span class="attach-picker-icon" aria-hidden="true">🖼️</span>
+                  <span class="attach-picker-icon" aria-hidden="true">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                      <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                      <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                      <polyline points="21 15 16 10 5 21"></polyline>
+                    </svg>
+                  </span>
                   <span class="attach-picker-text">
                     <strong>上传图片 / 手机相册</strong>
                     <small>从相册选图或拍照识别</small>
@@ -855,7 +917,11 @@
                 </label>
               </div>
               <button type="button" class="ds-api-status-chip hidden" id="ds-composer-api-chip">
-                ⚙️ 设置
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <circle cx="12" cy="12" r="3"></circle>
+                  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                </svg>
+                <span>设置</span>
               </button>
               <button type="button" class="stop-btn hidden" id="stop-stream-btn" title="停止生成">
                 <span class="stop-square"></span>
@@ -2377,11 +2443,11 @@
     </div>
   </dialog>
 
-  <!-- 模态弹窗 12：📤 双模式通用对话记录与记忆档案 (.md) 导出与分享长图面板 -->
+  <!-- 模态弹窗 12：双模式通用对话记录与记忆档案 (.md) 导出与分享长图面板 -->
   <dialog id="ds-share-dialog" class="modal-dialog modal-wide" closedby="any" aria-labelledby="ds-share-title">
     <div class="modal-inner">
       <div class="modal-header">
-        <h2 id="ds-share-title">📤 导出聊天与记忆档案 (.md) / 分享长图</h2>
+        <h2 id="ds-share-title">导出聊天与记忆档案 (.md) / 分享长图</h2>
         <button type="button" class="icon-btn" id="close-ds-share-dialog" aria-label="关闭分享窗口">✕</button>
       </div>
       <div class="ds-share-preview-card" id="ds-share-preview-card"></div>
@@ -2389,10 +2455,22 @@
         <span class="muted-count" id="ds-share-meta-hint">导出的 .md 含本对话独立设定、长期记忆与完整对话，可导入任意其他对话</span>
         <div class="right-btns">
           <button type="button" class="secondary-btn" id="cancel-ds-share-dialog">取消</button>
-          <button type="button" class="secondary-btn" id="ds-copy-markdown-btn">📋 复制记忆 .md</button>
-          <button type="button" class="secondary-btn" id="ds-export-json-file-btn">📦 备份 .json</button>
-          <button type="button" class="primary-btn" id="ds-export-md-file-btn">📄 下载 .md 记忆档案</button>
-          <button type="button" class="ds-primary-btn" id="ds-download-share-png-btn">🖼️ 保存对话长图 (.png)</button>
+          <button type="button" class="secondary-btn" id="ds-copy-markdown-btn">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+            <span>复制记忆 .md</span>
+          </button>
+          <button type="button" class="secondary-btn" id="ds-export-json-file-btn">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
+            <span>备份 .json</span>
+          </button>
+          <button type="button" class="primary-btn" id="ds-export-md-file-btn">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="12" y1="18" x2="12" y2="12"></line><polyline points="9 15 12 18 15 15"></polyline></svg>
+            <span>下载 .md 记忆档案</span>
+          </button>
+          <button type="button" class="ds-primary-btn" id="ds-download-share-png-btn">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+            <span>保存对话长图 (.png)</span>
+          </button>
         </div>
       </div>
     </div>
@@ -2421,7 +2499,12 @@
     <div class="apk-modal-inner">
       <div class="apk-modal-header">
         <div class="apk-modal-title-group">
-          <div class="apk-modal-badge-icon" aria-hidden="true">📱</div>
+          <div class="apk-modal-badge-icon" aria-hidden="true">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect>
+              <line x1="12" y1="18" x2="12.01" y2="18"></line>
+            </svg>
+          </div>
           <div class="apk-modal-title-text">
             <h3 id="apk-modal-title">星语恋庭 · Android 原生随身版 (APK)</h3>
             <p>内置离线极速资产 · 手机端 AI 辅助助理 (Phone Agent) · 个人密钥本地直连</p>
@@ -2435,10 +2518,10 @@
         <div class="apk-hero-card">
           <div class="apk-hero-top">
             <div class="apk-meta-pills">
-              <span class="apk-meta-pill">🏷️ 版本 v1.5.0 正式版</span>
-              <span class="apk-meta-pill">⚡ 极速包体 7.0 MB</span>
-              <span class="apk-meta-pill">🛡️ 官方纯净 · 签名校验</span>
-              <span class="apk-meta-pill" id="pa-device-info-pill">📱 支持 Android 7.0 ~ 14+</span>
+              <span class="apk-meta-pill">版本 v1.5.0 正式版</span>
+              <span class="apk-meta-pill">极速包体 7.0 MB</span>
+              <span class="apk-meta-pill">官方纯净 · 签名校验</span>
+              <span class="apk-meta-pill" id="pa-device-info-pill">支持 Android 7.0 ~ 14+</span>
             </div>
           </div>
 
@@ -2449,11 +2532,19 @@
               class="apk-cta-download-btn"
               id="apk-primary-download-link"
             >
-              <span>⚡ 一键高速下载 APK</span>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <polyline points="19 12 12 19 5 12"></polyline>
+              </svg>
+              <span>一键高速下载 APK</span>
               <span style="font-size:12px;opacity:0.85;">(7.0 MB)</span>
             </a>
             <button type="button" class="apk-secondary-btn" id="apk-copy-link-btn">
-              🔗 复制手机下载直链
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+                <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+              </svg>
+              <span>复制手机下载直链</span>
             </button>
             <a
               href="/downloads/DeepSeek_星语随身版.apk"

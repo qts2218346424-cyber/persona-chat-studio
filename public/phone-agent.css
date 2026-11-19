@@ -31,8 +31,14 @@
 }
 
 .apk-pill-icon {
-  font-size: 15px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   line-height: 1;
+}
+
+.apk-pill-icon svg {
+  display: block;
 }
 
 .apk-pill-label {

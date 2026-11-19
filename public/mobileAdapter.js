@@ -62,8 +62,8 @@
   }
 
   applyResponsiveButtonLabels('topbar-script-switch-btn', '📖 换剧本', '📖 剧本');
-  applyResponsiveButtonLabels('toggle-right-btn', '💞 养成·记忆·设定', '💞 记忆');
-  applyResponsiveButtonLabels('topbar-companion-btn', '✨ 陪伴立绘', '✨ 立绘');
+  applyResponsiveButtonLabels('toggle-right-btn', '💞 养成', '💞 养成');
+  applyResponsiveButtonLabels('topbar-companion-btn', '✨ 立绘', '✨ 立绘');
   applyResponsiveButtonLabels('topbar-switch-ds-btn', '🐋 DeepSeek', '🐋 DS');
   applyResponsiveButtonLabels('topbar-more-btn', '⋯', '⋯');
 
@@ -87,7 +87,6 @@
       moreBtn;
 
     [
-      'open-ds-artifacts-btn',
       'ds-open-memory-setting-btn',
       'open-ds-inspector-btn',
       'ds-share-session-btn',
@@ -96,18 +95,7 @@
       document.getElementById(id)?.classList.add('ds-desktop-tool');
     });
 
-    if (!document.getElementById('ds-topbar-rp-btn')) {
-      const rpJumpBtn = document.createElement('button');
-      rpJumpBtn.type = 'button';
-      rpJumpBtn.id = 'ds-topbar-rp-btn';
-      rpJumpBtn.className = 'soft-tool-btn ds-only-inline ds-switch-rp-pill';
-      rpJumpBtn.title = '一键切换至「星语恋庭」角色扮演剧场';
-      rpJumpBtn.innerHTML = '<span class="btn-full-lbl">🌸 恋庭剧场</span><span class="btn-short-lbl">🌸 恋庭</span>';
-      rpJumpBtn.addEventListener('click', () => {
-        document.getElementById('ws-mode-roleplay')?.click();
-      });
-      topbarRight.insertBefore(rpJumpBtn, firstDsToolBtn);
-    }
+    // 模式切换入口已全站统一在左侧栏顶部（以及收起态左上角兜底按钮），不再向右上角顶栏注入切模式胶囊
 
     if (!document.getElementById('ds-topbar-new-btn')) {
       const newChatIconBtn = document.createElement('button');
@@ -130,14 +118,8 @@
     }
   }
 
-  // 保持 ⋯ 更多菜单极简纯净，不再塞入极客调试菜单项
+  // 保持 ⋯ 更多菜单极简纯净
   const morePopover = document.getElementById('topbar-more-popover');
-  if (morePopover) {
-    const vipMoreBtn = document.getElementById('more-open-vip-btn');
-    if (vipMoreBtn) {
-      vipMoreBtn.classList.remove('rp-only-flex');
-    }
-  }
 
   // 陪伴立绘移动端悬浮卡片右上角收起按钮
   const compStyleBar = document.querySelector('#companion-stage .companion-Style-bar');
@@ -361,7 +343,6 @@
         target.closest('#sidebar-import-history-btn') ||
         target.closest('#open-user-persona-btn') ||
         target.closest('#open-settings-btn') ||
-        target.closest('#sidebar-quick-vip-btn') ||
         target.closest('#open-admin-console-btn') ||
         target.closest('#logout-btn') ||
         target.closest('.persona-mini-act-btn')

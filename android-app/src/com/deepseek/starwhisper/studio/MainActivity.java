@@ -2,11 +2,13 @@ package com.deepseek.starwhisper.studio;
 
 import android.app.Activity;
 import android.content.ActivityNotFoundException;
+import android.content.ClipData;
 import android.content.Intent;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.provider.Settings;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.Window;
@@ -23,7 +25,9 @@ import android.widget.Toast;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
@@ -131,19 +135,83 @@ public class MainActivity extends Activity {
                 FileChooserParams fileChooserParams
         ) {
             if (filePathCallback != null) {
-                filePathCallback.onReceiveValue(null);
+                try {
+                    filePathCallback.onReceiveValue(null);
+                } catch (Exception ignored) {
+                }
+                filePathCallback = null;
             }
             filePathCallback = callback;
 
-            Intent intent = fileChooserParams.createIntent();
+            String[] acceptTypes = fileChooserParams != null ? fileChooserParams.getAcceptTypes() : null;
+            boolean imageOnly = isImageOnlyRequest(acceptTypes);
+            Intent contentIntent = new Intent(imageOnly ? Intent.ACTION_GET_CONTENT : Intent.ACTION_OPEN_DOCUMENT);
+            contentIntent.addCategory(Intent.CATEGORY_OPENABLE);
+            contentIntent.setType(imageOnly ? "image/*" : "*/*");
+            if (fileChooserParams != null) {
+                if (fileChooserParams.getMode() == FileChooserParams.MODE_OPEN_MULTIPLE) {
+                    contentIntent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
+                }
+                if (acceptTypes != null && acceptTypes.length > 0 && !imageOnly) {
+                    List<String> validMimes = new ArrayList<>();
+                    for (String t : acceptTypes) {
+                        if (t != null) {
+                            String trimmed = t.trim();
+                            if (!trimmed.isEmpty() && !"*/*".equals(trimmed) && trimmed.contains("/")) {
+                                validMimes.add(trimmed);
+                            }
+                        }
+                    }
+                    if (!validMimes.isEmpty() && !containsAllWildcard(acceptTypes)) {
+                        contentIntent.putExtra(Intent.EXTRA_MIME_TYPES, validMimes.toArray(new String[0]));
+                    }
+                }
+            }
+
             try {
-                startActivityForResult(intent, FILE_CHOOSER_REQ_CODE);
-            } catch (ActivityNotFoundException e) {
-                filePathCallback = null;
+                Intent chooser = Intent.createChooser(contentIntent, "选择要上传的文件");
+                startActivityForResult(chooser, FILE_CHOOSER_REQ_CODE);
+                return true;
+            } catch (ActivityNotFoundException primaryEx) {
+                if (fileChooserParams != null) {
+                    try {
+                        startActivityForResult(fileChooserParams.createIntent(), FILE_CHOOSER_REQ_CODE);
+                        return true;
+                    } catch (ActivityNotFoundException ignored) {
+                    }
+                }
+                if (filePathCallback != null) {
+                    filePathCallback.onReceiveValue(null);
+                    filePathCallback = null;
+                }
                 Toast.makeText(MainActivity.this, "未找到可用的文件选择器", Toast.LENGTH_SHORT).show();
                 return false;
             }
-            return true;
+        }
+
+        private boolean isImageOnlyRequest(String[] types) {
+            if (types == null || types.length == 0) return false;
+            boolean hasImg = false;
+            for (String t : types) {
+                if (t == null) continue;
+                String s = t.trim().toLowerCase(Locale.ROOT);
+                if (s.isEmpty()) continue;
+                if (s.startsWith("image/")) {
+                    hasImg = true;
+                } else {
+                    return false;
+                }
+            }
+            return hasImg;
+        }
+
+        private boolean containsAllWildcard(String[] types) {
+            for (String t : types) {
+                if ("*/*".equals(t != null ? t.trim() : "")) {
+                    return true;
+                }
+            }
+            return false;
         }
     }
 
@@ -163,10 +231,33 @@ public class MainActivity extends Activity {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         if (requestCode == FILE_CHOOSER_REQ_CODE) {
-            if (filePathCallback != null) {
-                Uri[] results = WebChromeClient.FileChooserParams.parseResult(resultCode, data);
-                filePathCallback.onReceiveValue(results);
-                filePathCallback = null;
+            ValueCallback<Uri[]> cb = filePathCallback;
+            filePathCallback = null;
+            if (cb != null) {
+                Uri[] results = null;
+                try {
+                    if (resultCode == Activity.RESULT_OK && data != null) {
+                        results = WebChromeClient.FileChooserParams.parseResult(resultCode, data);
+                        if ((results == null || results.length == 0)) {
+                            List<Uri> uris = new ArrayList<>();
+                            ClipData clip = data.getClipData();
+                            if (clip != null) {
+                                for (int i = 0; i < clip.getItemCount(); i++) {
+                                    Uri u = clip.getItemAt(i).getUri();
+                                    if (u != null) uris.add(u);
+                                }
+                            } else if (data.getData() != null) {
+                                uris.add(data.getData());
+                            }
+                            if (!uris.isEmpty()) {
+                                results = uris.toArray(new Uri[0]);
+                            }
+                        }
+                    }
+                } catch (Exception ignored) {
+                } finally {
+                    cb.onReceiveValue(results);
+                }
             }
             return;
         }
@@ -219,12 +310,162 @@ public class MainActivity extends Activity {
     public final class NativeBridge {
         @JavascriptInterface
         public String getAppVersion() {
-            return "1.2.0-android";
+            return "1.5.0-phone-agent";
         }
 
         @JavascriptInterface
         public boolean isNativeApk() {
             return true;
+        }
+
+        @JavascriptInterface
+        public String getDeviceInfo() {
+            return "{\"model\":\"" + Build.MODEL + "\",\"sdk\":" + Build.VERSION.SDK_INT + ",\"brand\":\"" + Build.BRAND + "\"}";
+        }
+
+        @JavascriptInterface
+        public boolean isAccessibilityEnabled() {
+            return AgentAccessibilityService.isRunning();
+        }
+
+        @JavascriptInterface
+        public void openAccessibilitySettings() {
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        Intent intent = new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS);
+                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                        startActivity(intent);
+                        Toast.makeText(MainActivity.this, "请在无障碍列表中找到「DeepSeek · 星语」并开启服务", Toast.LENGTH_LONG).show();
+                    } catch (Exception e) {
+                        Toast.makeText(MainActivity.this, "打开无障碍设置失败: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                    }
+                }
+            });
+        }
+
+        @JavascriptInterface
+        public boolean hasOverlayPermission() {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                return Settings.canDrawOverlays(MainActivity.this);
+            }
+            return true;
+        }
+
+        @JavascriptInterface
+        public void requestOverlayPermission() {
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                        if (!Settings.canDrawOverlays(MainActivity.this)) {
+                            try {
+                                Intent intent = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                        Uri.parse("package:" + getPackageName()));
+                                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                                startActivity(intent);
+                                Toast.makeText(MainActivity.this, "请授予「悬浮窗」权限以开启屏幕急停控制球", Toast.LENGTH_LONG).show();
+                            } catch (Exception e) {
+                                Toast.makeText(MainActivity.this, "打开悬浮窗设置失败: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        @JavascriptInterface
+        public boolean startFloatAgent() {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(MainActivity.this)) {
+                requestOverlayPermission();
+                return false;
+            }
+            try {
+                Intent intent = new Intent(MainActivity.this, FloatAgentService.class);
+                startService(intent);
+                return true;
+            } catch (Exception e) {
+                return false;
+            }
+        }
+
+        @JavascriptInterface
+        public boolean stopFloatAgent() {
+            try {
+                Intent intent = new Intent(MainActivity.this, FloatAgentService.class);
+                stopService(intent);
+                return true;
+            } catch (Exception e) {
+                return false;
+            }
+        }
+
+        @JavascriptInterface
+        public boolean isFloatAgentRunning() {
+            return FloatAgentService.isRunning();
+        }
+
+        @JavascriptInterface
+        public void updateFloatState(String state, String text) {
+            FloatAgentService.updateState(state, text);
+        }
+
+        @JavascriptInterface
+        public boolean isEmergencyStopRequested() {
+            return FloatAgentService.sEmergencyStopRequested;
+        }
+
+        @JavascriptInterface
+        public void resetEmergencyStop() {
+            FloatAgentService.resetStopFlag();
+        }
+
+        @JavascriptInterface
+        public String dumpScreenHierarchy(boolean clickableOnly) {
+            AgentAccessibilityService service = AgentAccessibilityService.getInstance();
+            if (service == null) {
+                return "{\"error\":\"AccessibilityService 未就绪，请先在系统设置中启用无障碍服务\",\"nodes\":[]}";
+            }
+            return service.dumpScreenHierarchy(clickableOnly);
+        }
+
+        @JavascriptInterface
+        public boolean dispatchClick(int x, int y) {
+            AgentAccessibilityService service = AgentAccessibilityService.getInstance();
+            if (service == null) return false;
+            return service.performClickCoordinate(x, y);
+        }
+
+        @JavascriptInterface
+        public boolean dispatchSwipe(int x1, int y1, int x2, int y2, int duration) {
+            AgentAccessibilityService service = AgentAccessibilityService.getInstance();
+            if (service == null) return false;
+            return service.performSwipe(x1, y1, x2, y2, duration);
+        }
+
+        @JavascriptInterface
+        public boolean dispatchInputText(String viewId, String text) {
+            AgentAccessibilityService service = AgentAccessibilityService.getInstance();
+            if (service == null) return false;
+            return service.performInputText(viewId, text);
+        }
+
+        @JavascriptInterface
+        public boolean dispatchGlobalAction(String action) {
+            AgentAccessibilityService service = AgentAccessibilityService.getInstance();
+            if (service == null) return false;
+            return service.performGlobal(action);
+        }
+
+        @JavascriptInterface
+        public void showToast(final String message) {
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    Toast.makeText(MainActivity.this, message, Toast.LENGTH_SHORT).show();
+                }
+            });
         }
     }
 }

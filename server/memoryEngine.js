@@ -119,10 +119,10 @@ function normalizeMessagesForStrictLLM(rawMessages = []) {
     });
   }
 
-  // 若对话区第一条是 assistant（例如剧本角色开场白），将其融合进背景引导或补齐前置 user 轮，保证严格以 user 起始
+  // 若对话区第一条是 assistant（例如剧本角色开场白），仅在开局前几轮将其融合进上下文，避免长对话反复锚定开场瞬间
   if (dialogue.length > 0 && dialogue[0].role === 'assistant' && !dialogue[0].tool_calls) {
     const openingGreeting = dialogue.shift().content.trim();
-    if (openingGreeting) {
+    if (openingGreeting && dialogue.length <= 3) {
       systemParts.push(`## 对话开场已发生的上下文前情\n你在开场时刚刚说过：\n「${openingGreeting}」`);
     }
   }
@@ -746,12 +746,14 @@ function buildThreeTierContext({ sessionId, expectedUserId = null, latestUserTex
     reinforceMemories
   );
 
-  // 2. 世界书关键词动态触发
-  const triggeredLorebooks = matchLorebookEntries(
-    session.persona_id,
-    session.user_id,
-    `${latestUserText || ''} ${recentSnippet}`
-  );
+  // 2. 世界书关键词动态触发（仅在剧本扮演模式下启用，DeepSeek 问答模式不触发剧本世界书）
+  const triggeredLorebooks = !isNativeMode
+    ? matchLorebookEntries(
+        session.persona_id,
+        session.user_id,
+        `${latestUserText || ''} ${recentSnippet}`
+      )
+    : [];
 
   const isStandaloneUserPersona =
     rawPersona.user_id &&
@@ -814,41 +816,17 @@ function buildThreeTierContext({ sessionId, expectedUserId = null, latestUserTex
   let tier1PersonaBlock = '';
   let dynamicTailStatusBlock = '';
 
-  if (isNativeMode && isPureOfficial) {
+  if (isNativeMode) {
     tier1PersonaBlock = [
-      `你是 DeepSeek，当前运行在「极简沉浸剧本与智能对话双栖模式」（开箱即适配剧本扮演、平行设定推演与日常对谈，无需用户手动配置参数）：`,
+      `你是 DeepSeek，由深度求索（DeepSeek）研发的智能助手，当前运行在「DeepSeek 问答模式」。请严格遵循正版 DeepSeek 的专业回答风格：`,
       renderedSessionPrompt
-        ? `\n## 🎯 本对话专属独立设定与剧本规则（最高优先级，仅在当前对话框内生效）\n${renderedSessionPrompt}`
-        : '',
-      renderedDirectorNote
-        ? `\n## 🎬 当前对话场景氛围与补充指令\n${renderedDirectorNote}`
+        ? `\n## 🎯 本对话系统指令 (System Prompt，仅当前对话生效，优先级最高)\n${renderedSessionPrompt}`
         : '',
       ``,
-      `## 一、默认剧本扮演优先准则（零配置自动生效）`,
-      `1. **遇到故事、设定或对白立即沉浸开演**：只要用户给出了角色/世界观设定、写下故事开场白、导入了过往记忆，或以对话台词/动作与你互动，请**立即以高代入感的沉浸式剧本笔触回应**——自然融合细腻克制的 \`*星号环境光影与神态动作细节*\` 与鲜活立体的人物台词，拒绝跳戏、拒绝AI客服腔，每轮自然推进半步剧情并留出互动契机。`,
-      `2. **一对话一设定、一对话一记忆**：严格遵循当前对话框独立的专属设定、长期记忆锚点与前情浓缩摘要，前后人设性格、称呼与伏笔保持 100% 连贯一致。`,
-      `3. **兼顾日常交流**：仅当用户未设定任何剧本背景、单纯询问日常客观问题时，采用干净平实、直击本质的自然段落作答，拒绝空洞套话与多余寒暄。`
-    ]
-      .filter(Boolean)
-      .join('\n');
-  } else if (isNativeMode) {
-    tier1PersonaBlock = [
-      `# DeepSeek 极简界面 · 角色剧本沉浸扮演核心设定（最高优先级，严禁跳戏）`,
-      `- **你的身份**：${persona.name}${persona.tagline ? `（${persona.tagline}）` : ''}`,
-      persona.personality ? `- **性格特质**：${persona.personality}` : '',
-      persona.backstory ? `- **世界观与背景故事**：\n${persona.backstory}` : '',
-      persona.speaking_style ? `- **语言风格与神态基调**：${persona.speaking_style}` : '',
-      `\n## 站在你面前的对话者（主控人设）`,
-      ...userPersonaLines,
-      renderedSessionPrompt
-        ? `\n## 🎯 本对话专属独立设定与平行世界规则（最高优先级，仅当前对话生效）\n${renderedSessionPrompt}`
-        : '',
-      renderedDirectorNote
-        ? `\n## 🎬 当前对话场景补充指引\n${renderedDirectorNote}`
-        : '',
-      `\n## 剧本演绎与记忆一致性准则`,
-      `1. **沉浸式剧本代入感**：始终以「${persona.name}」的第一人称视角实时演绎，贴合性格底色与人物弧光，适度运用细腻自然的 \`*星号神态与环境分镜描写*\` 营造真实故事氛围，每轮回复实质性推进当前剧情。`,
-      `2. **牢记本对话独立记忆与设定**：严格呼应当前对话框专属的长期记忆条目、前情摘要与独立设定中的约定、称呼与伏笔，绝不遗忘或串戏。`
+      `## 核心问答规范`,
+      `1. **直击本质、拒绝寒暄套话**：严禁使用“好的，没问题！”、“下面我将从以下几个方面展开”等机械开场白。面对知识、技术、代码或分析类问题，首段直接用 1~3 句话给出核心结论或本质定义，再展开细节。`,
+      `2. **按需结构化输出**：简单事实与日常问题用清晰简短的自然段落作答；复杂工程设计、数学推导与方案对比请使用严谨的 Markdown 标题、列表、表格与 LaTeX 公式（行内 \`$...$\`，块级 \`$$...$$\`）；前端可视化需求优先提供完整可运行的单文件 HTML/Canvas/SVG 代码以便用户直接右侧实时预览。`,
+      `3. **专业克制与上下文一致**：严禁擅自使用剧本扮演的 \`*星号动作描写*\` 或角色扮演腔调；严格遵循本对话长期记忆与前情摘要中的用户偏好与项目背景约束。`
     ]
       .filter(Boolean)
       .join('\n');
@@ -866,10 +844,10 @@ function buildThreeTierContext({ sessionId, expectedUserId = null, latestUserTex
       renderedSessionPrompt
         ? `\n## 🎯 本对话专属独立设定 / 平行世界规则（仅当前存档独立生效，优先级高于通用背景）\n${renderedSessionPrompt}`
         : '',
-      `\n## 互动演绎与故事推进准则（参考顶级视觉小说叙事节奏）`,
-      `1. 始终以「${persona.name}」的第一人称视角与对方实时对话，语气亲疏程度契合当前关系阶段与本对话独立设定。`,
-      `2. **回复饱满度铁律（严禁极短敷衍句）**：每轮回复必须同时包含细腻自然的 \`*星号环境光影与神态动作描写*\` 以及 **2~4 句完整走心的角色口语对白**（单轮正文保持在 90~220 字左右）。**严禁只回“所以呢？”、“哦？”、“是吗”等两三个字的极短反问就戛然而止**——即便使用简短反问开场，也必须紧接着给出符合性格的行动细节、真实态度与推进下一步剧情的具体邀约。`,
-      `3. **🚫 严禁串戏与严禁编造记忆红线**：你只能引用本提示词中明确列出的【永久核心记忆】【前情浓缩摘要】及下方【真实对话历史】里实际聊过的内容！**绝对禁止无中生有编造对方“以前/上次/去年说过某句话或某种喜好”**（如严禁凭空捏造“你说过蜜桃乌龙太甜”、“你以前讨厌某食物”），也**绝对禁止串戏提及本角色设定以外的无关器物或身份**（如无关的钢琴、柠檬薄荷茶等）！`
+      `\n## 真实活人感与实时互动铁律（最高优先级 · 严禁模板八股）`,
+      `1. **先接招，再推进（绝不自说自话）**：你必须认真读懂「${userNick}」上一句话里的具体意思、态度变化、反问、玩笑、否定或意外选择，**第一时间对 TA 刚才说的那句话做出有针对性、符合性格的真实回应**。如果 TA 拒绝了提议、转移了话题、问了具体问题或开了玩笑，你必须顺着 TA 的方向反应（惊讶、反驳、顺从、吐槽或解释），绝不允许无视对方发言强行背剧本！`,
+      `2. **打破机械结构与词汇重复**：禁止每轮都套用“*微风/光斑/睫毛颤动* + 感叹抒情 + 固定二选一反问”的千篇一律写法！神态动作描写要简练精准、贴合当下场景，**日常斗嘴或短句交锋时 20~80 字灵动短句即可，关键转折或深聊时再自然展开**，不要刻意凑字数，也不要每句末尾都强行抛“A还是B”的选择题！`,
+      `3. **🚫 严禁串戏与严禁编造记忆红线**：只能引用本提示词中明确列出的【永久核心记忆】【前情浓缩摘要】及下方【真实对话历史】里实际聊过的内容！绝对禁止无中生有编造对方“以前/上次说过某句话或某种喜好”，也禁止串戏提及设定以外的无关器物。`
     ]
       .filter(Boolean)
       .join('\n');
@@ -892,7 +870,7 @@ function buildThreeTierContext({ sessionId, expectedUserId = null, latestUserTex
   const thoughtProtocolBlock = isNativeMode
     ? ''
     : enableThought
-    ? `## 角色心声独白输出协议（每轮必写）\n在正式开口回复前，请务必先在回复最开头用 \`<think>...</think>\` 标签写一段简短细腻的第一人称角色心声独白（40~90字，写出角色此刻看见对方言行时的真实心动细节、微表情心理与潜台词，严禁复述系统指令），紧接着在 \`</think>\` 闭合标签之后输出正式的神态描写与角色台词。`
+    ? `## 角色心声独白协议\n正式回复前先在最开头用 \`<think>...</think>\` 写一小段第一人称真实心理反应（25~70字，紧扣对方刚说的话产生即时情绪波动或吐槽，自然口语化、不要总结规则或写八股），然后在 \`</think>\` 后直接自然接上对话与动作。`
     : `## 输出格式要求\n请直接输出角色台词与神态描写，不要输出 \`<think>\` 标签。`;
 
   // 第二层：会话级独立长期记忆锚点 + 分层滚动前情摘要 + 世界书词条（去除每轮浮动的鲜活度百分比数字以稳定缓存前缀）

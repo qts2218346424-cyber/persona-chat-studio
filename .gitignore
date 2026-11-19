@@ -7,9 +7,11 @@ __pycache__/
 *.local.json
 
 # 本地运行时数据库、桥接凭证与语音缓存（防隐私及密钥泄露）
+data/
 data/*.sqlite
 data/*.sqlite-shm
 data/*.sqlite-wal
+data/*.db
 data/antigravity_bridge.json
 data/tts_cache/
 

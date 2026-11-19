@@ -3,6 +3,7 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const readline = require('node:readline');
+const { getEnvVal } = require('./envLoader');
 
 const KOKORO_SCRIPT = path.join(__dirname, 'kokoroTtsWorker.py');
 const QWEN_SCRIPT = path.join(__dirname, 'qwenTtsWorker.py');
@@ -37,35 +38,35 @@ const VOICE_CATALOG = {
     id: 'otome_gentle',
     style: 'cool',
     isMale: true,
-    label: '✨ 乙游温柔骑士',
-    desc: '沈星回/修尔专属 · 清润温软白月光男神音，松弛治愈守护感',
-    defaultSpeed: 0.95,
-    siliconCustomUri: 'speech:otome-gentle-shen:d7fa8mk50mis73ak5h0g:hhjfedybsbunhlkrutoq',
+    label: '✨ 温柔民谣男神 · 毛不易质感',
+    desc: '毛不易歌手质感 · 温暖低醇的叙事感男嗓，松弛从容、微带贴耳呼吸气声与治愈烟火气',
+    defaultSpeed: 0.92,
+    siliconCustomUri: '',
     minimaxVoice: 'male-qn-qingse',
     minimaxPitch: 0,
-    minimaxSpeed: 0.95,
+    minimaxSpeed: 0.92,
     dashscopeVoice: 'Moon',
     volcVoice: 'zh_male_taocheng_uranus_bigtts',
-    siliconVoice: 'alex',
+    siliconVoice: 'benjamin',
     openaiVoice: 'echo',
-    cosyPrompt: '用温柔治愈、清润松弛又充满坚定守护感的乙女游戏白月光骑士男主语气轻声说'
+    cosyPrompt: '用毛不易般温暖低沉、质朴治愈、语调从容松弛且富有民谣诉说感的低醇男嗓，带着微弱温暖的呼吸气声慢条斯理地轻声说'
   },
   otome_cool: {
     id: 'otome_cool',
     style: 'cool',
     isMale: true,
-    label: '❄️ 乙游清冷剑尊',
-    desc: '江逾白专属 · 高岭之花清冽禁欲男神音，外冷内热暗藏护短',
-    defaultSpeed: 0.94,
-    siliconCustomUri: 'speech:otome-cool-master:d7fa8mk50mis73ak5h0g:kaqffehuvzgalnmhhtwc',
+    label: '❄️ 清冷叙事公子',
+    desc: '江逾白专属 · 清冽低醇真挚克制，略带从容民谣诉说感的高冷公子音',
+    defaultSpeed: 0.93,
+    siliconCustomUri: '',
     minimaxVoice: 'male-qn-jingying',
     minimaxPitch: -1,
-    minimaxSpeed: 0.94,
+    minimaxSpeed: 0.93,
     dashscopeVoice: 'Moon',
     volcVoice: 'zh_male_taocheng_uranus_bigtts',
-    siliconVoice: 'alex',
+    siliconVoice: 'benjamin',
     openaiVoice: 'echo',
-    cosyPrompt: '用乙女游戏高冷禁欲男主角、清润克制却暗藏温柔纵容的清冷公子声优语气轻声说'
+    cosyPrompt: '用清润克制、低沉磁性、带着温和真挚诉说感与细腻贴耳气声的青年男声缓慢轻声说'
   },
   otome_fox: {
     id: 'otome_fox',
@@ -155,8 +156,9 @@ const VOICE_CATALOG = {
     style: 'cute',
     isMale: false,
     label: '🍓 甜美元气学妹',
-    desc: '双马尾直球少女 · 清甜娇软、满眼星光的元气少女音',
+    desc: '双马尾二次元少女 · 清甜灵动娇软、满眼星光的二次元少女音',
     defaultSpeed: 1.02,
+    siliconCustomUri: '',
     minimaxVoice: 'female-shaonv',
     minimaxPitch: 0,
     minimaxSpeed: 1.02,
@@ -164,25 +166,93 @@ const VOICE_CATALOG = {
     volcVoice: 'zh_female_sajiaoxuemei_uranus_bigtts',
     siliconVoice: 'claire',
     openaiVoice: 'coral',
-    cosyPrompt: '用清甜灵动、满眼欢喜崇拜与元气少女笑意的甜妹学妹声优语气说'
+    cosyPrompt: '用二次元轻动漫元气少女声优、清甜灵动、娇憨软萌且充满活泼笑意的甜妹配音语气轻快地说'
   },
   cute_mochi: {
     id: 'cute_mochi',
     style: 'cute',
     isMale: false,
     label: '🌸 软萌糯米团子',
-    desc: '兔耳萌宠甜音 · 甜糯灵动治愈系',
+    desc: '二次元软萌萌妹 · 清甜软糯元气治愈系',
     defaultSpeed: 1.03,
+    siliconCustomUri: '',
     minimaxVoice: 'lovely_girl',
     minimaxPitch: 1,
     minimaxSpeed: 1.03,
     dashscopeVoice: 'Momo',
     volcVoice: 'zh_female_tianmeitaozi_uranus_bigtts',
-    siliconVoice: 'diana',
+    siliconVoice: 'claire',
     openaiVoice: 'coral',
-    cosyPrompt: '用清甜软糯、元气撒娇且充满灵动笑意的软萌配音语气说'
+    cosyPrompt: '用二次元动漫超萌Q版萝莉声优、软糯娇憨、萌系可爱且充满甜甜撒娇感的童趣配音语气说'
   }
 };
+
+// 静态高频预置音频匹配库（毛不易治愈民谣男声 / 二次元动漫元气甜妹女声）
+const PRESET_VOICE_DIR = path.join(__dirname, '..', 'public', 'assets', 'pre_voices');
+
+const PRESET_VOICE_RULES = [
+  {
+    key: 'stay',
+    patterns: [/守在聊天框旁边/, /累了就戳戳我/, /歇一歇眼睛/, /今天也是我守在旁边/],
+    maleFile: 'male_companion_stay.mp3',
+    femaleFile: 'female_companion_stay.mp3'
+  },
+  {
+    key: 'poke',
+    patterns: [/怎么突然戳我/, /想听.*说话不用这么试探/, /直接开口喊我就好/, /偷袭戳到脸颊/, /轻轻戳回来/],
+    maleFile: 'male_companion_poke.mp3',
+    femaleFile: 'female_companion_poke.mp3'
+  },
+  {
+    key: 'tired',
+    patterns: [/盯了这么久屏幕/, /肩膀和脖子/, /后背靠好/, /闭上眼睛歇/, /连续看屏幕好一会儿/, /眨眨眼睛.*伸个大大的懒腰/],
+    maleFile: 'male_companion_tired.mp3',
+    femaleFile: 'female_companion_tired.mp3'
+  },
+  {
+    key: 'night',
+    patterns: [/看一眼时间.*夜已经深了/, /别熬红了眼睛/, /去睡吧.*心疼/, /哈欠.*已经很晚很晚啦/, /快钻进暖乎乎的被窝/, /梦里陪着你.*晚安/],
+    maleFile: 'male_companion_night.mp3',
+    femaleFile: 'female_companion_night.mp3'
+  },
+  {
+    key: 'morning',
+    patterns: [/早安.*新的一天不用赶得太急/, /先把温水喝了.*万事有我在身后/, /早安早安呀/, /元气满满的一天.*记得吃早餐/],
+    maleFile: 'male_companion_morning.mp3',
+    femaleFile: 'female_companion_morning.mp3'
+  },
+  {
+    key: 'water',
+    patterns: [/手边的水是不是已经凉了/, /倒杯温热的抿两口/, /别等嗓子干了/, /今日份喝水小监督/, /快抿一口温水润润嗓子/, /奖励一朵小红花/],
+    maleFile: 'male_companion_water.mp3',
+    femaleFile: 'female_companion_water.mp3'
+  }
+];
+
+function findPresetAudioBuffer(text, isMale = true) {
+  if (!text) return null;
+  const str = String(text).trim();
+  for (const rule of PRESET_VOICE_RULES) {
+    if (rule.patterns.some((re) => re.test(str))) {
+      const fileName = isMale ? rule.maleFile : rule.femaleFile;
+      const fullPath = path.join(PRESET_VOICE_DIR, fileName);
+      if (fs.existsSync(fullPath)) {
+        try {
+          const buf = fs.readFileSync(fullPath);
+          if (buf && buf.length > 500) {
+            return {
+              audioBuffer: buf,
+              mimeType: 'audio/mpeg',
+              fileName,
+              ruleKey: rule.key
+            };
+          }
+        } catch {}
+      }
+    }
+  }
+  return null;
+}
 
 const LEGACY_VOICE_ALIAS = {
   zm_yunxi: 'otome_cool',
@@ -360,8 +430,14 @@ function resolveVoiceForCompanion(companion, requestedVoice) {
 
 function resolveEffectiveTtsApiKey(provider, settings = {}) {
   let apiKey = (settings.tts_api_key || '').trim();
-  if (!apiKey && provider === 'siliconflow' && (settings.deepseek_base_url || '').includes('siliconflow')) {
-    apiKey = (settings.deepseek_api_key || '').trim();
+  if (!apiKey && provider === 'siliconflow') {
+    apiKey = (getEnvVal('SILICONFLOW_API_KEY') || getEnvVal('TTS_API_KEY') || process.env.SILICONFLOW_API_KEY || process.env.TTS_API_KEY || '').trim();
+    if (!apiKey && (settings.deepseek_base_url || '').includes('siliconflow')) {
+      apiKey = (settings.deepseek_api_key || '').trim();
+    }
+  }
+  if (!apiKey && provider === 'minimax') {
+    apiKey = (getEnvVal('MINIMAX_API_KEY') || process.env.MINIMAX_API_KEY || '').trim();
   }
   return apiKey;
 }
@@ -846,6 +922,19 @@ async function synthesizeNeuralSpeech({ text, voiceId = 'otome_cool', speed, set
   const cleanedText = stripTextForCommercialTts(text);
   if (!cleanedText) {
     return { ok: false, fallback: true, error: '无可朗读对白文本' };
+  }
+
+  // 0. 前置快速命中高保真预置音频（毛不易歌手男声 / 二次元动漫甜妹女声，0延迟零API额度消耗）
+  const presetHit = findPresetAudioBuffer(cleanedText, meta.isMale);
+  if (presetHit) {
+    return {
+      ok: true,
+      audioBuffer: presetHit.audioBuffer,
+      mimeType: presetHit.mimeType,
+      engineName: meta.isMale ? '毛不易治愈民谣原声' : '二次元动漫甜妹声优',
+      voice: meta,
+      preset: true
+    };
   }
 
   const provider = settings.tts_provider || 'edge_neural';

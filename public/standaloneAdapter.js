@@ -676,17 +676,19 @@
         onboarding_done: false,
         user_persona: { role: '命中注定的重逢旅人', appearance: '', bio: '' },
         membership: {
-          tier: 'crown',
-          card_type: 'year',
-          tier_name: isWebDemo ? '🌟 全站免费畅享旅人' : '👑 移动尊享版',
+          tier: 'standard',
+          card_type: 'standard',
+          tier_name: '🌟 星语旅人',
           online_credits: 999,
-          points: 100,
+          points: 0,
           total_used: 0,
           is_vip: true,
           has_active_card: true,
+          can_bind_own_api: true,
+          can_use_online: true,
           free_experience_mode: true,
           billing_enabled: false,
-          remaining_text: '全站免费畅玩'
+          remaining_text: ''
         }
       },
       settings: {
@@ -803,36 +805,185 @@
     return nextComp;
   }
 
-  function buildDemoRoleplayResponse({ persona, nickname, userText, isProactive }) {
+  function extractStandaloneTopicPhrase(text) {
+    const clean = String(text || '')
+      .replace(/\*[^*]*\*/g, ' ')
+      .replace(/[「」『』"'“”\n\r]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (!clean) return '';
+    const clauses = clean
+      .split(/[。！？!?，,;；]/)
+      .map((s) => s.trim())
+      .filter((s) => s.length >= 2 && !/^(好呀|好的|嗯嗯|嗯|行吧|可以|算了|不是|没有|什么|哈哈+)$/.test(s));
+    const best = clauses.sort((a, b) => Math.abs(b.length - 8) - Math.abs(a.length - 8))[0] || clean;
+    return best.slice(0, 14);
+  }
+
+  function buildDemoRoleplayResponse({ persona, nickname, userText, isProactive, attachments = [] }) {
     const shortName = (persona?.name || '角色').split(/[·\s]/)[0];
     const callName = nickname || '你';
     const cleanInput = String(userText || '').trim();
+    const topic = extractStandaloneTopicPhrase(cleanInput);
+    const seed = Array.from(cleanInput).reduce((a, c) => a + c.charCodeAt(0), 0) + (Date.now() % 7);
 
     if (isProactive) {
       return {
-        reasoning: `感知到「${callName}」在屏幕前稍作停顿，结合「${shortName}」的性格设定（${(persona?.personality || '').slice(0, 34)}），主动递出一句自然温柔的互动钩子推进剧情。`,
-        content: `*轻轻抬起视线望向安静思考的你，眼底浮起一抹柔和的笑意：*\n\n${callName}，看你忽然安静下来没说话，是在想刚才那件事，还是稍微有点累了？不着急，不管你想顺着刚才的话题往下走，还是单纯想歇口气聊点日常，我都一直在这儿陪着你。`
+        reasoning: `感知到「${callName}」稍作停顿，由「${shortName}」顺着眼前情境自然搭话。`,
+        content: `*${shortName}看了你一眼，指尖轻轻敲了敲桌面：*\n\n发什么呆呢，${callName}？要是有别的心思，直接说出来就好。`
       };
     }
 
-    if (/牵|握|抱|靠|摸|拂去|拍拍|披上/.test(cleanInput)) {
+    if (Array.isArray(attachments) && attachments.length > 0) {
+      const fNames = attachments.map((a) => a.name).join('、');
+      const preview = String(attachments[0]?.content || '').trim().slice(0, 90);
       return {
-        reasoning: `捕捉到「${callName}」主动拉近距离的肢体动作细节，角色「${shortName}」心跳微促、防备卸下，以细腻的微表情与双向回应承接这份温柔。`,
-        content: `*感受到你传递过来的温度，${shortName}的睫毛轻轻颤了一下，原本克制的神情肉眼可见地柔软下来，指尖带着一点微不可察的暖意轻轻回握住你。*\n\n……你总是这样犯规呀，${callName}。明明刚才还在认真说正事，被你这么一哄，连原本准备好的台词都快忘光了。\n\n不过……这种并肩待在一起的感觉，我一点也不讨厌。接下来无论去哪儿，都别松开手好不好？`
+        reasoning: `查看「${callName}」递来的文件「${fNames}」，结合「${shortName}」口吻直接给出反馈。`,
+        content: `*${shortName}接过你递来的「${fNames}」扫了几眼，抬眸看向你：*\n\n${preview ? `“这里写着‘${preview}${preview.length >= 90 ? '…' : ''}’……你是想让我重点看哪一块？”` : `这份「${fNames}」我收下了，你想从哪里先聊起？`}`
       };
     }
 
-    if (/喜欢|好温柔|想你|陪我|答应|约定|拉勾/.test(cleanInput)) {
+    if (/[？?]$|为什么|怎么|哪儿|哪里|真的吗|是不是|行不行|能不能|可以吗/.test(cleanInput)) {
+      const qReplies = [
+        `*${shortName}听完你的问题，眉梢微动，直接看着你的眼睛：*\n\n${topic ? `你是问“${topic}”这件事？` : ''}怎么突然关心这个？我倒不是不能答，就看你想听真话还是听好听的话。`,
+        `*${shortName}停下手里的动作，语气比刚才认真了半分：*\n\n你问到点子上了，${callName}。${topic ? `其实关于“${topic}”，` : ''}我也不是一开始就想得这么清楚——但既然你开口问了，那就不瞒你。`
+      ];
       return {
-        reasoning: `识别到高浓度心意表达与约定关键词，自动将该承诺纳入长期羁绊记忆，并以「${shortName}」特有的珍重口吻郑重回应。`,
-        content: `*微风拂过耳畔的碎发，${shortName}定定地注视着你的眼睛，耳尖悄悄漫上一层浅淡的薄红，唇角却忍不住弯起真挚而笃定的弧度。*\n\n这句话我可完完整整记在心里了，不许反悔哦，${callName}。\n\n以前总觉得时间过得又快又漫长，但只要想到身边有你在，好像连最普通的一天都变得值得期待起来。那我们说好了——接下来的每一幕故事，都一起走到底吧。`
+        reasoning: `正面接住「${callName}」的提问（${topic || cleanInput.slice(0, 18)}），不答非所问。`,
+        content: qReplies[seed % qReplies.length]
       };
     }
 
+    if (/不想|不要|算了|别|拒绝|不去|忙|累了|烦|生气|讨厌|离开/.test(cleanInput)) {
+      return {
+        reasoning: `察觉「${callName}」流露拒绝或疲惫情绪，${shortName}收敛推进节奏，顺着情绪把台阶接稳。`,
+        content: `*原本还想往前走半步的动作一下停住，${shortName}把声音放低了些：*\n\n好，那就听你的，${topic ? `“${topic}”这事` : ''}咱们先不提了。你脸色看起来确实有点倦，真不想动的话就靠着歇会，我又不催你。`
+      };
+    }
+
+    if (/牵|握|抱|靠|摸|拂去|拍拍|披上|亲|贴/.test(cleanInput)) {
+      return {
+        reasoning: `承接「${callName}」的肢体动作细节，${shortName}做出即时反应而非套话。`,
+        content: `*被你突然的动作撞了个正着，${shortName}喉结微动，反手扣住你的指节没有松开：*\n\n……${callName}，你这算是主动示好，还是存心试探我？`
+      };
+    }
+
+    if (/喜欢|想你|答应|约定|拉勾|相信|信任/.test(cleanInput)) {
+      return {
+        reasoning: `接住「${callName}」的明确心意或约定，给出符合人设的直接确认。`,
+        content: `*${shortName}看着你，眼里那点游移瞬间沉了下来，嘴角藏不住地勾起一点弧度：*\n\n话是你亲口说的，${callName}。可别过会儿自己先不好意思躲开。`
+      };
+    }
+
+    const openReplies = [
+      `*${shortName}听完你这句，挑了挑眉，顺手把话题接了过去：*\n\n${topic ? `“${topic}”……` : ''}你倒是挺敢说实话的。行，那按你的想法走，看接下来会怎么收场。`,
+      `*${shortName}稍微倾身凑近了些，似乎在琢磨你话里的意思：*\n\n${topic ? `你刚才提到的「${topic}」，` : ''}我倒有点意外你会这么看。不过既然话都说到这儿了，再往下说说？`,
+      `*${shortName}没急着接话，过了两秒才轻笑一声：*\n\n${callName}，你这句话听着随口，其实挺挑人的吧。不过——我偏偏就吃你这一套。`
+    ];
     return {
-      reasoning: `围绕玩家输入「${cleanInput.slice(0, 32)}」，贴合「${shortName}」所在剧本世界观与说话风格（${persona?.speaking_style || '沉浸细腻'}），在回应中自然推进场景氛围与下一步互动空间。`,
-      content: `*听完你说的话，${shortName}若有所思地点了点头，往前走了半步与你并肩站定，目光温和而专注地落在你身上：*\n\n原来你是这么想的……听你这么一说，刚才卡住的线索一下子就清晰多了，不愧是我的最佳搭档，${callName}。\n\n既然方向已经确定了，趁现在周围正好安静，我们要直接顺着这条线索行动，还是先找个暖和的角落把细节再商量一遍？（💡 *当前为免配置在线展示引擎，你也可以随时在左下角设置中填入 DeepSeek API Key 解锁无限自由推演*）`
+      reasoning: `围绕「${callName}」刚才提到的「${topic || cleanInput.slice(0, 20)}」，直接接茬推进当下对话。`,
+      content: openReplies[seed % openReplies.length]
     };
+  }
+
+  function buildDynamicFollowUps({ isPure, persona, nickname, userText, assistantContent, exclude = [], nonce = 0, attachments = [] }) {
+    const excl = new Set((Array.isArray(exclude) ? exclude : []).map((s) => String(s || '').trim()));
+    const actor = (persona?.name || '他').split(/[·\s]/)[0];
+    const aiTopic = extractStandaloneTopicPhrase(assistantContent);
+    const userTopic = extractStandaloneTopicPhrase(userText);
+    const keyTopic = aiTopic || userTopic || '';
+    let pool = [];
+
+    if (isPure) {
+      if (attachments && attachments.length > 0) {
+        const fn = attachments[0].name;
+        pool = [
+          `把「${fn}」里的核心要点再提炼成 3 条`,
+          `针对「${fn}」内容指出可能遗漏的问题`,
+          `按「${fn}」的格式帮我重写一版草稿`,
+          `用表格对比「${fn}」里提到的几个关键项`
+        ];
+      } else if (keyTopic) {
+        pool = [
+          `关于「${keyTopic}」，能再举个具体例子吗？`,
+          `如果在高并发或极端条件下，「${keyTopic}」还成立吗？`,
+          `把「${keyTopic}」相关的实现代码或模板直接写出来`,
+          `总结上面内容中「${keyTopic}」最容易踩坑的地方`,
+          `有没有比当前方案成本更低的替代做法？`,
+          `从零开始一步步拆解怎么落地实施`
+        ];
+      } else {
+        pool = [
+          '换个角度再深入分析一下核心原因',
+          '给出可以直接落地的具体步骤与示例',
+          '总结刚才结论的适用边界和风险点',
+          '帮我写一段能直接运行的对比测试代码'
+        ];
+      }
+    } else {
+      const candidates = [
+        keyTopic ? `“你刚才提‘${keyTopic}’，是早就有这打算了吗？”` : `“怎么突然这么说，你心里其实另有所图吧？”`,
+        keyTopic ? `*盯着你的眼睛追问* “别含糊其辞，关于‘${keyTopic}’给我句准话。”` : `*抬眸看住${actor}* “别只说半截话，把剩下的也告诉我。”`,
+        `*轻轻晃了晃手腕，故意换了副轻松口吻* “那要是不按你说的办呢？”`,
+        `*往后靠了半步，似笑非笑地看着你* “行啊，那你先说说看打算怎么赔我。”`,
+        keyTopic ? `“既然都聊到‘${keyTopic}’了，干脆现在就一起去做吧！”` : `*干脆拉住你的袖口* “少说废话，走，我陪你去。”`,
+        `*低声嘟囔了一句，目光却没移开* “……那你可别反悔。”`
+      ];
+      pool = candidates;
+    }
+
+    const filtered = pool.filter((item) => item && !excl.has(item));
+    const source = filtered.length >= 3 ? filtered : pool;
+    const shift = source.length > 0 ? Math.abs(Number(nonce) || 0) % source.length : 0;
+    const rotated = [...source.slice(shift), ...source.slice(0, shift)];
+    return rotated.slice(0, 3);
+  }
+
+  async function generateDynamicFollowUpsOnline({ apiKey, baseUrl, model, isPure, persona, nickname, recentMsgs, exclude = [], nonce = 0 }) {
+    if (!apiKey) return [];
+    const ep = resolveEndpoints(baseUrl);
+    const tail = (Array.isArray(recentMsgs) ? recentMsgs : []).slice(-6);
+    const transcript = tail
+      .map((m) => `${m.role === 'user' ? (nickname || '用户') : (persona?.name || '助手')}: ${String(m.content || '').slice(0, 220)}`)
+      .join('\n');
+    const exclHint = Array.isArray(exclude) && exclude.length > 0
+      ? `\n严禁重复以下已经出现过的台词或相近句式：\n- ${exclude.join('\n- ')}`
+      : '';
+    const prompt = isPure
+      ? `请结合下方最新对话进展，为提问者生成 3 条简短、具体、各不相同的下一步追问或指令（每条 8~28 字，紧扣上一轮内容，不要泛泛而谈）。${exclHint}\n请严格只输出 JSON 数组字符串，如 ["...","...","..."]。\n\n【最新对话】\n${transcript}`
+      : `请作为互动剧本编剧，紧扣下方最新对话里「${persona?.name || '对方'}」刚说的话和当前情绪张力，为玩家（「${nickname || '你'}」）设计 3 句各具不同态度方向（例如顺势追问、嘴硬反调戏、或直接行动推进）的下一句候选台词（每句 12~40 字，符合当前剧情，可带简短 *动作*）。${exclHint}\n随机变化参考种子：${nonce}。请严格只输出 JSON 数组字符串，如 ["...","...","..."]。\n\n【最新对话】\n${transcript}`;
+
+    try {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 7000);
+      const r = await originalFetch(ep.chatUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+        body: JSON.stringify({
+          model: model || 'deepseek-flash',
+          messages: [{ role: 'user', content: prompt }],
+          temperature: 0.9,
+          max_tokens: 240,
+          stream: false
+        }),
+        signal: ctrl.signal
+      });
+      clearTimeout(timer);
+      if (!r.ok) return [];
+      const data = await r.json();
+      const raw = data?.choices?.[0]?.message?.content || '';
+      const match = raw.match(/\[[\s\S]*\]/);
+      if (!match) return [];
+      const arr = JSON.parse(match[0]);
+      if (!Array.isArray(arr)) return [];
+      const excl = new Set((exclude || []).map((x) => String(x || '').trim()));
+      return arr
+        .map((x) => String(x || '').trim())
+        .filter((x) => x && !excl.has(x))
+        .slice(0, 3);
+    } catch {
+      return [];
+    }
   }
 
   function extractSimpleDemoMemory(dbObj, sid, userText) {
@@ -910,8 +1061,89 @@
     });
   }
 
-  async function handleStandaloneApi(pathname, method, bodyObj, signal) {
+  async function parseStandaloneAttachmentFile({ name = '未命名文件', mime = '', buf }) {
+    const bytes = buf ? new Uint8Array(buf) : new Uint8Array(0);
+    const size = bytes.byteLength;
+    const ext = (String(name).split('.').pop() || '').toLowerCase();
+    const badgeMap = {
+      pdf: { badge: 'PDF', color: '#ef4444' },
+      doc: { badge: 'DOC', color: '#2563eb' },
+      docx: { badge: 'DOCX', color: '#2563eb' },
+      xls: { badge: 'XLS', color: '#16a34a' },
+      xlsx: { badge: 'XLSX', color: '#16a34a' },
+      csv: { badge: 'CSV', color: '#059669' },
+      json: { badge: 'JSON', color: '#d97706' },
+      md: { badge: 'MD', color: '#6366f1' },
+      txt: { badge: 'TXT', color: '#475569' }
+    };
+    const meta = badgeMap[ext] || { badge: (ext || 'FILE').slice(0, 6).toUpperCase(), color: '#4d6bfe' };
+    let text = '';
+    try {
+      text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    } catch {
+      try {
+        text = new TextDecoder('gb18030').decode(bytes);
+      } catch {
+        text = '';
+      }
+    }
+    const cleanText = text.replace(/\x00/g, '').trim();
+    const isBinaryZip = bytes.length >= 2 && bytes[0] === 0x50 && bytes[1] === 0x4b;
+    const content = !isBinaryZip && cleanText
+      ? cleanText.slice(0, 60000)
+      : `【已附带文件】${name}（大小 ${Math.max(1, Math.round(size / 1024))} KB${mime ? `，类型 ${mime}` : ''}；当前为纯离线静态环境，完整 Office/PDF 深层文字提取建议连接后端服务或粘贴正文片段）`;
+    return {
+      ok: true,
+      name,
+      size,
+      badge: meta.badge,
+      color: meta.color,
+      char_count: cleanText && !isBinaryZip ? cleanText.length : content.length,
+      content
+    };
+  }
+
+  async function handleStandaloneApi(pathname, method, bodyObj, signal, rawReq = {}) {
     const dbObj = loadLocalDb();
+
+    if (pathname === '/api/files/parse' && method === 'POST') {
+      let fileName = '未命名文件';
+      let mime = '';
+      try {
+        const hdrs = new Headers(rawReq.headers || {});
+        const rawHdrName = hdrs.get('X-File-Name') || '';
+        if (rawHdrName) fileName = decodeURIComponent(rawHdrName);
+        mime = hdrs.get('X-File-Mime') || '';
+      } catch {}
+
+      let ab = null;
+      if (bodyObj && typeof bodyObj.data_base64 === 'string' && bodyObj.data_base64) {
+        fileName = bodyObj.name || fileName;
+        mime = bodyObj.mime || mime;
+        try {
+          const bin = atob(bodyObj.data_base64);
+          const u8 = new Uint8Array(bin.length);
+          for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+          ab = u8.buffer;
+        } catch {}
+      } else if (rawReq.rawBody) {
+        if (typeof rawReq.rawBody.name === 'string' && fileName === '未命名文件') {
+          fileName = rawReq.rawBody.name;
+        }
+        if (typeof rawReq.rawBody.type === 'string' && !mime) {
+          mime = rawReq.rawBody.type;
+        }
+        if (typeof rawReq.rawBody.arrayBuffer === 'function') {
+          ab = await rawReq.rawBody.arrayBuffer();
+        } else if (rawReq.rawBody instanceof ArrayBuffer) {
+          ab = rawReq.rawBody;
+        } else if (ArrayBuffer.isView(rawReq.rawBody)) {
+          ab = rawReq.rawBody.buffer;
+        }
+      }
+      const parsed = await parseStandaloneAttachmentFile({ name: fileName, mime, buf: ab });
+      return jsonResponse(parsed);
+    }
 
     if (pathname === '/api/auth/me') {
       return jsonResponse({ authenticated: true, user: dbObj.user });
@@ -919,22 +1151,23 @@
     if (pathname === '/api/auth/demo-login' || pathname === '/api/auth/login' || pathname === '/api/auth/register') {
       if (bodyObj?.nickname) dbObj.user.nickname = bodyObj.nickname;
       if (bodyObj?.avatar) dbObj.user.avatar = bodyObj.avatar;
-      dbObj.user.membership.tier = 'moon';
-      dbObj.user.membership.card_type = 'month';
-      dbObj.user.membership.tier_name = '🌙 星月月卡会员';
-      dbObj.user.membership.is_vip = true;
-      dbObj.user.membership.has_active_card = true;
-      dbObj.user.membership.can_bind_own_api = true;
-      dbObj.user.membership.can_use_online = true;
-      dbObj.user.membership.free_experience_mode = true;
-      dbObj.user.membership.billing_enabled = false;
+      dbObj.user.membership = Object.assign(dbObj.user.membership || {}, {
+        tier: 'standard',
+        card_type: 'standard',
+        tier_name: '🌟 星语旅人',
+        is_vip: true,
+        has_active_card: true,
+        can_bind_own_api: true,
+        can_use_online: true,
+        free_experience_mode: true,
+        billing_enabled: false,
+        remaining_text: ''
+      });
       saveLocalDb(dbObj);
       return jsonResponse({
         user: dbObj.user,
         token: 'standalone_demo_token',
-        is_new_guest: false,
-        gifted_vip: true,
-        gifted_days: 30
+        is_new_guest: false
       });
     }
     if (pathname === '/api/auth/logout') {
@@ -958,22 +1191,10 @@
     }
     if (pathname === '/api/bootstrap') {
       const m = Object.assign(
-        { free_experience_mode: true, billing_enabled: false, can_bind_own_api: true, can_use_online: true },
+        { free_experience_mode: true, billing_enabled: false, can_bind_own_api: true, can_use_online: true, tier_name: '🌟 星语旅人', remaining_text: '' },
         dbObj.user.membership || {}
       );
       dbObj.user.membership = m;
-      const mockWallet = {
-        is_admin: false,
-        free_experience_mode: true,
-        billing_enabled: false,
-        membership: m,
-        checkin: { checked_in_today: Boolean(dbObj.checked_in_today), streak_days: dbObj.checked_in_today ? 2 : 1, calendar: [] },
-        tasks: [],
-        products: [],
-        exchange_items: [],
-        ledger: [],
-        orders: []
-      };
       return jsonResponse({
         user: dbObj.user,
         scripts: dbObj.scripts,
@@ -981,8 +1202,7 @@
         personas: dbObj.personas,
         sessions: decorateSessions(dbObj),
         settings: dbObj.settings,
-        membership: m,
-        wallet: mockWallet
+        membership: m
       });
     }
 
@@ -1122,37 +1342,13 @@
       }
     }
 
-    if (pathname === '/api/wallet/overview') {
+    if (pathname === '/api/wallet/overview' || pathname === '/api/wallet/checkin') {
       return jsonResponse({
+        ok: true,
         is_admin: false,
         free_experience_mode: true,
         billing_enabled: false,
-        membership: dbObj.user.membership,
-        checkin: { checked_in_today: Boolean(dbObj.checked_in_today), streak_days: dbObj.checked_in_today ? 2 : 1, calendar: [] },
-        tasks: [],
-        products: [],
-        exchange_items: [],
-        ledger: [],
-        orders: []
-      });
-    }
-    if (pathname === '/api/wallet/checkin' && method === 'POST') {
-      dbObj.checked_in_today = true;
-      dbObj.user.membership.points = (dbObj.user.membership.points || 520) + 15;
-      saveLocalDb(dbObj);
-      return jsonResponse({
-        ok: true,
-        points_added: 15,
-        wallet: {
-          is_admin: false,
-          membership: dbObj.user.membership,
-          checkin: { checked_in_today: true, streak_days: 2, calendar: [] },
-          tasks: [],
-          products: [],
-          exchange_items: [],
-          ledger: [],
-          orders: []
-        }
+        membership: dbObj.user.membership
       });
     }
 
@@ -1341,8 +1537,8 @@
         return jsonResponse({
           configured: false,
           is_available: true,
-          message: '当前处于免配置在线畅玩模式，所有剧本互动与灵感补写均可直接免费体验；绑定自有 sk-... 密钥后可直连 DeepSeek 官方模型。',
-          balance_infos: [{ currency: 'CNY', total_balance: '畅玩免配置', granted_balance: '0.00', topped_up_balance: '0.00' }]
+          message: '当前处于本地轻量模式；填写您自己的 sk-... 密钥后可直连云端模型。',
+          balance_infos: [{ currency: 'CNY', total_balance: '本地模式', granted_balance: '0.00', topped_up_balance: '0.00' }]
         });
       }
       const ep = resolveEndpoints(dbObj.settings.deepseek_base_url);
@@ -1426,18 +1622,16 @@
       const now = Date.now();
       const sid = `sess_${now}_${Math.random().toString(36).slice(2, 6)}`;
       const sMode = bodyObj.session_mode === 'deepseek_native' ? 'deepseek_native' : 'roleplay';
-      const pid = bodyObj.persona_id || (sMode === 'deepseek_native' ? 'persona_deepseek_official' : 'persona_nagisa_sakura');
+      const pid = sMode === 'deepseek_native' ? 'persona_deepseek_official' : (bodyObj.persona_id || 'persona_nagisa_sakura');
       const p = dbObj.personas.find((x) => x.id === pid) || DEFAULT_PRESET_PERSONAS[0];
       const newSess = {
         id: sid,
         user_id: dbObj.user.id,
-        script_id: bodyObj.script_id || p.script_id || 'script_clannad',
+        script_id: sMode === 'deepseek_native' ? 'script_ds' : (bodyObj.script_id || p.script_id || 'script_clannad'),
         persona_id: pid,
         title:
           sMode === 'deepseek_native'
-            ? pid === 'persona_deepseek_official'
-              ? '新对话'
-              : `原生对话 · ${p.name.split(/[·\s]/)[0]}`
+            ? '新对话'
             : `与${p.name.split(/[·\s]/)[0]}的心动篇章`,
         session_mode: sMode,
         ds_thinking: 1,
@@ -1458,17 +1652,19 @@
       };
       dbObj.sessions.unshift(newSess);
       dbObj.messages[sid] = [];
-      dbObj.memories[sid] = [
-        {
-          id: 'mem_init_' + now,
-          session_id: sid,
-          content: `初遇印象：在「${(DEFAULT_SCRIPTS.find((s) => s.id === newSess.script_id)?.title) || '星语剧场'}」与「${dbObj.user.nickname}」开启了全新的故事篇章。`,
-          importance: 4,
-          pinned: 1,
-          retention_pct: 100,
-          created_at: now
-        }
-      ];
+      dbObj.memories[sid] = sMode === 'deepseek_native'
+        ? []
+        : [
+            {
+              id: 'mem_init_' + now,
+              session_id: sid,
+              content: `初遇印象：在「${(DEFAULT_SCRIPTS.find((s) => s.id === newSess.script_id)?.title) || '星语剧场'}」与「${dbObj.user.nickname}」开启了全新的故事篇章。`,
+              importance: 4,
+              pinned: 1,
+              retention_pct: 100,
+              created_at: now
+            }
+          ];
       if (sMode !== 'deepseek_native' && p.greeting) {
         dbObj.messages[sid].push({
           id: now,
@@ -1830,6 +2026,53 @@
       return jsonResponse({ session_id: newSid, sessions: decorateSessions(dbObj) }, 201);
     }
 
+    const suggestMatch = pathname.match(/^\/api\/sessions\/([^/]+)\/suggest-replies$/);
+    if (suggestMatch && method === 'POST') {
+      const sid = decodeURIComponent(suggestMatch[1]);
+      const sess = dbObj.sessions.find((s) => s.id === sid);
+      if (!sess) return jsonResponse({ error: '会话不存在' }, 404);
+      const rawBaseP = dbObj.personas.find((x) => x.id === sess.persona_id) || DEFAULT_PRESET_PERSONAS[0];
+      let p = rawBaseP;
+      if (sess.custom_persona_override) {
+        try {
+          p = { ...rawBaseP, ...(JSON.parse(sess.custom_persona_override) || {}) };
+        } catch {}
+      }
+      const msgs = dbObj.messages[sid] || [];
+      const isPure = p.id === 'persona_deepseek_official' && !sess.custom_persona_override;
+      const exclude = Array.isArray(bodyObj?.exclude) ? bodyObj.exclude : [];
+      const nonce = Number(bodyObj?.nonce) || Date.now();
+      const apiKey = (dbObj.settings.deepseek_api_key || '').trim();
+      let replies = [];
+      if (apiKey) {
+        replies = await generateDynamicFollowUpsOnline({
+          apiKey,
+          baseUrl: dbObj.settings.deepseek_base_url,
+          model: (dbObj.settings.deepseek_model || 'deepseek-flash').trim(),
+          isPure,
+          persona: p,
+          nickname: dbObj.user.nickname,
+          recentMsgs: msgs,
+          exclude,
+          nonce
+        });
+      }
+      if (!replies || replies.length === 0) {
+        const lastAi = [...msgs].reverse().find((m) => m.role === 'assistant');
+        const lastU = [...msgs].reverse().find((m) => m.role === 'user');
+        replies = buildDynamicFollowUps({
+          isPure,
+          persona: p,
+          nickname: dbObj.user.nickname,
+          userText: lastU?.content || '',
+          assistantContent: lastAi?.content || '',
+          exclude,
+          nonce
+        });
+      }
+      return jsonResponse({ replies });
+    }
+
     const msgActionMatch = pathname.match(/^\/api\/messages\/(\d+)(?:\/(rewind))?$/);
     if (msgActionMatch) {
       const mid = Number(msgActionMatch[1]);
@@ -1977,14 +2220,33 @@
               }${
                 isNative
                   ? '请遵循正版 DeepSeek 极简纯文本质感：严禁泛滥使用 *星号动作描写* 与花哨 Emoji，分段简短克制，用自然真实的日常口吻对话并保持主动关怀。'
-                  : '请以第一人称沉浸式番剧分镜感扮演，兼顾动作神态细节与主动情感回应。'
+                  : '请以第一人称真实自然地扮演该角色。核心准则：\n1. 每一轮必须紧扣对方上一句话的具体内容、语气、情绪、提问、拒绝或肢体动作直接接招，严禁敷衍或自说自话；\n2. 严禁模板化八股（不要每轮硬凑环境描写，不要刻意追求固定字数，不要每轮结尾固定抛二选一反问）；\n3. 动作神态仅用 0~1 处简短贴合剧情的动作点缀，对话简短真挚有呼吸感。'
               }`;
 
           const winLimit = Math.max(12, Math.min(120, parseInt(dbObj.settings.sliding_window_turns || '48', 10) || 48));
           const normalizedHistory = [];
-          for (const m of msgs.slice(-winLimit)) {
+          const slicedMsgs = msgs.slice(-winLimit);
+          for (let mi = 0; mi < slicedMsgs.length; mi++) {
+            const m = slicedMsgs[mi];
             const r = m.role === 'assistant' ? 'assistant' : 'user';
-            const c = String(m.content || '').trim();
+            let c = String(m.content || '').trim();
+            if (r === 'user' && m.meta_json) {
+              try {
+                const parsedMeta = JSON.parse(m.meta_json) || {};
+                const atts = Array.isArray(parsedMeta.attachments) ? parsedMeta.attachments : [];
+                if (atts.length > 0) {
+                  const isCurrentTurn = mi >= slicedMsgs.length - 2;
+                  const attBlocks = atts.map((att, idx) => {
+                    if (att.is_image) {
+                      return `[用户上传图片 #${idx + 1}: ${att.name || 'image'}${att.dimensions ? ` (${att.dimensions})` : ''}] ${String(att.content || '').slice(0, 1200)}`;
+                    }
+                    const limit = isCurrentTurn ? 18000 : 1200;
+                    return `[用户上传附件 #${idx + 1}: ${att.name || 'file'} (${att.badge || 'FILE'})]\n${String(att.content || '').slice(0, limit)}`;
+                  });
+                  c = c ? `${c}\n\n${attBlocks.join('\n\n')}` : attBlocks.join('\n\n');
+                }
+              } catch {}
+            }
             if (!c) continue;
             if (normalizedHistory.length === 0 && r === 'assistant') continue;
             const prev = normalizedHistory[normalizedHistory.length - 1];
@@ -2074,8 +2336,18 @@
             const isGreet = /^(你好|您好|嗨|hi|hello|在吗|你是谁|你是什么模型|介绍一下你自己)[！!？?。.~～\s]*$/i.test(cleanQ);
             const isMath = /数学|公式|积分|导数|方程|证明|正态分布|高斯/i.test(cleanQ);
             const isHtml = /html|canvas|粒子|网页|svg|前端|动画/i.test(cleanQ);
+            const curAtts = Array.isArray(bodyObj.attachments) ? bodyObj.attachments : [];
 
-            if (isProactive) {
+            if (curAtts.length > 0) {
+              const firstAtt = curAtts[0];
+              const previewText = String(firstAtt.content || '').trim().slice(0, 800);
+              simR = `已收到并解析用户上传的 ${curAtts.length} 份附件（首份：${firstAtt.name}，共 ${previewText.length} 字符摘录）。现在按结构化要点提炼并响应用户需求。`;
+              simC = `${prefix}已读取你上传的 **${curAtts.map((a) => a.name).join('、')}**。\n\n---\n\n### 提取内容概览\n\n${
+                firstAtt.is_image
+                  ? `- **图像信息**：${firstAtt.name}（${firstAtt.dimensions || '已压缩'}），当前未绑定云端视觉模型，填入个人 API Key 后可深入识图分析。`
+                  : `\`\`\`text\n${previewText || '（该文件暂无可提取纯文本内容）'}\n\`\`\``
+              }\n\n如需对以上文件内容做深度改写、翻译或对比，请在设置中填入 DeepSeek API Key 解锁云端满血模型，或直接告诉我要处理其中的哪一段。`;
+            } else if (isProactive) {
               simR = `嗯，当前对话暂未继续输入，我可以用平实简洁的口吻打个招呼，提供几个清晰具体的切入方向。`;
               simC = `你好，我是 **DeepSeek**。如果暂时还没定好从哪切入，可以直接从以下几个方向开始：\n\n- **代码编写与排错**：生成单文件 HTML/Canvas 交互页面、算法实现或排查报错堆栈；\n- **数理与逻辑推演**：逐步推导微积分/概率公式、分析系统架构选型权衡；\n- **文本提炼与起草**：拆解复杂概念对比、拟定技术方案或结构化报告。\n\n直接把你的问题发出来即可。`;
             } else if (isGreet) {
@@ -2092,11 +2364,13 @@
               simC = `${prefix}关于 **「${cleanQ.slice(0, 36)}${cleanQ.length > 36 ? '…' : ''}」**，核心判断是：**解决此类问题的关键在于先厘清核心约束边界，抓住决定上限的主干变量，再通过最小闭环验证逐步迭代**。\n\n---\n\n### 一、核心机制与关键矛盾\n\n- **区分表象与根因**：实际执行中常见的卡点往往不在于工具或方法本身不够复杂，而在于前置目标优先级（效率、成本或稳健性）尚未对齐。\n- **收敛关键路径**：优先锁定影响全局结果的 1~2 个核心环节集中突破，避免在边缘细节上过早分散资源。\n\n### 二、分步落地建议\n\n1. **建立最小验证闭环**：剥离非必要附加项，用最小可运行方案快速跑通主链路并获取真实数据反馈；\n2. **排查边界与异常情况**：针对极端输入或资源受限场景补充兜底策略，确保方案稳定性。\n\n如果你可以补充具体的应用场景或手头遇到的卡点细节，我可以帮你进一步细化针对性方案。（也可在设置中填入个人 DeepSeek \`sk-...\` 密钥直连云端满血模型。）`;
             }
           } else {
+            const curAtts = Array.isArray(bodyObj.attachments) ? bodyObj.attachments : [];
             const rp = buildDemoRoleplayResponse({
               persona: p,
               nickname: dbObj.user.nickname,
               userText,
-              isProactive
+              isProactive,
+              attachments: curAtts
             });
             simR = rp.reasoning;
             simC = prefix + rp.content;
@@ -2120,12 +2394,41 @@
         }
 
         const dur = Date.now() - t0;
+        const wantFollowUps = bodyObj.include_follow_ups !== false;
+        let dynFollowUps = [];
+        if (wantFollowUps) {
+          if (apiKey) {
+            const ep = resolveEndpoints(dbObj.settings.deepseek_base_url);
+            dynFollowUps = await generateDynamicFollowUpsOnline({
+              apiKey,
+              baseUrl: ep.chatUrl,
+              model: (dbObj.settings.deepseek_model || 'deepseek-flash').trim(),
+              isPure,
+              persona: p,
+              nickname: dbObj.user.nickname,
+              recentMsgs: [
+                ...msgs.slice(-5),
+                { role: 'assistant', content: fullC }
+              ],
+              nonce: dur + msgs.length
+            });
+          }
+          if (!dynFollowUps || dynFollowUps.length === 0) {
+            dynFollowUps = buildDynamicFollowUps({
+              isPure,
+              persona: p,
+              nickname: dbObj.user.nickname,
+              userText,
+              assistantContent: fullC,
+              nonce: dur + msgs.length,
+              attachments: Array.isArray(bodyObj.attachments) ? bodyObj.attachments : []
+            });
+          }
+        }
         const meta = {
           is_proactive: isProactive,
           usage,
-          follow_ups: isPure
-            ? ['帮我写一个单文件 HTML5 粒子动画并右侧预览', '推导一下高斯积分与正态分布公式', '如何在设置中绑定自有 DeepSeek API Key？']
-            : ['*轻轻牵住对方的衣角* 那我们现在就一起出发吧！', '其实我心里一直记着我们的约定呢', '刚才看你欲言又止的，是不是还有悄悄话想对我说？']
+          follow_ups: dynFollowUps
         };
         if (priorVersions.length > 0) {
           meta.versions = [...priorVersions, { reasoning: fullR, content: fullC, duration_ms: dur, usage }];
@@ -2228,6 +2531,9 @@
         bodyObj = JSON.parse(init.body);
       } catch {}
     }
-    return handleStandaloneApi(pathname, (init.method || 'GET').toUpperCase(), bodyObj, init.signal);
+    return handleStandaloneApi(pathname, (init.method || 'GET').toUpperCase(), bodyObj, init.signal, {
+      rawBody: init?.body,
+      headers: init?.headers
+    });
   };
 })();

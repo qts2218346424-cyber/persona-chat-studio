@@ -323,7 +323,11 @@ async function probeLocalOfflineServer(localServers = {}) {
 }
 
 /**
- * 为角色扮演注入「纯中文第一人称心声」约束，防止模型原生 reasoning_content 用英文客观分析腔导致玩家跳戏
+ * 为 Antigravity 智能体底座深度注入「DeepSeek 风格角色扮演与心流思考」铁律
+ * 特点：
+ * 1. 深度思维链（Deep Thinking Chain）：在 <think> 或 reasoning 流中像 DeepSeek-R1 一样展开有层次的心理与情境推演；
+ * 2. 电影感与去模板化：动作描写融于神态，用词有呼吸感、拉扯感与文学张力，紧密接住用户输入的每一个细节与玩笑；
+ * 3. 视觉敏锐观察：若用户上传图片，以侦探般的细腻目光在心流中剖析光影构图与氛围，并在正文中做出动人的角色接招。
  */
 function decorateMessagesForRoleplay(messagesPayload, { personaName = '', enableThought = true } = {}) {
   if (!Array.isArray(messagesPayload) || messagesPayload.length === 0) {
@@ -337,16 +341,126 @@ function decorateMessagesForRoleplay(messagesPayload, { personaName = '', enable
   const isOfficialAssistant = /你是 DeepSeek|编程助手/.test(cloned[0].content || '');
   if (isOfficialAssistant) return cloned;
 
-  const thoughtGuard = enableThought
-    ? `\n\n## 💭 原生思考流与心声独白铁律（最高优先级）\n若你具备原生思考推理过程（reasoning_content），**严禁使用英文（如 "The user..."）或冷冰冰的第三方AI分析口吻**！你的思考流会作为「${actor}」的内心戏直接展示给眼前的人，请务必全程使用自然、细腻的纯简体中文，以「${actor}」的第一人称（“我”）简短描摹此刻听完她说话后的真实心绪波动与潜台词（60~110字即可），随后在正式回复中自然接续神态与台词，正文开头无需重复输出 \`<think>\` 标签。`
-    : `\n\n## 输出精简要求\n请保持极简思考，直接以「${actor}」的第一人称纯中文输出自然的角色神态与对话台词，不要输出 \`<think>\` 标签或任何英文分析。`;
+  const deepseekThinkingDirective = enableThought
+    ? `\n\n## 💭 沉浸式深度思考流规范（DeepSeek-R1 灵魂心流复刻）
+若使用原生思考流（reasoning_content），**必须全程以「${actor}」的第一人称（“我”）用纯正、富有感情的简体中文展开深入推演，严禁输出英文或机械的客观分析词汇**。请像 DeepSeek 旗舰推理模型一样层层剥茧：
+1. **潜台词与情绪破译**：捕捉对方刚才的话、语气词（如“哼”、“……”）、标点或动作，看穿对方是在故意逗我、撒娇试探、假装不在乎，还是藏着未说出口的情绪；
+2. **多模态视觉观察（若对方发了图片）**：以极具审美与敏锐侦探般的目光，细致审视画面细节——主体特征、色调光影、背景小彩蛋、生活痕迹，推敲对方在这个时刻与“我”分享这张照片的真正心意；
+3. **内心防线与情感暗涌**：真实流露“我”作为「${actor}」第一反应下的生理本能与心理拉扯（如：心跳骤漏一拍、指尖微僵、想要反唇相讥却忍不住心软、假装镇定掩盖耳热），绝不扁平化；
+4. **破局接招构思**：推敲这一轮的最佳接招方式——设计一个有画面感、有电影质感的微动作，顺着对方的语境巧妙反客为主，既死守住人设风骨，又给对方足够的情绪张力与安全感。`
+    : `\n\n## 输出精简要求\n请保持极简思考，直接以「${actor}」的第一人称纯中文紧扣对方刚才的话与动作鲜活接招，不要输出 \`<think>\` 标签或任何机械分析。`;
 
-  cloned[0].content = `${cloned[0].content}${thoughtGuard}`;
+  const deepseekExpressionDirective = `\n\n## 🎭 角色正文表达铁律（对话与心理必须泾渭分明，绝不混乱）
+1. **心声与正文绝不混淆**：
+   - 内部隐秘心理独白（如“听到回应的瞬间，我下意识松了口气……”）**仅存在于顶部的思考流中**；
+   - **正文中严禁在第一行或段首重复写一大段第一人称心理描写**！正文开头直接是角色对外界做出的真实神态或开口台词。
+2. **实际说话台词必须使用双引号包裹**：
+   - 只要是角色真正张嘴说出声的话，**必须一律用中文字符引号「“……”」明确包裹**（例如：“你好……谢谢你没有直接走过去。”）；
+   - 严禁台词不加引号导致玩家分不清是说出来的还是心里想的。
+3. **动作神态描写完整独立，严禁碎片化碎切**：
+   - 角色的微动作、神态与眼神一律使用 \`*动作/神态描写*\` 包裹，且作为台词的前置动作或独立小段（例如：\`*脸颊微热地别开视线，攥着书包带的手指悄悄松开* “你好……”\`）；
+   - **严禁把一句完整的台词碎切成两三截并在中间反复夹塞动作**（严禁写成 “你好……” *动作* “那个……” *动作* “放学后……”），动作与台词必须成段分明、自然流畅。
+4. **图文交互沉浸共鸣**：若对方发来图片，像两人并肩看着同一部手机屏幕一样，自然将对画面细节的真实评价、调侃或心动融入台词与微表情中。
+5. **去模板化与真实接招**：精准咬合对方刚才话里的关键细节，长短句结合，语言有停顿与微表情，绝不自说自话。`;
+
+  cloned[0].content = `${cloned[0].content}${deepseekThinkingDirective}${deepseekExpressionDirective}`;
   return cloned;
 }
 
 /**
- * OpenAI 兼容 SSE 流式请求执行器
+ * 将消息载荷规范化为 OpenAI 多模态格式（支持图片与文本混合输入）
+ */
+function normalizeMessagesForOpenAI(messages, allowImages = true) {
+  return messages.map((m) => {
+    if (m.role === 'system') {
+      return { role: m.role, content: typeof m.content === 'string' ? m.content : String(m.content || '') };
+    }
+
+    const attachments = Array.isArray(m.attachments) ? m.attachments : [];
+    const imageAttachments = allowImages ? attachments.filter((a) => a && a.is_image && a.data_url) : [];
+
+    if (imageAttachments.length === 0) {
+      return { role: m.role, content: typeof m.content === 'string' ? m.content : String(m.content || '') };
+    }
+
+    const parts = [];
+    const textContent = typeof m.content === 'string' ? m.content : '';
+    if (textContent) {
+      parts.push({ type: 'text', text: textContent });
+    }
+    for (const img of imageAttachments) {
+      parts.push({
+        type: 'image_url',
+        image_url: {
+          url: img.data_url,
+          detail: 'auto'
+        }
+      });
+    }
+    return {
+      role: m.role,
+      content: parts.length > 0 ? parts : textContent || '（用户上传了图片附件）'
+    };
+  });
+}
+
+/**
+ * 将消息载荷规范化为 Anthropic Messages 多模态格式
+ */
+function normalizeMessagesForAnthropic(messages, allowImages = true) {
+  let systemPrompt = '';
+  const chatMessages = [];
+
+  for (const m of messages) {
+    if (m.role === 'system') {
+      systemPrompt = systemPrompt ? `${systemPrompt}\n\n${m.content}` : String(m.content || '');
+      continue;
+    }
+
+    const attachments = Array.isArray(m.attachments) ? m.attachments : [];
+    const imageAttachments = allowImages ? attachments.filter((a) => a && a.is_image && a.data_url) : [];
+
+    if (imageAttachments.length === 0) {
+      chatMessages.push({
+        role: m.role,
+        content: typeof m.content === 'string' ? m.content : String(m.content || '')
+      });
+      continue;
+    }
+
+    const parts = [];
+    for (const img of imageAttachments) {
+      const match = String(img.data_url || '').match(/^data:(image\/[a-zA-Z0-9+.-]+);base64,(.+)$/);
+      if (match) {
+        parts.push({
+          type: 'image',
+          source: {
+            type: 'base64',
+            media_type: match[1],
+            data: match[2]
+          }
+        });
+      }
+    }
+    const textContent = typeof m.content === 'string' ? m.content : '';
+    if (textContent) {
+      parts.push({ type: 'text', text: textContent });
+    }
+    chatMessages.push({
+      role: m.role,
+      content: parts.length > 0 ? parts : textContent || '（用户上传了图片附件）'
+    });
+  }
+
+  if (chatMessages.length === 0) {
+    chatMessages.push({ role: 'user', content: '你好' });
+  }
+
+  return { systemPrompt, chatMessages };
+}
+
+/**
+ * OpenAI 兼容 SSE 流式请求执行器（具备多模态自动协商与平滑降级）
  */
 async function streamViaOpenAIProtocol({
   url,
@@ -361,32 +475,49 @@ async function streamViaOpenAIProtocol({
   onContent,
   signal
 }) {
-  const reqBody = {
-    model,
-    messages,
-    stream: true
+  const isDeepSeekOfficial = url.includes('deepseek.com');
+  // 若为官方纯文本接口，则默认关闭图片 payload 避免 400，其余全模态底座开启原生视觉
+  const canSendVision = !isDeepSeekOfficial;
+
+  const tryRequest = async (useVision) => {
+    const formattedMessages = normalizeMessagesForOpenAI(messages, useVision);
+    const reqBody = {
+      model,
+      messages: formattedMessages,
+      stream: true
+    };
+
+    if (model !== 'deepseek-reasoner') {
+      reqBody.temperature = Number(temperature) || 0.85;
+    }
+    if (reasoningEffort && /deepseek-flash|deepseek-v4/i.test(model)) {
+      reqBody.reasoning_effort = reasoningEffort;
+    }
+
+    const headers = {
+      'Content-Type': 'application/json'
+    };
+    if (apiKey) {
+      headers.Authorization = apiKey.startsWith('Bearer ') ? apiKey : `Bearer ${apiKey}`;
+    }
+
+    return await fetch(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(reqBody),
+      signal
+    });
   };
 
-  if (model !== 'deepseek-reasoner') {
-    reqBody.temperature = Number(temperature) || 0.85;
-  }
-  if (reasoningEffort && /deepseek-flash|deepseek-v4/i.test(model)) {
-    reqBody.reasoning_effort = reasoningEffort;
-  }
+  let response = await tryRequest(canSendVision);
 
-  const headers = {
-    'Content-Type': 'application/json'
-  };
-  if (apiKey) {
-    headers.Authorization = apiKey.startsWith('Bearer ') ? apiKey : `Bearer ${apiKey}`;
+  // 若带图片请求遇到 400/422 且报错与多模态不兼容相关，自动平滑退回到纯文本重试一次
+  if (!response.ok && canSendVision) {
+    const errPeek = await response.clone().text().catch(() => '');
+    if (/image_url|multimodal|unsupported.*content|invalid.*image|not supported/i.test(errPeek)) {
+      response = await tryRequest(false);
+    }
   }
-
-  const response = await fetch(url, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(reqBody),
-    signal
-  });
 
   if (!response.ok) {
     const errText = await response.text().catch(() => '');
@@ -437,7 +568,7 @@ async function streamViaOpenAIProtocol({
 }
 
 /**
- * Anthropic Messages SSE 流式请求执行器（兼容知识库 config.json 中的 anthropic 格式端点）
+ * Anthropic Messages SSE 流式请求执行器（兼容多模态图片与深度思考流）
  */
 async function streamViaAnthropicProtocol({
   url,
@@ -451,46 +582,40 @@ async function streamViaAnthropicProtocol({
   onContent,
   signal
 }) {
-  let systemPrompt = '';
-  const chatMessages = [];
+  const tryRequest = async (useVision) => {
+    const { systemPrompt, chatMessages } = normalizeMessagesForAnthropic(messages, useVision);
+    const reqBody = {
+      model,
+      max_tokens: 8192,
+      temperature: Number(temperature) || 0.85,
+      stream: true,
+      messages: chatMessages
+    };
+    if (systemPrompt) {
+      reqBody.system = systemPrompt;
+    }
 
-  for (const m of messages) {
-    if (m.role === 'system') {
-      systemPrompt = systemPrompt ? `${systemPrompt}\n\n${m.content}` : String(m.content || '');
-    } else if (m.role === 'user' || m.role === 'assistant') {
-      chatMessages.push({
-        role: m.role,
-        content: String(m.content || '')
-      });
+    return await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        Authorization: `Bearer ${apiKey}`,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify(reqBody),
+      signal
+    });
+  };
+
+  let response = await tryRequest(true);
+
+  if (!response.ok) {
+    const errPeek = await response.clone().text().catch(() => '');
+    if (/image|media_type|unsupported.*content/i.test(errPeek)) {
+      response = await tryRequest(false);
     }
   }
-
-  if (chatMessages.length === 0) {
-    chatMessages.push({ role: 'user', content: '你好' });
-  }
-
-  const reqBody = {
-    model,
-    max_tokens: 8192,
-    temperature: Number(temperature) || 0.85,
-    stream: true,
-    messages: chatMessages
-  };
-  if (systemPrompt) {
-    reqBody.system = systemPrompt;
-  }
-
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      Authorization: `Bearer ${apiKey}`,
-      'anthropic-version': '2023-06-01'
-    },
-    body: JSON.stringify(reqBody),
-    signal
-  });
 
   if (!response.ok) {
     const errText = await response.text().catch(() => '');
@@ -560,7 +685,15 @@ async function tryStreamViaAntigravityBridge({
   if (channel === 'demo' && !options.takeoverDemoChannel) return false;
 
   const personaName = contextBundle?.persona?.name || '';
-  const preparedMessages = decorateMessagesForRoleplay(contextBundle?.messagesPayload || [], {
+  const attachments = Array.isArray(contextBundle?.attachments) ? contextBundle.attachments : [];
+  const rawPayload = contextBundle?.messagesPayload || [];
+  const enrichedPayload = rawPayload.map((m, idx) => {
+    if (idx === rawPayload.length - 1 && m.role === 'user' && !m.attachments && attachments.length > 0) {
+      return { ...m, attachments };
+    }
+    return m;
+  });
+  const preparedMessages = decorateMessagesForRoleplay(enrichedPayload, {
     personaName,
     enableThought
   });

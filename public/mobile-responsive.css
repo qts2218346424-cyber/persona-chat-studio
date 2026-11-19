@@ -165,7 +165,11 @@ body[data-ui-mode="deepseek"] .auth-gate .info-callout {
   color: var(--text-primary) !important;
 }
 
-/* DeepSeek 模式顶栏「🌸 恋庭剧场」一键切换胶囊 */
+/* DeepSeek 模式顶栏「🌸 恋庭」一键切换胶囊：桌面端隐藏（左侧栏已有模式切换），仅移动端收起侧栏时显示 */
+.ds-switch-rp-pill {
+  display: none !important;
+}
+
 .app-shell[data-ui-mode="deepseek"] .topbar-right .ds-switch-rp-pill {
   background: light-dark(#f5f3ff, rgba(139, 92, 246, 0.18)) !important;
   border: 1px solid light-dark(#ddd6fe, rgba(167, 139, 250, 0.36)) !important;
@@ -511,7 +515,6 @@ body[data-ui-mode="deepseek"] .auth-gate .info-callout {
   #collapsed-quick-nav,
   .oss-ds-monitor-pill,
   .ds-desktop-tool,
-  #open-ds-artifacts-btn,
   #open-fim-dialog-btn,
   #open-ds-inspector-btn,
   #ds-share-session-btn,
@@ -596,7 +599,6 @@ body[data-ui-mode="deepseek"] .auth-gate .info-callout {
 
   /* 手机端全面清理顶栏次级冗余图标，确保顶栏单行宽松、右侧 ⋯ 按钮留足安全边距 */
   .ds-desktop-tool,
-  #open-ds-artifacts-btn,
   #open-fim-dialog-btn,
   #open-ds-inspector-btn,
   #ds-share-session-btn,
@@ -818,24 +820,46 @@ body[data-ui-mode="deepseek"] .auth-gate .info-callout {
     padding: 0 2px 8px !important;
   }
 
-  /* 输入舱底部工具栏单行防折行 */
+  /* 输入舱底部工具栏单行防折行 + 左侧胶囊可横滑绝不挤出右侧上传/发送按钮 */
   .composer-toolbar {
     flex-wrap: nowrap !important;
     gap: 6px !important;
   }
 
   .composer-toggles {
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
     flex-wrap: nowrap !important;
     gap: 5px !important;
-    min-width: 0;
+    overflow-x: auto !important;
+    scrollbar-width: none !important;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .composer-toggles::-webkit-scrollbar {
+    display: none !important;
   }
 
   .app-shell[data-ui-mode="deepseek"] .ds-pill-toggle {
+    flex: 0 0 auto !important;
     height: 32px !important;
     padding: 0 10px !important;
     font-size: 12.5px !important;
     gap: 4px !important;
     white-space: nowrap;
+  }
+
+  .app-shell[data-ui-mode="deepseek"] #attach-file-btn {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    flex-shrink: 0 !important;
+    position: relative !important;
+    z-index: 3 !important;
+    pointer-events: auto !important;
+    min-width: 36px !important;
+    min-height: 36px !important;
+    padding: 0 8px !important;
   }
 
   .pill-toggle {

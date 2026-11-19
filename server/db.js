@@ -487,8 +487,7 @@ function getRawPlatformConfigInternal() {
 }
 
 function isFreeExperienceMode() {
-  const raw = getRawPlatformConfigInternal();
-  return String(raw.free_experience_mode ?? '1') !== '0';
+  return true;
 }
 
 function resolveGiftCardMeta(days = 30) {
@@ -2021,18 +2020,17 @@ function formatRemainingDuration(expiresAt, now = Date.now()) {
 }
 
 function buildMembershipSnapshot(row, now = Date.now()) {
-  const freeMode = isFreeExperienceMode();
   if (!row) {
     return {
       tier: 'free',
       card_type: 'none',
-      tier_name: freeMode ? '🌟 免费畅玩旅人' : '普通旅人',
-      is_vip: freeMode,
-      has_active_card: false,
-      can_bind_own_api: freeMode,
-      can_use_online: freeMode,
-      free_experience_mode: freeMode,
-      billing_enabled: !freeMode,
+      tier_name: '星语旅人',
+      is_vip: true,
+      has_active_card: true,
+      can_bind_own_api: true,
+      can_use_online: true,
+      free_experience_mode: true,
+      billing_enabled: false,
       online_credits: 0,
       points: 0,
       total_points_earned: 0,
@@ -2042,29 +2040,6 @@ function buildMembershipSnapshot(row, now = Date.now()) {
       checkin_streak: 0,
       checked_in_today: false
     };
-  }
-
-  const hasActiveCard = Boolean(row.expires_at && row.expires_at > now && row.tier !== 'free');
-  const cardExpired = Boolean(row.expires_at && row.expires_at <= now && row.tier !== 'free');
-  const credits = Math.max(0, Number(row.online_credits) || 0);
-  const points = Math.max(0, Number(row.points) || 0);
-  const todayKey = getShanghaiDateKey(now);
-
-  let effectiveCardType = hasActiveCard ? row.card_type || 'none' : 'none';
-  if (hasActiveCard && effectiveCardType === 'none') {
-    if (row.tier === 'day') effectiveCardType = 'day';
-    else if (row.tier === 'moon') effectiveCardType = 'month';
-    else if (row.tier === 'sakura') effectiveCardType = 'quarter';
-    else if (row.tier === 'crown') effectiveCardType = 'year';
-  }
-
-  let displayTierName = freeMode ? '🌟 全站免费畅享会员' : '🌙 普通旅人';
-  if (hasActiveCard) {
-    displayTierName = row.tier_name || '🌙 星月会员';
-  } else if (!freeMode && credits > 0) {
-    displayTierName = '💎 持次畅聊旅人';
-  } else if (!freeMode && cardExpired) {
-    displayTierName = '🌙 普通旅人（卡已到期）';
   }
 
   let realUserMsgCount = Number(row.total_used) || 0;
@@ -2078,30 +2053,26 @@ function buildMembershipSnapshot(row, now = Date.now()) {
   } catch {}
 
   return {
-    tier: hasActiveCard ? row.tier : freeMode ? 'moon' : 'free',
-    card_type: effectiveCardType,
-    tier_name: displayTierName,
-    is_vip: Boolean(freeMode || hasActiveCard || row.role === 'admin'),
-    has_active_card: hasActiveCard,
-    can_bind_own_api: Boolean(freeMode || hasActiveCard || row.role === 'admin'),
-    card_expired: freeMode ? false : cardExpired,
-    can_use_online: Boolean(freeMode || hasActiveCard || credits > 0 || points >= CHAT_POINTS_COST),
-    free_experience_mode: freeMode,
-    billing_enabled: !freeMode,
-    online_credits: credits,
-    points,
-    total_points_earned: Math.max(points, Number(row.total_points_earned) || 0),
+    tier: 'free',
+    card_type: 'none',
+    tier_name: row.role === 'admin' ? '站长账户' : '星语旅人',
+    is_vip: true,
+    has_active_card: true,
+    can_bind_own_api: true,
+    card_expired: false,
+    can_use_online: true,
+    free_experience_mode: true,
+    billing_enabled: false,
+    online_credits: 0,
+    points: 0,
+    total_points_earned: 0,
     total_used: realUserMsgCount,
-    expires_at: row.expires_at || null,
-    remaining_text: hasActiveCard
-      ? formatRemainingDuration(row.expires_at, now)
-      : freeMode
-      ? '全免费畅玩中'
-      : '',
-    checkin_streak: Number(row.checkin_streak) || 0,
-    checked_in_today: row.last_checkin_date === todayKey,
-    last_checkin_date: row.last_checkin_date || null,
-    chat_points_cost: CHAT_POINTS_COST
+    expires_at: null,
+    remaining_text: '',
+    checkin_streak: 0,
+    checked_in_today: false,
+    last_checkin_date: null,
+    chat_points_cost: 0
   };
 }
 
@@ -2195,53 +2166,27 @@ function registerUser({ email, nickname, password, avatar }) {
 
   const now = Date.now();
   const userId = genId('user');
-  const giftCfg = getRegisterGiftConfig();
-  const initPoints = giftCfg.enabled ? 100 : 50;
-  const initCredits = giftCfg.enabled ? 30 : 5;
-  const initTier = giftCfg.enabled ? giftCfg.tier : 'free';
-  const initCardType = giftCfg.enabled ? giftCfg.cardType : 'none';
-  const initTierName = giftCfg.enabled ? giftCfg.tierName : '普通旅人';
-  const initExpiresAt = giftCfg.enabled ? now + giftCfg.days * 86400 * 1000 : null;
 
   db.prepare(`
     INSERT INTO users (
       id, email, nickname, avatar, password_hash, role, tier, card_type, tier_name,
       points, total_points_earned, online_credits, total_used, redeemed_codes, onboarding_done, expires_at, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, 'user', ?, ?, ?, ?, ?, ?, 0, '[]', 0, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, 'user', 'free', 'none', '星语旅人', 0, 0, 0, 0, '[]', 0, NULL, ?, ?)
   `).run(
     userId,
     cleanEmail,
     cleanNick,
     (avatar || '🎀').trim().slice(0, 4),
     hashPassword(rawPwd),
-    initTier,
-    initCardType,
-    initTierName,
-    initPoints,
-    initPoints,
-    initCredits,
-    initExpiresAt,
     now,
     now
   );
-
-  appendLedgerEntry({
-    userId,
-    deltaPoints: initPoints,
-    deltaCredits: initCredits,
-    balanceAfter: initPoints,
-    reasonType: 'welcome',
-    title: giftCfg.enabled
-      ? `🎉 新用户注册尊享礼（立赠 ${giftCfg.days} 天${initTierName.replace(/^[^\s]+\s*/, '')} + ${initPoints}积分 + ${initCredits}次对话额度）`
-      : `新旅人注册初遇礼（+${initPoints}积分 / +${initCredits}次对话额度）`,
-    now
-  });
 
   createStarterSessionForUser(userId, cleanNick);
 
   const user = sanitizeUser(db.prepare('SELECT * FROM users WHERE id = ?').get(userId));
   const token = createAuthSessionToken(userId);
-  return { user, token, gifted_vip: giftCfg.enabled, gifted_days: giftCfg.enabled ? giftCfg.days : 0 };
+  return { user, token, gifted_vip: false, gifted_days: 0 };
 }
 
 function loginUser({ email, password }) {
@@ -2274,15 +2219,6 @@ function loginDemoAccount(preferredGuestId = '') {
   const guestNick = '星屿旅人';
   const avatars = ['🎀', '🌸', '🍀', '🦋', '🌙', '🍓'];
   const pickedAvatar = avatars[now % avatars.length];
-  const freeMode = isFreeExperienceMode();
-  const giftCfg = getRegisterGiftConfig();
-  const grantGuestVip = giftCfg.enabled || freeMode;
-  const initPoints = grantGuestVip ? 100 : 50;
-  const initCredits = grantGuestVip ? 30 : 5;
-  const initTier = grantGuestVip ? giftCfg.tier : 'free';
-  const initCardType = grantGuestVip ? giftCfg.cardType : 'none';
-  const initTierName = freeMode ? '🌟 全站免费畅玩旅人' : grantGuestVip ? giftCfg.tierName : '普通旅人';
-  const initExpiresAt = grantGuestVip ? now + giftCfg.days * 86400 * 1000 : null;
 
   // 访客临时账号无需密码登录，避免使用高耗时同步 scryptSync 阻塞并发首屏加载
   const lockedGuestHash = `guest_locked_${crypto.randomBytes(16).toString('hex')}`;
@@ -2291,37 +2227,16 @@ function loginDemoAccount(preferredGuestId = '') {
     INSERT INTO users (
       id, email, nickname, avatar, password_hash, role, tier, card_type, tier_name,
       points, total_points_earned, online_credits, total_used, redeemed_codes, onboarding_done, expires_at, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, 'user', ?, ?, ?, ?, ?, ?, 0, '[]', 0, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, 'user', 'free', 'none', '星语旅人', 0, 0, 0, 0, '[]', 0, NULL, ?, ?)
   `).run(
     userId,
     guestEmail,
     guestNick,
     pickedAvatar,
     lockedGuestHash,
-    initTier,
-    initCardType,
-    initTierName,
-    initPoints,
-    initPoints,
-    initCredits,
-    initExpiresAt,
     now,
     now
   );
-
-  appendLedgerEntry({
-    userId,
-    deltaPoints: initPoints,
-    deltaCredits: freeMode ? 0 : initCredits,
-    balanceAfter: initPoints,
-    reasonType: 'welcome',
-    title: freeMode
-      ? `🎉 欢迎来到星语恋庭（全站免费无限畅玩 · 初遇星光积分 +${initPoints}）`
-      : grantGuestVip
-      ? `🎉 独立访客开户畅享礼（立赠 ${giftCfg.days} 天会员体验 + ${initPoints}积分 + ${initCredits}次额度）`
-      : '独立访客开户初遇礼（+50积分 / +5次对话额度）',
-    now
-  });
 
   createStarterSessionForUser(userId, guestNick);
 
@@ -2928,88 +2843,15 @@ function verifyOnlineChatAccess(userId) {
   const row = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
   if (!row) throw new Error('用户不存在');
   const snap = buildMembershipSnapshot(row);
-
-  if (row.role === 'admin') {
-    return { allowed: true, mode: 'admin_free', membership: snap };
-  }
-  if (isFreeExperienceMode()) {
-    return { allowed: true, mode: 'free_experience', membership: snap };
-  }
-  if (snap.has_active_card) {
-    return { allowed: true, mode: 'card_free', membership: snap };
-  }
-  if (snap.online_credits > 0) {
-    return { allowed: true, mode: 'credit', membership: snap };
-  }
-  if (snap.points >= CHAT_POINTS_COST) {
-    return { allowed: true, mode: 'points', membership: snap };
-  }
-
-  return {
-    allowed: false,
-    code: 'QUOTA_EXHAUSTED',
-    error: `当前高阶在线模型需持有有效「对话日卡/月卡」、对话次数或至少 ${CHAT_POINTS_COST} 星光积分（您可通过每日签到、完成任务获取积分，或兑换卡密）`,
-    membership: snap
-  };
+  return { allowed: true, mode: 'free', membership: snap };
 }
 
 function consumeOnlineCredit(userId) {
   const now = Date.now();
   const row = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
   if (!row) throw new Error('用户不存在');
-
-  const snap = buildMembershipSnapshot(row, now);
-
-  if (row.role === 'admin') {
-    db.prepare('UPDATE users SET total_used = total_used + 1, updated_at = ? WHERE id = ?').run(now, userId);
-    return { billing_mode: 'admin_free', cost_desc: '站长特权免扣畅聊', membership: getMembership(userId) };
-  }
-
-  if (isFreeExperienceMode()) {
-    db.prepare('UPDATE users SET total_used = total_used + 1, updated_at = ? WHERE id = ?').run(now, userId);
-    return { billing_mode: 'free_experience', cost_desc: '全免费畅玩体验（免扣次）', membership: getMembership(userId) };
-  }
-
-  if (snap.has_active_card) {
-    db.prepare('UPDATE users SET total_used = total_used + 1, updated_at = ? WHERE id = ?').run(now, userId);
-    return { billing_mode: 'card_free', cost_desc: `${snap.tier_name}免扣次畅聊`, membership: getMembership(userId) };
-  }
-
-  if (snap.online_credits > 0) {
-    db.prepare(`
-      UPDATE users
-      SET online_credits = MAX(0, online_credits - 1), total_used = total_used + 1, updated_at = ?
-      WHERE id = ?
-    `).run(now, userId);
-    return { billing_mode: 'credit', cost_desc: '已扣减 1 次对话额度', membership: getMembership(userId) };
-  }
-
-  if (snap.points >= CHAT_POINTS_COST) {
-    const nextPoints = Math.max(0, snap.points - CHAT_POINTS_COST);
-    db.prepare(`
-      UPDATE users
-      SET points = ?, total_used = total_used + 1, updated_at = ?
-      WHERE id = ?
-    `).run(nextPoints, now, userId);
-    appendLedgerEntry({
-      userId,
-      deltaPoints: -CHAT_POINTS_COST,
-      deltaCredits: 0,
-      balanceAfter: nextPoints,
-      reasonType: 'chat_cost',
-      title: `在线高阶对话抵扣（-${CHAT_POINTS_COST} 积分）`,
-      now
-    });
-    return {
-      billing_mode: 'points',
-      cost_desc: `已使用 ${CHAT_POINTS_COST} 星光积分抵扣本轮对话`,
-      membership: getMembership(userId)
-    };
-  }
-
-  const err = new Error('您的畅聊卡、对话次数与积分均不足，请签到做任务或开通日卡/月卡');
-  err.code = 'CREDITS_EXHAUSTED';
-  throw err;
+  db.prepare('UPDATE users SET total_used = total_used + 1, updated_at = ? WHERE id = ?').run(now, userId);
+  return { billing_mode: 'free', cost_desc: '', membership: getMembership(userId) };
 }
 
 /**
@@ -3392,13 +3234,7 @@ function normalizeModelForEndpoint(rawModel, rawBaseUrl = '') {
  * 校验当前用户是否可绑定自有 API（全免费模式下全员免门槛开放；商业模式下对会员与站长开放）
  */
 function canUserBindOwnDeepSeekKey(userId) {
-  if (!userId) return false;
-  if (isFreeExperienceMode()) return true;
-  const row = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
-  if (!row) return false;
-  if (row.role === 'admin') return true;
-  const snap = buildMembershipSnapshot(row, Date.now());
-  return Boolean(snap.has_active_card);
+  return Boolean(userId);
 }
 
 /**
@@ -3537,12 +3373,6 @@ function updateSafeClientSettings(userId, patch = {}) {
   } else if (patch.own_deepseek_api_key !== undefined && patch.own_deepseek_api_key !== null) {
     const rawKeyInput = String(patch.own_deepseek_api_key).trim();
     if (rawKeyInput && !isMaskedPlaceholder(rawKeyInput)) {
-      if (!unlocked) {
-        const err = new Error('👑 填写个人专属 API 为会员特权，请先开通或兑换会员卡');
-        err.statusCode = 403;
-        err.code = 'VIP_REQUIRED';
-        throw err;
-      }
       const validKey = validateOfficialDeepSeekApiKey(rawKeyInput);
       stmt.run(userId, 'own_deepseek_api_key', validKey, now);
       ownKeyAfter = validKey;
@@ -3566,12 +3396,6 @@ function updateSafeClientSettings(userId, patch = {}) {
   if (patch.provider !== undefined) {
     let cleanProv = 'demo';
     if (patch.provider === 'own_deepseek') {
-      if (!unlocked) {
-        const err = new Error('👑 启用个人 API 直连为会员特权');
-        err.statusCode = 403;
-        err.code = 'VIP_REQUIRED';
-        throw err;
-      }
       if (!ownKeyAfter) {
         const err = new Error('请先输入您的 API Key（例如 sk-...），再启用个人 API 直连');
         err.statusCode = 400;

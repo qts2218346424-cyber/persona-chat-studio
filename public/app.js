@@ -108,14 +108,6 @@
   const bondLevelTag = document.getElementById('bond-level-tag');
   const memoryPillText = document.getElementById('memory-pill-text');
   const gatewaySummaryText = document.getElementById('gateway-summary-text');
-  const composerChannelBadge = document.getElementById('composer-channel-badge');
-
-  const sidebarVipTier = document.getElementById('sidebar-vip-tier');
-  const sidebarVipCta = document.getElementById('sidebar-vip-cta');
-  const sidebarVipCredits = document.getElementById('sidebar-vip-credits');
-  const vipModalTier = document.getElementById('vip-modal-tier');
-  const vipModalDesc = document.getElementById('vip-modal-desc');
-  const vipModalCredits = document.getElementById('vip-modal-credits');
 
   const chatForm = document.getElementById('chat-form');
   const chatInput = document.getElementById('chat-input');
@@ -144,10 +136,9 @@
   const tourNextBtn = document.getElementById('tour-next-btn');
   const tourSkipBtn = document.getElementById('tour-skip-btn');
 
-  // 十大模态对话框
+  // 模态对话框
   const personaDialog = document.getElementById('persona-dialog');
   const importHistoryDialog = document.getElementById('import-history-dialog');
-  const membershipDialog = document.getElementById('membership-dialog');
   const settingsDialog = document.getElementById('settings-dialog');
   const userPersonaDialog = document.getElementById('user-persona-dialog');
   const plazaDialog = document.getElementById('plaza-dialog');
@@ -670,6 +661,7 @@
     safe = safe
       .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
       .replace(/\*([^*\n]+)\*/g, '<em class="rp-action">$1</em>')
+      .replace(/“([^”\n]+)”/g, '<span class="rp-speech">“$1”</span>')
       .replace(/`([^`\n]+)`/g, '<code>$1</code>');
 
     const blocks = safe.split(/\n{2,}/);
@@ -795,16 +787,6 @@
       }, durationMs);
     }
 
-    const walletBanner = document.getElementById('wallet-feedback-banner');
-    if (walletBanner && membershipDialog?.open) {
-      walletBanner.textContent = text;
-      walletBanner.classList.remove('hidden');
-      clearTimeout(walletBannerTimer);
-      walletBannerTimer = setTimeout(() => {
-        walletBanner.classList.add('hidden');
-      }, 4500);
-    }
-
     const adminBanner = document.getElementById('admin-feedback-banner');
     if (adminBanner && adminConsoleDialog?.open) {
       adminBanner.textContent = text;
@@ -900,7 +882,6 @@
     [
       personaDialog,
       importHistoryDialog,
-      membershipDialog,
       settingsDialog,
       userPersonaDialog,
       plazaDialog,
@@ -1020,7 +1001,7 @@
       signupForm.reset();
       document.getElementById('signup-avatar').value = '🎀';
       await enterWorkspace();
-      showToast('🎉 新账号创建成功！全站所有角色扮演与真声配音均可免费无限畅玩！');
+      showToast('🎉 新账号创建成功！现在就可以开始体验角色扮演与智能对话！');
     } catch (err) {
       setAuthError(err.message);
     }
@@ -1041,7 +1022,7 @@
       applyAuthLoginPayload(res, { persistDefault: true, rememberGuest: true });
       await enterWorkspace();
       if (res.is_new_guest) {
-        showToast('🎀 已为您开启专属访客空间，全站角色与长效记忆均可免费畅玩！');
+        showToast('🎀 已为您开启独立访客空间，聊天记录与记忆将自动保存！');
       }
     } catch (err) {
       setAuthError(err.message);
@@ -1188,8 +1169,8 @@
     {
       anchorId: 'user-profile-bar',
       ensureLeftOpen: true,
-      title: '🎀 第四步：改一个你在故事里的名字（全站免费）',
-      desc: '点击左下角个人卡片修改你的名字，所有角色都会立刻改口叫你！全站完全免费畅玩，点旁边的 ⚙ 还能选配音或绑定个人密钥。'
+      title: '🎀 第四步：改一个你在故事里的名字',
+      desc: '点击左下角个人卡片修改你的名字，所有角色都会立刻改口叫你！点旁边的 ⚙ 还能选配音、关闭/开启接话选项或绑定个人密钥。'
     }
   ];
 
@@ -1338,7 +1319,6 @@
   [
     personaDialog,
     importHistoryDialog,
-    membershipDialog,
     settingsDialog,
     userPersonaDialog,
     plazaDialog,
@@ -1517,14 +1497,15 @@
   document.addEventListener('click', (ev) => {
     const target = ev.target;
     if (!(target instanceof Element)) return;
-    ['topbar-more-popover', 'magic-quick-popover', 'ds-user-popover'].forEach((pid) => {
+    ['topbar-more-popover', 'magic-quick-popover', 'ds-user-popover', 'attach-picker-popover'].forEach((pid) => {
       const pEl = document.getElementById(pid);
       if (!pEl || !pEl.classList.contains('manual-popover-open')) return;
       if (pEl.contains(target)) return;
       if (
         (pid === 'topbar-more-popover' && target.closest('#topbar-more-btn')) ||
         (pid === 'magic-quick-popover' && target.closest('#magic-menu-trigger-btn')) ||
-        (pid === 'ds-user-popover' && (target.closest('#ds-profile-btn') || target.closest('.ds-dots-btn')))
+        (pid === 'ds-user-popover' && (target.closest('#ds-profile-btn') || target.closest('.ds-dots-btn'))) ||
+        (pid === 'attach-picker-popover' && target.closest('#attach-file-btn'))
       ) {
         return;
       }
@@ -1534,6 +1515,7 @@
   bindDeterministicPopoverTrigger(document.getElementById('topbar-more-btn'), 'topbar-more-popover');
   bindDeterministicPopoverTrigger(document.getElementById('magic-menu-trigger-btn'), 'magic-quick-popover');
   bindDeterministicPopoverTrigger(document.getElementById('ds-profile-btn'), 'ds-user-popover');
+  bindDeterministicPopoverTrigger(document.getElementById('attach-file-btn'), 'attach-picker-popover');
   document.querySelectorAll('.ds-dots-btn[popovertarget="ds-user-popover"]').forEach((btn) => {
     bindDeterministicPopoverTrigger(btn, 'ds-user-popover');
   });
@@ -1730,20 +1712,27 @@
   });
 
   function openRightTab(tabId, persist = true) {
+    const isDs = state.uiMode === 'deepseek';
+    let safeTabId = tabId;
+    if (isDs && safeTabId === 'nurture-tab') {
+      safeTabId = 'memory-tab';
+    } else if (!isDs && (safeTabId === 'ds-artifacts-tab' || safeTabId === 'ds-suite-tab')) {
+      safeTabId = 'nurture-tab';
+    }
     setRightPanelCollapsed(false, persist);
-    appShell.classList.toggle('artifacts-wide', tabId === 'ds-artifacts-tab');
+    appShell.classList.toggle('artifacts-wide', isDs && safeTabId === 'ds-artifacts-tab');
     document.querySelectorAll('.tab-btn').forEach((btn) => {
-      const active = btn.dataset.tab === tabId;
+      const active = btn.dataset.tab === safeTabId;
       btn.classList.toggle('active', active);
       btn.setAttribute('aria-selected', String(active));
     });
-    document.getElementById('nurture-tab').classList.toggle('hidden', tabId !== 'nurture-tab');
-    document.getElementById('memory-tab').classList.toggle('hidden', tabId !== 'memory-tab');
-    document.getElementById('persona-tab').classList.toggle('hidden', tabId !== 'persona-tab');
+    document.getElementById('nurture-tab').classList.toggle('hidden', safeTabId !== 'nurture-tab');
+    document.getElementById('memory-tab').classList.toggle('hidden', safeTabId !== 'memory-tab');
+    document.getElementById('persona-tab').classList.toggle('hidden', safeTabId !== 'persona-tab');
     const dsSuiteEl = document.getElementById('ds-suite-tab');
-    if (dsSuiteEl) dsSuiteEl.classList.toggle('hidden', tabId !== 'ds-suite-tab');
+    if (dsSuiteEl) dsSuiteEl.classList.toggle('hidden', safeTabId !== 'ds-suite-tab');
     const dsArtEl = document.getElementById('ds-artifacts-tab');
-    if (dsArtEl) dsArtEl.classList.toggle('hidden', tabId !== 'ds-artifacts-tab');
+    if (dsArtEl) dsArtEl.classList.toggle('hidden', safeTabId !== 'ds-artifacts-tab');
   }
 
   toggleRightBtn.addEventListener('click', () => {
@@ -1772,12 +1761,48 @@
     btn.addEventListener('click', () => openRightTab(btn.dataset.tab));
   });
 
-  // ================= 6. 用户资料、签到任务积分、日卡/月卡收银台、兑换码与站长发卡台 =================
+  // ================= 6. 用户资料、通道状态与选项偏好开关 =================
   function formatDateTimeShort(ts) {
     if (!ts) return '-';
     const d = new Date(Number(ts));
     const pad = (n) => String(n).padStart(2, '0');
     return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+
+  function isShowFollowUpsEnabled() {
+    try {
+      return localStorage.getItem('pref_show_followups') !== '0';
+    } catch {
+      return true;
+    }
+  }
+
+  function syncFollowUpsToggleUi() {
+    const enabled = isShowFollowUpsEnabled();
+    const moreBtn = document.getElementById('toggle-followups-btn');
+    if (moreBtn) {
+      moreBtn.textContent = enabled ? '💬 回复选项：开启' : '🙈 回复选项：已关闭';
+      moreBtn.setAttribute('aria-pressed', String(enabled));
+    }
+    const chk = document.getElementById('st-show-followups-chk');
+    if (chk) {
+      chk.checked = enabled;
+    }
+  }
+
+  function setShowFollowUpsEnabled(nextVal, notify = false) {
+    const on = Boolean(nextVal);
+    try {
+      localStorage.setItem('pref_show_followups', on ? '1' : '0');
+    } catch {}
+    syncFollowUpsToggleUi();
+    if (!on && typeof followUpsEl !== 'undefined' && followUpsEl) {
+      followUpsEl.innerHTML = '';
+      followUpsEl.classList.add('hidden');
+    }
+    if (notify) {
+      showToast(on ? '💬 已开启每轮结尾推荐选项' : '🙈 已关闭每轮结尾推荐选项，随时可在右上角「⋯」或设置重新开启');
+    }
   }
 
   function renderUserAndMembership() {
@@ -1792,11 +1817,13 @@
       adminConsoleDialog.innerHTML = '';
     }
 
-      if (state.user) {
+    if (state.user) {
       const fullNick = state.user.nickname || '星语旅人';
-      navUserAvatar.textContent = state.user.avatar || '🎀';
-      navUserNickname.textContent = fullNick;
-      navUserNickname.title = fullNick;
+      if (navUserAvatar) navUserAvatar.textContent = state.user.avatar || '🎀';
+      if (navUserNickname) {
+        navUserNickname.textContent = fullNick;
+        navUserNickname.title = fullNick;
+      }
       const dsAv = document.getElementById('ds-nav-avatar');
       const dsNick = document.getElementById('ds-nav-nickname');
       if (dsAv) dsAv.textContent = state.user.avatar || '🍀';
@@ -1820,10 +1847,6 @@
       if (userBtnEl) {
         userBtnEl.title = `${fullNick} · ${roleStr}（点击修改我在剧中的名字与身份）`;
       }
-      const isoBadge = document.getElementById('wallet-account-badge');
-      if (isoBadge) {
-        isoBadge.textContent = `🔒 独立账户：${state.user.nickname} (${state.user.email})`;
-      }
     }
 
     const theaterBtn = document.getElementById('open-theater-btn');
@@ -1834,88 +1857,15 @@
       theaterLbl.textContent = hasNote ? '幕次演绎中' : '本剧幕次';
     }
 
-    const m = state.membership || {
-      tier: 'moon',
-      card_type: 'month',
-      tier_name: '🌙 星月月卡会员',
-      online_credits: 30,
-      points: 100,
-      is_vip: true,
-      has_active_card: true,
-      can_bind_own_api: true,
-      can_use_online: true,
-      free_experience_mode: true,
-      billing_enabled: false
-    };
-    const isFreeMode = m.free_experience_mode !== false && m.billing_enabled !== true;
     const p = state.settings.provider || 'demo';
-
-    sidebarVipTier.textContent = isAdmin ? '🛡️ 站长尊享' : m.tier_name || '🌙 星月会员';
-    sidebarVipTier.classList.toggle('is-vip', Boolean(isAdmin || m.has_active_card || isFreeMode));
-    sidebarVipCta.textContent = m.checked_in_today
-      ? m.remaining_text
-        ? `${m.remaining_text} ▸`
-        : '免费福利 ▸'
-      : '📅 今日可签到 ▸';
-    const sidebarPtsEl = document.getElementById('sidebar-user-points');
-    if (sidebarPtsEl) sidebarPtsEl.textContent = String(m.points ?? 0);
-    sidebarVipCredits.textContent = isAdmin || isFreeMode
-      ? '全免费畅玩'
-      : m.has_active_card
-      ? `畅聊 (${m.online_credits || 0}次)`
-      : `${m.online_credits || 0} 次`;
-
-    const quickVipSub = document.getElementById('sidebar-quick-vip-sub');
-    if (quickVipSub) {
-      quickVipSub.textContent = m.checked_in_today
-        ? `✨ ${m.points ?? 0} 积分 ▸`
-        : '📅 今日可签到 ▸';
-    }
-
-    if (vipModalTier) {
-      vipModalTier.textContent = isAdmin ? '🛡️ 站长尊享账户' : isFreeMode ? '🌟 全站免费畅享旅人' : m.tier_name || '🌙 星月会员';
-    }
-    const expChip = document.getElementById('vip-modal-expire-chip');
-    if (expChip) {
-      const showExp = Boolean(!isFreeMode && m.has_active_card && m.remaining_text);
-      expChip.classList.toggle('hidden', !showExp);
-      if (showExp) expChip.textContent = `⏳ ${m.remaining_text}`;
-    }
-    const ptsModalEl = document.getElementById('vip-modal-points');
-    if (ptsModalEl) ptsModalEl.textContent = String(m.points ?? 0);
-    if (vipModalCredits) vipModalCredits.textContent = String(m.online_credits ?? 0);
-    const streakEl = document.getElementById('vip-modal-streak');
-    if (streakEl) streakEl.textContent = String(m.checkin_streak ?? 0);
-    const shopPtsEl = document.getElementById('shop-points-indicator');
-    if (shopPtsEl) shopPtsEl.textContent = `可用星光积分：${m.points ?? 0}`;
-
-    if (vipModalDesc) {
-      if (isFreeMode) {
-        vipModalDesc.innerHTML = `🎉 本站所有角色扮演、真声配音、长期记忆与<strong>使用您自己的 API 密钥</strong>功能均<strong>完全免费开放、不限次数畅聊</strong>！签到与完成互动小目标可收集星光积分，免费兑换好感心意礼盒与纪念头衔（累计已畅聊 ${
-          m.total_used || 0
-        } 句）。`;
-      } else {
-        vipModalDesc.innerHTML = m.has_active_card
-          ? `当前正处于<strong>${escapeHtml(m.tier_name)}</strong>有效期内（${escapeHtml(
-              m.remaining_text || '生效中'
-            )}），在线高阶对话<strong>全程免扣次数无限畅聊</strong>！备用对话次数与积分永久保留（累计已对话 ${
-              m.total_used || 0
-            } 次）。`
-          : `每日签到与做互动任务可免费赢取<strong>星光积分</strong>，积分商城可直兑对话次数或畅聊会员卡！`;
-      }
-    }
-
-    composerChannelBadge.classList.remove('online-locked', 'online-ready');
-    const ownApiUnlocked = Boolean(
-      isFreeMode || isAdmin || m.has_active_card || m.can_bind_own_api || state.settings.vip_own_api_unlocked
-    );
     const hasOwnKey = Boolean(state.settings.has_own_deepseek_key);
     const rawOwnModel = state.settings.own_deepseek_model || 'deepseek-flash';
     const rawLeaf = rawOwnModel.split('/').pop();
     const shortModel = /^deepseek[-_]?flash$/i.test(rawLeaf) ? 'V4.1-Flash' : rawLeaf;
+
     const dsComposerChip = document.getElementById('ds-composer-api-chip');
     if (dsComposerChip) {
-      if (p === 'own_deepseek' && ownApiUnlocked && hasOwnKey) {
+      if (p === 'own_deepseek' && hasOwnKey) {
         dsComposerChip.textContent = `🔑 我的密钥 (${shortModel})`;
       } else if (hasOwnKey) {
         dsComposerChip.textContent = '🔑 切回我的密钥';
@@ -1924,28 +1874,21 @@
       }
     }
 
-    // 同步原生右侧抽屉「🔑 绑定我自己的密钥」状态卡片
     const dsOwnBadge = document.getElementById('ds-suite-own-api-badge');
     const dsOwnDesc = document.getElementById('ds-suite-own-api-desc');
     const dsOwnBtn = document.getElementById('ds-suite-own-api-btn');
     if (dsOwnBadge && dsOwnDesc && dsOwnBtn) {
-      if (ownApiUnlocked) {
-        dsOwnBadge.textContent = hasOwnKey
-          ? p === 'own_deepseek'
-            ? '✅ 正在使用'
-            : '🔓 已存密钥'
-          : '免费开放';
-        dsOwnDesc.textContent = hasOwnKey
-          ? `已安全保存您的密钥（${state.settings.own_deepseek_key_masked || 'sk-••••'} · 当前模型 ${shortModel}），DeepSeek 与角色扮演都能直接用！`
-          : '不填任何东西也能直接免费聊！如果您有自己的 DeepSeek 或硅基流动密钥，粘贴后即可直连最新 DeepSeek V4.1 Flash。';
-        dsOwnBtn.textContent = hasOwnKey
-          ? '⚙️ 修改或更换我的密钥'
-          : '⚙️ 打开聊天设置 / 绑定密钥';
-      } else {
-        dsOwnBadge.textContent = '🔒 会员专属';
-        dsOwnDesc.textContent = '使用每日签到积分免费兑换会员卡后，即可绑定您自己的密钥直连使用。';
-        dsOwnBtn.textContent = '👑 前往积分兑卡解锁 ▸';
-      }
+      dsOwnBadge.textContent = hasOwnKey
+        ? p === 'own_deepseek'
+          ? '✅ 正在使用'
+          : '🔓 已存密钥'
+        : '可选配置';
+      dsOwnDesc.textContent = hasOwnKey
+        ? `已保存您的密钥（${state.settings.own_deepseek_key_masked || 'sk-••••'} · 当前模型 ${shortModel}），DeepSeek 与剧本模式都能直接用！`
+        : '直接使用内置通道即可，也可在此绑定自己的 DeepSeek 或硅基流动 API 密钥与自定义模型。';
+      dsOwnBtn.textContent = hasOwnKey
+        ? '⚙️ 修改或更换我的密钥'
+        : '⚙️ 打开聊天设置 / 绑定密钥';
     }
 
     const proBtn = document.getElementById('toggle-proactive-btn');
@@ -1956,9 +1899,10 @@
       proBtn.textContent = proOn ? '💓 主动关怀: 开' : '💤 主动关怀: 关';
     }
 
+    syncFollowUpsToggleUi();
+
     const dsTitleEl = document.getElementById('ds-topbar-title');
     const dsModelPill = document.getElementById('ds-model-pill');
-    const dsSoulPill = document.getElementById('ds-soul-active-pill');
     const dsThinkOn = state.activeSession ? state.activeSession.ds_thinking !== 0 : true;
     const dsSearchOn = state.activeSession ? state.activeSession.ds_search === 1 : false;
     const dsJsonOn = state.activeSession ? state.activeSession.ds_json_mode === 1 : false;
@@ -1972,13 +1916,6 @@
         !/deepseek|flash/i.test(rawOwnModel);
       const basePillName = isCustomThirdModel ? shortModel : 'DeepSeek-V4.1-Flash';
       dsModelPill.textContent = dsThinkOn ? `${basePillName} · 深度思考` : basePillName;
-    }
-    if (dsSoulPill) {
-      const isPure = !state.activePersona || state.activePersona.id === 'persona_deepseek_official';
-      dsSoulPill.classList.toggle('hidden', isPure);
-      if (!isPure && state.activePersona) {
-        dsSoulPill.textContent = `🎭 挂载：${state.activePersona.name.split(/[·\s]/)[0]}`;
-      }
     }
 
     const btnDsThink = document.getElementById('ds-toggle-think');
@@ -1999,51 +1936,13 @@
     }
     if (chkDsTools) chkDsTools.checked = dsToolsOn;
 
-    if (p === 'demo') {
-      gatewaySummaryText.textContent = '免费畅聊模式（可绑定个人密钥）';
-      composerChannelBadge.textContent = hasOwnKey
-        ? '✨ 免费畅聊（点此切我的密钥）'
-        : '✨ 免费畅聊 · 设置';
-    } else if (p === 'own_deepseek') {
-      if (ownApiUnlocked && hasOwnKey) {
-        gatewaySummaryText.textContent = `我的密钥 (${shortModel})`;
-        composerChannelBadge.textContent = `🔑 我的密钥 (${shortModel})`;
-        composerChannelBadge.classList.add('online-ready');
-      } else if (!ownApiUnlocked) {
-        gatewaySummaryText.textContent = '需会员解锁个人密钥';
-        composerChannelBadge.textContent = '🔒 解锁个人密钥';
-        composerChannelBadge.classList.add('online-locked');
+    if (gatewaySummaryText) {
+      if (p === 'demo') {
+        gatewaySummaryText.textContent = '内置轻量演绎模式（也可切在线或绑定密钥）';
+      } else if (p === 'own_deepseek') {
+        gatewaySummaryText.textContent = hasOwnKey ? `我的密钥 (${shortModel})` : '待粘贴我的密钥';
       } else {
-        gatewaySummaryText.textContent = '待粘贴我的密钥';
-        composerChannelBadge.textContent = '🔑 点此粘贴密钥';
-        composerChannelBadge.classList.add('online-locked');
-      }
-    } else {
-      const chName = '星耀在线模型';
-      if (isAdmin) {
-        gatewaySummaryText.textContent = `${chName} · 站长免扣畅聊`;
-        composerChannelBadge.textContent = `🛡️ 站长尊享 · 在线畅聊`;
-        composerChannelBadge.classList.add('online-ready');
-      } else if (isFreeMode) {
-        gatewaySummaryText.textContent = `${chName} · 全免费畅玩中`;
-        composerChannelBadge.textContent = `💎 ${chName} · 全免费畅玩`;
-        composerChannelBadge.classList.add('online-ready');
-      } else if (m.has_active_card) {
-        gatewaySummaryText.textContent = `${chName} · ${m.tier_name}免扣畅聊`;
-        composerChannelBadge.textContent = `☀️ ${m.tier_name} · 免扣畅聊`;
-        composerChannelBadge.classList.add('online-ready');
-      } else if ((m.online_credits || 0) > 0) {
-        gatewaySummaryText.textContent = `${chName} · 剩余 ${m.online_credits} 次`;
-        composerChannelBadge.textContent = `💎 ${chName} · 剩 ${m.online_credits} 次`;
-        composerChannelBadge.classList.add('online-ready');
-      } else if ((m.points || 0) >= 10) {
-        gatewaySummaryText.textContent = `${chName} · 积分抵扣畅聊 (${m.points}分)`;
-        composerChannelBadge.textContent = `✨ ${chName} · 积分可抵扣`;
-        composerChannelBadge.classList.add('online-ready');
-      } else {
-        gatewaySummaryText.textContent = `${chName} · 签到领分畅聊`;
-        composerChannelBadge.textContent = `✨ ${chName} · 签到领分`;
-        composerChannelBadge.classList.add('online-locked');
+        gatewaySummaryText.textContent = '星耀在线模型';
       }
     }
   }
@@ -2129,513 +2028,8 @@
     });
   }
 
-  // 遵循 modern-web-guidance: tabs 横向滚动渐隐回退 & focusgroup 选中跟随焦点 + beforematch
-  const walletTablistEl = document.getElementById('wallet-tablist');
-  const walletTabBtns = Array.from(document.querySelectorAll('#wallet-tablist .wallet-tab'));
-  const walletPanels = walletTabBtns
-    .map((btn) => document.getElementById(btn.dataset.wpanel))
-    .filter(Boolean);
-
-  if (walletTablistEl && !CSS.supports('animation-timeline', 'scroll()') && 'IntersectionObserver' in window) {
-    const firstTab = walletTablistEl.firstElementChild;
-    const lastTab = walletTablistEl.lastElementChild;
-    if (firstTab && lastTab) {
-      const scrollerObs = new IntersectionObserver(
-        (entries) => {
-          for (const { target, intersectionRatio } of entries) {
-            walletTablistEl.classList.toggle(
-              target === firstTab ? 'more-start' : 'more-end',
-              intersectionRatio < 1
-            );
-          }
-        },
-        { root: walletTablistEl, threshold: 1, rootMargin: '1px' }
-      );
-      scrollerObs.observe(firstTab);
-      scrollerObs.observe(lastTab);
-    }
-  }
-
-  function selectWalletTab(tabId) {
-    const visibleTabs = walletTabBtns.filter((b) => !b.classList.contains('hidden'));
-    const fallbackBtn = visibleTabs[0] || walletTabBtns[0];
-    const requestedBtn = walletTabBtns.find((b) => b.id === tabId && !b.classList.contains('hidden'));
-    const selectedBtn = requestedBtn || fallbackBtn;
-    if (!selectedBtn) return;
-
-    for (const tab of walletTabBtns) {
-      const active = tab === selectedBtn;
-      tab.classList.toggle('active', active);
-      tab.setAttribute('aria-selected', String(active));
-      tab.setAttribute('tabindex', active ? '0' : '-1');
-    }
-
-    for (const panel of walletPanels) {
-      const match = panel.id === selectedBtn.dataset.wpanel;
-      panel.hidden = !match;
-      panel.classList.toggle('hidden', !match);
-    }
-  }
-
-  walletTablistEl?.addEventListener('pointerdown', (e) => {
-    if (e.button !== 0) return;
-    const btn = e.target.closest('.wallet-tab');
-    if (btn && !btn.classList.contains('hidden')) {
-      selectWalletTab(btn.id);
-    }
-  });
-
-  walletTabBtns.forEach((btn) => {
-    btn.addEventListener('click', () => selectWalletTab(btn.id));
-    btn.addEventListener('keydown', (e) => {
-      if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
-        const visibleTabs = walletTabBtns.filter((b) => !b.classList.contains('hidden'));
-        if (visibleTabs.length === 0) return;
-        e.preventDefault();
-        const dir = e.key === 'ArrowRight' ? 1 : -1;
-        const curIdx = Math.max(0, visibleTabs.indexOf(btn));
-        const nextBtn = visibleTabs[(curIdx + dir + visibleTabs.length) % visibleTabs.length];
-        selectWalletTab(nextBtn.id);
-        nextBtn.focus();
-      }
-    });
-  });
-
-  walletPanels.forEach((panel) => {
-    panel.addEventListener('beforematch', () => {
-      const ownerTab = walletTabBtns.find((b) => b.dataset.wpanel === panel.id);
-      if (ownerTab) selectWalletTab(ownerTab.id);
-    });
-  });
-
-  function renderWalletOverview() {
-    const w = state.wallet;
-    if (!w) return;
-    if (w.membership) state.membership = w.membership;
-    if (state.user && typeof w.is_admin === 'boolean') {
-      state.user.is_admin = w.is_admin;
-    }
-    const billingEnabled = Boolean(w.billing_enabled === true && w.free_experience_mode === false);
-    const rechargeTabBtn = document.getElementById('wtab-recharge');
-    if (rechargeTabBtn) {
-      rechargeTabBtn.classList.toggle('hidden', !billingEnabled);
-      if (!billingEnabled && rechargeTabBtn.getAttribute('aria-selected') === 'true') {
-        selectWalletTab('wtab-checkin');
-      }
-    }
-    document.getElementById('wallet-orders-section')?.classList.toggle('hidden', !billingEnabled);
-    renderUserAndMembership();
-
-    // 1. 7日连续签到网格
-    const chk = w.checkin || { checked_in_today: false, streak_days: 0, calendar: [] };
-    const chkBtn = document.getElementById('do-checkin-btn');
-    if (chkBtn) {
-      chkBtn.disabled = Boolean(chk.checked_in_today);
-      chkBtn.textContent = chk.checked_in_today
-        ? `✅ 今日已签到（已连签 ${chk.streak_days || 1} 天）`
-        : '✨ 立即签到领积分';
-    }
-
-    const chkGrid = document.getElementById('checkin-days-grid');
-    if (chkGrid && Array.isArray(chk.calendar)) {
-      chkGrid.innerHTML = chk.calendar
-        .map((item) => {
-          const effectivePts = Number(item.effective_points ?? item.points ?? 0);
-          const bonusPts = Number(item.card_bonus ?? 0);
-          const bonusSubHtml =
-            !item.completed && bonusPts > 0
-              ? `<span class="chk-bonus-sub">${escapeHtml(item.card_bonus_label || `含会员+${bonusPts}`)}</span>`
-              : '';
-          return `
-            <div class="checkin-day-cell ${item.completed ? 'done' : ''} ${
-            item.is_today_target ? 'today-target' : ''
-          }" role="listitem">
-              <span class="chk-day-num">第 ${item.day} 天</span>
-              <span class="chk-pts-val">${item.completed ? '✓ 已领' : `+${effectivePts}分`}</span>
-              ${bonusSubHtml}
-              ${
-                item.credits > 0
-                  ? `<span class="chk-extra-tag">+${item.credits}次对话</span>`
-                  : `<span class="chk-day-num">${escapeHtml(item.label)}</span>`
-              }
-            </div>
-          `;
-        })
-        .join('');
-    }
-
-    // 2. 每日任务与成长里程碑任务
-    const allTasks = Array.isArray(w.tasks) ? w.tasks : [];
-    const dailyTasks = allTasks.filter((t) => t.type === 'daily');
-    const growthTasks = allTasks.filter((t) => t.type === 'growth');
-
-    const renderTaskRows = (list, containerId, labelId) => {
-      const el = document.getElementById(containerId);
-      const lbl = document.getElementById(labelId);
-      if (lbl) {
-        const claimedCnt = list.filter((t) => t.claimed).length;
-        lbl.textContent = `${claimedCnt} / ${list.length} 已领`;
-      }
-      if (!el) return;
-      el.innerHTML = list
-        .map((t) => {
-          const rewardStr = `+${t.reward_points}积分${
-            t.reward_credits > 0 ? ` +${t.reward_credits}次` : ''
-          }`;
-          const btnClass = t.claimed ? 'claimed' : t.claimable ? 'ready' : '';
-          const btnLabel = t.claimed ? '✓ 已领取' : t.claimable ? '🎁 领取奖励' : '去完成 ▸';
-          return `
-            <div class="task-item-row">
-              <div class="task-info-col">
-                <div class="task-title-line">
-                  <span>${escapeHtml(t.icon || '✨')} ${escapeHtml(t.title)}</span>
-                  <span class="task-reward-pill">${escapeHtml(rewardStr)}</span>
-                </div>
-                <div class="task-desc-line">${escapeHtml(t.desc)}</div>
-              </div>
-              <div class="task-act-col">
-                <span class="task-prog-text">进度 ${t.current} / ${t.target}</span>
-                <button
-                  type="button"
-                  class="task-claim-btn ${btnClass}"
-                  data-task-key="${escapeHtml(t.key)}"
-                  data-task-state="${t.claimed ? 'claimed' : t.claimable ? 'ready' : 'go'}"
-                  ${t.claimed ? 'disabled' : ''}
-                >
-                  ${btnLabel}
-                </button>
-              </div>
-            </div>
-          `;
-        })
-        .join('');
-
-      el.querySelectorAll('.task-claim-btn').forEach((btn) => {
-        btn.addEventListener('click', async () => {
-          const tKey = btn.dataset.taskKey;
-          const tState = btn.dataset.taskState;
-          if (tState === 'claimed') return;
-          if (tState === 'go') {
-            membershipDialog.close();
-            if (tKey === 'once_user_persona') {
-              document.getElementById('open-user-persona-btn')?.click();
-            } else if (tKey === 'once_create_persona') {
-              personaDialog.showModal();
-            } else if (tKey === 'once_add_lorebook' || tKey === 'daily_memory_dream') {
-              openRightTab('memory-tab');
-            } else if (tKey === 'daily_interactive') {
-              document.getElementById('open-theater-btn')?.click();
-            } else {
-              chatInput.focus();
-            }
-            return;
-          }
-          btn.disabled = true;
-          try {
-            const res = await apiJson('/api/wallet/tasks/claim', {
-              method: 'POST',
-              body: JSON.stringify({ task_key: tKey })
-            });
-            state.wallet = res.wallet;
-            state.membership = res.membership;
-            if (res.settings) state.settings = res.settings;
-            renderWalletOverview();
-            showToast(
-              `🎉 任务达成奖励已入账：+${res.task.reward_points} 星光积分${
-                res.task.reward_credits ? `、+${res.task.reward_credits} 次对话额度` : ''
-              }！`
-            );
-          } catch (err) {
-            btn.disabled = false;
-            showToast(`⚠️ ${err.message}`);
-          }
-        });
-      });
-    };
-
-    renderTaskRows(dailyTasks, 'daily-tasks-list', 'daily-tasks-progress-label');
-    renderTaskRows(growthTasks, 'growth-tasks-list', 'growth-tasks-progress-label');
-
-    // 3. 充值日卡、月卡、季卡与对话次数包商品网格
-    const prodGrid = document.getElementById('recharge-products-grid');
-    if (prodGrid && Array.isArray(w.products)) {
-      prodGrid.innerHTML = w.products
-        .map(
-          (prod) => `
-            <div class="vip-plan-card ${prod.featured ? 'featured' : ''}">
-              <div class="plan-ribbon ${prod.featured ? 'hot' : ''}">${escapeHtml(prod.badge || '精选特惠')}</div>
-              <h3>${escapeHtml(prod.name)}</h3>
-              <div class="plan-price">¥${escapeHtml(prod.price_yuan)} <small>${
-            prod.days === 1
-              ? '/ 24小时'
-              : prod.days > 1
-              ? `/ ${prod.days}天`
-              : '/ 永久有效'
-          }</small></div>
-              <ul class="plan-perks">
-                ${(prod.perks || []).map((pk) => `<li>✦ ${escapeHtml(pk)}</li>`).join('')}
-              </ul>
-              <button type="button" class="primary-btn full-width open-cashier-btn" data-prod-key="${escapeHtml(
-                prod.key
-              )}">
-                ${prod.days > 0 ? `⚡ 立即开通${prod.days === 1 ? '日卡' : prod.days === 30 ? '月卡' : '畅聊卡'}` : '💎 立即充值对话包'}
-              </button>
-            </div>
-          `
-        )
-        .join('');
-
-      prodGrid.querySelectorAll('.open-cashier-btn').forEach((btn) => {
-        btn.addEventListener('click', () => {
-          const prod = w.products.find((x) => x.key === btn.dataset.prodKey);
-          if (!prod) return;
-          state.selectedCashierProduct = prod;
-          document.getElementById('cashier-product-title').textContent = prod.name;
-          document.getElementById('cashier-product-perks').textContent = (prod.perks || []).join(' ｜ ');
-          document.getElementById('cashier-price-val').textContent = `¥${prod.price_yuan}`;
-          const cashierBox = document.getElementById('cashier-box');
-          cashierBox.classList.remove('hidden');
-          cashierBox.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-        });
-      });
-    }
-
-    // 4. 积分免充兑换商城
-    const exGrid = document.getElementById('exchange-items-grid');
-    const curPts = state.membership?.points ?? 0;
-    if (exGrid && Array.isArray(w.exchange_items)) {
-      exGrid.innerHTML = w.exchange_items
-        .map((item) => {
-          const affordable = curPts >= item.cost_points;
-          return `
-            <div class="exchange-item-card">
-              <div>
-                <div class="ex-item-title">${escapeHtml(item.name)}</div>
-                <div class="ex-item-desc">${escapeHtml(item.desc)}</div>
-              </div>
-              <div class="ex-item-foot">
-                <span class="ex-cost-badge">✨ ${item.cost_points} 积分</span>
-                <button
-                  type="button"
-                  class="${affordable ? 'mini-primary-btn' : 'mini-btn'} ex-buy-btn"
-                  data-item-key="${escapeHtml(item.key)}"
-                >
-                  ${affordable ? '立即兑换' : '积分不足'}
-                </button>
-              </div>
-            </div>
-          `;
-        })
-        .join('');
-
-      exGrid.querySelectorAll('.ex-buy-btn').forEach((btn) => {
-        btn.addEventListener('click', async () => {
-          const itemObj = (w.exchange_items || []).find((x) => x.key === btn.dataset.itemKey);
-          const costPts = itemObj?.cost_points ?? 0;
-          const itemName = itemObj?.name || '所选礼盒';
-          if ((state.membership?.points ?? 0) < costPts) {
-            showToast(`⚠️ 当前可用星光积分为 ${state.membership?.points ?? 0} 分，兑换「${itemName}」需 ${costPts} 分`);
-            return;
-          }
-          const confirmed = await askUserConfirm({
-            title: '🎁 确认兑换星光积分好礼',
-            message: `确定消耗 ${costPts} 星光积分兑换「${itemName}」吗？\n兑换后积分将立即扣除并激活对应权益。`,
-            confirmText: `确认消耗 ${costPts} 积分`,
-            danger: false
-          });
-          if (!confirmed) return;
-          try {
-            const res = await apiJson('/api/wallet/exchange', {
-              method: 'POST',
-              body: JSON.stringify({ item_key: btn.dataset.itemKey })
-            });
-            state.wallet = res.wallet;
-            state.membership = res.membership;
-            if (res.settings) state.settings = res.settings;
-            renderWalletOverview();
-            showToast(`🎁 积分兑换成功：已激活「${res.item.name}」！`);
-          } catch (err) {
-            showToast(`⚠️ ${err.message}`);
-          }
-        });
-      });
-    }
-
-    // 5. 充值订单与积分变动流水表格
-    const ordersTbody = document.getElementById('wallet-orders-tbody');
-    if (ordersTbody) {
-      const orders = Array.isArray(w.orders) ? w.orders : [];
-      ordersTbody.innerHTML =
-        orders.length === 0
-          ? '<tr><th scope="row">暂无充值订单</th><td>-</td><td>-</td><td>-</td><td>-</td></tr>'
-          : orders
-              .map(
-                (o) => `
-                  <tr>
-                    <th scope="row"><code>${escapeHtml(o.order_no)}</code></th>
-                    <td>${escapeHtml(o.product_name)}（${escapeHtml(o.reward_summary || '')}）</td>
-                    <td>¥${(Number(o.amount_fen || 0) / 100).toFixed(2)} (${
-                  o.pay_channel === 'alipay' ? '支付宝' : '微信支付'
-                })</td>
-                    <td>✅ 已入账</td>
-                    <td>${formatDateTimeShort(o.paid_at || o.created_at)}</td>
-                  </tr>
-                `
-              )
-              .join('');
-    }
-
-    const ledgerTbody = document.getElementById('wallet-ledger-tbody');
-    if (ledgerTbody) {
-      const ledger = Array.isArray(w.ledger) ? w.ledger : [];
-      ledgerTbody.innerHTML =
-        ledger.length === 0
-          ? '<tr><th scope="row">暂无积分流水</th><td>-</td><td>-</td><td>-</td><td>-</td></tr>'
-          : ledger
-              .map((l) => {
-                const pSign = l.delta_points > 0 ? `+${l.delta_points}` : String(l.delta_points);
-                const cStr =
-                  l.delta_credits > 0
-                    ? `+${l.delta_credits}次`
-                    : l.delta_credits < 0
-                    ? `${l.delta_credits}次`
-                    : '-';
-                return `
-                  <tr>
-                    <th scope="row">${escapeHtml(l.title)}</th>
-                    <td><strong>${escapeHtml(pSign)} 分</strong></td>
-                    <td>${escapeHtml(cStr)}</td>
-                    <td>${l.balance_after} 分</td>
-                    <td>${formatDateTimeShort(l.created_at)}</td>
-                  </tr>
-                `;
-              })
-              .join('');
-    }
-  }
-
-  async function refreshWalletOverview() {
-    try {
-      const data = await apiJson('/api/wallet/overview');
-      state.wallet = data;
-      renderWalletOverview();
-    } catch {}
-  }
-
-  async function openWalletModal(initialTabId = 'wtab-checkin') {
-    if (state.tourActive) {
-      closeOnboardingTour(false);
-    }
-    document.getElementById('wallet-feedback-banner')?.classList.add('hidden');
-    selectWalletTab(initialTabId);
-    renderWalletOverview();
-    if (!membershipDialog.open) {
-      membershipDialog.showModal();
-    }
-    await refreshWalletOverview();
-  }
-
-  composerChannelBadge.addEventListener('click', () => {
-    openSettingsModal(true);
-  });
-
-  document.getElementById('open-vip-btn').addEventListener('click', () => {
-    const defaultTab = state.membership?.checked_in_today ? 'wtab-redeem' : 'wtab-checkin';
-    openWalletModal(defaultTab);
-  });
-  document.getElementById('sidebar-quick-vip-btn')?.addEventListener('click', () => {
-    openWalletModal('wtab-checkin');
-  });
-  document.getElementById('ds-menu-wallet-btn')?.addEventListener('click', () => {
-    const pop = document.getElementById('ds-user-popover');
-    if (pop && typeof pop.hidePopover === 'function') {
-      try {
-        pop.hidePopover();
-      } catch {}
-    }
-    openWalletModal(state.membership?.checked_in_today ? 'wtab-redeem' : 'wtab-checkin');
-  });
-  document.getElementById('close-vip-dialog').addEventListener('click', () => membershipDialog.close());
-  document.getElementById('cancel-vip-dialog')?.addEventListener('click', () => membershipDialog.close());
-
-  document.getElementById('do-checkin-btn')?.addEventListener('click', async (e) => {
-    const btn = e.currentTarget;
-    btn.disabled = true;
-    try {
-      const res = await apiJson('/api/wallet/checkin', { method: 'POST' });
-      state.wallet = res.wallet;
-      state.membership = res.membership;
-      renderWalletOverview();
-      showToast(
-        `📅 第 ${res.streak_days} 天签到成功！获得 +${res.points_awarded} 星光积分${
-          res.bonus_credits > 0 ? `、+${res.bonus_credits} 次对话额度` : ''
-        }`
-      );
-    } catch (err) {
-      btn.disabled = Boolean(state.membership?.checked_in_today);
-      showToast(`⚠️ ${err.message}`);
-    }
-  });
-
-  document.getElementById('cancel-cashier-btn')?.addEventListener('click', () => {
-    state.selectedCashierProduct = null;
-    document.getElementById('cashier-box')?.classList.add('hidden');
-  });
-
-  document.getElementById('confirm-cashier-pay-btn')?.addEventListener('click', async (e) => {
-    if (!state.selectedCashierProduct) return;
-    const btn = e.currentTarget;
-    btn.disabled = true;
-    const payChannel =
-      document.querySelector('input[name="cashier-channel"]:checked')?.value || 'wechat';
-    try {
-      const res = await apiJson('/api/wallet/recharge', {
-        method: 'POST',
-        body: JSON.stringify({
-          product_key: state.selectedCashierProduct.key,
-          pay_channel: payChannel
-        })
-      });
-      state.wallet = res.wallet;
-      state.membership = res.membership;
-      if (res.settings) state.settings = res.settings;
-      document.getElementById('cashier-box')?.classList.add('hidden');
-      state.selectedCashierProduct = null;
-      renderWalletOverview();
-      showToast(
-        `🎉 充值支付成功（订单号 ${res.order.order_no}）！当前身份：${res.membership.tier_name}`
-      );
-    } catch (err) {
-      showToast(`⚠️ ${err.message}`);
-    } finally {
-      btn.disabled = false;
-    }
-  });
-
-  document.getElementById('redeem-code-form').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const input = document.getElementById('redeem-code-input');
-    const code = input.value.trim();
-    if (!code) {
-      showToast('⚠️ 请先输入活动礼包码或兑换卡密后再点击兑换');
-      input.focus();
-      return;
-    }
-    try {
-      const res = await apiJson('/api/membership/redeem', {
-        method: 'POST',
-        body: JSON.stringify({ code })
-      });
-      input.value = '';
-      state.membership = res.membership;
-      if (res.settings) state.settings = res.settings;
-      if (res.wallet) state.wallet = res.wallet;
-      renderWalletOverview();
-      showToast(`🎁 兑换码核销成功：${res.gift_label}`);
-    } catch (err) {
-      showToast(`⚠️ ${err.message}`);
-    }
-  });
+  // 原钱包/签到弹窗逻辑已移除（全站无积分/无付费门槛）
+  async function refreshWalletOverview() {}
 
   // ================= 6.5 站长专属管理后台（仅 is_admin === true 时动态渲染，普通用户静态零暴露） =================
   function ensureAdminModalStructure() {
@@ -2660,24 +2054,18 @@
               <span class="vip-current-tag">🛡️ 全站运营与安全网关中心</span>
             </div>
             <p class="vip-hero-desc">
-              所有在线模型密钥与商业配音密钥均由服务端加密掩码托管，<strong>永不向前端明文回显</strong>；普通用户仅可见个人偏好与权益，无法访问本后台任何接口。
+              所有在线模型密钥与商业配音密钥均由服务端加密掩码托管，<strong>永不向前端明文回显</strong>；普通用户仅可见个人偏好与对话记录，无法访问本后台任何接口。
             </p>
           </div>
           <div class="wallet-metrics-group" id="admin-kpi-cards">
             <div class="vip-hero-quota"><span class="quota-num" id="adm-kpi-users">0</span><span class="quota-unit">👥 注册用户</span></div>
-            <div class="vip-hero-quota"><span class="quota-num" id="adm-kpi-vips">0</span><span class="quota-unit">☀️ 在期会员</span></div>
-            <div class="vip-hero-quota"><span class="quota-num" id="adm-kpi-revenue">¥0</span><span class="quota-unit">💰 累计营收</span></div>
-            <div class="vip-hero-quota"><span class="quota-num" id="adm-kpi-codes">0</span><span class="quota-unit">🎫 有效卡密</span></div>
           </div>
         </div>
 
         <div class="wallet-tabs-shell">
           <div class="wallet-tablist" id="admin-tablist" role="tablist" aria-label="站长管理模块切换">
             <button type="button" role="tab" class="wallet-tab" id="atab-overview" data-apanel="apanel-overview" aria-selected="true" tabindex="0">
-              <span>📊 用户管理 &amp; 订单</span>
-            </button>
-            <button type="button" role="tab" class="wallet-tab" id="atab-codes" data-apanel="apanel-codes" aria-selected="false" tabindex="-1">
-              <span>🎫 高熵卡密发卡台</span>
+              <span>👥 独立账户总览</span>
             </button>
             <button type="button" role="tab" class="wallet-tab" id="atab-gateway" data-apanel="apanel-gateway" aria-selected="false" tabindex="-1">
               <span>🔌 平台模型 &amp; 语音网关</span>
@@ -2688,187 +2076,34 @@
           </div>
 
           <div class="wallet-panels-stack">
-            <!-- 站长面板 1：用户配额调账与全站订单 -->
+            <!-- 站长面板 1：账户只读总览 -->
             <div role="tabpanel" id="apanel-overview" aria-labelledby="atab-overview">
               <div class="wpanel-inner">
-                <form id="adm-adjust-user-form" class="admin-gen-form" style="margin-bottom: 14px;">
-                  <div class="block-title-row">
-                    <span>🎁 指定账户资产调账 / 补发权益</span>
-                    <button type="button" class="mini-btn" id="adm-refresh-dash-btn">🔄 刷新全站数据</button>
-                  </div>
-                  <div class="inline-row">
-                    <div class="field-group flex-1">
-                      <label for="adm-adj-user-select">目标账户</label>
-                      <select id="adm-adj-user-select" required></select>
-                    </div>
-                    <div class="field-group avatar-field">
-                      <label for="adm-adj-points">增减积分</label>
-                      <input id="adm-adj-points" type="number" min="-10000" max="10000" value="100" />
-                    </div>
-                    <div class="field-group avatar-field">
-                      <label for="adm-adj-credits">增减次数</label>
-                      <input id="adm-adj-credits" type="number" min="-5000" max="5000" value="10" />
-                    </div>
-                    <div class="field-group avatar-field">
-                      <label for="adm-adj-days">赠卡天数</label>
-                      <input id="adm-adj-days" type="number" min="0" max="365" value="0" title="填1赠送24小时日卡，填30赠送月卡" />
-                    </div>
-                  </div>
-                  <div class="inline-row">
-                    <div class="field-group flex-1">
-                      <label for="adm-adj-reason">账单流水备注</label>
-                      <input id="adm-adj-reason" type="text" value="站长后台人工发放权益" maxlength="40" />
-                    </div>
-                    <div style="display:flex; align-items:flex-end;">
-                      <button type="submit" class="primary-btn">⚡ 立即执行调账</button>
-                    </div>
-                  </div>
-                </form>
-
-                <h3 class="sub-sec-title" id="adm-users-heading">👥 全站独立账户列表（会话与密码哈希已安全隔离）</h3>
-                <div tabindex="0" role="region" aria-labelledby="adm-users-heading" class="responsive-table-wrap" style="margin-bottom: 16px;">
-                  <table class="wallet-data-table" style="--col-2:'身份与畅聊卡'; --col-3:'积分 / 次数'; --col-4:'会话 / 累计消耗'; --col-5:'快捷管理';">
-                    <caption class="visually-hidden">全站注册与访客账户资产管理表</caption>
+                <div class="block-title-row" style="margin-bottom: 10px;">
+                  <h3 class="sub-sec-title" id="adm-users-heading">👥 全站独立账户列表（会话与密码哈希已安全隔离）</h3>
+                  <button type="button" class="mini-btn" id="adm-refresh-dash-btn">🔄 刷新全站数据</button>
+                </div>
+                <div tabindex="0" role="region" aria-labelledby="adm-users-heading" class="responsive-table-wrap">
+                  <table class="wallet-data-table" style="--col-2:'账户角色'; --col-3:'会话统计'; --col-4:'累计对话';">
+                    <caption class="visually-hidden">全站注册与访客账户概览表</caption>
                     <thead>
                       <tr>
                         <th scope="col">账户昵称与邮箱</th>
-                        <th scope="col">身份与畅聊卡</th>
-                        <th scope="col">积分 / 次数</th>
-                        <th scope="col">会话 / 消耗</th>
-                        <th scope="col">快捷管理</th>
+                        <th scope="col">账户角色</th>
+                        <th scope="col">会话数</th>
+                        <th scope="col">累计消息轮次</th>
                       </tr>
                     </thead>
                     <tbody id="adm-users-tbody"></tbody>
                   </table>
                 </div>
-
-                <h3 class="sub-sec-title" id="adm-orders-heading">💳 全站近期充值订单明细</h3>
-                <div tabindex="0" role="region" aria-labelledby="adm-orders-heading" class="responsive-table-wrap">
-                  <table class="wallet-data-table" style="--col-2:'购买用户'; --col-3:'套餐内容'; --col-4:'实付金额'; --col-5:'成交时间';">
-                    <caption class="visually-hidden">全站近期充值成交记录</caption>
-                    <thead>
-                      <tr>
-                        <th scope="col">订单号</th>
-                        <th scope="col">购买用户</th>
-                        <th scope="col">套餐内容</th>
-                        <th scope="col">实付金额</th>
-                        <th scope="col">成交时间</th>
-                      </tr>
-                    </thead>
-                    <tbody id="adm-orders-tbody"></tbody>
-                  </table>
-                </div>
               </div>
             </div>
 
-            <!-- 站长面板 2：64-bit 高熵加密卡密发卡台 -->
-            <div role="tabpanel" id="apanel-codes" aria-labelledby="atab-codes" hidden>
-              <div class="wpanel-inner">
-                <form id="admin-gen-codes-form" class="admin-gen-form">
-                  <div class="inline-row">
-                    <div class="field-group flex-1">
-                      <label for="adm-preset-type">卡密权益类型</label>
-                      <select id="adm-preset-type">
-                        <option value="day_card">☀️ 24小时对话日卡 (+10次额度)</option>
-                        <option value="month_card">🌙 30天对话月卡 (+100次额度)</option>
-                        <option value="quarter_card">🌸 90天繁花季卡 (+360次额度)</option>
-                        <option value="credits">💬 纯对话次数充值码</option>
-                        <option value="points">✨ 星光积分礼包码</option>
-                      </select>
-                    </div>
-                    <div class="field-group avatar-field">
-                      <label for="adm-gen-count">生成张数</label>
-                      <input id="adm-gen-count" type="number" min="1" max="50" value="5" required />
-                    </div>
-                    <div class="field-group avatar-field">
-                      <label for="adm-max-uses">单码可兑人数</label>
-                      <input id="adm-max-uses" type="number" min="1" max="9999" value="1" required />
-                    </div>
-                  </div>
-                  <div class="inline-row">
-                    <div class="field-group flex-1">
-                      <label for="adm-batch-name">批次备注名</label>
-                      <input id="adm-batch-name" type="text" placeholder="例如：发卡网日卡首批 / 社群活动" value="站长直发卡密" />
-                    </div>
-                    <div class="field-group avatar-field">
-                      <label for="adm-custom-prefix">卡密前缀</label>
-                      <input id="adm-custom-prefix" type="text" maxlength="8" placeholder="自动" />
-                    </div>
-                    <div class="field-group avatar-field">
-                      <label for="adm-add-credits">附加次数</label>
-                      <input id="adm-add-credits" type="number" min="0" max="5000" value="10" />
-                    </div>
-                    <div class="field-group avatar-field">
-                      <label for="adm-add-points">附加积分</label>
-                      <input id="adm-add-points" type="number" min="0" max="10000" value="0" />
-                    </div>
-                  </div>
-                  <div class="form-footer-row">
-                    <button type="submit" class="primary-btn">⚡ 批量生成 64-bit 高熵加密卡密</button>
-                  </div>
-                </form>
-
-                <div class="admin-latest-batch hidden" id="admin-latest-batch">
-                  <div class="block-title-row">
-                    <span>🎉 本批新生成卡密（64-bit 密码学随机防穷举，可直接复制发卡）</span>
-                    <span class="copy-wrap">
-                      <button type="button" class="secondary-btn copy-cmd-btn" command="--copy" commandfor="admin-batch-output">
-                        📋 一键复制整批卡密
-                      </button>
-                      <span class="copy-tip" role="status"></span>
-                    </span>
-                  </div>
-                  <textarea id="admin-batch-output" class="summary-textarea" rows="3" readonly></textarea>
-                </div>
-
-                <div style="margin-top: 12px;">
-                  <div class="block-title-row">
-                    <h3 class="sub-sec-title" id="admin-codes-heading">📦 卡密库存与核销状态表</h3>
-                    <button type="button" class="mini-btn" id="refresh-admin-codes-btn">🔄 刷新列表</button>
-                  </div>
-                  <div tabindex="0" role="region" aria-labelledby="admin-codes-heading" class="responsive-table-wrap">
-                    <table class="wallet-data-table" style="--col-2:'包含权益'; --col-3:'已核销/上限'; --col-4:'状态与批次'; --col-5:'操作';">
-                      <caption class="visually-hidden">站长卡密库存与兑换核销记录</caption>
-                      <thead>
-                        <tr>
-                          <th scope="col">兑换码卡密</th>
-                          <th scope="col">包含权益</th>
-                          <th scope="col">已核销/上限</th>
-                          <th scope="col">状态与批次</th>
-                          <th scope="col">操作</th>
-                        </tr>
-                      </thead>
-                      <tbody id="admin-codes-tbody"></tbody>
-                    </table>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <!-- 站长面板 3：平台托管大模型网关 & 商业配音音源配置 -->
+            <!-- 站长面板 2：平台托管大模型网关 & 商业配音音源配置 -->
             <div role="tabpanel" id="apanel-gateway" aria-labelledby="atab-gateway" hidden>
               <div class="wpanel-inner">
                 <form id="adm-platform-cfg-form" class="stack-form">
-                  <div class="admin-gen-form stack-form">
-                    <div class="block-title-row">
-                      <span>🎁 全站运营策略：免费畅玩开关 &amp; 新用户注册送会员</span>
-                    </div>
-                    <div class="inline-row" style="flex-wrap: wrap; gap: 14px;">
-                      <label class="pin-check-label">
-                        <input type="checkbox" id="adm-free-exp-mode" checked />
-                        <span><strong>开启全站免费畅玩模式</strong>（关闭收费收银台，全员免扣次 &amp; 自由接入个人 API）</span>
-                      </label>
-                      <label class="pin-check-label">
-                        <input type="checkbox" id="adm-reg-gift-vip" checked />
-                        <span><strong>新用户注册立赠会员</strong></span>
-                      </label>
-                    </div>
-                    <div class="field-group" style="max-width: 260px;">
-                      <label for="adm-reg-gift-days">注册赠送会员时长（天）</label>
-                      <input id="adm-reg-gift-days" type="number" min="1" max="3650" value="30" />
-                    </div>
-                  </div>
-
                   <div class="admin-gen-form stack-form">
                     <div class="block-title-row">
                       <span>💎 全站「星耀高阶在线通道」上游大模型网关（含防 SSRF 保护）</span>
@@ -3018,7 +2253,7 @@
               </div>
             </div>
 
-            <!-- 站长面板 4：站长登录邮箱与强密码修改 -->
+            <!-- 站长面板 3：站长登录邮箱与强密码修改 -->
             <div role="tabpanel" id="apanel-security" aria-labelledby="atab-security" hidden>
               <div class="wpanel-inner">
                 <form id="adm-security-form" class="admin-gen-form stack-form">
@@ -3073,9 +2308,9 @@
 
   function collectAdminPlatformDraft() {
     const draft = {
-      free_experience_mode: document.getElementById('adm-free-exp-mode')?.checked !== false,
-      register_gift_vip: document.getElementById('adm-reg-gift-vip')?.checked !== false,
-      register_gift_days: document.getElementById('adm-reg-gift-days')?.value.trim() || '30',
+      free_experience_mode: true,
+      register_gift_vip: true,
+      register_gift_days: '365',
       online_provider_type: document.getElementById('adm-online-provider')?.value || 'deepseek',
       deepseek_base_url: document.getElementById('adm-ds-url')?.value.trim() || '',
       deepseek_model: document.getElementById('adm-ds-model')?.value.trim() || '',
@@ -3118,12 +2353,6 @@
 
   function applyPlatformConfigToAdminForm(cfg) {
     if (!cfg || !adminConsoleDialog) return;
-    const freeChk = document.getElementById('adm-free-exp-mode');
-    if (freeChk) freeChk.checked = cfg.free_experience_mode !== false;
-    const giftChk = document.getElementById('adm-reg-gift-vip');
-    if (giftChk) giftChk.checked = cfg.register_gift_vip !== false;
-    const giftDaysInp = document.getElementById('adm-reg-gift-days');
-    if (giftDaysInp) giftDaysInp.value = String(cfg.register_gift_days || 30);
 
     const provSel = document.getElementById('adm-online-provider');
     if (provSel) provSel.value = cfg.online_provider_type || 'deepseek';
@@ -3174,65 +2403,6 @@
     }
   }
 
-  function renderAdminCodesTable() {
-    const tbody = document.getElementById('admin-codes-tbody');
-    if (!tbody) return;
-    const list = Array.isArray(state.adminCodes) ? state.adminCodes : [];
-    tbody.innerHTML =
-      list.length === 0
-        ? '<tr><th scope="row">暂无卡密</th><td>-</td><td>-</td><td>-</td><td>-</td></tr>'
-        : list
-            .map((c, idx) => {
-              const codeDomId = `adm-code-val-${idx}`;
-              const isDisabled = c.status === 'disabled';
-              const statusTag = isDisabled ? '🚫 已停用' : c.used_count >= c.max_uses ? '✅ 已兑完' : '🟢 有效';
-              return `
-                <tr>
-                  <th scope="row"><code id="${codeDomId}">${escapeHtml(c.code)}</code></th>
-                  <td>${escapeHtml(c.label || c.reward_type)}</td>
-                  <td>${c.used_count} / ${c.max_uses >= 99999 ? '无限' : c.max_uses}</td>
-                  <td>${statusTag} · ${escapeHtml(c.batch_name || '系统')}</td>
-                  <td>
-                    <span class="copy-wrap">
-                      <button
-                        type="button"
-                        class="mini-btn copy-cmd-btn"
-                        command="--copy"
-                        commandfor="${codeDomId}"
-                        aria-label="复制卡密 ${escapeHtml(c.code)}"
-                      >复制</button>
-                      <span class="copy-tip" role="status"></span>
-                    </span>
-                    ${
-                      !isDisabled
-                        ? `<button type="button" class="mem-act-btn adm-del-code-btn" data-del-code="${escapeHtml(
-                            c.code
-                          )}">作废</button>`
-                        : ''
-                    }
-                  </td>
-                </tr>
-              `;
-            })
-            .join('');
-
-    tbody.querySelectorAll('.adm-del-code-btn').forEach((btn) => {
-      btn.addEventListener('click', async () => {
-        try {
-          const res = await apiJson(
-            `/api/admin/redeem-codes/${encodeURIComponent(btn.dataset.delCode)}`,
-            { method: 'DELETE' }
-          );
-          state.adminCodes = res.codes || [];
-          renderAdminCodesTable();
-          showToast('🗑️ 已作废该兑换码');
-        } catch (err) {
-          showToast(`⚠️ ${err.message}`);
-        }
-      });
-    });
-  }
-
   function renderAdminDashboardView() {
     const dash = state.adminDashboard;
     if (!dash || !adminConsoleDialog) return;
@@ -3243,115 +2413,28 @@
       if (el) el.textContent = String(val);
     };
     setTxt('adm-kpi-users', stats.total_users ?? 0);
-    setTxt('adm-kpi-vips', stats.active_vip_users ?? 0);
-    setTxt('adm-kpi-revenue', `¥${stats.paid_revenue_yuan || '0.00'}`);
-    setTxt('adm-kpi-codes', stats.active_codes_count ?? 0);
 
     const users = Array.isArray(dash.users) ? dash.users : [];
-    const userSel = document.getElementById('adm-adj-user-select');
-    if (userSel) {
-      const prevVal = userSel.value;
-      userSel.innerHTML = users
-        .map(
-          (u) =>
-            `<option value="${escapeHtml(u.id)}">${escapeHtml(u.nickname)} (${escapeHtml(
-              u.email
-            )}) · ${u.points}分 / ${u.online_credits}次</option>`
-        )
-        .join('');
-      if (prevVal && users.some((u) => u.id === prevVal)) {
-        userSel.value = prevVal;
-      }
-    }
-
     const usersTbody = document.getElementById('adm-users-tbody');
     if (usersTbody) {
       usersTbody.innerHTML =
         users.length === 0
-          ? '<tr><th scope="row">暂无用户</th><td>-</td><td>-</td><td>-</td><td>-</td></tr>'
+          ? '<tr><th scope="row">暂无用户</th><td>-</td><td>-</td><td>-</td></tr>'
           : users
               .map((u) => {
                 const roleTag = u.is_admin ? '🛡️ 站长' : '🌙 普通用户';
-                const cardTag = u.has_active_card
-                  ? `${escapeHtml(u.tier_name)} (${escapeHtml(u.remaining_text)})`
-                  : '无畅聊卡';
                 return `
                   <tr>
                     <th scope="row">
                       <div><strong>${escapeHtml(u.avatar || '🎀')} ${escapeHtml(u.nickname)}</strong></div>
                       <div class="muted-count">${escapeHtml(u.email)}</div>
                     </th>
-                    <td><div>${roleTag}</div><div class="muted-count">${cardTag}</div></td>
-                    <td><strong>${u.points} 分</strong> / ${u.online_credits} 次</td>
-                    <td>${u.session_count} 会话 / 已聊 ${u.total_used} 次</td>
-                    <td>
-                      <button type="button" class="mini-btn adm-quick-gift-btn" data-uid="${escapeHtml(u.id)}" title="快捷赠送 +100积分 与 +10次对话">+100分/10次</button>
-                      ${
-                        !u.is_admin
-                          ? `<button type="button" class="mem-act-btn adm-quick-zero-btn" data-uid="${escapeHtml(
-                              u.id
-                            )}" title="将该测试账户重置为0积分0次数无卡状态">清零配额</button>`
-                          : ''
-                      }
-                    </td>
+                    <td>${roleTag}</td>
+                    <td>${u.session_count || 0} 会话</td>
+                    <td>已聊 ${u.total_used || 0} 轮</td>
                   </tr>
                 `;
               })
-              .join('');
-
-      usersTbody.querySelectorAll('.adm-quick-gift-btn').forEach((btn) => {
-        btn.addEventListener('click', async () => {
-          try {
-            await apiJson(`/api/admin/users/${encodeURIComponent(btn.dataset.uid)}/adjust`, {
-              method: 'POST',
-              body: JSON.stringify({
-                delta_points: 100,
-                delta_credits: 10,
-                reason: '站长快捷发放福利'
-              })
-            });
-            await refreshAdminDashboard();
-            showToast('🎁 已为该账户发放 +100 积分与 +10 次对话额度！');
-          } catch (err) {
-            showToast(`⚠️ ${err.message}`);
-          }
-        });
-      });
-
-      usersTbody.querySelectorAll('.adm-quick-zero-btn').forEach((btn) => {
-        btn.addEventListener('click', async () => {
-          try {
-            await apiJson(`/api/admin/users/${encodeURIComponent(btn.dataset.uid)}/adjust`, {
-              method: 'POST',
-              body: JSON.stringify({ reset_zero: true })
-            });
-            await refreshAdminDashboard();
-            showToast('🔄 已将该普通账户重置为 0 积分 / 0 次数 / 无畅聊卡状态');
-          } catch (err) {
-            showToast(`⚠️ ${err.message}`);
-          }
-        });
-      });
-    }
-
-    const ordersTbody = document.getElementById('adm-orders-tbody');
-    if (ordersTbody) {
-      const orders = Array.isArray(dash.recent_orders) ? dash.recent_orders : [];
-      ordersTbody.innerHTML =
-        orders.length === 0
-          ? '<tr><th scope="row">暂无全站充值记录</th><td>-</td><td>-</td><td>-</td><td>-</td></tr>'
-          : orders
-              .map(
-                (o) => `
-                  <tr>
-                    <th scope="row"><code>${escapeHtml(o.order_no)}</code></th>
-                    <td>${escapeHtml(o.nickname || '用户')} (${escapeHtml(o.email || '-')})</td>
-                    <td>${escapeHtml(o.product_name)}</td>
-                    <td>¥${(Number(o.amount_fen || 0) / 100).toFixed(2)}</td>
-                    <td>${formatDateTimeShort(o.paid_at || o.created_at)}</td>
-                  </tr>
-                `
-              )
               .join('');
     }
 
@@ -3359,21 +2442,15 @@
     if (secEmail && state.user?.email) {
       secEmail.value = state.user.email;
     }
-
-    renderAdminCodesTable();
   }
 
   async function refreshAdminDashboard(updateGatewayForm = false) {
     if (!state.user?.is_admin) return;
     const data = await apiJson('/api/admin/dashboard');
     state.adminDashboard = data.dashboard;
-    state.adminCodes = data.codes || [];
     renderAdminDashboardView();
     if (updateGatewayForm && data.platform_config) {
       applyPlatformConfigToAdminForm(data.platform_config);
-    }
-    if (state.wallet) {
-      refreshWalletOverview();
     }
   }
 
@@ -3399,86 +2476,7 @@
 
     document.getElementById('adm-refresh-dash-btn')?.addEventListener('click', async () => {
       await refreshAdminDashboard(false);
-      showToast('🔄 全站运营数据已同步刷新');
-    });
-
-    document.getElementById('adm-adjust-user-form')?.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const targetUid = document.getElementById('adm-adj-user-select')?.value;
-      if (!targetUid) return;
-      try {
-        await apiJson(`/api/admin/users/${encodeURIComponent(targetUid)}/adjust`, {
-          method: 'POST',
-          body: JSON.stringify({
-            delta_points: Number(document.getElementById('adm-adj-points')?.value || 0),
-            delta_credits: Number(document.getElementById('adm-adj-credits')?.value || 0),
-            add_days: Number(document.getElementById('adm-adj-days')?.value || 0),
-            reason: document.getElementById('adm-adj-reason')?.value || '站长后台发放权益'
-          })
-        });
-        await refreshAdminDashboard(false);
-        showToast('✅ 目标账户权益调账已实时生效！');
-      } catch (err) {
-        showToast(`⚠️ ${err.message}`);
-      }
-    });
-
-    document.getElementById('adm-preset-type')?.addEventListener('change', (e) => {
-      const val = e.target.value;
-      const credInp = document.getElementById('adm-add-credits');
-      const ptsInp = document.getElementById('adm-add-points');
-      if (!credInp || !ptsInp) return;
-      if (val === 'day_card') {
-        credInp.value = '10';
-        ptsInp.value = '0';
-      } else if (val === 'month_card') {
-        credInp.value = '100';
-        ptsInp.value = '0';
-      } else if (val === 'quarter_card') {
-        credInp.value = '360';
-        ptsInp.value = '0';
-      } else if (val === 'credits') {
-        credInp.value = '50';
-        ptsInp.value = '0';
-      } else if (val === 'points') {
-        credInp.value = '0';
-        ptsInp.value = '200';
-      }
-    });
-
-    document.getElementById('admin-gen-codes-form')?.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      try {
-        const res = await apiJson('/api/admin/redeem-codes/generate', {
-          method: 'POST',
-          body: JSON.stringify({
-            preset_type: document.getElementById('adm-preset-type').value,
-            count: document.getElementById('adm-gen-count').value,
-            max_uses: document.getElementById('adm-max-uses').value,
-            batch_name: document.getElementById('adm-batch-name').value,
-            prefix: document.getElementById('adm-custom-prefix').value,
-            add_credits: document.getElementById('adm-add-credits').value,
-            add_points: document.getElementById('adm-add-points').value
-          })
-        });
-        state.adminCodes = res.codes || [];
-        renderAdminCodesTable();
-        const batchBox = document.getElementById('admin-latest-batch');
-        const batchOut = document.getElementById('admin-batch-output');
-        if (batchBox && batchOut) {
-          batchOut.value = (res.generated_codes || []).join('\n');
-          batchBox.classList.remove('hidden');
-        }
-        await refreshAdminDashboard(false);
-        showToast(`⚡ 已成功生成 ${res.generated_codes.length} 张「${res.label}」高熵卡密！`);
-      } catch (err) {
-        showToast(`⚠️ ${err.message}`);
-      }
-    });
-
-    document.getElementById('refresh-admin-codes-btn')?.addEventListener('click', async () => {
-      await refreshAdminDashboard(false);
-      showToast('🔄 卡密库存已刷新');
+      showToast('🔄 全站账户列表已同步刷新');
     });
 
     document.getElementById('adm-online-provider')?.addEventListener('change', (e) => {
@@ -3844,22 +2842,11 @@
       personaListEl.appendChild(item);
     }
 
-    // 同步原生 DeepSeek 侧栏角色切换下拉框（面向小白直观文案）
+    // 同步原生 DeepSeek 侧栏助手标识（与剧本扮演角色列表严格隔离）
     const soulSelect = document.getElementById('ds-soul-select');
     if (soulSelect) {
-      const currentPid = state.activePersona?.id || 'persona_deepseek_official';
-      soulSelect.innerHTML = [
-        '<option value="persona_deepseek_official">✨ 自由剧本扮演（按本对话设定开演）</option>',
-        ...allRoleplayPersonas.map(
-          (p) =>
-            `<option value="${escapeHtml(p.id)}">🎭 扮演角色 · ${escapeHtml(
-              p.name.split(/[·\s]/)[0]
-            )}</option>`
-        )
-      ].join('');
-      if ([...soulSelect.options].some((o) => o.value === currentPid)) {
-        soulSelect.value = currentPid;
-      }
+      soulSelect.innerHTML = '<option value="persona_deepseek_official">🐋 DeepSeek 官方问答助手</option>';
+      soulSelect.value = 'persona_deepseek_official';
     }
   }
 
@@ -3957,18 +2944,19 @@
     closeSessionContextMenu();
     itemEl.classList.add('menu-open');
     const isPinned = sessionObj.pinned === 1;
+    const isDsSess = sessionObj.session_mode === 'deepseek_native' || state.uiMode === 'deepseek';
     const menu = document.createElement('div');
     menu.className = 'ds-session-ctx-menu';
     menu.setAttribute('role', 'menu');
     menu.innerHTML = `
       <button type="button" class="ds-ctx-item" data-act="export-md" role="menuitem">
-        <span>📄 导出聊天与记忆 (.md)</span>
+        <span>📄 导出对话与记忆 (.md)</span>
       </button>
       <button type="button" class="ds-ctx-item" data-act="import-md" role="menuitem">
         <span>📥 导入 .md 记忆到此对话</span>
       </button>
       <button type="button" class="ds-ctx-item" data-act="session-setting" role="menuitem">
-        <span>🎭 本对话独立设定与记忆</span>
+        <span>${isDsSess ? '🎯 本对话系统指令与记忆' : '🎭 本对话独立设定与记忆'}</span>
       </button>
       <button type="button" class="ds-ctx-item" data-act="share" role="menuitem">
         <span>📤 分享长图 / 多格式导出</span>
@@ -4293,8 +3281,8 @@
       dsSettingPill.classList.toggle('hidden', !shouldShow);
       if (shouldShow) {
         dsSettingPill.textContent = hasCustom
-          ? `🎯 本对话专属设定${memCnt > 0 ? ` · 已记 ${memCnt} 条` : ''}`
-          : `🧠 已记住 ${memCnt} 件事`;
+          ? `🎯 已配置系统指令${memCnt > 0 ? ` · 记忆 ${memCnt} 条` : ''}`
+          : `🧠 长期记忆 ${memCnt} 条`;
       }
     }
   }
@@ -4376,12 +3364,20 @@
     memoryCardsList.replaceChildren();
     syncSessionIsolationBadges();
 
-    const catLabel = {
-      Pinned: '📌 核心羁绊',
-      relation: '💕 专属称呼',
-      fact: '🌸 心意细节',
-      event: '📖 共同回忆'
-    };
+    const isDsUi = state.uiMode === 'deepseek';
+    const catLabel = isDsUi
+      ? {
+          Pinned: '📌 核心约束',
+          relation: '👤 个人偏好',
+          fact: '💡 关键信息',
+          event: '📝 对话要点'
+        }
+      : {
+          Pinned: '📌 核心羁绊',
+          relation: '💕 专属称呼',
+          fact: '🌸 心意细节',
+          event: '📖 共同回忆'
+        };
 
     for (const mem of state.memories) {
       const isRecalled = mem.pinned === 1 || state.recalledIds.has(mem.id);
@@ -4392,7 +3388,7 @@
       card.innerHTML = `
         <div class="mem-card-top">
           <span class="mem-tag ${mem.pinned === 1 ? 'pinned' : ''}">
-            ${escapeHtml(catLabel[mem.category] || '🌸 记忆')}${isRecalled ? ' · 已点亮' : ''}
+            ${escapeHtml(catLabel[mem.category] || (isDsUi ? '💡 记忆' : '🌸 记忆'))}${isRecalled ? ' · 已点亮' : ''}
           </span>
           <div class="mem-card-actions">
             <span class="retention-pill" title="基于艾宾浩斯遗忘曲线，被提及唤醒越多越不易遗忘">鲜活 ${retPct}% · 唤醒 ${recallCnt}次</span>
@@ -4951,13 +3947,10 @@
 
     bodyEl.appendChild(footer);
 
-    // 7. 最新一条回复下方渲染「主动追问 / 剧情推进」引导胶囊（若切回历史会话无 follow_ups 则自动补齐角色推荐选项，不再消失）
-    const hasPriorUser = state.messages.some((m) => m.role === 'user');
+    // 7. 最新一条回复下方渲染「接话建议 / 追问」引导胶囊（受「剧情接话选项」开关控制，默认开启，随时可关）
     const effectiveFollowUps =
-      Array.isArray(meta.follow_ups) && meta.follow_ups.length > 0
+      isShowFollowUpsEnabled() && Array.isArray(meta.follow_ups) && meta.follow_ups.length > 0
         ? meta.follow_ups
-        : !isDsUi && hasPriorUser && !meta.interrupted && Array.isArray(state.activePersona?.starter_prompts) && state.activePersona.starter_prompts.length > 0
-        ? state.activePersona.starter_prompts.slice(0, 3)
         : [];
     if (isLastAssistant && !state.isStreaming && effectiveFollowUps.length > 0) {
       const fRow = document.createElement('div');
@@ -4979,6 +3972,13 @@
         });
         fRow.appendChild(chip);
       }
+      const hideBtn = document.createElement('button');
+      hideBtn.type = 'button';
+      hideBtn.className = 'followup-hide-chip';
+      hideBtn.title = '关闭每句话后的选项胶囊（可在「更多」或「设置」重新打开）';
+      hideBtn.textContent = '✕ 关闭选项';
+      hideBtn.addEventListener('click', () => setShowFollowUpsEnabled(false, true));
+      fRow.appendChild(hideBtn);
       bodyEl.appendChild(fRow);
     }
 
@@ -5006,10 +4006,7 @@
       if (chatStageEl) chatStageEl.classList.toggle('ds-empty-mode', isEmpty);
       const greetTitleEl = document.getElementById('ds-greeting-title');
       if (greetTitleEl) {
-        const isPure = !p || p.id === 'persona_deepseek_official';
-        greetTitleEl.textContent = isPure
-          ? '欢迎回来，随时开始吧'
-          : `欢迎回来，与${p.name.split(/[·\s]/)[0]}随时开始吧`;
+        greetTitleEl.textContent = '今天有什么可以帮到你？';
       }
       syncComposerEmptyState();
     } else {
@@ -5203,17 +4200,21 @@
       }
     });
 
-    // 同步顶栏「🖥️ 实时预览」蓝点指示器
-    const runButtons = messagesContainer.querySelectorAll('[data-run-code]');
+    // 仅在 DeepSeek 问答模式下同步顶栏「🖥️ 网页预览」指示点与右侧预览工作台，严禁向剧本扮演模式泄露网页预览功能
     const artDot = document.getElementById('ds-artifacts-count-dot');
-    if (artDot) {
-      artDot.classList.toggle('hidden', runButtons.length === 0);
-    }
-    if (runButtons.length > 0 && !state.lastSandboxCode) {
-      const latestBtn = runButtons[runButtons.length - 1];
-      const entry = codeSnippetStore.get(latestBtn.dataset.runCode);
-      const raw = typeof entry === 'string' ? entry : entry?.code || '';
-      if (raw) populateSideArtifactSandbox(raw, false);
+    if (isDsUi) {
+      const runButtons = messagesContainer.querySelectorAll('[data-run-code]');
+      if (artDot) {
+        artDot.classList.toggle('hidden', runButtons.length === 0);
+      }
+      if (runButtons.length > 0 && !state.lastSandboxCode) {
+        const latestBtn = runButtons[runButtons.length - 1];
+        const entry = codeSnippetStore.get(latestBtn.dataset.runCode);
+        const raw = typeof entry === 'string' ? entry : entry?.code || '';
+        if (raw) populateSideArtifactSandbox(raw, false);
+      }
+    } else if (artDot) {
+      artDot.classList.add('hidden');
     }
 
     updateBondBadge();
@@ -5271,18 +4272,6 @@
     }
 
     if (!regenerate && !trimmed && stagedFiles.length === 0) return;
-
-    const hasOwnKey = Boolean(
-      (state.settings.deepseek_api_key && state.settings.deepseek_api_key.trim()) ||
-        (state.settings.custom_gateway_token && state.settings.custom_gateway_token.trim())
-    );
-    const isOnline = (state.settings.provider || 'demo') !== 'demo';
-
-    if (!isDsUi && isOnline && !hasOwnKey && !state.membership.can_use_online) {
-      showToast('👑 在线通道需有效「对话日卡/月卡」、对话次数或至少 10 星光积分（可每日签到做任务免费获取）');
-      await openWalletModal(state.membership.checked_in_today ? 'wtab-recharge' : 'wtab-checkin');
-      return;
-    }
 
     state.lastInteractionAt = Date.now();
     state.proactiveIdleCount = 0;
@@ -5396,7 +4385,8 @@
           regenerate,
           edit_message_id: editMessageId || 0,
           attachments: stagedFiles,
-          assistant_prefix: assistantPrefix
+          assistant_prefix: assistantPrefix,
+          include_follow_ups: isShowFollowUpsEnabled()
         }),
         signal: abortController.signal
       });
@@ -5427,21 +4417,6 @@
         if (errObj.membership) {
           state.membership = errObj.membership;
           renderUserAndMembership();
-        }
-        if (
-          errObj.code === 'MEMBERSHIP_REQUIRED' ||
-          errObj.code === 'CREDITS_EXHAUSTED' ||
-          errObj.code === 'QUOTA_EXHAUSTED' ||
-          errObj.code === 'VIP_EXPIRED_OWN_API'
-        ) {
-          if (!regenerate) {
-            state.messages.pop();
-            chatInput.value = trimmed;
-          }
-          renderMessages();
-          showToast(`👑 ${errObj.error}`);
-          await openWalletModal(state.membership?.checked_in_today ? 'wtab-recharge' : 'wtab-checkin');
-          return;
         }
         throw new Error(errObj.error || `流式请求失败 (${response.status})`);
       }
@@ -5590,9 +4565,6 @@
               if (cur && state.activeSession) state.activeSession.title = cur.title;
             }
             if (payload.membership) state.membership = payload.membership;
-            if (payload.billing && payload.billing.mode === 'points') {
-              showToast(`✨ ${payload.billing.desc}`);
-            }
             setStreamingUi(false);
             renderUserAndMembership();
             renderSessionList();
@@ -6129,7 +5101,24 @@
       }
     }
 
-    const data = await apiJson(`/api/sessions/${encodeURIComponent(sessionId)}`);
+    let data;
+    try {
+      data = await apiJson(`/api/sessions/${encodeURIComponent(sessionId)}`);
+    } catch (err) {
+      if (/未找到|不存在|404/i.test(err?.message || '')) {
+        console.warn(`[Session] 会话 ${sessionId} 不存在，自动切换到有效会话`);
+        state.activeSessionId = null;
+        state.activeSession = null;
+        state.sessions = (state.sessions || []).filter((s) => s.id !== sessionId);
+        renderSessionList();
+        if (state.sessions.length > 0) {
+          return loadSession(state.sessions[0].id);
+        } else {
+          return startNativeDeepSeekSession('persona_deepseek_official');
+        }
+      }
+      throw err;
+    }
     if (reqSeq !== loadSessionSeq) return;
     state.activeSessionId = sessionId;
     state.activeSession = data.session;
@@ -6142,6 +5131,9 @@
     state.telemetry = data.telemetry;
     state.proactiveIdleCount = 0;
     state.lastInteractionAt = Date.now();
+    if (typeof resetSideArtifactSandbox === 'function') {
+      resetSideArtifactSandbox();
+    }
     if (data.membership) state.membership = data.membership;
 
     const sessMode = data.session?.session_mode === 'deepseek_native' ? 'deepseek' : 'roleplay';
@@ -6732,15 +5724,7 @@
   const testResultBox = document.getElementById('test-result-box');
 
   function isMemberOwnApiUnlocked() {
-    const m = state.membership || {};
-    const isFree = m.free_experience_mode !== false && m.billing_enabled !== true;
-    return Boolean(
-      isFree ||
-        state.user?.is_admin ||
-        m.has_active_card ||
-        m.can_bind_own_api ||
-        state.settings?.vip_own_api_unlocked !== false
-    );
+    return true;
   }
 
   // 设置弹窗顶部三标签页切换控制器（遵循 modern-web-guidance: tabs 规范）
@@ -6811,26 +5795,22 @@
   });
 
   function syncOwnApiPrivilegeUi() {
-    const unlocked = isMemberOwnApiUnlocked();
     const s = state.settings || {};
     const hasSavedKey = Boolean(s.has_own_deepseek_key);
 
-    document.getElementById('own-api-locked-view')?.classList.toggle('hidden', unlocked);
-    document.getElementById('own-api-unlocked-view')?.classList.toggle('hidden', !unlocked);
+    document.getElementById('own-api-unlocked-view')?.classList.remove('hidden');
 
     const optOwn = document.getElementById('st-opt-own-deepseek');
     if (optOwn) {
-      optOwn.disabled = !unlocked;
-      optOwn.textContent = unlocked
-        ? '🔑 个人 API 自由直连（DeepSeek 原生 & 角色扮演双模式通用）'
-        : '🔒 个人 API 直连（需会员身份）';
+      optOwn.disabled = false;
+      optOwn.textContent = '🔑 个人 API 自由直连（DeepSeek 原生 & 角色扮演双模式通用）';
     }
 
     const maskBadge = document.getElementById('own-api-mask-badge');
     if (maskBadge) {
       maskBadge.textContent = hasSavedKey
         ? `✅ 已保存密钥 (${s.own_deepseek_key_masked || 'sk-••••'})`
-        : '免费开放';
+        : '可选配置';
     }
 
     const clearWrap = document.getElementById('clear-own-ds-key-wrap');
@@ -6869,7 +5849,7 @@
     const envBanner = document.getElementById('builtin-env-ready-banner');
     if (envBanner) {
       if (s.builtin_api_ready || s.builtin_tts_ready) {
-        envBanner.textContent = '✅ 本站已为您配好免填密钥的对话与语音服务，不填下面这项也能直接免费畅聊！';
+        envBanner.textContent = '✅ 本站已为您配好免填密钥的对话与语音服务，不填下面这项也能直接对话！';
         envBanner.classList.remove('hidden');
       } else {
         envBanner.classList.add('hidden');
@@ -6991,7 +5971,8 @@
       themeScheme: storedTheme,
       autoTts: localStorage.getItem('auto_tts_reply') !== '0',
       autoProactive: localStorage.getItem('pref_auto_proactive') === '1',
-      showCompanion: companionStageEl ? !companionStageEl.classList.contains('hidden') : true
+      showCompanion: companionStageEl ? !companionStageEl.classList.contains('hidden') : true,
+      showFollowups: isShowFollowUpsEnabled()
     };
   }
 
@@ -7009,6 +5990,7 @@
     setCompanionVisible(Boolean(snap.showCompanion), false);
     const showCompChk = document.getElementById('st-show-companion-chk');
     if (showCompChk) showCompChk.checked = Boolean(snap.showCompanion);
+    setShowFollowUpsEnabled(snap.showFollowups !== false, false);
   }
 
   settingsDialog?.addEventListener('close', () => {
@@ -7073,6 +6055,7 @@
     if (showCompChk && companionStageEl) {
       showCompChk.checked = !companionStageEl.classList.contains('hidden');
     }
+    syncFollowUpsToggleUi();
     activateSettingsTab('stab-key', false);
     setTimeout(() => {
       if (!settingsDialog.open) settingsDialog.showModal();
@@ -7082,17 +6065,8 @@
     }, 10);
   }
 
-  document.getElementById('goto-unlock-own-api-btn')?.addEventListener('click', () => {
-    settingsDialog.close();
-    openWalletModal('wtab-redeem');
-  });
-
   document.getElementById('ds-suite-own-api-btn')?.addEventListener('click', () => {
-    if (isMemberOwnApiUnlocked()) {
-      openSettingsModal(true);
-    } else {
-      openWalletModal('wtab-redeem');
-    }
+    openSettingsModal(true);
   });
 
   document.getElementById('verify-own-ds-key-btn')?.addEventListener('click', async (e) => {
@@ -7183,6 +6157,14 @@
     settingsDialog.close();
     openImportHistoryModal();
   });
+  document.getElementById('st-quick-fim-btn')?.addEventListener('click', () => {
+    settingsDialog.close();
+    document.getElementById('more-open-fim-btn')?.click();
+  });
+  document.getElementById('st-quick-tour-btn')?.addEventListener('click', () => {
+    settingsDialog.close();
+    document.getElementById('start-tour-btn')?.click();
+  });
   document.getElementById('close-settings-dialog').addEventListener('click', () => settingsDialog.close());
   document.getElementById('cancel-settings-dialog').addEventListener('click', () => settingsDialog.close());
 
@@ -7229,6 +6211,10 @@
         if (showCompChk) {
           setCompanionVisible(Boolean(showCompChk.checked), false);
         }
+        const showFollowChk = document.getElementById('st-show-followups-chk');
+        if (showFollowChk) {
+          setShowFollowUpsEnabled(Boolean(showFollowChk.checked), false);
+        }
         const autoProChk = document.getElementById('st-auto-proactive-chk');
         if (autoProChk) {
           const wantPro = Boolean(autoProChk.checked);
@@ -7236,7 +6222,11 @@
             localStorage.setItem('pref_auto_proactive', wantPro ? '1' : '0');
           } catch {}
           if (state.activeSessionId) {
-            await patchActiveSessionFlag({ proactive_enabled: wantPro }, '');
+            try {
+              await patchActiveSessionFlag({ proactive_enabled: wantPro }, '');
+            } catch (sessErr) {
+              console.warn('[Settings] 活跃会话状态同步跳过（不阻断全局设置保存）:', sessErr?.message);
+            }
           }
         }
         renderUserAndMembership();
@@ -8410,9 +7400,9 @@
     hidePopoverSafe('ds-user-popover');
     openRightTab('persona-tab');
   });
-  document.getElementById('more-open-vip-btn')?.addEventListener('click', () => {
+  document.getElementById('toggle-followups-btn')?.addEventListener('click', () => {
     hidePopoverSafe('topbar-more-popover');
-    document.getElementById('open-vip-btn')?.click();
+    setShowFollowUpsEnabled(!isShowFollowUpsEnabled(), true);
   });
   document.getElementById('close-theater-dialog').addEventListener('click', () => theaterDialog.close());
   document.getElementById('cancel-theater-dialog').addEventListener('click', () => theaterDialog.close());
@@ -8736,7 +7726,7 @@
       showToast(
         visible
           ? '✨ 已开启角色陪伴立绘（可点击立绘戳一戳互动或换造型）'
-          : '✨ 已收起陪伴立绘（仍可点击顶栏「🎙️ 语音通话」随时语音聊天）'
+          : '✨ 已收起陪伴立绘'
       );
     }
   }
@@ -8877,9 +7867,17 @@
     appShell.dataset.uiMode = state.uiMode;
     document.body.dataset.uiMode = state.uiMode;
 
+    if (!isDs) {
+      appShell.classList.remove('artifacts-wide');
+      if (codePreviewDialog?.open) {
+        codePreviewDialog.close();
+      }
+    }
+
     const tabRp = document.getElementById('ws-mode-roleplay');
     const tabDs = document.getElementById('ws-mode-deepseek');
     const quickJumpBtn = document.getElementById('quick-switch-mode-btn');
+    const collapsedSwitchBtn = document.getElementById('collapsed-switch-mode-btn');
 
     if (tabRp) {
       tabRp.classList.toggle('active', !isDs);
@@ -8890,13 +7888,46 @@
       tabDs.setAttribute('aria-selected', String(isDs));
     }
     if (quickJumpBtn) {
-      quickJumpBtn.textContent = isDs ? '🌸 切换回恋庭沉浸扮演' : '🐋 切换到 DeepSeek 问答模式';
+      quickJumpBtn.textContent = isDs ? '🌸 切换到剧本扮演模式' : '🐋 切换到 DeepSeek 问答模式';
+    }
+    if (collapsedSwitchBtn) {
+      collapsedSwitchBtn.textContent = isDs ? '🌸 切恋庭剧场' : '🐋 切 DeepSeek';
+      collapsedSwitchBtn.title = isDs
+        ? '当前为 DeepSeek 问答模式，点击切换回星语恋庭剧本模式'
+        : '当前为星语恋庭剧本模式，点击切换到 DeepSeek 问答模式';
     }
 
     const pronoun = getPersonaPronoun(state.activePersona);
     chatInput.placeholder = isDs
-      ? '直接写下你的问题、故事设定或台词即可开始（每个对话拥有独立记忆与设定）…'
+      ? '给 DeepSeek 发送消息（支持深度思考、联网搜索、代码生成与网页预览）…'
       : `和${pronoun}说点什么吧…（可用 *星号* 描写动作细节，Enter 发送）`;
+
+    const prefixInput = document.getElementById('ds-prefix-input');
+    if (prefixInput) {
+      prefixInput.placeholder = isDs
+        ? '指定回答开头前缀，例如：核心结论： 或 ### 一、核心方案拆解'
+        : '想让 TA 第一句怎么开口？例如：坦白说，其实我一直… 或 *轻轻叹了口气*';
+    }
+
+    const sessionPromptInput = document.getElementById('session-prompt-input');
+    if (sessionPromptInput) {
+      sessionPromptInput.placeholder = isDs
+        ? '输入只对当前问答窗口生效的系统指令、专业身份或输出格式规范…'
+        : '输入只对当前剧情生效的专属设定、平行世界规则或特殊关系…';
+    }
+
+    if (newMemoryInput) {
+      newMemoryInput.placeholder = isDs
+        ? '写下希望 DeepSeek 记住的项目背景、偏好或长期要求…'
+        : '写下想让 TA 记住的喜好、生日或约定…';
+    }
+
+    if (rollingSummaryInput) {
+      rollingSummaryInput.placeholder = isDs
+        ? '长对话自动提炼的上下文要点，也可随时点「一键总结前情」或手动补充…'
+        : '聊多了之后会自动总结前情，也可以随时点右上角「一键总结前情」或自己修改…';
+    }
+
     syncComposerEmptyState();
 
     // 仅在真正跨模式切换或显式要求重置时收起右栏，绝不在日常刷新会话或开关立绘时把用户已打开的右侧面板缩成 0 宽！
@@ -8914,7 +7945,9 @@
     applyUiModeVisuals(targetMode);
 
     const matchingSessions = state.sessions.filter((s) =>
-      isDs ? s.session_mode === 'deepseek_native' : s.session_mode !== 'deepseek_native'
+      isDs
+        ? s.session_mode === 'deepseek_native' && s.persona_id === 'persona_deepseek_official'
+        : s.session_mode !== 'deepseek_native'
     );
 
     if (matchingSessions.length > 0) {
@@ -8933,60 +7966,56 @@
     }
   }
 
-  document.getElementById('ws-mode-roleplay').addEventListener('click', () => {
+  document.getElementById('ws-mode-roleplay')?.addEventListener('click', () => {
     if (state.uiMode !== 'roleplay') switchWorkspaceMode('roleplay');
   });
-  document.getElementById('ws-mode-deepseek').addEventListener('click', () => {
+  document.getElementById('ws-mode-deepseek')?.addEventListener('click', () => {
     if (state.uiMode !== 'deepseek') switchWorkspaceMode('deepseek');
   });
-  document.getElementById('quick-switch-mode-btn').addEventListener('click', () => {
+  document.getElementById('quick-switch-mode-btn')?.addEventListener('click', () => {
+    switchWorkspaceMode(state.uiMode === 'deepseek' ? 'roleplay' : 'deepseek');
+  });
+  document.getElementById('collapsed-switch-mode-btn')?.addEventListener('click', () => {
     switchWorkspaceMode(state.uiMode === 'deepseek' ? 'roleplay' : 'deepseek');
   });
 
   document.getElementById('ds-new-chat-btn').addEventListener('click', () => {
-    const soulVal = document.getElementById('ds-soul-select')?.value || 'persona_deepseek_official';
-    startNativeDeepSeekSession(soulVal);
+    startNativeDeepSeekSession('persona_deepseek_official');
   });
 
-  document.getElementById('ds-soul-select').addEventListener('change', async (e) => {
-    const targetPid = e.target.value;
-    if (!state.activeSessionId || state.uiMode !== 'deepseek' || state.isStreaming) return;
-    if (state.messages.length === 0) {
-      const pObj = state.personas.find((x) => x.id === targetPid);
-      const nextTitle =
-        targetPid === 'persona_deepseek_official'
-          ? '新对话'
-          : `原生对话 · ${(pObj?.name || '角色').split(/[·\s]/)[0]}`;
-      const res = await apiJson(`/api/sessions/${encodeURIComponent(state.activeSessionId)}`, {
-        method: 'PATCH',
-        body: JSON.stringify({ persona_id: targetPid, title: nextTitle })
-      });
-      state.activeSession = res.session;
-      state.activePersona = res.persona;
-      state.sessions = res.sessions;
-      renderUserAndMembership();
-      renderSessionList();
-      renderMessages();
-      showToast(
-        targetPid === 'persona_deepseek_official'
-          ? '🐋 已切换为纯享 DeepSeek 官方助手'
-          : `🎭 已在原生 DeepSeek 模式下挂载「${res.persona.name}」`
-      );
+  document.getElementById('ds-menu-artifacts-btn')?.addEventListener('click', () => {
+    hidePopoverSafe('ds-user-popover');
+    if (state.uiMode !== 'deepseek') return;
+    if (window.innerWidth > 860) {
+      openRightTab('ds-artifacts-tab');
+      if (state.lastSandboxCode) populateSideArtifactSandbox(state.lastSandboxCode, false);
     } else {
-      await startNativeDeepSeekSession(targetPid);
+      openCodeSandboxPreview(state.lastSandboxCode || STAR_PARTICLE_DEMO_HTML, true);
     }
   });
 
   // 原生 DeepSeek 四大胶囊开关与工具调用绑定
   async function patchActiveSessionFlag(patchObj, toastMsg) {
     if (!state.activeSessionId) return;
-    const res = await apiJson(`/api/sessions/${encodeURIComponent(state.activeSessionId)}`, {
-      method: 'PATCH',
-      body: JSON.stringify(patchObj)
-    });
-    state.activeSession = res.session;
-    renderUserAndMembership();
-    if (toastMsg) showToast(toastMsg);
+    try {
+      const res = await apiJson(`/api/sessions/${encodeURIComponent(state.activeSessionId)}`, {
+        method: 'PATCH',
+        body: JSON.stringify(patchObj)
+      });
+      state.activeSession = res.session;
+      renderUserAndMembership();
+      if (toastMsg) showToast(toastMsg);
+    } catch (err) {
+      if (/未找到|不存在|404/i.test(err?.message || '')) {
+        console.warn(`[Session] 当前活跃会话 ${state.activeSessionId} 已不存在，自动重置`);
+        state.activeSessionId = null;
+        state.activeSession = null;
+        state.sessions = (state.sessions || []).filter((s) => s.id !== state.activeSessionId);
+        renderSessionList();
+      } else {
+        throw err;
+      }
+    }
   }
 
   document.getElementById('ds-toggle-think').addEventListener('click', () => {
@@ -9021,7 +8050,9 @@
   });
 
   // 全格式文件上传（PDF / Word / Excel / PPT / 压缩包 / 源码 / 文本 / 图片）、拖拽与剪贴板 Ctrl+V 粘贴支持
+  const dsDocAttachmentInput = document.getElementById('ds-doc-attachment-input');
   const dsAttachmentInput = document.getElementById('ds-attachment-input');
+  const dsImageAttachmentInput = document.getElementById('ds-image-attachment-input');
   const composerAttachmentsBar = document.getElementById('composer-attachments-bar');
 
   document.getElementById('close-att-preview-dialog')?.addEventListener('click', () => attachmentPreviewDialog?.close());
@@ -9174,8 +8205,43 @@
       });
       if (resp.ok) {
         const data = await resp.json();
-        if (data && data.ok) return data;
+        if (data && data.ok && typeof data.content === 'string') return data;
       } else if (resp.status === 413) {
+        throw new Error('单个文件请控制在 20MB 以内');
+      }
+    } catch (err) {
+      if (String(err?.message || '').includes('20MB')) throw err;
+    }
+
+    // 移动端 WebView / 代理不兼容 raw File body 时的 Base64 JSON 回退解析
+    try {
+      const buf = await file.arrayBuffer();
+      const bytes = new Uint8Array(buf);
+      let binary = '';
+      const chunkLen = 0x8000;
+      for (let i = 0; i < bytes.length; i += chunkLen) {
+        binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkLen));
+      }
+      const dataBase64 = btoa(binary);
+      const jsonHeaders = {
+        'Content-Type': 'application/json',
+        'X-File-Name': encodeURIComponent(file.name || '未命名文件'),
+        'X-File-Mime': file.type || ''
+      };
+      if (tok) jsonHeaders.Authorization = `Bearer ${tok}`;
+      const jsonResp = await fetch('/api/files/parse', {
+        method: 'POST',
+        headers: jsonHeaders,
+        body: JSON.stringify({
+          name: file.name || '未命名文件',
+          mime: file.type || '',
+          data_base64: dataBase64
+        })
+      });
+      if (jsonResp.ok) {
+        const jData = await jsonResp.json();
+        if (jData && jData.ok && typeof jData.content === 'string') return jData;
+      } else if (jsonResp.status === 413) {
         throw new Error('单个文件请控制在 20MB 以内');
       }
     } catch (err) {
@@ -9282,12 +8348,29 @@
     }
   }
 
-  document.getElementById('attach-file-btn').addEventListener('click', () => {
-    dsAttachmentInput.click();
-  });
-  dsAttachmentInput.addEventListener('change', (e) => {
-    ingestAttachmentFiles(e.target.files);
+  function handleAttachmentInputChange(e) {
+    const picked = Array.from(e.target.files || []);
     e.target.value = '';
+    hidePopoverSafe('attach-picker-popover');
+    if (picked.length > 0) ingestAttachmentFiles(picked);
+  }
+  dsDocAttachmentInput?.addEventListener('change', handleAttachmentInputChange);
+  dsAttachmentInput?.addEventListener('change', handleAttachmentInputChange);
+  dsImageAttachmentInput?.addEventListener('change', handleAttachmentInputChange);
+
+  document.querySelectorAll('#attach-picker-popover label[for]').forEach((lbl) => {
+    lbl.addEventListener('click', () => {
+      setTimeout(() => hidePopoverSafe('attach-picker-popover'), 320);
+    });
+    lbl.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        const targetId = lbl.getAttribute('for');
+        const inp = targetId ? document.getElementById(targetId) : null;
+        if (inp) inp.click();
+        setTimeout(() => hidePopoverSafe('attach-picker-popover'), 320);
+      }
+    });
   });
   chatForm.addEventListener('dragover', (e) => {
     e.preventDefault();
@@ -9325,7 +8408,24 @@
       : `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:0;padding:16px;font-family:system-ui,sans-serif;}</style></head><body>${rawCode}</body></html>`;
   }
 
+  function resetSideArtifactSandbox() {
+    state.lastSandboxCode = '';
+    const sideIframe = document.getElementById('ds-side-sandbox-iframe');
+    const emptyBox = document.getElementById('ds-artifacts-empty');
+    const sourceCodeEl = document.getElementById('ds-side-source-code');
+    const sourcePreEl = document.getElementById('ds-side-source-pre');
+    if (sideIframe) {
+      sideIframe.srcdoc = '';
+      sideIframe.classList.add('hidden');
+    }
+    if (sourceCodeEl) sourceCodeEl.textContent = '';
+    if (sourcePreEl) sourcePreEl.classList.add('hidden');
+    if (emptyBox) emptyBox.classList.remove('hidden');
+    document.getElementById('ds-artifacts-count-dot')?.classList.add('hidden');
+  }
+
   function populateSideArtifactSandbox(rawCode, openPane = true) {
+    if (state.uiMode !== 'deepseek') return;
     state.lastSandboxCode = rawCode;
     const htmlDoc = buildCompleteSandboxHtml(rawCode);
     const sideIframe = document.getElementById('ds-side-sandbox-iframe');
@@ -9348,9 +8448,10 @@
   }
 
   function openCodeSandboxPreview(rawCode, forceModal = false) {
+    if (state.uiMode !== 'deepseek') return;
     state.lastSandboxCode = rawCode;
     const htmlDoc = buildCompleteSandboxHtml(rawCode);
-    if (!forceModal && state.uiMode === 'deepseek' && window.innerWidth > 860) {
+    if (!forceModal && window.innerWidth > 860) {
       populateSideArtifactSandbox(rawCode, true);
       return;
     }
@@ -9359,8 +8460,9 @@
     codePreviewDialog.showModal();
   }
 
-  // 右侧伴生预览工具栏事件
+  // 右侧伴生预览工具栏事件（仅 DeepSeek 问答模式生效）
   document.getElementById('open-ds-artifacts-btn')?.addEventListener('click', () => {
+    if (state.uiMode !== 'deepseek') return;
     const artTabEl = document.getElementById('ds-artifacts-tab');
     const isVisible = !appShell.classList.contains('right-collapsed') && artTabEl && !artTabEl.classList.contains('hidden');
     if (isVisible) {
@@ -9420,14 +8522,16 @@
 
   document.getElementById('more-open-artifacts-btn')?.addEventListener('click', () => {
     hidePopoverSafe('topbar-more-popover');
+    if (state.uiMode !== 'deepseek') return;
     setTimeout(() => {
-      openCodeSandboxPreview(state.lastSandboxCode || STAR_PARTICLE_DEMO_HTML, true);
+      openCodeSandboxPreview(state.lastSandboxCode || STAR_PARTICLE_DEMO_HTML, false);
     }, 20);
   });
 
   document.getElementById('ds-art-try-demo-btn')?.addEventListener('click', () => {
+    if (state.uiMode !== 'deepseek') return;
     populateSideArtifactSandbox(STAR_PARTICLE_DEMO_HTML, true);
-    if (!state.isStreaming && state.uiMode === 'deepseek') {
+    if (!state.isStreaming) {
       sendStreamMessage('请帮我写一个单文件 HTML5 Canvas 星际引力粒子交互网页，支持鼠标牵引效果', false);
     } else {
       showToast('✨ 已在预览窗为您运行星际引力粒子交互网页！');
@@ -9517,46 +8621,37 @@
     if (state.lastSandboxCode) openCodeSandboxPreview(state.lastSandboxCode, true);
   });
 
-  // 空对话居中欢迎态：4 大零门槛剧本开演快捷胶囊（无需小白配置，点一下立即开玩）
-  let storyOpenerCursor = 0;
-  const STORY_QUICK_OPENERS = [
-    '*推开街角旧书店挂着铜铃的木门，抖落伞尖的雨水抬头望向柜台后的你* 没想到这么大的雨，你居然真的还留着这盏灯等我。',
-    '【平行世界开局】在这个时空里，我们是表面互不相识、实则各自握有半块信物的搭档。*在晚宴露台与你擦肩而过时压低声音* 今晚十二点钟声响起前，你打算先亮底牌吗？',
-    '*将那封没有署名的旧信笺轻轻推到你桌前，托着腮观察你的神情* 别装作不记得啦，三年前在海边钟楼拉过勾的约定，现在还作数吗？'
-  ];
+  // DeepSeek 问答模式空对话欢迎态：4 大原生问答快捷功能胶囊（与剧本扮演模式彻底分离）
   document.querySelectorAll('.ds-quick-scene-pill').forEach((pill) => {
     pill.addEventListener('click', () => {
+      if (state.uiMode !== 'deepseek') return;
       const sc = pill.dataset.dsScene;
-      if (sc === 'story-opener') {
-        chatInput.value = STORY_QUICK_OPENERS[storyOpenerCursor % STORY_QUICK_OPENERS.length];
-        storyOpenerCursor += 1;
+      if (sc === 'web-preview') {
+        chatInput.value = '请用单文件 HTML + Canvas 写一个带物理碰撞和鼠标引力场的星际粒子交互网页，方便我直接右侧实时预览。';
+        syncComposerEmptyState();
+        chatInput.focus();
+        if (window.innerWidth > 860) {
+          openRightTab('ds-artifacts-tab');
+        }
+        return;
+      }
+      if (sc === 'deep-think') {
+        if (state.activeSession && state.activeSession.ds_thinking === 0) {
+          patchActiveSessionFlag({ ds_thinking: true });
+        }
+        chatInput.value = '请开启深度思考，帮我系统推演并对比：';
         syncComposerEmptyState();
         chatInput.focus();
         return;
       }
-      if (sc === 'custom-setting') {
-        openRightTab('persona-tab');
-        setTimeout(() => document.getElementById('session-prompt-input')?.focus(), 60);
+      if (sc === 'web-search') {
+        if (state.activeSession && state.activeSession.ds_search !== 1) {
+          patchActiveSessionFlag({ ds_search: true }, '🌐 已开启智能联网搜索，请输入你想检索的问题');
+        } else {
+          showToast('🌐 智能联网搜索已就绪，请直接输入问题');
+        }
+        chatInput.focus();
         return;
-      }
-      if (sc === 'pick-persona') {
-        const pop = document.getElementById('ds-user-popover');
-        try {
-          if (pop && typeof pop.showPopover === 'function') {
-            pop.showPopover();
-            setTimeout(() => document.getElementById('ds-soul-select')?.focus(), 50);
-            return;
-          }
-        } catch {}
-        openRightTab('persona-tab');
-        return;
-      }
-      if (sc === 'import-md') {
-        openImportHistoryModal();
-        return;
-      }
-      if (sc === 'upload') {
-        dsAttachmentInput.click();
       }
     });
   });
@@ -9666,6 +8761,10 @@
   }
 
   document.getElementById('ds-share-session-btn')?.addEventListener('click', () => openDsShareModal());
+  document.getElementById('more-open-share-btn')?.addEventListener('click', () => {
+    hidePopoverSafe('topbar-more-popover');
+    openDsShareModal();
+  });
   document.getElementById('ds-menu-share-btn')?.addEventListener('click', () => {
     hidePopoverSafe('ds-user-popover');
     openDsShareModal();
@@ -9761,12 +8860,18 @@
     ctx.lineWidth = 2;
     ctx.strokeRect(12, 12, width - 24, totalH - 24);
 
+    const isDsShare = state.uiMode === 'deepseek';
+    const shareBrandText = isDsShare
+      ? '🐋 deepseek'
+      : `${state.activePersona?.avatar || '🌸'} ${(state.activePersona?.name || '星语恋庭').split(/[·\s]/)[0]}`;
+    const shareFooterSource = isDsShare ? 'DeepSeek 问答模式' : '星语恋庭 · 剧本扮演模式';
+
     ctx.font = 'bold 22px "Microsoft YaHei", sans-serif';
-    ctx.fillStyle = '#4d6bfe';
-    ctx.fillText('🐋 deepseek', 42, 56);
+    ctx.fillStyle = isDsShare ? '#4d6bfe' : '#e2559d';
+    ctx.fillText(shareBrandText, 42, 56);
     ctx.font = 'bold 16px "Microsoft YaHei", sans-serif';
     ctx.fillStyle = '#1f2329';
-    ctx.fillText(` · ${(state.activeSession?.title || '智能对话精选').slice(0, 22)}`, 176, 56);
+    ctx.fillText(` · ${(state.activeSession?.title || '对话精选').slice(0, 22)}`, 176, 56);
     ctx.strokeStyle = '#f1f3f5';
     ctx.beginPath();
     ctx.moveTo(42, 76);
@@ -9777,10 +8882,10 @@
     for (const b of blocks) {
       if (b.type === 'user') {
         const boxH = b.lines.length * 26 + 16;
-        ctx.fillStyle = '#eff6ff';
+        ctx.fillStyle = isDsShare ? '#eff6ff' : '#fff0f7';
         ctx.fillRect(42, y - 18, width - 84, boxH);
         ctx.font = 'bold 15px "Microsoft YaHei", sans-serif';
-        ctx.fillStyle = '#1e3a8a';
+        ctx.fillStyle = isDsShare ? '#1e3a8a' : '#7a2858';
         for (const ln of b.lines) {
           ctx.fillText(ln, 56, y + 2);
           y += 26;
@@ -9795,7 +8900,7 @@
         }
         y += 12;
       } else {
-        ctx.fillStyle = '#4d6bfe';
+        ctx.fillStyle = isDsShare ? '#4d6bfe' : '#e2559d';
         ctx.fillRect(42, y - 14, 3, b.lines.length * 25 + 6);
         ctx.font = '15px "Microsoft YaHei", sans-serif';
         ctx.fillStyle = '#1f2329';
@@ -9809,7 +8914,7 @@
 
     ctx.font = '12px "Microsoft YaHei", sans-serif';
     ctx.fillStyle = '#8f959e';
-    ctx.fillText(`生成于 DeepSeek 原生工作台 · ${new Date().toLocaleString('zh-CN')}`, 42, totalH - 28);
+    ctx.fillText(`生成于 ${shareFooterSource} · ${new Date().toLocaleString('zh-CN')}`, 42, totalH - 28);
 
     const link = document.createElement('a');
     link.download = `${(state.activeSession?.title || 'DeepSeek对话').slice(0, 18)}_分享长图.png`;
@@ -9824,7 +8929,7 @@
     showToast('🖼️ 高清对话分享长图已生成并开始下载！');
   });
 
-  // 「🪄 帮我回一句」一键直接结合当前剧情填入输入框（无需二次选菜单，连点可换下一句）
+  // 「🪄 帮我回一句」一键直接结合当前最新剧情填入输入框（点完一轮再点自动向后台换新一批）
   let cachedSuggestedReplies = [];
   let cachedSuggestSessionId = '';
   let cachedSuggestMsgLen = -1;
@@ -9835,19 +8940,27 @@
     const draftMenuBtn = document.getElementById('magic-ai-draft-btn');
     const mainMagicBtn = document.getElementById('magic-popover-btn');
     const curMsgLen = state.messages.length;
+    const isSameTurn =
+      cachedSuggestSessionId === state.activeSessionId &&
+      cachedSuggestMsgLen === curMsgLen;
+    const needFetchNew =
+      !isSameTurn ||
+      cachedSuggestedReplies.length === 0 ||
+      suggestCursor >= cachedSuggestedReplies.length;
+    const excludeList = isSameTurn ? cachedSuggestedReplies.slice(-9) : [];
+
     try {
-      if (
-        cachedSuggestSessionId !== state.activeSessionId ||
-        cachedSuggestMsgLen !== curMsgLen ||
-        cachedSuggestedReplies.length === 0
-      ) {
-        if (draftMenuBtn) draftMenuBtn.textContent = '⏳ 正在帮你想台词…';
+      if (needFetchNew) {
+        if (draftMenuBtn) draftMenuBtn.textContent = '⏳ 正在结合最新剧情想台词…';
         if (triggerBtn === mainMagicBtn && mainMagicBtn) {
           mainMagicBtn.disabled = true;
         }
         const res = await apiJson(`/api/sessions/${encodeURIComponent(state.activeSessionId)}/suggest-replies`, {
           method: 'POST',
-          body: '{}'
+          body: JSON.stringify({
+            exclude: excludeList,
+            nonce: Date.now()
+          })
         });
         cachedSuggestedReplies = Array.isArray(res.replies) && res.replies.length > 0 ? res.replies : [];
         cachedSuggestSessionId = state.activeSessionId;
@@ -9855,24 +8968,39 @@
         suggestCursor = 0;
       }
       if (cachedSuggestedReplies.length > 0) {
-        const picked = cachedSuggestedReplies[suggestCursor % cachedSuggestedReplies.length];
+        const picked = cachedSuggestedReplies[suggestCursor];
         suggestCursor += 1;
         chatInput.value = picked;
         syncComposerEmptyState();
         hidePopoverSafe('magic-quick-popover');
         chatInput.focus();
+        const isLastInBatch = suggestCursor >= cachedSuggestedReplies.length;
         showToast(
-          `🪄 已为你写好一句回复（第 ${((suggestCursor - 1) % cachedSuggestedReplies.length) + 1}/${cachedSuggestedReplies.length} 句，再点可换一句）`,
+          isLastInBatch
+            ? `🪄 已填入第 ${suggestCursor}/${cachedSuggestedReplies.length} 句（再点将按当前剧情重生成新一句）`
+            : `🪄 已结合剧情写好回复（第 ${suggestCursor}/${cachedSuggestedReplies.length} 句，再点换下一句）`,
           2400
         );
       }
     } catch {
-      const fallbacks = [
-        '*弯起眼睛看向你* 听你这么说我就安心多啦，接下来我们一起去看看吧？',
-        '*轻轻靠近半步，认真看着你的眼睛* 其实我刚才一直在想你说的那句话，能多告诉我一点吗？',
-        '*浅浅一笑，把温热的饮品往你手边推了推* 别太累着自己呀，我会一直陪在你身边的。'
-      ];
-      chatInput.value = fallbacks[suggestCursor % fallbacks.length];
+      const lastAiMsg = [...state.messages].reverse().find((m) => m.role === 'assistant');
+      const snippet = String(lastAiMsg?.content || '')
+        .replace(/\*[^*]*\*/g, '')
+        .replace(/[「」"'“”\n]/g, ' ')
+        .trim()
+        .slice(0, 14);
+      const dynamicFallbacks = snippet
+        ? [
+            `“你刚才说‘${snippet}…’是指现在就要这样决定吗？”`,
+            `*停下步子看向你* 所以关于“${snippet}”，你心里其实早有打算了？`,
+            `先把这句接住——那接下来呢，我们要怎么算？`
+          ]
+        : [
+            `先把刚才那件事说清楚，我可没打算就这么敷衍过去。`,
+            `*抬眼直视着你* 你先别急着下结论，听我把话说完好不好？`,
+            `行，那就按你说的试试看，不过条件得由我来挑。`
+          ];
+      chatInput.value = dynamicFallbacks[suggestCursor % dynamicFallbacks.length];
       suggestCursor += 1;
       syncComposerEmptyState();
       hidePopoverSafe('magic-quick-popover');
@@ -10060,6 +9188,28 @@
     hidePopoverSafe('topbar-more-popover');
     openRightTab('memory-tab');
     renderTelemetryAndMemories();
+  });
+  document.getElementById('more-ds-memory-btn')?.addEventListener('click', () => {
+    hidePopoverSafe('topbar-more-popover');
+    openRightTab('memory-tab');
+    renderTelemetryAndMemories();
+  });
+  document.getElementById('more-ds-suite-btn')?.addEventListener('click', () => {
+    hidePopoverSafe('topbar-more-popover');
+    openRightTab('ds-suite-tab');
+    renderDeepSeekSuiteTelemetry();
+  });
+  document.getElementById('inspector-mem-export-btn')?.addEventListener('click', () => {
+    document.getElementById('more-open-share-btn')?.click();
+  });
+  document.getElementById('inspector-mem-import-btn')?.addEventListener('click', () => {
+    openImportHistoryModal();
+  });
+  document.getElementById('inspector-suite-export-btn')?.addEventListener('click', () => {
+    document.getElementById('more-open-share-btn')?.click();
+  });
+  document.getElementById('inspector-suite-import-btn')?.addEventListener('click', () => {
+    openImportHistoryModal();
   });
   document.getElementById('more-open-fim-btn')?.addEventListener('click', () => {
     hidePopoverSafe('topbar-more-popover');
@@ -10307,7 +9457,8 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           session_id: originSessionId,
-          trigger_reason: triggerReason
+          trigger_reason: triggerReason,
+          include_follow_ups: isShowFollowUpsEnabled()
         }),
         signal: abortController.signal
       });
@@ -10587,7 +9738,9 @@
     );
 
     if (isDs) {
-      const reusableBlank = preferredSessions.find((s) => s.title === '新对话');
+      const reusableBlank = preferredSessions.find(
+        (s) => s.title === '新对话' && s.persona_id === 'persona_deepseek_official'
+      );
       if (reusableBlank) {
         await loadSession(reusableBlank.id);
       } else {

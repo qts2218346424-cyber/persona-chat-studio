@@ -95,7 +95,7 @@ function resolveBuiltinEnvConfig() {
     }
   };
 
-  // 1. 内置对话大模型优先级：自定义直连 > DeepSeek官网 > 硅基流动 > 阿里云百炼（全面默认 DeepSeek V4.1 Flash）
+  // 1. 内置对话大模型优先级：自定义直连 > DeepSeek官网 > 阿里云百炼（对话大脑默认由 Antigravity 智能体底座深度承担，硅基流动专注语音生成与ASR）
   if (customChatKey && customChatUrl) {
     result.hasBuiltinChatKey = true;
     result.builtinChatLabel = `内置直连通道 (${customChatModel || 'DeepSeek-V4.1-Flash'})`;
@@ -114,17 +114,6 @@ function resolveBuiltinEnvConfig() {
       deepseek_base_url: getEnvVal('DEEPSEEK_BASE_URL') || 'https://api.deepseek.com/v1/chat/completions',
       deepseek_model: model,
       deepseek_api_key: deepseekKey
-    };
-  } else if (siliconKey) {
-    const model = getEnvVal('SILICONFLOW_MODEL') || 'deepseek-ai/DeepSeek-V4.1-Flash';
-    result.hasBuiltinChatKey = true;
-    result.builtinChatLabel = `硅基流动高速直连 (${model.split('/').pop()})`;
-    result.chatPatch = {
-      online_provider_type: 'deepseek',
-      deepseek_base_url:
-        getEnvVal('SILICONFLOW_BASE_URL') || 'https://api.siliconflow.cn/v1/chat/completions',
-      deepseek_model: model,
-      deepseek_api_key: siliconKey
     };
   } else if (dashscopeKey) {
     const model = getEnvVal('DASHSCOPE_MODEL') || 'deepseek-v4.1-flash';

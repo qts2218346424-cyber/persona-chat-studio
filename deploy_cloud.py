@@ -119,24 +119,26 @@ if ! command -v pdftotext >/dev/null 2>&1; then
   (DEBIAN_FRONTEND=noninteractive apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq poppler-utils >/dev/null 2>&1) || true
 fi
 
-# 同步刷新云端 SQLite 中的内置 API 配置与独立高清语音音源
+# 同步刷新云端 SQLite 中的内置 API 配置：剥离聊天越权调用，聊天大脑全面交由 Antigravity 智能体底座深度承担
 node -e '
 const {{ db, getRawPlatformConfigInternal, updateAdminPlatformConfig }} = require("/opt/star-whisper/server/db");
 db.prepare("UPDATE sessions SET companion_config = NULL").run();
-db.prepare("UPDATE user_settings SET value = \\x27online\\x27 WHERE key = \\x27provider\\x27 AND value = \\x27demo\\x27").run();
+db.prepare("UPDATE user_settings SET value = \\x27demo\\x27 WHERE key = \\x27provider\\x27").run();
 const c = getRawPlatformConfigInternal();
+db.prepare("DELETE FROM platform_config WHERE key = \\x27deepseek_api_key\\x27").run();
 updateAdminPlatformConfig({{
   online_provider_type: "deepseek",
-  deepseek_base_url: c.deepseek_base_url,
-  deepseek_model: c.deepseek_model,
-  deepseek_api_key: c.deepseek_api_key,
-  tts_provider: c.tts_provider,
+  deepseek_base_url: "",
+  deepseek_model: "",
+  deepseek_api_key: "",
+  clear_deepseek_api_key: true,
+  tts_provider: c.tts_provider || "siliconflow",
   tts_api_key: c.tts_api_key || "",
   clear_tts_api_key: !c.tts_api_key,
   tts_endpoint: c.tts_endpoint || "",
   tts_model: c.tts_model || ""
 }});
-console.log("CLOUD_DB_SYNC_OK:", c.deepseek_model, c.tts_provider);
+console.log("CLOUD_DB_SYNC_OK: 聊天大脑已成功交还 Antigravity 智能体底座");
 '
 
 # 初始化或更新云端 Antigravity 桥接配置，自动联动同机 /opt/coreforge/server/config.json 密钥底座

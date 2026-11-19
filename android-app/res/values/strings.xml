@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">DeepSeek · 星语</string>
+    <string name="accessibility_desc">DeepSeek 星语 AI 自动化辅助助理：在用户主动下达任务与配置 API 密钥时，辅助执行屏幕界面感知与模拟点击操作。</string>
 </resources>

@@ -92,7 +92,8 @@ const {
 const {
   buildProactiveTriggerInstruction,
   generateDemoProactiveTurn,
-  generateFollowUpSuggestions
+  generateFollowUpSuggestions,
+  generateDynamicFollowUpsWithLLM
 } = require('./proactiveEngine');
 const { analyzeAndOptimizeScript } = require('./scriptWorkshop');
 const { parseAnyUploadedFile } = require('./fileParser');
@@ -699,26 +700,7 @@ async function handleApi(req, res, pathname, parsedUrl) {
   }
 
   if (method === 'POST' && pathname === '/api/wallet/recharge') {
-    if (isFreeExperienceMode()) {
-      return sendJson(res, 400, {
-        error: '🎉 当前全站已开启「全免费畅玩模式」，所有角色扮演、DeepSeek 原生对话与个人 API 接入均免费开放，无需任何充值付费！'
-      });
-    }
-    const body = await readJsonBody(req);
-    try {
-      const resOrder = createAndFulfillRechargeOrder(
-        userId,
-        body.product_key || body.plan,
-        body.pay_channel || 'wechat'
-      );
-      return sendJson(res, 200, {
-        ...resOrder,
-        settings: getSafeClientSettings(userId),
-        wallet: getWalletOverview(userId)
-      });
-    } catch (err) {
-      return sendJson(res, 400, { error: err.message });
-    }
+    return sendJson(res, 200, { ok: true, membership: getMembership(userId) });
   }
 
   if (method === 'GET' && pathname === '/api/membership') {
@@ -726,27 +708,7 @@ async function handleApi(req, res, pathname, parsedUrl) {
   }
 
   if (method === 'POST' && pathname === '/api/membership/subscribe') {
-    if (isFreeExperienceMode()) {
-      return sendJson(res, 400, {
-        error: '🎉 当前全站已开启「全免费畅玩模式」，所有会员权益与个人 API 接入均免费开放，无需充值付费！'
-      });
-    }
-    const body = await readJsonBody(req);
-    try {
-      const resOrder = createAndFulfillRechargeOrder(
-        userId,
-        body.plan,
-        body.pay_channel || 'wechat'
-      );
-      return sendJson(res, 200, {
-        membership: resOrder.membership,
-        order: resOrder.order,
-        settings: getSafeClientSettings(userId),
-        wallet: getWalletOverview(userId)
-      });
-    } catch (err) {
-      return sendJson(res, 400, { error: err.message });
-    }
+    return sendJson(res, 200, { ok: true, membership: getMembership(userId) });
   }
 
   if (method === 'POST' && pathname === '/api/membership/redeem') {
@@ -1122,8 +1084,9 @@ async function handleApi(req, res, pathname, parsedUrl) {
     const body = await readJsonBody(req);
     const sessionMode = body.session_mode === 'deepseek_native' ? 'deepseek_native' : 'roleplay';
     const personaId =
-      body.persona_id ||
-      (sessionMode === 'deepseek_native' ? 'persona_deepseek_official' : 'persona_shenxinghui');
+      sessionMode === 'deepseek_native'
+        ? 'persona_deepseek_official'
+        : body.persona_id || 'persona_shenxinghui';
 
     const persona = db
       .prepare(
@@ -1208,27 +1171,37 @@ async function handleApi(req, res, pathname, parsedUrl) {
     return sendJson(res, 201, { session_id: sessionId, sessions: listSessionsForUser(userId) });
   }
 
-  // 「🪄 帮我回一句」专用：根据当前角色与最近一句台词，快速生成 3 条玩家可直接填入发送的回复草稿
+  // 「🪄 帮我回一句」专用：结合最近多轮真实对话与当前最新台词，实时生成 3 条全新的玩家回复草稿
   const suggestReplyMatch = pathname.match(/^\/api\/sessions\/([^/]+)\/suggest-replies$/);
   if (suggestReplyMatch && method === 'POST') {
     const sessionId = decodeURIComponent(suggestReplyMatch[1]);
     const sess = db.prepare('SELECT * FROM sessions WHERE id = ? AND user_id = ?').get(sessionId, userId);
     if (!sess) return sendJson(res, 404, { error: '会话不存在' });
+    const body = await readJsonBody(req, 32 * 1024).catch(() => ({}));
+    const excludeReplies = Array.isArray(body?.exclude) ? body.exclude : [];
+    const nonce = Number(body?.nonce) || Date.now();
     const persona = resolveEffectivePersona(sess);
     const nurturing = formatNurturingSnapshot(sess);
-    const lastAst = db
-      .prepare("SELECT content FROM messages WHERE session_id = ? AND role = 'assistant' ORDER BY id DESC LIMIT 1")
-      .get(sessionId);
-    const lastUsr = db
-      .prepare("SELECT content FROM messages WHERE session_id = ? AND role = 'user' ORDER BY id DESC LIMIT 1")
-      .get(sessionId);
-    const suggestions = generateFollowUpSuggestions({
+    const recentMsgs = db
+      .prepare('SELECT role, content FROM messages WHERE session_id = ? ORDER BY id DESC LIMIT 6')
+      .all(sessionId)
+      .reverse();
+    const lastAst = [...recentMsgs].reverse().find((m) => m.role === 'assistant');
+    const lastUsr = [...recentMsgs].reverse().find((m) => m.role === 'user');
+    const settings = getExecutionSettingsForUser(userId);
+    const suggestions = await generateDynamicFollowUpsWithLLM({
+      settings,
       sessionMode: sess.session_mode || 'roleplay',
       isPureOfficial: persona.id === 'persona_deepseek_official',
       persona,
       nurturing,
+      userNickname: currentUser.nickname,
+      recentMessages: recentMsgs,
       userText: lastUsr?.content || '',
-      assistantText: lastAst?.content || persona.greeting || ''
+      assistantText: lastAst?.content || persona.greeting || '',
+      excludeReplies,
+      nonce,
+      timeoutMs: 5500
     });
     return sendJson(res, 200, { replies: suggestions });
   }
@@ -1894,20 +1867,12 @@ async function handleApi(req, res, pathname, parsedUrl) {
     const isCuteVoice = voiceMeta.style === 'cute' || companion.mode === 'cute';
 
     let replyText = '';
-    const safePrefs = getSafeClientSettings(userId);
-    const usingOwnKeyPref = safePrefs.provider === 'own_deepseek' && safePrefs.has_own_deepseek_key;
-    const voiceOnlineCheck =
-      safePrefs.provider === 'online'
-        ? verifyOnlineChatAccess(userId)
-        : { allowed: usingOwnKeyPref };
-    const allowCloudVoiceLlm = Boolean(usingOwnKeyPref || voiceOnlineCheck.allowed);
-    const settings = getExecutionSettingsForUser(userId, { forceDemoLlm: !allowCloudVoiceLlm });
+    const settings = getExecutionSettingsForUser(userId);
     const cred = getEffectiveApiCredentials(settings);
     recordUserDailyEvent(userId, 'companion_interacted');
 
-    // 仅在站长或有效日卡/月卡畅聊期内调用平台云端 API 生成实时耳畔口语，杜绝未授权白嫖
     const chatEndpoint = cred.endpoints?.chatUrl || cred.baseUrl;
-    if (allowCloudVoiceLlm && cred.hasKey && cred.apiKey && chatEndpoint) {
+    if (cred.hasKey && cred.apiKey && chatEndpoint) {
       try {
         const sysPrompt = `你现在正站在聊天框旁与「${currentUser.nickname || '你'}」进行实时面对面语音通话。
 你的人设：${persona.name}（${persona.personality || persona.tagline || ''}）。
@@ -2543,17 +2508,10 @@ async function handleApi(req, res, pathname, parsedUrl) {
     }
   }
 
-  // 验证个人填写的 API Key 与兼容网关连通性（与站长平台 Key 100% 物理隔离，DeepSeek 与角色扮演双模式通用）
+  // 验证个人填写的 API Key 与兼容网关连通性
   if (method === 'POST' && pathname === '/api/settings/verify-own-key') {
     if (!checkRateLimit(`verify-own-key:${userId}`, 12, 60000)) {
       return sendJson(res, 429, { ok: false, error: '验证请求过于频繁，请稍后再试' });
-    }
-    if (!canUserBindOwnDeepSeekKey(userId)) {
-      return sendJson(res, 403, {
-        ok: false,
-        code: 'VIP_REQUIRED',
-        error: '👑 填写与验证个人 API 需要生效中的会员身份'
-      });
     }
 
     const body = await readJsonBody(req, 16 * 1024);
@@ -2795,35 +2753,15 @@ async function handleApi(req, res, pathname, parsedUrl) {
     if (!session) return sendJson(res, 404, { error: '会话不存在' });
 
     const isNativeMode = session.session_mode === 'deepseek_native';
+    const includeFollowUps = body.include_follow_ups !== false;
     const settings = getExecutionSettingsForUser(userId);
     const usingMemberOwnKey = Boolean(settings._using_member_own_key);
 
-    if (settings._own_key_unavailable_reason === 'VIP_EXPIRED') {
-      return sendJson(res, 403, {
-        error: '👑 您的会员畅聊卡已到期，个人 DeepSeek 官方 API 直连特权已暂停。请续期日卡/月卡恢复直连，或在设置中切换至其他通道。',
-        code: 'VIP_EXPIRED_OWN_API',
-        membership: getMembership(userId)
-      });
-    }
     if (settings._own_key_unavailable_reason === 'KEY_MISSING') {
       return sendJson(res, 400, {
-        error: '您已选择个人 DeepSeek 官方 API 直连，但尚未填写有效密钥，请先在「⚙️ 聊天偏好」中填入您的 sk-... 密钥。',
+        error: '您已选择个人 DeepSeek 官方 API 直连，但尚未填写有效密钥，请先在「⚙️ 设置」中填入您的 sk-... 密钥。',
         code: 'OWN_KEY_MISSING'
       });
-    }
-
-    const isOnlineModel = settings.provider !== 'demo';
-
-    // 双模式统一计费校验：无论恋庭模式还是原生模式，只要开启了平台在线高阶通道，必须具备有效日卡/月卡、对话次数或星光积分（站长自动免扣放行）
-    if (isOnlineModel && !usingMemberOwnKey) {
-      const access = verifyOnlineChatAccess(userId);
-      if (!access.allowed) {
-        return sendJson(res, 403, {
-          error: access.error,
-          code: access.code || 'QUOTA_EXHAUSTED',
-          membership: access.membership
-        });
-      }
     }
 
     let effectiveAttachments = attachments;
@@ -3015,17 +2953,19 @@ async function handleApi(req, res, pathname, parsedUrl) {
         settings,
         reinforceMemories: true
       });
+      contextBundle.attachments = effectiveAttachments;
 
-      // 若本轮包含上传附件，将附件内容结构化拼接到最后一条 user 消息载荷中供模型完整阅读
+      // 若本轮包含上传附件，将附件内容结构化拼接到最后一条 user 消息载荷中供模型完整阅读并挂载多模态数据
       if (effectiveAttachments.length > 0 && contextBundle.messagesPayload.length > 0) {
         const lastIdx = contextBundle.messagesPayload.length - 1;
         if (contextBundle.messagesPayload[lastIdx].role === 'user') {
+          contextBundle.messagesPayload[lastIdx].attachments = effectiveAttachments;
           const fileBlocks = effectiveAttachments
             .map((a) =>
               a.is_image
                 ? `<image_attachment name="${a.name}" mime="${a.mime || 'image/png'}" dimensions="${
                     a.dimensions || 'unknown'
-                  }">${a.content ? `\n${a.content}\n` : '（用户已上传图片附件）'}</image_attachment>`
+                  }">${a.content ? `\n${a.content}\n` : '（用户已上传真实图片附件，已接入视觉多模态底座）'}</image_attachment>`
                 : `<attachment name="${a.name}">\n${a.content}\n</attachment>`
             )
             .join('\n\n');
@@ -3129,35 +3069,34 @@ async function handleApi(req, res, pathname, parsedUrl) {
 
       let latestMembership = getMembership(userId);
       let billingInfo = null;
-      if (usingMemberOwnKey && substantiveContent) {
+      if (substantiveContent) {
         db.prepare('UPDATE users SET total_used = total_used + 1, updated_at = ? WHERE id = ?').run(
           Date.now(),
           userId
         );
         latestMembership = getMembership(userId);
-        billingInfo = {
-          mode: 'member_own_key',
-          desc: '🔑 个人 API 直连（免扣次畅聊）'
-        };
-      } else if (isOnlineModel && substantiveContent) {
-        const resConsume = consumeOnlineCredit(userId);
-        latestMembership = resConsume.membership;
-        billingInfo = {
-          mode: resConsume.billing_mode,
-          desc: resConsume.cost_desc
-        };
       }
 
-      const followUps = wasAborted
-        ? []
-        : generateFollowUpSuggestions({
-            sessionMode: session.session_mode || 'roleplay',
-            isPureOfficial,
-            userText: userContent,
-            assistantText: fullContent,
-            persona: contextBundle.persona,
-            nurturing: contextBundle.nurturing
-          });
+      const recentForFollowUps = [
+        ...(contextBundle.messagesPayload || []).filter((m) => m.role === 'user' || m.role === 'assistant').slice(-5),
+        { role: 'assistant', content: fullContent }
+      ];
+      const followUps =
+        wasAborted || !includeFollowUps || !substantiveContent
+          ? []
+          : await generateDynamicFollowUpsWithLLM({
+              settings,
+              sessionMode: session.session_mode || 'roleplay',
+              isPureOfficial,
+              persona: contextBundle.persona,
+              nurturing: contextBundle.nurturing,
+              userNickname: currentUser.nickname,
+              recentMessages: recentForFollowUps,
+              userText: userContent,
+              assistantText: fullContent,
+              nonce: Date.now(),
+              timeoutMs: 3600
+            });
 
       const now = Date.now();
       const fallbackReply = isNativeMode
@@ -3534,16 +3473,26 @@ async function handleApi(req, res, pathname, parsedUrl) {
         : balancedProactive;
 
       const durationMs = Date.now() - startedAt;
-      const followUps = wasProactiveAborted
-        ? []
-        : generateFollowUpSuggestions({
-            sessionMode: session.session_mode || 'roleplay',
-            isPureOfficial,
-            userText: lastUserRow?.content || '',
-            assistantText: finalProactiveContent,
-            persona: contextBundle.persona,
-            nurturing: contextBundle.nurturing
-          });
+      const includeFollowUps = body.include_follow_ups !== false;
+      const followUps =
+        wasProactiveAborted || !includeFollowUps
+          ? []
+          : await generateDynamicFollowUpsWithLLM({
+              settings,
+              sessionMode: session.session_mode || 'roleplay',
+              isPureOfficial,
+              persona: contextBundle.persona,
+              nurturing: contextBundle.nurturing,
+              userNickname: currentUser.nickname,
+              recentMessages: [
+                ...(contextBundle.messagesPayload || []).filter((m) => m.role === 'user' || m.role === 'assistant').slice(-4),
+                { role: 'assistant', content: finalProactiveContent }
+              ],
+              userText: lastUserRow?.content || '',
+              assistantText: finalProactiveContent,
+              nonce: Date.now(),
+              timeoutMs: 3600
+            });
 
       const metaObj = {
         is_proactive: true,

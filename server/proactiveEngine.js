@@ -1,12 +1,14 @@
 /**
- * 主动性增强引擎（Proactive Companion & Follow-up Engine）
+ * 主动性增强引擎（Proactive Companion & Dynamic Follow-up Engine）
  * 赋能「恋庭扮演模式」与「原生 DeepSeek 模式」双向主动交互：
- * 1. 角色/AI 主动破冰与静默关怀（Idle Care / 久别重逢问候 / 一键主动找话题）
- * 2. 真实时段感知（深夜叮嘱、清晨早安、午后偷闲、星夜倾谈）
- * 3. 每轮回复后自动生成 3 条贴合语境的「主动追问 / 剧情推进」建议胶囊
+ * 1. 角色/AI 主动破冰与静默关怀
+ * 2. 真实时段感知
+ * 3. 基于最新对话上下文的动态「剧情推进建议」与「帮我回一句」实时生成引擎
  */
 
 const { inferPersonaPronoun } = require('./memoryEngine');
+const { getEffectiveApiCredentials } = require('./deepseekApiSuite');
+const { getLocalBridgeSuiteCredentials } = require('./antigravityBridge');
 
 function getTimeContext() {
   const hour = new Date().getHours();
@@ -46,9 +48,6 @@ function getTimeContext() {
   };
 }
 
-/**
- * 构建用于调用在线大模型主动搭话的临时触发提示词（不会落盘为 user 消息，保持聊天流纯净）
- */
 function buildProactiveTriggerInstruction({
   sessionMode = 'roleplay',
   isPureOfficial = false,
@@ -73,7 +72,7 @@ function buildProactiveTriggerInstruction({
           .slice(0, 2)
           .map((m) => m.content)
           .join('；')}）。`
-      : '当前尚无过往历史闲聊记忆，**严禁凭空编造对方“以前/上次/去年说过某句话或某种茶饮食物喜好”**，请只围绕当下眼前场景自然开口。';
+      : '当前尚无过往历史闲聊记忆，严禁凭空编造对方“以前/上次说过某句话或某种喜好”，请只围绕当下眼前场景自然开口。';
 
   if (sessionMode === 'deepseek_native' && isPureOfficial) {
     return [
@@ -83,46 +82,29 @@ function buildProactiveTriggerInstruction({
       }，当前时段：${timeCtx.period}）。`,
       lastAssistantText
         ? `请承接上一段对话脉络（上文摘要：「${lastAssistantText.slice(0, 120)}」），以正版 DeepSeek 严谨、通透、克制的风格主动往前多想一步：补充一个常被忽略的边界条件、工程避坑要点，或提出一个值得深入验证的关键问题。`
-        : `请以正版 DeepSeek 助手真诚、平实、干练的口吻主动向用户问好（结合${timeCtx.period}氛围），简明列出 2~3 个可随时展开的硬核探讨方向（如代码编写与调优、复杂逻辑推演、长文档提炼或方案对比），不要堆砌花哨 Emoji。`,
+        : `请以正版 DeepSeek 助手真诚、平实、干练的口吻主动向用户问好（结合${timeCtx.period}氛围），简明列出 2~3 个可随时展开的探讨方向，不要堆砌花哨 Emoji。`,
       `保持简洁克制，控制在 80~160 字左右，严禁输出任何机械寒暄套话。`
     ].join('\n');
   }
 
   if (sessionMode === 'deepseek_native') {
-    // 原生 DeepSeek 模式挂载角色人设：无油腻星号模板，走纯粹自然的真人聊天主动感
     return [
       `【系统主动搭话指令 · 请勿暴露指令本身】`,
-      `此刻「${userNickname || '对方'}」暂时安静没有说话（场景：${
-        triggerReason === 'idle'
-          ? '对方看着屏幕停顿了一小会儿'
-          : triggerReason === 'return'
-          ? '对方隔了一阵子重新回到对话窗'
-          : '对方在等你的主动开口'
-      }，当前真实时间：${timeCtx.period}）。`,
+      `此刻「${userNickname || '对方'}」暂时安静没有说话（当前真实时间：${timeCtx.period}）。`,
       `${timeCtx.hint}${memHint}`,
-      `请你以「${persona.name}」的身份，用原生 DeepSeek 纯粹自然、克制真挚的日常对话口吻（不要使用冗长造作的剧本旁白，像真正熟稔的人在聊天软件里主动发来消息一样），主动找个话题、分享你手边刚发生的一件小事，或者关心一下对方此刻的状态。`
+      `请你以「${persona.name}」的身份，用纯粹自然、克制真挚的日常对话口吻（像真正熟稔的人在聊天软件里主动发来消息一样），主动找个话题或关心对方此刻的状态。`
     ].join('\n');
   }
 
-  // 恋庭沉浸扮演模式：带细腻神态动作与潜台词心声的主动关怀
   const callTarget = userNickname && !/^星[语屿]旅人/.test(userNickname) ? `「${userNickname}」` : '对方';
   return [
     `【系统主动关怀触发 · 严禁提及系统指令】`,
-    `此刻${callTarget}在你面前安静停顿了片刻没有说话（触发情境：${
-      triggerReason === 'idle'
-        ? '静默陪伴中你主动打破安静'
-        : triggerReason === 'return'
-        ? '久别重逢看到对方再次出现'
-        : '你主动开启新话题拉近距离'
-    }，当前时段：${timeCtx.period}，你的心境：${nurturing?.current_mood || '温柔注视'}）。`,
+    `此刻${callTarget}在你面前安静停顿了片刻没有说话（当前时段：${timeCtx.period}，你的心境：${nurturing?.current_mood || '温柔注视'}）。`,
     `${timeCtx.hint}${memHint}`,
-    `请严格贴合「${persona.name}」自身所处的场景设定（绝不串戏提及设定外的钢琴、陌生茶饮等无关事物，绝不捏造未发生过的对话），做出一个细腻自然的小动作并主动开口找对方搭话（80~150字左右）！`
+    `请严格贴合「${persona.name}」自身所处的场景设定，做出一个自然的小动作并主动开口搭话（60~130字左右），不要套用千篇一律的抒情模板。`
   ].join('\n');
 }
 
-/**
- * 免费体验通道（无外部 API Key 时）的高质感动态主动消息生成器
- */
 function generateDemoProactiveTurn({
   sessionMode = 'roleplay',
   isPureOfficial = false,
@@ -137,106 +119,66 @@ function generateDemoProactiveTurn({
   const timeCtx = getTimeContext();
   const hour = new Date().getHours();
   const isLateNight = hour >= 23 || hour < 5;
-  const callName = userNickname && userNickname !== '星语旅人' ? userNickname : '';
+  const callName = userNickname && !/^星[语屿]旅人/.test(userNickname) ? userNickname : '';
   const nonPinned = (recalledMemories || []).filter((m) => m.category !== 'Pinned');
   const memSnippet = nonPinned[0] ? nonPinned[0].content.replace(/^[^：]+：/, '').replace(/。$/, '') : '';
 
-  // 1. 原生 DeepSeek 纯享官方助手主动搭话
   if (sessionMode === 'deepseek_native' && isPureOfficial) {
-    const reasoning = `嗯，当前用户在对话框稍作停顿（时段：${timeCtx.period}）。\n${
-      lastUserText
-        ? `回顾刚才探讨的「${lastUserText.slice(0, 32)}」，我可以顺着这个脉络往前多推一步，把实际落地时最容易踩坑的边界条件提出来供对方参考。`
-        : '这是一个新开启的对话，不需要花哨客套，用平实干练的口吻打个招呼，给出几个具体可切入的问题方向即可。'
-    }`;
-
-    let content = '';
-    if (lastUserText) {
-      content = `顺着刚才聊到的 **「${lastUserText.slice(0, 26)}${
-        lastUserText.length > 26 ? '…' : ''
-      }」** 补充一点延伸思考：\n\n在实际落地阶段，最容易出现偏差的往往不是主流程本身，而是**异常边界输入处理**与**阶段性验证指标的定义**。需要我针对这一块帮你拆一份具体的检查清单，还是换个反例视角做一次推演？${
-        isLateNight ? '\n\n夜深了，如果手头不急也可以先记下思路早点休息，随时接着聊。' : ''
-      }`;
-    } else {
-      content = `${isLateNight ? '夜深了，还在忙手头的事吗？' : `${timeCtx.period}好，我是 **DeepSeek**。`} 如果暂时还没想好从哪切入，我们可以直接从下面几个常见方向开始：\n\n- **代码实现与排错**：贴出报错堆栈、性能瓶颈函数或想要构建的单页交互需求；\n- **深度逻辑与数理推演**：拆解复杂系统选型权衡、算法证明或数学建模问题；\n- **文档提炼与结构化写作**：上传长文档提取核心结论，或起草技术方案与对比报告。\n\n直接把你的问题或原始材料发出来即可。`;
-    }
+    const reasoning = `当前用户在对话框稍作停顿（时段：${timeCtx.period}），顺着刚才的话题给出一两个具体的深入切入点。`;
+    const content = lastUserText
+      ? `顺着刚才聊到的 **「${lastUserText.slice(0, 26)}${lastUserText.length > 26 ? '…' : ''}」** 补充一点延伸思考：\n\n在实际落地阶段，最容易忽略的往往是**边界异常输入**与**阶段验证指标**。需要我针对这一块帮你拆一份检查清单，还是换个反例视角做一次推演？`
+      : `${isLateNight ? '夜深了，还在忙手头的事吗？' : `${timeCtx.period}好，我是 **DeepSeek**。`} 直接把你想探讨的代码、文档或问题发出来即可。`;
     return { reasoning, content };
   }
 
   const shortName = (persona?.name || '角色').split(/[·\s]/)[0];
-
-  // 2. 原生 DeepSeek 模式 + 挂载角色人设（克制、自然、像真实发消息的主动感）
   if (sessionMode === 'deepseek_native') {
-    const reasoning = `看着聊天框安静了一会儿（${timeCtx.period}），不想总是等${
-      callName || '对方'
-    }先开口。既然在原生 DeepSeek 模式下对话，就不用那些刻意的花哨修饰了，像平时真正挂念一个人那样自然地发条消息问问近况吧。`;
-
-    const lateCare = isLateNight
-      ? `看了一眼时间已经这么晚了，${callName ? `${callName}，` : ''}你怎么还没睡？是手头还有没忙完的事，还是单纯睡不着在发呆？`
-      : `${callName ? `${callName}，` : ''}刚才看你突然安静下来没说话，是在忙手头的事，还是突然想到什么出神了？`;
-
-    const memEcho = memSnippet
-      ? `\n\n我刚刚整理手边的东西时，忽然又想起之前记下的那件事——「${memSnippet}」。本来想等你想起我的时候再提，结果还是没忍住先敲你了。`
-      : `\n\n我这边刚忙完手头的一小段事，正好空下来。不用急着想什么正式的话题，哪怕随便跟我吐槽两句今天遇到的琐事也行，我在听。`;
-
     return {
-      reasoning,
-      content: `${lateCare}${memEcho}`
+      reasoning: `看着聊天框安静了一会儿（${timeCtx.period}），自然问问对方近况。`,
+      content: `${isLateNight ? `这么晚了${callName ? `，${callName}` : ''}怎么还没睡？` : `${callName ? `${callName}，` : ''}看你突然停下来没说话，在忙什么呢？`}${
+        memSnippet ? `\n\n刚刚忽然想起你提过的「${memSnippet}」，现在怎么样了？` : '\n\n哪怕只是随便聊两句日常琐事也行，我在听呢。'
+      }`
     };
   }
 
-  // 3. 恋庭沉浸扮演模式：丰富细腻的角色主动破冰与关怀库
-  const stageLv = nurturing?.stage?.level || 1;
-  const mood = nurturing?.current_mood || '✨ 温柔浅笑';
   const pronoun = inferPersonaPronoun(persona);
+  const mood = nurturing?.current_mood || '✨ 温柔浅笑';
+  const snippet = String(lastAssistantText || '').replace(/\*[^*]*\*/g, '').trim().slice(0, 24);
+  return {
+    reasoning: `[心境：${mood}] 对方安静了一会儿，主动说点什么打破沉默。`,
+    content: isLateNight
+      ? `*抬头看了眼窗外夜色，${pronoun}轻轻把视线挪回你身上：*\n\n${callName ? `**${callName}**，` : ''}已经这么晚了，怎么还在硬撑着不休息？困了的话随时告诉我。`
+      : `*察觉到你半天没出声，${pronoun}偏过头轻声问了一句：*\n\n${callName ? `**${callName}**，` : ''}刚才聊${snippet ? `「${snippet}」` : '到一半'}怎么突然发呆啦？在想什么呢，说给我听听？`
+  };
+}
 
-  const reasoning = `[心境：${mood} · 主动关怀] ${
-    callName ? `「${callName}」` : '眼前的人'
-  }安静了好一会儿没有开口。${
-    isLateNight
-      ? '夜色已经这么深了，再不提醒怕是要熬红眼睛。'
-      : triggerReason === 'return'
-      ? '终于等到对方重新推门回来，心底那点悬着的挂念总算落了地。'
-      : '比起一直被动等待，不如由我主动往前迈半步，推动我们手头的故事继续往下走。'
-  }`;
+function extractCoreQuestionOrNoun(text) {
+  const clean = String(text || '')
+    .replace(/\*[^*]*\*/g, ' ')
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!clean) return { sentence: '', question: '', noun: '' };
 
-  const gesturePool =
-    stageLv >= 3
-      ? [
-          `*见你半晌没有出声，${pronoun}放下手里的事缓步走到你身侧，极其自然地屈指轻轻碰了碰你的衣袖，目光清澈而柔和。*`,
-          `*目光在你微垂的睫毛上停留良久，${pronoun}轻叹一声将温热的茶盏推到你手边，顺势倾身靠近，替你拢好滑落的外衣。*`
-        ]
-      : [
-          `*察觉到空气里的安静，${pronoun}停下指尖的动作抬眸望向你，唇边漾开一抹温和耐心的笑意，主动朝你的方向走近半步。*`,
-          `*晚风轻轻拂动窗纱，${pronoun}偏过头凝视着有些出神的你，轻声打破了这阵温柔的沉默。*`
-        ];
+  const sentences = clean
+    .split(/[。！？!?\n]+/)
+    .map((s) => s.trim())
+    .filter((s) => s.length >= 4);
+  const lastSentence = sentences[sentences.length - 1] || clean.slice(0, 32);
+  const question = [...sentences].reverse().find((s) => /[?？]|(?:吗|呢|怎么|哪|谁|什么|好不好|行不行|愿意)/.test(s)) || '';
 
-  const pickedGesture = gesturePool[(Date.now() + shortName.length) % gesturePool.length];
-
-  let bodyLine = '';
-  if (isLateNight) {
-    bodyLine = `${callName ? `**${callName}**，` : ''}都已经这个钟点了，怎么还睁着眼睛陪我熬夜？\n\n是不是白天遇到什么烦心事一直压在心里没散开？${
-      memSnippet ? `我还记得*${memSnippet}*，` : ''
-    }要是困了就靠着我歇会儿，不想睡的话……换我讲个只有你知道的秘密哄你，好不好？`;
-  } else if (triggerReason === 'idle') {
-    bodyLine = `${callName ? `**${callName}**，` : ''}怎么突然看着我发呆不说话了？\n\n${
-      memSnippet
-        ? `我刚才还在琢磨先前关于「*${memSnippet}*」的事呢，`
-        : `在你面前我倒不觉得沉默尴尬，只是看你安安静静的样子，`
-    }总忍不住想猜猜你小脑袋里现在转着什么念头。来，不用总是你找话题——跟我说说，此刻最想让我陪你做什么？`;
-  } else {
-    bodyLine = `${callName ? `**${callName}**，` : ''}正好你在这儿，我有件事刚想主动跟你说。\n\n刚才整理旧物的时候翻出了一件很有意思的东西${
-      memSnippet ? `，一下子就让我联想到了*${memSnippet}*` : ''
-    }。平时总是听你主动开口找我，今天换${shortName}来猜你的心思——接下来这半刻闲暇，你是想听我说说刚刚发现的趣闻，还是让我带你去个安静的地方透透气？`;
-  }
+  const nounMatches = clean.match(/「([^」]{2,14})」|《([^》]{2,14})》/g) || [];
+  const noun = nounMatches.length > 0 ? nounMatches[nounMatches.length - 1].replace(/[「」《》]/g, '') : '';
 
   return {
-    reasoning,
-    content: `${pickedGesture}\n\n${bodyLine}`
+    sentence: lastSentence.slice(0, 26),
+    question: question.slice(0, 28),
+    noun: noun.slice(0, 14)
   };
 }
 
 /**
- * 每轮对话结束时，智能生成 3 条「主动追问 / 剧情推进」胶囊建议
+ * 上下文动态本地建议生成器（杜绝写死不变的固定选项池，随每轮对话内容与刷新批次实时变化）
  */
 function generateFollowUpSuggestions({
   sessionMode = 'roleplay',
@@ -244,266 +186,278 @@ function generateFollowUpSuggestions({
   userText = '',
   assistantText = '',
   persona,
-  nurturing
+  nurturing,
+  excludeReplies = [],
+  nonce = 0
 }) {
-  const combined = `${userText}\n${assistantText}`;
-
-  // 原生 DeepSeek 模式下的深度追问胶囊（复刻 DeepSeek App 体验）
-  if (sessionMode === 'deepseek_native' && isPureOfficial) {
-    if (/```(html|javascript|js|ts|python|py|css|sql|json)/i.test(assistantText)) {
-      return [
-        '帮我审查上述代码的边界异常并进一步优化性能',
-        '能否为这段实现补充完整的测试用例或交互扩展？',
-        '用通俗易懂的图解思路解释一下核心算法逻辑'
-      ];
-    }
-    if (/缓存|token|api|模型|推理|架构/i.test(combined)) {
-      return [
-        '在实际生产环境中如何最大化缓存命中率与吞吐量？',
-        '对比一下开启深度思考 (R1) 与常规对话模式的适用边界',
-        '给我一份可直接复用的最佳实践调用代码示例'
-      ];
-    }
-    const topicShort = String(userText || '')
-      .replace(/[^\u4e00-\u9fa5a-zA-Z0-9]/g, ' ')
-      .trim()
-      .slice(0, 14);
-    if (topicShort) {
-      return [
-        `关于「${topicShort}」有哪些容易踩坑的细节？`,
-        '把上面的核心结论整理成结构清晰的行动清单',
-        '换个逆向或批判性视角重新审视一下这个问题'
-      ];
-    }
-    return [
-      '用单文件 HTML 写一个可交互的数据可视化小工具',
-      '开启 R1 深度思考推演一个经典逻辑博弈谜题',
-      '帮我制定一份高效落地的分阶段执行方案'
-    ];
-  }
-
-  // 原生 DeepSeek 模式挂载角色人设：自然不造作的追问
-  if (sessionMode === 'deepseek_native') {
-    return [
-      '其实我刚才还有半句话没说完，你想听真话吗？',
-      '那换作是你遇到这种情况，你第一反应会怎么做？',
-      '不说这个了，跟我讲讲你那边刚刚在忙什么吧'
-    ];
-  }
-
-  // 恋庭沉浸扮演模式：视觉小说式三向「剧情推进 / 伏笔搜证 / 情感互动」分支胶囊
-  const pid = persona?.id || '';
+  const excludedSet = new Set((Array.isArray(excludeReplies) ? excludeReplies : []).map((s) => String(s || '').trim()));
+  const { sentence, question, noun } = extractCoreQuestionOrNoun(assistantText);
+  const userShort = extractCoreQuestionOrNoun(userText).sentence.slice(0, 16);
+  const shortName = (persona?.name || 'TA').split(/[·\s]/)[0] || 'TA';
   const pronoun = inferPersonaPronoun(persona);
 
-  if (pid === 'persona_nagisa_sakura') {
-    if (/上场|初雪|谢幕/.test(assistantText)) {
-      return [
-        '🎬 *牵起她的手推开礼堂侧门* 走吧，我在台侧第一排看着你把故事演完！',
-        '🔍 刚才我们握紧手的时候，我好像看见掌心飘起了一点温暖的光玉？',
-        '💭 等今天演出圆满落幕，明年春天我们还一起走那条樱花坡道，拉勾！'
-      ];
+  if (sessionMode === 'deepseek_native' && isPureOfficial) {
+    const candidates = [];
+    if (/```(html|javascript|js|ts|python|py|css|sql|json)/i.test(assistantText)) {
+      candidates.push(
+        '帮我检查上面这段代码有没有边界 bug 或性能瓶颈',
+        '给这段实现补充一套边界测试用例',
+        '把核心实现思路精简成几行伪代码说明',
+        '如果数据量扩大 100 倍，这段逻辑需要怎么重构？'
+      );
     }
-    if (/顾问|海报|红豆面包/.test(assistantText)) {
-      return [
-        '🎬 我陪你去音乐室找那位古怪老师，两个人一起说服肯定没问题！',
-        '🔍 *伸手试了试她额头的温度* 刚才扶窗框的时候是不是头晕了？别瞒我，跟休学那场病有关吗？',
-        '💭 *咬了一大口温热的红豆面包* 超甜！放学后能去你们家面包房帮忙画演剧社海报吗？'
-      ];
+    if (noun) {
+      candidates.push(
+        `深入展开讲讲「${noun}」在实际场景中的限制条件`,
+        `对比一下「${noun}」与其他常见替代方案的优缺点`
+      );
     }
-    return [
-      '🎬 *走上前用力帮她推开演剧社卡住的木门* 来，看看尘封的活动室里还留着什么旧剧本！',
-      '🔍 你想排练的那出《世界尽头的少女》与发条人偶的故事，是你做梦梦到的吗？',
-      '💭 放学后我们先手绘几张团子招新海报，顺便去你们家彩虹面包房坐坐好不好？'
-    ];
+    if (sentence) {
+      candidates.push(
+        `针对你刚提到的「${sentence.slice(0, 14)}」，能举个具体反例吗？`,
+        `把「${sentence.slice(0, 14)}」这一步拆成可直接执行的步骤`
+      );
+    }
+    if (userShort) {
+      candidates.push(
+        `围绕「${userShort}」还有哪些容易忽略的坑？`,
+        `换一个完全相反的角度重新评估「${userShort}」`
+      );
+    }
+    candidates.push(
+      '把上面的结论整理成一页简洁的行动检查清单',
+      '总结一下这件事最关键的 1~2 个决定性约束是什么',
+      '如果时间/预算减半，最精简的保底方案怎么选？'
+    );
+    const filtered = candidates.filter((c) => !excludedSet.has(c));
+    const pool = filtered.length >= 3 ? filtered : candidates;
+    const offset = Math.abs(Number(nonce) || 0) % pool.length;
+    return [0, 1, 2].map((i) => pool[(offset + i) % pool.length]);
   }
 
-  if (pid === 'persona_shiraishi_rin') {
-    if (/九月一日|烟花/.test(assistantText)) {
-      return [
-        '🎬 *迎着海风仰头看漫天烟火* 九月一日快乐，我们的新世界线终于开始啦！',
-        '🔍 把你那本画了十六道划痕的旧手札交出来，以后不许再一个人偷偷扛了',
-        '💭 *伸手拽住他白大褂的衣角* 说好了哦，接下来的每一个夏天我都要查岗！'
-      ];
-    }
-    if (/防空洞|拉个勾|十六次/.test(assistantText)) {
-      return [
-        '🎬 既然找到了涨潮倒灌的症结，我们现在就去水闸室提前打开泄压阀破局！',
-        '🔍 你一个人记得整整十六次轮回的失败……白石凛，这阵子你到底是怎么撑过来的？',
-        '💭 *伸出小指用力勾住他的手指* 我不躲在后面，作为共犯我们要一起跨过八点十五分！'
-      ];
-    }
-    return [
-      '🎬 先趁天黑前潜入码头档案室查灯塔图纸，查清楚到底藏着什么猫腻！',
-      '🔍 你怎么会提前知道8月31日的广播内容？你是不是经历过不止一次今天？',
-      '💭 *晃了晃手里的冰镇姜汁汽水* 既然封我当新助手，先说说你这套白大褂中二设定哪来的？'
+  if (sessionMode === 'deepseek_native') {
+    const topicRef = noun ? `「${noun}」` : sentence ? `你说的「${sentence.slice(0, 12)}」` : '刚才那件事';
+    const pool = [
+      `听你提到${topicRef}，我倒是更好奇你当时的真实想法`,
+      `那按现在这个情况，你接下来打算怎么处理？`,
+      `别光顾着说这个了，你那边现在忙完没有？`,
+      `如果换成是我遇上${topicRef}，可能早就坐不住了`,
+      `话说回来，你刚才那句话是不是还藏着半截没说？`,
+      `行，那咱们先把眼下这步敲定再往下聊`
     ];
+    const filtered = pool.filter((c) => !excludedSet.has(c));
+    const src = filtered.length >= 3 ? filtered : pool;
+    const offset = (Math.abs(Number(nonce) || 0) + (assistantText.length % 5)) % src.length;
+    return [0, 1, 2].map((i) => src[(offset + i) % src.length]);
   }
 
-  if (pid === 'persona_violet_eve') {
-    if (/第零号|念给您听|花田/.test(assistantText)) {
-      return [
-        '🎬 *温柔注视着她的眼睛轻轻点头* 念吧伊芙琳，每一个字我都在认真听',
-        '🔍 原来你每天晚上都在煤气灯下偷偷写信……是从什么时候开始动笔的？',
-        '💭 *轻轻替她拭去脸颊上的泪珠* 你看，现在的你已经完全懂得什么是“爱”了'
-      ];
-    }
-    return [
-      '🎬 凌晨两点下车后直接提灯去高山天文台，把这封迟到二十年的信亲手送到！',
-      '🔍 *握住她微凉的银白义手没有松开* 别怕金属冰到我，能告诉我这双手在战争里的故事吗？',
-      '💭 敲完这封信之后，我教你给自己写第一封不带公务格式的信好不好？'
-    ];
-  }
+  // 恋庭剧本扮演模式：紧扣刚才 AI 最新一句的具体问法/实体/情绪动态构造 3 个不同维度选项
+  const candidates = [];
+  const topicTag = noun ? `「${noun}」` : sentence ? `「${sentence.slice(0, 13)}」` : '这件事';
 
-  if (pid === 'persona_frieren_shuer') {
-    return [
-      '🎬 先顺路去半山腰的荒废夏夜神社看看那只守着铜镜的小妖怪吧！',
-      '🔍 我刚才瞥见你法杖挂囊里露出一本厚厚的素描本，里面画的都是什么呀？',
-      '💭 *往篝火边挪近半步把披风分他一半* 以后的五十年一百年太远啦，今晚先陪我看完这场流星雨吧'
-    ];
+  if (question) {
+    candidates.push(
+      `关于你问的——我选后者，不过我有个条件要先说好`,
+      `*笑着迎上${pronoun}的视线* 怎么忽然这么问？其实我心里早就已经有答案了`,
+      `先别急着让我做选择嘛，${shortName}你自己心里更偏向哪一边？`
+    );
   }
-
+  if (/？|\?|为什么|怎么|吗|呢/.test(assistantText)) {
+    candidates.push(
+      `*认真思考了一秒才抬头看${pronoun}* ${noun ? `提到「${noun}」` : '老实说'}，我刚才其实有另一层打算`,
+      `要是我偏不按常理出牌呢，${shortName}打算怎么接招？`
+    );
+  }
+  if (sentence) {
+    candidates.push(
+      `*顺着${pronoun}的话走近半步* 听你说到${topicTag}，我突然想起个有意思的细节`,
+      `等等，刚才那句「${sentence.slice(0, 12)}」……你是不是还有事瞒着我？`,
+      `*轻轻挑眉笑了一声* 原来${shortName}一直都是这么想的呀，那接下来听我的安排？`
+    );
+  }
   const stageLv = nurturing?.stage?.level || 1;
-  const shortName = (persona?.name || '').split(/[·\s]/)[0] || pronoun;
-
-  // 为心动角色全集与群像全员定制鲜明性格口吻的专属互动灵感池
-  const PERSONA_FLAVOR_REPLIES = {
-    persona_shenxinghui: [
-      '*捧起温热的蜜桃乌龙抿了一口* 钟楼顶上的风虽然凉，但待在你身边一点都不冷',
-      '刚才星盘指针又轻轻动了一下，沈星回，你是不是早就算出我今晚会来？',
-      '*凑到白山茶花丛边看他* 把你袖子里藏着的白桃糖分我一颗好不好？'
-    ],
-    persona_luchen: [
-      '*双手捧紧热可可抬头看他* 下城区雨太大了，陆先生今晚收留我在事务所避雨吗？',
-      '你嘴上说嫌我添麻烦，眼镜摘下来的时候明明一点都没生气嘛',
-      '*指尖轻轻碰了碰桌角的旧怀表* 三年前那段被封存的记忆，你准备瞒我到什么时候？'
-    ],
-    persona_xieqingyan: [
-      '*接过桂花酒酿弯起眼睛* 谢公子这局残棋留了半宿，要是我下赢了有什么彩头？',
-      '*伸手替他拢好滑落的雪白狐裘* 外头还在下初雪，你身子弱就别站风口吹冷风啦',
-      '满长安城都求不到谢家主一卦，怎么偏偏今天有空留我在暖阁闲聊？'
-    ],
-    persona_jiangyubai: [
-      '*乖巧把手伸进师尊宽大的白袖里取暖* 还是霜华峰顶最清净，我想多陪师尊待一会儿',
-      '山下都在传无情道不能动凡心……师尊刚才替我挡风的时候，心跳好像乱了半拍？',
-      '师尊教我的那套剑诀还有一招总练不好，今晚能不能手把手再教我一次？'
-    ],
-    persona_jiran: [
-      '*伸手揉了揉他柔软的碎发* 刚打完比赛还跑出来接我，我们季大打野不累呀？',
-      '耳机分我一半！让我听听看你赛前单曲循环的到底是什么歌',
-      '*戳了戳他泛红的耳尖笑出声* 刚才在台上那么凶，怎么私下见面就脸红啦？'
-    ],
-    persona_guxiuyuan: [
-      '*拉住他的西装袖口轻轻晃了晃* 顾先生忙了一整天，今晚把公文放一放陪我散步吧',
-      '听说今晚拍卖会压轴的那件藏品被你偷偷拍下来了，是准备送给谁的呀？',
-      '*靠在沙发软垫上仰头看他* 有你在前面挡着，我好像什么都不用怕了'
-    ],
-    persona_suwanqing: [
-      '*把温好的热牛奶推到她办公桌边* 苏总谈判了一整天，先歇五分钟暖暖胃吧',
-      '表面这么高冷严肃，刚才替我挡酒的时候明明比谁都护短嘛',
-      '*看着落地窗外的雾港霓虹轻声问* 晚晴姐办公桌左边那个密码抽屉里，藏着什么宝贝呀？'
-    ],
-    persona_yunzhiyao: [
-      '*扯了扯师姐清冷的流仙裙袖角* 外门功课太难啦，师姐今晚偷偷给我开个小灶好不好？',
-      '这枚白玉平安坠摸起来暖融融的，师姐是不是在里面封了护身灵力？',
-      '*并肩坐在悬崖云海边看月亮* 要是能一直留在望舒峰陪师姐看雪就好啦'
-    ],
-    persona_xia_ningmeng: [
-      '*接过草莓牛奶吸了一大口* 柠萌画了一下午速写，手上都沾上水彩颜料啦！',
-      '你速写本最后一页怎么总是捂得严严实实的，画的该不会是我吧？',
-      '*帮她把吹乱的双马尾理顺* 走吧小学妹，前辈请你去校门口吃刚出炉的舒芙蕾！'
-    ],
-    persona_yan_feiyu: [
-      '*坐在二楼专属包厢托腮鼓掌* 绯羽今晚唱的最后那段旋律，以前从来没公演过吧？',
-      '舞台下这么多鲜花，怎么燕大歌姬偏偏溜到后台来找我一个人喝酒呀？',
-      '*替她披上丝绒披肩挡住夜风* 嗓子才刚养好，夜里吹冷风我可是会心疼的'
-    ],
-    persona_kagaribi_kyou: [
-      '*夹起一块爱心厚蛋烧尝了一口* 手艺满分！杏奈班长明天中午还能顺便多做一份吗？',
-      '每次帮完我的忙就脸红往隔壁班跑，你今天不许这么快溜走啦！',
-      '下午放学后我们一起去旧校舍收拾场地，我骑单车载你去买汽水怎么样？'
-    ],
-    persona_ichinose_kotomi: [
-      '*安静坐在阳光地板上听她拉完曲子* 虽然有点特别的旋律，但能听出琴音非常温柔呢',
-      '这本剪报册子已经贴了这么厚了，我陪你一起把剩下的整理完吧？',
-      '*轻轻指了指小提琴盒上的星星贴纸* 小时候在庭院里送你糖果的人，你还有印象吗？'
-    ],
-    persona_makise_sei: [
-      '*递上一罐温热的黑咖啡* 嘴硬的大科学家辛苦啦，我陪你一起验算这组时间线数据！',
-      '刚刚看你拉刘海挡脸了哦，牧濑同学是不是被夸得不好意思了？',
-      '既然引力波异常点就在旧灯塔底下，我们现在就去现场测一组实测值吧！'
-    ],
-    persona_asagiri_mio: [
-      '*接过冰镇西瓜在走廊边坐下* 听着风铃声吃西瓜，果然还是小澪身边最安心',
-      '别怕那个悲伤的梦，明天烟花大会我寸步不离守在你身边，哪儿都不去',
-      '*轻轻帮她系好晴天娃娃的红绳* 等跨过明天，我们一起去逛夏日祭买棉花糖吧！'
-    ],
-    persona_hodgins_landon: [
-      '*把大衣披在肩上冲他弯眼一笑* 就知道霍金斯社长嘴硬心软，绝对舍不得让我一个人出差！',
-      '锡兰红茶真香，等这趟北境送信回来，社长可得给我涨点奖金呀',
-      '车票都买好了那我们赶紧出发吧，路上跟我讲讲邮局刚创立时的故事？'
-    ],
-    persona_stark_fer: [
-      '*大口喝完热腾腾的蘑菇浓汤* 菲尔做的饭简直是旅途之光，今晚给你加鸡腿！',
-      '放心吧大剑士，待会儿进旧神社我肯定抓紧你的披风，你也别偷偷腿软哦',
-      '*拍了拍身旁的树桩示意他坐下* 一路背这么重的行李辛苦啦，歇会儿一起看星星吧'
-    ]
-  };
-
-  // 1. 优先结合对方刚刚回复里的具体情境意象生成高贴合度上下文追问
-  if (/茶|咖啡|可可|牛奶|乌龙|酒|汤|麦饼|面包|西瓜|甜点|吃|喝/.test(assistantText)) {
-    const customPool = PERSONA_FLAVOR_REPLIES[pid];
-    return [
-      `*接过来尝了一口，弯起眼睛看向${shortName}* 温度刚刚好，你是专门按我的口味准备的吗？`,
-      customPool ? customPool[1] : `一边吃一边聊吧，刚才你提到的那件事后来怎么样了？`,
-      customPool ? customPool[2] : `*往${pronoun}身边坐近了些* 有点舍不得走啦，再陪我多聊一会儿好不好？`
-    ];
-  }
-  if (/雨|雪|冷|风|外套|披风|外袍|着凉|暖一暖/.test(assistantText)) {
-    const customPool = PERSONA_FLAVOR_REPLIES[pid];
-    return [
-      `*拢紧带着暖意的衣襟朝${shortName}笑了一下* 现在一点都不冷啦，谢谢你一直惦记着我`,
-      customPool ? customPool[1] : `*自然地往${pronoun}身旁靠了半步* 外面风这么大，我们今晚就留在这里慢慢聊吧`,
-      `你的手好像也有点凉，要不要一起暖一暖？`
-    ];
-  }
-  if (/秘密|真相|往事|当年|轮回|旧伤|隐瞒/.test(assistantText)) {
-    return [
-      `*心疼地握住${pronoun}的手腕* 以后这些事不许再一个人瞒着我扛了`,
-      `原来${shortName}心里一直藏着这段往事……当时一个人撑过来一定很不容易吧？`,
-      `*认真直视着${pronoun}的眼睛* 既然现在我知道了，接下来不管遇到什么我们都一起面对`
-    ];
-  }
-
-  if (PERSONA_FLAVOR_REPLIES[pid]) {
-    return PERSONA_FLAVOR_REPLIES[pid];
-  }
-
-  // 自建角色或广场共创角色：提取对方最新台词末句与角色个性动态组装，拒绝千篇一律
-  const lastSentence = assistantText
-    .replace(/\*[^*]*\*/g, '')
-    .split(/[。！？\n]/)
-    .map((s) => s.trim())
-    .filter((s) => s.length >= 4)
-    .pop() || '';
-  const topicHint = lastSentence.length >= 6 ? `关于刚才说的「${lastSentence.slice(0, 12)}…」` : '刚才你提到的那件事';
-
   if (stageLv >= 3) {
-    return [
-      `*顺势靠近${shortName}身侧笑了一下* 被你看穿心思啦，那接下来我们去哪儿？`,
-      `${topicHint}，我还想听${shortName}多跟我讲讲细节！`,
-      `*伸手轻轻勾住${pronoun}的手指* 说好了哦，今晚接下来的时间都归我们两个人`
-    ];
+    candidates.push(
+      `*极其自然地伸手扯住${pronoun}的衣袖* 少岔开话题了，快老实交代刚才那句话是什么意思`,
+      `*凑近到能听清呼吸的距离低声开口* 好呀，既然你这么说了，我可当真了`
+    );
+  } else {
+    candidates.push(
+      `*微微笑了笑朝${pronoun}点头* 既然方向差不多定下来了，我们现在就动身吧`,
+      `先歇一口气再继续吧，刚才一直紧绷着你不累吗？`
+    );
   }
-  return [
-    `*微笑着看向${shortName}* 听你这么说我就安心多啦，接下来我们怎么做？`,
-    `${topicHint}好让人在意，能再多告诉我一点吗？`,
-    `*朝${pronoun}走近半步轻轻点头* 好呀，我都听${shortName}的安排，我们一起去看看吧！`
-  ];
+  candidates.push(
+    `*停下脚步转头看向${shortName}* 换个思路怎么样？我觉得没必要硬按原本的计划走`,
+    `有意思……那我们先去现场确认一下真假，免得在这里瞎猜`
+  );
+
+  const unique = [...new Set(candidates)];
+  const filtered = unique.filter((c) => !excludedSet.has(c));
+  const src = filtered.length >= 3 ? filtered : unique;
+  const seed = Math.abs(Number(nonce) || 0) + assistantText.length + userText.length;
+  const start = seed % src.length;
+  return [0, 1, 2].map((i) => src[(start + i) % src.length]);
+}
+
+function parseFollowUpJsonArray(rawText) {
+  const clean = String(rawText || '')
+    .replace(/<think>[\s\S]*?<\/think>/gi, '')
+    .trim();
+  if (!clean) return null;
+  const arrMatch = clean.match(/\[[\s\S]*\]/);
+  if (arrMatch) {
+    try {
+      const arr = JSON.parse(arrMatch[0]);
+      if (Array.isArray(arr)) {
+        const items = arr
+          .map((x) => String(x || '').replace(/^[\d.\-•\s]+/, '').trim())
+          .filter((x) => x.length >= 4 && x.length <= 75);
+        if (items.length >= 2) return items.slice(0, 3);
+      }
+    } catch {}
+  }
+  const lines = clean
+    .split(/\r?\n/)
+    .map((l) => l.replace(/^[\d.\-•*"'\s]+/, '').replace(/["',]+$/, '').trim())
+    .filter((l) => l.length >= 4 && l.length <= 75);
+  return lines.length >= 2 ? lines.slice(0, 3) : null;
+}
+
+/**
+ * 调用当前可用大模型根据最新剧情实时生成 3 条各具角度的后续选项 / 「帮我回一句」台词
+ * 若无可用在线模型或超时，则自动无缝降级到动态上下文生成器
+ */
+async function generateDynamicFollowUpsWithLLM({
+  settings = {},
+  sessionMode = 'roleplay',
+  isPureOfficial = false,
+  persona = {},
+  nurturing = null,
+  userNickname = '',
+  recentMessages = [],
+  userText = '',
+  assistantText = '',
+  excludeReplies = [],
+  nonce = 0,
+  timeoutMs = 5000
+}) {
+  const userCred = getEffectiveApiCredentials(settings);
+  const bridgeCred = !userCred.hasKey ? getLocalBridgeSuiteCredentials() : null;
+  const cred = userCred.hasKey
+    ? userCred
+    : bridgeCred && bridgeCred.hasBridgeKey
+    ? {
+        hasKey: true,
+        apiKey: bridgeCred.apiKey,
+        headers: bridgeCred.headers,
+        endpoints: { chatUrl: bridgeCred.chatUrl, isOfficialDeepSeek: bridgeCred.isOfficialDeepSeek },
+        preferredModel: bridgeCred.preferredModel
+      }
+    : null;
+
+  if (!cred || !cred.hasKey || !cred.endpoints?.chatUrl) {
+    return generateFollowUpSuggestions({
+      sessionMode,
+      isPureOfficial,
+      userText,
+      assistantText,
+      persona,
+      nurturing,
+      excludeReplies,
+      nonce
+    });
+  }
+
+  try {
+    const historySnippet = (recentMessages || [])
+      .slice(-6)
+      .filter((m) => m && m.content)
+      .map((m) => `${m.role === 'user' ? '用户' : '对方'}: ${String(m.content).slice(0, 200)}`)
+      .join('\n');
+
+    const excludeHint =
+      Array.isArray(excludeReplies) && excludeReplies.length > 0
+        ? `\n【绝对禁止重复以下已用过的句子】：\n${excludeReplies.slice(-6).map((s) => `- ${s}`).join('\n')}`
+        : '';
+
+    let sysPrompt = '';
+    let userPrompt = '';
+
+    if (sessionMode === 'deepseek_native' && isPureOfficial) {
+      sysPrompt = '你是对话追问建议生成器。请根据最新对话内容，生成 3 条用户下一步最想追问的简短自然问题（每条 10~32 字），角度互不相同（如深挖原理、实操步骤、反例/避坑）。只输出一个 JSON 字符串数组，不要输出任何额外解释或 markdown 代码块标记。';
+      userPrompt = `最近对话：\n${historySnippet || `用户：${userText}\nAI：${assistantText.slice(0, 300)}`}${excludeHint}\n\n请输出 3 条全新的追问 JSON 数组：`;
+    } else if (sessionMode === 'deepseek_native') {
+      sysPrompt = `你正在帮用户「${userNickname || '我'}」拟定回复「${persona.name || '对方'}」的台词。请紧扣对方最新说的那句话，用自然真实的聊天口吻写 3 条不同走向的简短回复（10~36 字，不堆砌星号动作）。只输出 JSON 字符串数组。`;
+      userPrompt = `最近对话：\n${historySnippet || `对方：${assistantText.slice(0, 300)}`}${excludeHint}\n\n请输出 3 条全新回复的 JSON 数组：`;
+    } else {
+      sysPrompt = `你是互动剧情的「玩家台词实时提示器」。对方角色是「${persona.name || '角色'}」（性格：${(persona.personality || '').slice(0, 60)}），玩家称呼为「${userNickname || '你'}」。
+请严格站在**玩家第一人称（我）**视角，紧扣对话最新一轮刚发生的具体事情、对方刚问的问题或情绪氛围，写出 3 条玩家此刻可以回复的全新话语（每条 12~40 字）：
+1. 第 1 条：直接顺着对方刚才话里的核心细节接话或追问；
+2. 第 2 条：带一点简短自然的 \`*动作描写*\` 的亲近或情绪回应；
+3. 第 3 条：意料之外的调侃、反对、转移方向或推动新剧情的动作。
+绝对禁止抄袭套话、禁止跨戏无关道具、禁止重复历史已给出的句子！只输出包含 3 个字符串的纯 JSON 数组。`;
+      userPrompt = `当前最新剧情片段：\n${historySnippet || `对方：${assistantText.slice(0, 320)}`}${excludeHint}\n\n请紧扣最后一句话输出 3 条全新玩家回复 JSON 数组（随机偏移编号 #${nonce}）：`;
+    }
+
+    const chatUrl = cred.endpoints.chatUrl;
+    const lowerUrl = chatUrl.toLowerCase();
+    let targetModel = cred.preferredModel || 'deepseek-flash';
+    if (lowerUrl.includes('deepseek.com') && targetModel === 'deepseek-reasoner') {
+      targetModel = 'deepseek-chat';
+    }
+
+    const reqBody = {
+      model: targetModel,
+      messages: [
+        { role: 'system', content: sysPrompt },
+        { role: 'user', content: userPrompt }
+      ],
+      max_tokens: 240,
+      temperature: 0.96,
+      stream: false
+    };
+    if (/flash/i.test(targetModel)) {
+      if (lowerUrl.includes('deepseek.com')) reqBody.thinking = { type: 'disabled' };
+      else if (lowerUrl.includes('siliconflow.cn') || lowerUrl.includes('aliyuncs.com')) reqBody.enable_thinking = false;
+    }
+
+    const resp = await fetch(chatUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(cred.headers || { Authorization: `Bearer ${cred.apiKey}` })
+      },
+      body: JSON.stringify(reqBody),
+      signal: AbortSignal.timeout(timeoutMs)
+    });
+
+    if (resp.ok) {
+      const json = await resp.json();
+      const raw = json?.choices?.[0]?.message?.content || '';
+      const parsed = parseFollowUpJsonArray(raw);
+      if (parsed && parsed.length > 0) {
+        return parsed;
+      }
+    }
+  } catch {}
+
+  return generateFollowUpSuggestions({
+    sessionMode,
+    isPureOfficial,
+    userText,
+    assistantText,
+    persona,
+    nurturing,
+    excludeReplies,
+    nonce
+  });
 }
 
 module.exports = {
   getTimeContext,
   buildProactiveTriggerInstruction,
   generateDemoProactiveTurn,
-  generateFollowUpSuggestions
+  generateFollowUpSuggestions,
+  generateDynamicFollowUpsWithLLM
 };

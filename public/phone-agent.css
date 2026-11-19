@@ -1,0 +1,398 @@
+/* ==========================================================================
+   📱 星语随身版 (APK) 下载中心 & Phone Agent 手机端 AI 辅助助理样式
+   ========================================================================== */
+
+/* 1. 顶栏随身版入口按钮 */
+.apk-topbar-pill-btn {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 6px;
+  background: light-dark(
+    linear-gradient(135deg, rgba(77, 107, 254, 0.12), rgba(124, 58, 237, 0.12)),
+    linear-gradient(135deg, rgba(77, 107, 254, 0.22), rgba(124, 58, 237, 0.22))
+  ) !important;
+  border: 1px solid light-dark(rgba(77, 107, 254, 0.35), rgba(77, 107, 254, 0.5)) !important;
+  color: light-dark(#3b5998, #93c5fd) !important;
+  font-weight: 600;
+  padding: 5px 12px;
+  border-radius: 9999px;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 1px 3px rgba(77, 107, 254, 0.08);
+}
+
+.apk-topbar-pill-btn:hover {
+  background: light-dark(
+    linear-gradient(135deg, rgba(77, 107, 254, 0.2), rgba(124, 58, 237, 0.2)),
+    linear-gradient(135deg, rgba(77, 107, 254, 0.32), rgba(124, 58, 237, 0.32))
+  ) !important;
+  border-color: #4d6bfe !important;
+  color: #4d6bfe !important;
+  transform: translateY(-1px);
+}
+
+.apk-pill-icon {
+  font-size: 15px;
+  line-height: 1;
+}
+
+.apk-pill-label {
+  font-size: 13px;
+  letter-spacing: -0.01em;
+}
+
+.apk-pill-tag {
+  font-size: 10px;
+  background: #4d6bfe;
+  color: #ffffff;
+  padding: 1px 6px;
+  border-radius: 8px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+/* 2. 弹窗容器与布局 */
+.apk-spacious-modal {
+  width: min(820px, 94vw);
+  max-height: 88vh;
+  border: 1px solid light-dark(rgba(0, 0, 0, 0.1), rgba(255, 255, 255, 0.15));
+  border-radius: 20px;
+  background: light-dark(#ffffff, #161822);
+  color: light-dark(#1f2937, #f3f4f6);
+  box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.35);
+  padding: 0;
+  overflow: hidden;
+}
+
+.apk-modal-inner {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  max-height: 88vh;
+}
+
+.apk-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 24px;
+  border-bottom: 1px solid light-dark(rgba(0, 0, 0, 0.06), rgba(255, 255, 255, 0.08));
+  background: light-dark(
+    linear-gradient(180deg, #f8faff 0%, #ffffff 100%),
+    linear-gradient(180deg, #1c1f2e 0%, #161822 100%)
+  );
+}
+
+.apk-modal-title-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.apk-modal-badge-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  background: light-dark(rgba(77, 107, 254, 0.1), rgba(77, 107, 254, 0.2));
+  border: 1px solid light-dark(rgba(77, 107, 254, 0.2), rgba(77, 107, 254, 0.35));
+}
+
+.apk-modal-title-text h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: light-dark(#0f172a, #ffffff);
+}
+
+.apk-modal-title-text p {
+  margin: 2px 0 0 0;
+  font-size: 12px;
+  color: light-dark(#64748b, #94a3b8);
+}
+
+.apk-modal-close-btn {
+  background: transparent;
+  border: none;
+  font-size: 20px;
+  cursor: pointer;
+  color: light-dark(#64748b, #94a3b8);
+  padding: 6px;
+  border-radius: 8px;
+  line-height: 1;
+}
+
+.apk-modal-close-btn:hover {
+  background: light-dark(rgba(0, 0, 0, 0.05), rgba(255, 255, 255, 0.1));
+  color: light-dark(#0f172a, #ffffff);
+}
+
+.apk-modal-body {
+  padding: 20px 24px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+/* 3. 下载横幅核心主卡片 */
+.apk-hero-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 20px;
+  border-radius: 16px;
+  background: light-dark(
+    linear-gradient(135deg, rgba(77, 107, 254, 0.06), rgba(124, 58, 237, 0.04)),
+    linear-gradient(135deg, rgba(77, 107, 254, 0.16), rgba(124, 58, 237, 0.1))
+  );
+  border: 1px solid light-dark(rgba(77, 107, 254, 0.25), rgba(77, 107, 254, 0.4));
+}
+
+.apk-hero-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.apk-meta-pills {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.apk-meta-pill {
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: light-dark(rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 0.08));
+  border: 1px solid light-dark(rgba(0, 0, 0, 0.08), rgba(255, 255, 255, 0.12));
+  color: light-dark(#475569, #cbd5e1);
+  font-weight: 500;
+}
+
+.apk-download-btn-group {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.apk-cta-download-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: #4d6bfe;
+  color: #ffffff !important;
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 15px;
+  padding: 10px 22px;
+  border-radius: 12px;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 14px rgba(77, 107, 254, 0.35);
+}
+
+.apk-cta-download-btn:hover {
+  background: #3b58eb;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(77, 107, 254, 0.45);
+}
+
+.apk-secondary-btn {
+  background: light-dark(rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0.08));
+  border: 1px solid light-dark(rgba(0, 0, 0, 0.12), rgba(255, 255, 255, 0.2));
+  color: light-dark(#334155, #e2e8f0);
+  font-size: 13px;
+  padding: 9px 16px;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.apk-secondary-btn:hover {
+  background: light-dark(#f1f5f9, rgba(255, 255, 255, 0.14));
+}
+
+/* 4. 特性栅格 */
+.apk-feature-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.apk-feature-card {
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: light-dark(#f8fafc, rgba(255, 255, 255, 0.03));
+  border: 1px solid light-dark(rgba(0, 0, 0, 0.06), rgba(255, 255, 255, 0.06));
+}
+
+.apk-feature-card h4 {
+  margin: 0 0 4px 0;
+  font-size: 13px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: light-dark(#1e293b, #f1f5f9);
+}
+
+.apk-feature-card p {
+  margin: 0;
+  font-size: 12px;
+  color: light-dark(#64748b, #94a3b8);
+  line-height: 1.5;
+}
+
+/* 5. Phone Agent 原生控制台卡片 (APK 内部实时激活) */
+.phone-agent-control-box {
+  padding: 18px 20px;
+  border-radius: 16px;
+  background: light-dark(
+    linear-gradient(135deg, rgba(16, 185, 129, 0.06), rgba(77, 107, 254, 0.04)),
+    linear-gradient(135deg, rgba(16, 185, 129, 0.12), rgba(77, 107, 254, 0.08))
+  );
+  border: 1px solid light-dark(rgba(16, 185, 129, 0.3), rgba(16, 185, 129, 0.4));
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.phone-agent-box-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.phone-agent-box-title h4 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: light-dark(#065f46, #34d399);
+}
+
+.phone-agent-status-tag {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 8px;
+  font-weight: 600;
+}
+
+.phone-agent-status-tag.active {
+  background: #10b981;
+  color: #ffffff;
+}
+
+.phone-agent-status-tag.pending {
+  background: #f59e0b;
+  color: #ffffff;
+}
+
+.phone-agent-status-tag.disabled {
+  background: #94a3b8;
+  color: #ffffff;
+}
+
+.phone-agent-toggles {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.phone-agent-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.phone-agent-action-btn.primary {
+  background: #10b981;
+  color: #ffffff;
+}
+
+.phone-agent-action-btn.primary:hover {
+  background: #059669;
+}
+
+.phone-agent-action-btn.outline {
+  background: transparent;
+  border-color: light-dark(rgba(0, 0, 0, 0.2), rgba(255, 255, 255, 0.3));
+  color: inherit;
+}
+
+.phone-agent-action-btn.outline:hover {
+  background: light-dark(rgba(0, 0, 0, 0.05), rgba(255, 255, 255, 0.1));
+}
+
+.phone-agent-task-input-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.phone-agent-task-input {
+  flex: 1;
+  padding: 9px 14px;
+  border-radius: 10px;
+  border: 1px solid light-dark(rgba(0, 0, 0, 0.15), rgba(255, 255, 255, 0.2));
+  background: light-dark(#ffffff, #1e2233);
+  color: inherit;
+  font-size: 13px;
+}
+
+.phone-agent-task-input:focus {
+  outline: none;
+  border-color: #10b981;
+  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2);
+}
+
+.phone-agent-log-console {
+  background: light-dark(#0f172a, #0b0f19);
+  color: #a7f3d0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  max-height: 120px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* 6. Android 13/14 受限制设置折叠指南 */
+.apk-install-guide {
+  padding: 12px 16px;
+  border-radius: 12px;
+  background: light-dark(#f1f5f9, rgba(255, 255, 255, 0.04));
+  border: 1px dashed light-dark(rgba(0, 0, 0, 0.15), rgba(255, 255, 255, 0.15));
+  font-size: 12px;
+  color: light-dark(#475569, #94a3b8);
+  line-height: 1.6;
+}
+
+.apk-install-guide summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: light-dark(#1e293b, #e2e8f0);
+}
+
+.apk-install-guide ol {
+  margin: 8px 0 0 16px;
+  padding: 0;
+}

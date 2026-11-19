@@ -3,6 +3,17 @@
  * 内置：录音棚近讲声学滤波链 (Proximity Effect EQ) + 5 档漫剧/乙游声线秒切 + 参考男音样片一键复刻
  */
 (() => {
+  // 彻底连根清除所有旧版语音通话残留节点（防浏览器缓存）
+  try {
+    const purge = () => {
+      document.querySelectorAll('.comp-voice-wrap, .comp-voice-dock, .comp-voice-floating-dock, #comp-voice-open-btn, #comp-voice-dock, #more-voice-call-btn, #topbar-voice-call-btn').forEach(el => el.remove());
+    };
+    purge();
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', purge);
+    }
+  } catch {}
+
   const stageEl = document.getElementById('companion-stage');
   const pokeArea = document.getElementById('companion-poke-area');
   const cloudEl = document.getElementById('companion-cloud');
@@ -28,18 +39,18 @@
       style: 'cool',
       isMale: true,
       bassDb: 2.8,
-      short: '✨ 乙游温柔骑士',
-      btnHint: '🎙️ 温柔星光男音',
-      sample: '星光有点凉，先把我的外袍披好，不管多久我都会在这里守着你。'
+      short: '✨ 毛不易民谣男神',
+      btnHint: '🎙️ 毛不易治愈男音',
+      sample: '外头起风了，先把我的外袍披好……别在窗口站太久，过来坐会儿吧。'
     },
     {
       id: 'otome_cool',
       style: 'cool',
       isMale: true,
       bassDb: 3.4,
-      short: '❄️ 乙游清冷剑尊',
-      btnHint: '🎙️ 清冷禁欲男音',
-      sample: '夜深露重……手怎么这么凉？伸过来，我替你捂着。'
+      short: '❄️ 清冷叙事公子',
+      btnHint: '🎙️ 清冷叙事男音',
+      sample: '夜深露重……手怎么这么凉？坐到火盆旁来，别总不让人省心。'
     },
     {
       id: 'otome_fox',
@@ -91,8 +102,8 @@
       style: 'cute',
       isMale: false,
       bassDb: 0.6,
-      short: '🍓 甜美元气学妹',
-      btnHint: '🎙️ 元气甜妹女音',
+      short: '🍓 二次元元气甜妹',
+      btnHint: '🎙️ 二次元甜妹女音',
       sample: '前辈前辈！刚买的热草莓牛乳给你留着第一口呢，今天也要超开心哦！'
     },
     {
@@ -100,8 +111,8 @@
       style: 'cute',
       isMale: false,
       bassDb: 0.5,
-      short: '🌸 软萌糯米团子',
-      btnHint: '🎙️ 软萌团子语音',
+      short: '🌸 二次元软萌团子',
+      btnHint: '🎙️ 二次元软萌萌妹',
       sample: '锵锵！软乎乎的小团子正在旁边陪着你哦，今天也要超开心呀！'
     }
   ];
@@ -110,10 +121,10 @@
     zm_yunxi: 'otome_cool',
     zm_yunjian: 'otome_boss',
     zm_yunxia: 'otome_sunny',
-    zf_xiaoyi: 'cute_mochi'
+    zf_xiaoyi: 'cute_sweet'
   };
 
-  let currentVoiceId = 'otome_cool';
+  let currentVoiceId = 'otome_gentle';
   let isCallOpen = false;
   let isBusy = false;
   let audioCtx = null;
@@ -152,83 +163,24 @@
     document.body.appendChild(ttsAudioEl);
   }
 
-  const voiceWrap = document.createElement('div');
-  voiceWrap.className = 'comp-voice-wrap';
-  voiceWrap.innerHTML = `
-    <button type="button" class="comp-voice-call-pill" id="comp-voice-open-btn" title="开启与当前角色的实时真声语音通话">
-      <span class="voice-dot-live" aria-hidden="true"></span>
-      <span id="comp-voice-open-label">🎙️ 语音通话</span>
-    </button>
-  `;
-
-  if (footEl) {
-    stageEl.insertBefore(voiceWrap, footEl);
-  } else {
-    stageEl.appendChild(voiceWrap);
-  }
-
-  // 将实时语音通话舱独立挂载至主聊天舞台，确保收起立绘时依然可随时开启语音通话与切声线
-  const chatStageEl = document.querySelector('.chat-stage') || document.body;
-  const floatingDockEl = document.createElement('div');
-  floatingDockEl.className = 'comp-voice-dock comp-voice-floating-dock hidden';
-  floatingDockEl.id = 'comp-voice-dock';
-  floatingDockEl.setAttribute('role', 'region');
-  floatingDockEl.setAttribute('aria-label', '角色实时语音通话');
-  floatingDockEl.innerHTML = `
-    <div class="cv-top-row">
-      <span class="cv-live-title" id="cv-live-title">🎧 实时语音通话中</span>
-      <button type="button" class="cv-voice-switch" id="cv-voice-switch-btn" title="点击切换专属声线">
-        专属声线
-      </button>
-      <span class="cv-wave-bars" id="cv-wave-bars" aria-hidden="true">
-        <i></i><i></i><i></i><i></i>
-      </span>
-      <div class="cv-right-icons">
-        <button type="button" class="cv-gear-btn hidden" id="cv-open-tts-cfg-btn">
-          🎚️音源
-        </button>
-        <button type="button" class="cv-close-btn" id="cv-close-btn" title="挂断语音通话" aria-label="挂断语音通话">✕</button>
-      </div>
-    </div>
-    <form class="cv-input-row" id="cv-voice-form">
-      <button type="button" class="cv-mic-btn" id="cv-mic-btn" title="点击麦克风直接说话" aria-label="麦克风语音输入">
-        🎙️
-      </button>
-      <label for="cv-quick-input" class="visually-hidden">向角色说一句话</label>
-      <input
-        type="text"
-        id="cv-quick-input"
-        class="cv-quick-input"
-        placeholder="点🎙️说话，或打字回车…"
-        autocomplete="off"
-      />
-    </form>
-  `;
-  chatStageEl.appendChild(floatingDockEl);
-
-  // 在顶栏挂载常驻「🎙️ 通话」入口，关掉陪伴立绘也能一键发起语音通话
-  const topbarCompanionBtn = document.getElementById('topbar-companion-btn');
-  let topbarVoiceBtn = document.getElementById('topbar-voice-call-btn');
-  if (!topbarVoiceBtn && topbarCompanionBtn && topbarCompanionBtn.parentElement) {
-    topbarVoiceBtn = document.createElement('button');
-    topbarVoiceBtn.type = 'button';
-    topbarVoiceBtn.id = 'topbar-voice-call-btn';
-    topbarVoiceBtn.className = 'soft-tool-btn rp-only-inline';
-    topbarVoiceBtn.title = '开启或挂断与当前角色的实时语音通话（即使隐藏立绘也可使用）';
-    topbarVoiceBtn.setAttribute('aria-pressed', 'false');
-    topbarVoiceBtn.innerHTML = '<span class="btn-full-lbl">🎙️ 语音通话</span><span class="btn-short-lbl">🎙️ 通话</span>';
-    topbarCompanionBtn.parentElement.insertBefore(topbarVoiceBtn, topbarCompanionBtn);
-  }
-
-  const openBtn = document.getElementById('comp-voice-open-btn');
-  const openLabel = document.getElementById('comp-voice-open-label');
-  const dockEl = document.getElementById('comp-voice-dock');
-  const switchVoiceBtn = document.getElementById('cv-voice-switch-btn');
-  const waveBars = document.getElementById('cv-wave-bars');
-  const closeBtn = document.getElementById('cv-close-btn');
-  const voiceForm = document.getElementById('cv-voice-form');
-  const micBtn = document.getElementById('cv-mic-btn');
-  const quickInput = document.getElementById('cv-quick-input');
+  // 语音通话功能已完整移除，立绘聚焦于原画动作、情感气泡与高质量对白朗读
+  window.toggleCompanionVoiceCall = () => {};
+  const safeElement = {
+    classList: {
+      add: () => {},
+      remove: () => {},
+      toggle: () => {},
+      contains: () => false
+    },
+    textContent: '',
+    style: {},
+    addEventListener: () => {}
+  };
+  const waveBars = safeElement;
+  const switchVoiceBtn = safeElement;
+  const openLabel = safeElement;
+  const openBtn = safeElement;
+  const dockEl = safeElement;
 
   function getVoiceMeta(vid) {
     const mapped = LEGACY_MAP[vid] || vid;
@@ -258,12 +210,11 @@
       } else if (currentIsFemale) {
         currentVoiceId = comp.mode === 'cute' ? 'cute_sweet' : 'otome_queen';
       } else {
-        currentVoiceId = comp.mode === 'cute' ? 'otome_sunny' : 'otome_cool';
+        currentVoiceId = comp.mode === 'cute' ? 'otome_sunny' : 'otome_gentle';
       }
     }
     const meta = getVoiceMeta(currentVoiceId);
-    openLabel.textContent = '🎙️ 语音通话';
-    switchVoiceBtn.textContent = `${meta.short}`;
+    if (switchVoiceBtn) switchVoiceBtn.textContent = `${meta.short}`;
   }
 
   window.addEventListener('companion-updated', (e) => {
@@ -295,7 +246,7 @@
     window.__companionAudioLevel = 0;
     isSynthesizing = false;
     pokeArea.classList.remove('speaking-glow');
-    waveBars.classList.remove('active');
+    if (waveBars) waveBars.classList.remove('active');
 
     if (ttsFetchAbort) {
       try {
@@ -385,19 +336,19 @@
     if (match || fallbackZh) utter.voice = match || fallbackZh;
 
     markButtonSpeakingUi(btnEl);
-    pokeArea.classList.add('speaking-glow');
-    waveBars.classList.add('active');
+    pokeArea?.classList.add('speaking-glow');
+    waveBars?.classList.add('active');
     notifyUserVoiceStatus('🔊 正在朗读台词（再次点击可停止）');
 
     utter.onend = () => {
-      pokeArea.classList.remove('speaking-glow');
-      waveBars.classList.remove('active');
+      pokeArea?.classList.remove('speaking-glow');
+      waveBars?.classList.remove('active');
       resetActiveButtonUi(btnEl);
       if (activeFallbackBtn === btnEl) activeFallbackBtn = null;
     };
     utter.onerror = () => {
-      pokeArea.classList.remove('speaking-glow');
-      waveBars.classList.remove('active');
+      pokeArea?.classList.remove('speaking-glow');
+      waveBars?.classList.remove('active');
       resetActiveButtonUi(btnEl);
       if (activeFallbackBtn === btnEl) activeFallbackBtn = null;
       notifyUserVoiceStatus('⚠️ 系统语音引擎暂未响应，请检查浏览器音量或语音包设置');
@@ -417,10 +368,12 @@
     }
     activeObjectUrl = URL.createObjectURL(blob);
     ttsAudioEl.src = activeObjectUrl;
+    ttsAudioEl.muted = false;
+    ttsAudioEl.volume = 1.0;
 
     markButtonSpeakingUi(btnEl);
-    pokeArea.classList.add('speaking-glow');
-    waveBars.classList.add('active');
+    pokeArea?.classList.add('speaking-glow');
+    waveBars?.classList.add('active');
 
     let pulsePhase = 0;
     function animatePulseLevel() {
@@ -433,8 +386,8 @@
     ttsAudioEl.onended = () => {
       cancelAnimationFrame(rafMeterId);
       window.__companionAudioLevel = 0;
-      pokeArea.classList.remove('speaking-glow');
-      waveBars.classList.remove('active');
+      pokeArea?.classList.remove('speaking-glow');
+      waveBars?.classList.remove('active');
       resetActiveButtonUi(btnEl);
       if (activeFallbackBtn === btnEl) activeFallbackBtn = null;
     };
@@ -442,8 +395,8 @@
     ttsAudioEl.onerror = () => {
       cancelAnimationFrame(rafMeterId);
       window.__companionAudioLevel = 0;
-      pokeArea.classList.remove('speaking-glow');
-      waveBars.classList.remove('active');
+      pokeArea?.classList.remove('speaking-glow');
+      waveBars?.classList.remove('active');
       resetActiveButtonUi(btnEl);
       if (activeFallbackBtn === btnEl) activeFallbackBtn = null;
     };
@@ -461,24 +414,28 @@
 
     const ctx = ensureAudioContext();
     if (!ctx) return;
-    const audioBuffer = await ctx.decodeAudioData(arrayBuffer.slice(0));
-    const source = ctx.createBufferSource();
-    source.buffer = audioBuffer;
-    source.connect(ctx.destination);
-    activeSource = source;
-    source.onended = () => {
-      if (activeSource === source) {
-        activeSource = null;
-        window.__companionAudioLevel = 0;
-        pokeArea.classList.remove('speaking-glow');
-        waveBars.classList.remove('active');
+    try {
+      const audioBuffer = await ctx.decodeAudioData(arrayBuffer.slice(0));
+      const source = ctx.createBufferSource();
+      source.buffer = audioBuffer;
+      source.connect(ctx.destination);
+      activeSource = source;
+      source.onended = () => {
+        if (activeSource === source) {
+          activeSource = null;
+          window.__companionAudioLevel = 0;
+          pokeArea?.classList.remove('speaking-glow');
+          waveBars?.classList.remove('active');
+        }
+        resetActiveButtonUi(btnEl);
+        if (activeFallbackBtn === btnEl) activeFallbackBtn = null;
+      };
+      source.start(0);
+      if (btnEl) {
+        notifyUserVoiceStatus('🔊 正在朗读角色台词（再次点击可停止）');
       }
-      resetActiveButtonUi(btnEl);
-      if (activeFallbackBtn === btnEl) activeFallbackBtn = null;
-    };
-    source.start(0);
-    if (btnEl) {
-      notifyUserVoiceStatus('🔊 正在朗读角色台词（再次点击可停止）');
+    } catch (decodeErr) {
+      console.warn('WebAudio fallback error:', decodeErr);
     }
   }
 
@@ -492,6 +449,118 @@
     return bytes.buffer;
   }
 
+  // 前端高频静态预置音频快速映射表（毛不易民谣男声 / 二次元动漫甜妹女声）
+  const PRESET_FRONTEND_RULES = [
+    {
+      key: 'stay',
+      patterns: [/守在聊天框旁边/, /累了就戳戳我/, /歇一歇眼睛/, /今天也是我守在旁边/],
+      maleFile: 'male_companion_stay.mp3',
+      femaleFile: 'female_companion_stay.mp3'
+    },
+    {
+      key: 'poke',
+      patterns: [/怎么突然戳我/, /想听.*说话不用这么试探/, /直接开口喊我就好/, /偷袭戳到脸颊/, /轻轻戳回来/],
+      maleFile: 'male_companion_poke.mp3',
+      femaleFile: 'female_companion_poke.mp3'
+    },
+    {
+      key: 'tired',
+      patterns: [/盯了这么久屏幕/, /肩膀和脖子/, /后背靠好/, /闭上眼睛歇/, /连续看屏幕好一会儿/, /眨眨眼睛.*伸个大大的懒腰/],
+      maleFile: 'male_companion_tired.mp3',
+      femaleFile: 'female_companion_tired.mp3'
+    },
+    {
+      key: 'night',
+      patterns: [/看一眼时间.*夜已经深了/, /别熬红了眼睛/, /去睡吧.*心疼/, /哈欠.*已经很晚很晚啦/, /快钻进暖乎乎的被窝/, /梦里陪着你.*晚安/],
+      maleFile: 'male_companion_night.mp3',
+      femaleFile: 'female_companion_night.mp3'
+    },
+    {
+      key: 'morning',
+      patterns: [/早安.*新的一天不用赶得太急/, /先把温水喝了.*万事有我在身后/, /早安早安呀/, /元气满满的一天.*记得吃早餐/],
+      maleFile: 'male_companion_morning.mp3',
+      femaleFile: 'female_companion_morning.mp3'
+    },
+    {
+      key: 'water',
+      patterns: [/手边的水是不是已经凉了/, /倒杯温热的抿两口/, /别等嗓子干了/, /今日份喝水小监督/, /快抿一口温水润润嗓子/, /奖励一朵小红花/],
+      maleFile: 'male_companion_water.mp3',
+      femaleFile: 'female_companion_water.mp3'
+    }
+  ];
+
+  function getPresetAudioUrl(text, isFemale = false) {
+    if (!text) return null;
+    const str = String(text).trim();
+    for (const rule of PRESET_FRONTEND_RULES) {
+      if (rule.patterns.some((re) => re.test(str))) {
+        const file = isFemale ? rule.femaleFile : rule.maleFile;
+        return `./assets/pre_voices/${file}`;
+      }
+    }
+    return null;
+  }
+
+  async function playAudioUrlWithStudioEq(audioUrl, voiceMeta, btnEl) {
+    if (activeObjectUrl) {
+      try {
+        URL.revokeObjectURL(activeObjectUrl);
+      } catch {}
+      activeObjectUrl = '';
+    }
+    ttsAudioEl.src = audioUrl;
+    ttsAudioEl.muted = false;
+    ttsAudioEl.volume = 1.0;
+
+    markButtonSpeakingUi(btnEl);
+    activeFallbackBtn = btnEl;
+    pokeArea?.classList.add('speaking-glow');
+    waveBars?.classList.add('active');
+
+    let pulsePhase = 0;
+    function animatePulseLevel() {
+      if (ttsAudioEl.paused || ttsAudioEl.ended) return;
+      pulsePhase += 0.24;
+      window.__companionAudioLevel = 0.35 + Math.abs(Math.sin(pulsePhase)) * 0.55;
+      rafMeterId = requestAnimationFrame(animatePulseLevel);
+    }
+
+    ttsAudioEl.onended = () => {
+      cancelAnimationFrame(rafMeterId);
+      window.__companionAudioLevel = 0;
+      pokeArea?.classList.remove('speaking-glow');
+      waveBars?.classList.remove('active');
+      resetActiveButtonUi(btnEl);
+      if (activeFallbackBtn === btnEl) activeFallbackBtn = null;
+    };
+
+    ttsAudioEl.onerror = () => {
+      cancelAnimationFrame(rafMeterId);
+      window.__companionAudioLevel = 0;
+      pokeArea?.classList.remove('speaking-glow');
+      waveBars?.classList.remove('active');
+      resetActiveButtonUi(btnEl);
+      if (activeFallbackBtn === btnEl) activeFallbackBtn = null;
+    };
+
+    try {
+      await ttsAudioEl.play();
+      animatePulseLevel();
+      notifyUserVoiceStatus('🔊 正在朗读台词（再次点击可停止）');
+      return true;
+    } catch {
+      try {
+        const resp = await fetch(audioUrl);
+        if (resp.ok) {
+          const ab = await resp.arrayBuffer();
+          await playAudioBufferWithStudioEq(ab, voiceMeta, btnEl, 'audio/mpeg');
+          return true;
+        }
+      } catch {}
+    }
+    return false;
+  }
+
   window.playCompanionNeuralTts = async function playCompanionNeuralTts(rawText, btnEl) {
     if (btnEl && activeFallbackBtn === btnEl) {
       if (isSynthesizing && Date.now() - synthStartedAt < 1500) {
@@ -499,15 +568,39 @@
         return;
       }
       stopCurrentAudio();
+      ensureAudioContext();
+      if (ttsAudioEl) {
+        try {
+          ttsAudioEl.muted = false;
+          ttsAudioEl.volume = 1.0;
+        } catch {}
+      }
       notifyUserVoiceStatus('⏹ 已停止语音朗读');
       return;
     }
     stopCurrentAudio();
+    ensureAudioContext();
+    if (ttsAudioEl) {
+      try {
+        ttsAudioEl.muted = false;
+        ttsAudioEl.volume = 1.0;
+      } catch {}
+    }
 
     const cleaned = cleanSpeakableDialogue(rawText);
     if (!cleaned) {
       notifyUserVoiceStatus('💡 该条消息主要是动作神态描写，暂无对白台词可朗读');
       return;
+    }
+
+    const meta = getVoiceMeta(currentVoiceId);
+    const isFemale = Boolean(currentIsFemale || !meta.isMale);
+
+    // 0. 前端优先秒播离线预制高清音频（毛不易歌手男声 / 二次元动漫甜妹女声，0延迟零API等待）
+    const presetUrl = getPresetAudioUrl(cleaned, isFemale);
+    if (presetUrl) {
+      const ok = await playAudioUrlWithStudioEq(presetUrl, meta, btnEl);
+      if (ok) return;
     }
 
     isSynthesizing = true;
@@ -523,7 +616,6 @@
       activeFallbackBtn = btnEl;
     }
 
-    const meta = getVoiceMeta(currentVoiceId);
     try {
       const resp = await fetch('/api/tts/speak', {
         method: 'POST',
@@ -566,105 +658,6 @@
     cloudEl.classList.add('cloud-pop');
   }
 
-  async function sendVoiceTurn(spokenText) {
-    const sid = window.__activeSessionId;
-    if (!sid) {
-      updateCloudBubble('💡 请先选定角色', '请先在左侧点选一位角色进入对话，就能直接语音通话啦！');
-      return;
-    }
-    if (isBusy) {
-      updateCloudBubble('🎧 正在回应中', '上一句话正在录制真声回应，请稍等一秒哦～');
-      return;
-    }
-
-    isBusy = true;
-    stopCurrentAudio();
-    ensureAudioContext();
-
-    const meta = getVoiceMeta(currentVoiceId);
-    quickInput.disabled = true;
-    const prevPlaceholder = quickInput.placeholder;
-    quickInput.placeholder = '🎧 正在录制声优真声…';
-    updateCloudBubble(
-      `🎧 ${meta.short} · 真声回应中`,
-      spokenText ? `听到你说：「${spokenText.slice(0, 36)}」… 正在贴近耳畔回应你` : '正在轻声开口向你打招呼…'
-    );
-
-    try {
-      const resp = await fetch(`/api/sessions/${encodeURIComponent(sid)}/companion/voice-chat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          text: spokenText || '',
-          voiceId: currentVoiceId
-        })
-      });
-      const data = await resp.json();
-      if (!resp.ok) throw new Error(data.error || '语音回应失败');
-
-      if (data.companion) {
-        syncVoiceUiFromCompanion(data.companion);
-      }
-      const isFallbackLocal = data.tts_engine === '离线应急语音' || data.fallback_tts;
-      const bubbleTag = isFallbackLocal
-        ? '🎧 实时陪伴语音'
-        : `✨ ${data.tag || meta.short}`;
-      updateCloudBubble(bubbleTag, data.reply_text);
-
-      if (data.audio_b64) {
-        const buf = base64ToArrayBuffer(data.audio_b64);
-        await playAudioBufferWithStudioEq(buf, meta, null, data.audio_mime || 'audio/wav');
-      } else {
-        playBrowserSpeechFallback(data.reply_text, meta, null);
-      }
-    } catch {
-      updateCloudBubble('✨ 轻声回应', '我一直在这儿听着呢……再靠近一点同我说，嗯？');
-    } finally {
-      isBusy = false;
-      quickInput.disabled = false;
-      quickInput.placeholder = prevPlaceholder;
-      if (isCallOpen) quickInput.focus();
-    }
-  }
-
-  function openVoiceCallSession() {
-    isCallOpen = true;
-    ensureAudioContext();
-    openBtn?.classList.add('hidden');
-    dockEl.classList.remove('hidden');
-    stageEl.classList.add('voice-call-active');
-    if (topbarVoiceBtn) {
-      topbarVoiceBtn.classList.add('active');
-      topbarVoiceBtn.setAttribute('aria-pressed', 'true');
-    }
-    quickInput.focus();
-    sendVoiceTurn('');
-  }
-
-  function closeVoiceCallSession() {
-    isCallOpen = false;
-    stopCurrentAudio();
-    stopMicRecognition();
-    dockEl.classList.add('hidden');
-    openBtn?.classList.remove('hidden');
-    stageEl.classList.remove('voice-call-active');
-    if (topbarVoiceBtn) {
-      topbarVoiceBtn.classList.remove('active');
-      topbarVoiceBtn.setAttribute('aria-pressed', 'false');
-    }
-  }
-
-  window.toggleCompanionVoiceCall = () => {
-    if (isCallOpen) closeVoiceCallSession();
-    else openVoiceCallSession();
-  };
-
-  openBtn?.addEventListener('click', openVoiceCallSession);
-  closeBtn?.addEventListener('click', closeVoiceCallSession);
-  topbarVoiceBtn?.addEventListener('click', () => {
-    window.toggleCompanionVoiceCall();
-  });
-
   const ttsGearBtn = document.getElementById('cv-open-tts-cfg-btn');
   function syncAdminGearVisibility() {
     if (!ttsGearBtn) return;
@@ -681,7 +674,7 @@
   });
 
   // 按角色性别智能轮换专属声线（女主优先轮换御姐/甜妹/团子，男主优先轮换四大乙游男音）
-  switchVoiceBtn.addEventListener('click', async () => {
+  switchVoiceBtn?.addEventListener('click', async () => {
     const pool = currentIsFemale
       ? VOICE_ORDER.filter((v) => !v.isMale)
       : VOICE_ORDER.filter((v) => v.isMale || v.id === 'cute_mochi');
@@ -689,8 +682,8 @@
     const idx = activePool.findIndex((v) => v.id === currentVoiceId);
     const nextMeta = activePool[(idx + 1) % activePool.length];
     currentVoiceId = nextMeta.id;
-    openLabel.textContent = nextMeta.btnHint;
-    switchVoiceBtn.textContent = `${nextMeta.short} ▾`;
+    if (openLabel) openLabel.textContent = nextMeta.btnHint;
+    if (switchVoiceBtn) switchVoiceBtn.textContent = `${nextMeta.short} ▾`;
 
     const sid = window.__activeSessionId;
     if (sid) {
@@ -717,6 +710,13 @@
     try {
       ensureAudioContext();
       stopCurrentAudio();
+    ensureAudioContext();
+    if (ttsAudioEl) {
+      try {
+        ttsAudioEl.muted = false;
+        ttsAudioEl.volume = 1.0;
+      } catch {}
+    }
       const draftSettings =
         draftOverride ||
         (typeof window.__collectSettingsDraft === 'function' ? window.__collectSettingsDraft() : {});
@@ -770,6 +770,13 @@
     try {
       ensureAudioContext();
       stopCurrentAudio();
+    ensureAudioContext();
+    if (ttsAudioEl) {
+      try {
+        ttsAudioEl.muted = false;
+        ttsAudioEl.volume = 1.0;
+      } catch {}
+    }
       const resp = await fetch('./assets/voice_demos/otome_male_demo.wav');
       const buf = await resp.arrayBuffer();
       if (resultBox) {
@@ -861,206 +868,6 @@
     } finally {
       runCloneBtn.disabled = false;
       runCloneBtn.textContent = origLabel;
-    }
-  });
-
-  // 中文输入法安全回车提交
-  let lastCompEnd = null;
-  quickInput.addEventListener('compositionend', (e) => {
-    lastCompEnd = e.timeStamp;
-  });
-  quickInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
-      if (e.isComposing || e.keyCode === 229) {
-        e.preventDefault();
-        return;
-      }
-      if (lastCompEnd !== null && Math.abs(e.timeStamp - lastCompEnd) < 50) {
-        e.preventDefault();
-        return;
-      }
-    }
-  });
-
-  voiceForm.addEventListener('submit', (e) => {
-    e.preventDefault();
-    const val = quickInput.value.trim();
-    if (!val || isBusy) return;
-    quickInput.value = '';
-    sendVoiceTurn(val);
-  });
-
-  const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
-  let recognition = null;
-  let mediaRecorder = null;
-  let mediaChunks = [];
-  let activeMicStream = null;
-  let isListening = false;
-
-  function stopMicStreamTracks() {
-    if (activeMicStream) {
-      activeMicStream.getTracks().forEach((t) => {
-        try {
-          t.stop();
-        } catch {}
-      });
-      activeMicStream = null;
-    }
-  }
-
-  function stopMicRecognition() {
-    isListening = false;
-    micBtn.classList.remove('recording');
-    if (recognition) {
-      try {
-        recognition.stop();
-      } catch {}
-      recognition = null;
-    }
-    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-      try {
-        mediaRecorder.stop();
-      } catch {}
-    }
-  }
-
-  async function startCloudAsrRecording() {
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      quickInput.placeholder = '当前环境未开放麦克风权限，可直接打字回车对话…';
-      quickInput.focus();
-      return;
-    }
-    try {
-      stopCurrentAudio();
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      activeMicStream = stream;
-      mediaChunks = [];
-      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-        ? 'audio/webm;codecs=opus'
-        : 'audio/webm';
-      mediaRecorder = new MediaRecorder(stream, { mimeType });
-      isListening = true;
-      micBtn.classList.add('recording');
-      quickInput.placeholder = '🎙️ 正在录音（再点🎙️结束并识别）…';
-
-      mediaRecorder.ondataavailable = (ev) => {
-        if (ev.data && ev.data.size > 0) mediaChunks.push(ev.data);
-      };
-
-      mediaRecorder.onstop = async () => {
-        stopMicStreamTracks();
-        isListening = false;
-        micBtn.classList.remove('recording');
-        if (!mediaChunks.length) {
-          quickInput.placeholder = '点🎙️开口说，或打字回车…';
-          return;
-        }
-        quickInput.placeholder = '⏳ Qwen3-ASR 正在识别语音…';
-        try {
-          const blob = new Blob(mediaChunks, { type: mimeType });
-          const dataUrl = await new Promise((resolve, reject) => {
-            const r = new FileReader();
-            r.onload = () => resolve(String(r.result || ''));
-            r.onerror = reject;
-            r.readAsDataURL(blob);
-          });
-          const resp = await fetch('/api/asr/transcribe', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ audio_data_url: dataUrl })
-          });
-          const data = await resp.json();
-          quickInput.placeholder = '点🎙️开口说，或打字回车…';
-          if (resp.ok && data.text) {
-            sendVoiceTurn(data.text);
-          } else {
-            quickInput.placeholder = data.error || '请绑定硅基流动Key启用云端识别，或直接打字回车…';
-          }
-        } catch {
-          quickInput.placeholder = '语音识别未就绪，可直接打字回车…';
-        }
-      };
-
-      mediaRecorder.start();
-      // 最长自动录 15 秒防忘关
-      setTimeout(() => {
-        if (mediaRecorder && mediaRecorder.state === 'recording') {
-          stopMicRecognition();
-        }
-      }, 15000);
-    } catch {
-      stopMicStreamTracks();
-      isListening = false;
-      micBtn.classList.remove('recording');
-      quickInput.placeholder = '麦克风未授权，可直接打字回车对话…';
-    }
-  }
-
-  micBtn.addEventListener('click', () => {
-    if (isListening) {
-      stopMicRecognition();
-      return;
-    }
-
-    // 若已配置硅基流动内置/个人 API，或浏览器不支持原生识别，优先走高精度 Qwen3-ASR-1.7B 云端识别
-    if (!SpeechRec || window.__preferCloudAsr) {
-      startCloudAsrRecording();
-      return;
-    }
-
-    stopCurrentAudio();
-    recognition = new SpeechRec();
-    recognition.lang = 'zh-CN';
-    recognition.interimResults = true;
-    recognition.continuous = false;
-
-    isListening = true;
-    micBtn.classList.add('recording');
-    quickInput.placeholder = '正在听你说话…';
-
-    let finalTranscript = '';
-
-    recognition.onresult = (event) => {
-      let interim = '';
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        const txt = event.results[i][0].transcript;
-        if (event.results[i].isFinal) {
-          finalTranscript += txt;
-        } else {
-          interim += txt;
-        }
-      }
-      quickInput.value = finalTranscript || interim;
-    };
-
-    recognition.onend = () => {
-      const spoken = (finalTranscript || quickInput.value || '').trim();
-      isListening = false;
-      micBtn.classList.remove('recording');
-      quickInput.placeholder = '点🎙️开口说，或打字回车…';
-      if (spoken) {
-        quickInput.value = '';
-        sendVoiceTurn(spoken);
-      }
-    };
-
-    recognition.onerror = (ev) => {
-      isListening = false;
-      micBtn.classList.remove('recording');
-      // 国内网络下 Chrome WebSpeech 若遇 network 错误，自动标记切换至 Qwen3-ASR-1.7B 云端识别
-      if (ev && ev.error === 'network') {
-        window.__preferCloudAsr = true;
-        startCloudAsrRecording();
-        return;
-      }
-      quickInput.placeholder = '未听到声音，可重试🎙️或直接打字回车…';
-    };
-
-    try {
-      recognition.start();
-    } catch {
-      stopMicRecognition();
-      startCloudAsrRecording();
     }
   });
 })();

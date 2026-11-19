@@ -1294,62 +1294,39 @@ $$\\int_{-\\infty}^{+\\infty} e^{-\\frac{(t - \\mu)^2}{2\\sigma^2}} \\frac{dt}{\
 - 如果使用场景偏**正式向上汇报**，可进一步补充具体的量化百分比与时间里程碑；
 - 如果偏**对外沟通或创意叙事**，告诉我受众画像与字数要求，我可以为你切换为更具故事感与感染力的文风。`;
   } else {
-    const isObjectiveTechAsk =
-      !activeSessionPrompt &&
-      !/\*[^*]+\*|「|“|扮演|设定|如果我是|假如我们|醒来|重逢|转身|推开|眼神|心跳|师兄|学长|前辈|殿下|阁下/.test(cleanUser) &&
-      /^(?:什么是|如何理解|怎么解决|为什么会|请解释|帮我分析|有哪些方法)/.test(cleanUser);
+    const attachNote = hasAttachments
+      ? `用户同时附带了 ${attachments.length} 份文件（${attachments
+          .map((a) => a.name)
+          .join('、')}），结合附件内容直接提炼关键信息。`
+      : '';
+    const searchNote = hasSearchRefs
+      ? `结合已检索到的 ${searchResults.length} 份参考资料直接给出清晰解答。`
+      : '';
+    const promptNote = activeSessionPrompt
+      ? `并严格遵循当前对话设定的系统指令（${activeSessionPrompt.slice(0, 56)}）。`
+      : '';
 
-    if (isObjectiveTechAsk || hasSearchRefs) {
-      const attachNote = hasAttachments
-        ? `用户同时附带了 ${attachments.length} 份文件（${attachments
-            .map((a) => a.name)
-            .join('、')}），结合附件摘录直接提炼要点。`
-        : '';
-      const searchNote = hasSearchRefs
-        ? `结合已检索到的 ${searchResults.length} 份参考资料直接给出清晰解答。`
-        : '';
+    reasoningText = `用户提出了一个问题或需求：「${cleanUser.slice(0, 52)}」。\n${attachNote}${searchNote}${promptNote}\n保持 DeepSeek 问答模式一贯直击本质、克制严谨的风格，先明确核心结论，再梳理关键要点与可行建议，不堆砌套话。`;
 
-      reasoningText = `用户提出了一个客观探讨问题：「${cleanUser.slice(0, 52)}」。\n${attachNote}${searchNote}\n用平实自然的短段落直接点明核心机制与可行建议，不堆砌机械套话。`;
+    const refInsight = hasSearchRefs
+      ? `\n\n结合公开参考资料来看，**${searchResults[0].title.replace(
+          /\s*-\s*(维基百科|Wikipedia|GitHub).*$/i,
+          ''
+        )}** 的核心脉络在于：${searchResults[0].snippet.slice(0, 96)}${
+          searchResults[0].snippet.length > 96 ? '…' : ''
+        } [1]。`
+      : '';
 
-      const refInsight = hasSearchRefs
-        ? `\n\n结合公开参考资料来看，**${searchResults[0].title.replace(
-            /\s*-\s*(维基百科|Wikipedia|GitHub).*$/i,
-            ''
-          )}** 的核心脉络在于：${searchResults[0].snippet.slice(0, 96)}${
-            searchResults[0].snippet.length > 96 ? '…' : ''
-          } [1]。`
-        : '';
-
-      answerText = `${assistantPrefix || ''}关于 **「${cleanUser.slice(0, 38)}${
-        cleanUser.length > 38 ? '…' : ''
-      }」**，最核心的关键在于先看清背后的驱动逻辑，再顺着最直接的切入点去落地验证。${refInsight}\n\n如果你想把它放进具体的故事背景或实际场景里推演，随时直接告诉我细节，我们接着往下聊。`;
-    } else {
-      // 默认优先进入沉浸剧本扮演模式（无需小白额外配置任何开关）
-      const sceneContext = activeSessionPrompt
-        ? `结合本对话专属设定（${activeSessionPrompt.slice(0, 56)}），`
-        : '顺着当前自然展开的故事氛围，';
-      const memRecallNote =
-        activeMemLines.length > 0
-          ? `同时呼应当前对话已记住的细节（${activeMemLines[0].slice(0, 48)}），`
-          : '';
-
-      reasoningText = `对方刚刚发来：「${cleanUser.slice(0, 48)}${cleanUser.length > 48 ? '…' : ''}」。\n${sceneContext}${memRecallNote}不需要任何生硬的公式套话，直接用细腻有画面感的分镜神态与自然台词接住对方的情绪，并把当下的剧情轻轻往前推半步。`;
-
-      const attachStoryHint = hasAttachments
-        ? `*目光扫过你递过来的「${attachments[0].name}」，把里面的线索默默记在心底，随即抬头望向你。*\n\n`
-        : `*窗外的光影在桌沿轻轻晃动，听完你这句话，目光在你脸上安静停留了片刻，神情渐渐柔和下来。*\n\n`;
-      const memBridge =
-        activeMemLines.length > 0
-          ? `之前咱们提过的点滴（${activeMemLines[0].replace(/。$/, '')}），我可一直都好好记在心里呢。\n\n`
-          : '';
-      const settingBridge = activeSessionPrompt
-        ? `既然在这个属于我们的故事设定里相遇，`
+    const memHighlight =
+      activeMemLines.length > 0
+        ? `\n\n> 已结合当前对话记录的重点背景（${activeMemLines[0].slice(0, 60)}${
+            activeMemLines[0].length > 60 ? '…' : ''
+          }）保持上下文连贯。`
         : '';
 
-      answerText = `${assistantPrefix || ''}${attachStoryHint}「${cleanUser
-        .replace(/^\*[^*]+\*\s*/, '')
-        .slice(0, 30)}${cleanUser.length > 30 ? '…' : ''}」——听你这么开口，原本有些悬着的心忽然就落定了。\n\n${memBridge}${settingBridge}有些话不必急着在一开始就全部说尽。*轻轻往前走近半步，将手边刚发现的一枚旧信物递到你面前* 接下来这一幕，你是想先看看这里面藏着的线索，还是打算带我往更深处走走看？`;
-    }
+    answerText = `${assistantPrefix || ''}关于 **「${cleanUser.slice(0, 38)}${
+      cleanUser.length > 38 ? '…' : ''
+    }」**，核心判断是：**先厘清关键约束条件与目标边界，再抓住主干路径完成最小闭环验证**。${refInsight}${memHighlight}\n\n---\n\n### 关键思路拆解\n\n1. **明确核心诉求与边界**：剥离次要干扰项，锁定最影响结果质量的 1~2 个决定性变量；\n2. **按场景逐步落地验证**：先用最小可用方案跑通主链路，再针对性能、异常或结构细节做针对性优化。\n\n你可以直接补充具体的上下文、报错信息或目标要求（也可以在「⚙️ 设置」中填入自己的 DeepSeek API 密钥直连云端满血推理模型）。`;
   }
 
   if (enableThinking && reasoningText) {
@@ -1716,13 +1693,12 @@ async function streamDeepSeekNativeSuite({
         ? '若你当前所处接口通道不会单独返回 reasoning_content 字段，请在输出最开头先用 `<think>...</think>` 标签包裹这段思考过程，随后在 `</think>` 之后输出正式回答正文（若你已原生支持独立 reasoning_content 则无需再写 `<think>` 标签）。'
         : '';
 
-      const zhThoughtNote = isPureOfficial
-        ? `\n\n## 深度思考阶段（剧本心声与自然内省规范）\n在思考推演阶段，请全程使用**纯简体中文**，严禁整段英文思考。若当前处于故事扮演、角色设定或对白情境中，请以角色或叙事视角揣摩对方的情绪潜台词、回顾本对话独立记忆与剧情伏笔；若为日常探讨，则自然推敲核心脉络。${fallbackTagHint}`
-        : `\n\n## 思考与心声语言铁律\n在思考推理阶段，严禁使用英文（如 "The user..."）或冷冰冰的第三方 AI 分析口吻！请全程使用纯简体中文，直接以「${actorName}」的第一人称自然展开此刻听完对方话后的真实内心想法与潜台词（60~100字左右）。${fallbackTagHint}`;
+      const zhThoughtNote =
+        `\n\n## 深度思考阶段规范\n在思考推理阶段，请全程使用**纯简体中文**，采用正版 DeepSeek-R1 清晰自然的第一人称思维流剖析问题核心、推敲边界条件、权衡方案并校验关键步骤，严禁整段英文思考，不要使用剧本扮演独白腔调。${fallbackTagHint}`;
       workingMessages[0].content += zhThoughtNote;
     } else {
       workingMessages[0].content +=
-        '\n\n## 极速直出要求\n当前未开启思考过程展示，请直接输出细腻自然、贴合当前对话设定与记忆的正式中文回复，不要在正文中输出 `<think>...</think>` 标签。';
+        '\n\n## 极速直出要求\n当前未开启思考过程展示，请直接输出干净清晰、贴合当前对话系统指令与记忆的正式中文回答，不要在正文中输出 `<think>...</think>` 标签。';
     }
   }
 

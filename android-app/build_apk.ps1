@@ -244,6 +244,7 @@ if ($LASTEXITCODE -ne 0) { throw "apksigner verify failed" }
 
 Copy-Item -Path $SignedStagingApk -Destination $OutApkRoot -Force
 Copy-Item -Path $SignedStagingApk -Destination $OutApkWeb -Force
+Copy-Item -Path $SignedStagingApk -Destination "$WorkspaceRoot\public\downloads\DeepSeek_星语随身版.apk" -Force
 
 $apkInfo = Get-Item $OutApkRoot
 Write-Output "APK_BUILD_SUCCESS: $($apkInfo.FullName) ($($apkInfo.Length) bytes)"

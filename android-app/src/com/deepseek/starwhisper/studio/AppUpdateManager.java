@@ -58,7 +58,7 @@ public class AppUpdateManager {
                 return pi.versionName.trim();
             }
         } catch (Exception ignored) {}
-        return "1.9.1";
+        return "1.9.2";
     }
 
     @SuppressWarnings("deprecation")
@@ -72,7 +72,7 @@ public class AppUpdateManager {
                 return pi.versionCode;
             }
         } catch (Exception ignored) {}
-        return 121L;
+        return 122L;
     }
 
     @SuppressWarnings("deprecation")
@@ -109,7 +109,7 @@ public class AppUpdateManager {
             obj.put("packageName", ctx.getPackageName());
             return obj.toString();
         } catch (Exception e) {
-            return "{\"versionName\":\"1.9.1\",\"versionCode\":121}";
+            return "{\"versionName\":\"1.9.2\",\"versionCode\":122}";
         }
     }
 

@@ -388,8 +388,8 @@ function extractAuthToken(req, parsedUrl = null) {
   return '';
 }
 
-const APP_LATEST_VERSION = '1.9.1';
-const APP_LATEST_VERSION_CODE = 121;
+const APP_LATEST_VERSION = '1.9.2';
+const APP_LATEST_VERSION_CODE = 122;
 const APP_OFFICIAL_CERT_SHA256 = '6fd05e32a3cabf327140129d866e55a342fe30daa3384c67aad4b3cbdd98a17b';
 const APP_UPDATE_TICKET_SECRET = crypto
   .createHash('sha256')
@@ -528,10 +528,11 @@ async function handleApi(req, res, pathname, parsedUrl) {
       githubReleasesUrl: 'https://github.com/qts2218346424-cyber/persona-chat-studio/releases',
       serverTime: Date.now(),
       changelog: [
-        '重构可靠原生更新引擎：直接穿透离线缓存请求云端版本库，实时读取真实安装包版本号与 SHA-256 完整性校验',
-        '支持签名票据鉴权安全直下、应用内实时下载进度/速率展示，并在校验通过后自动拉起 Android 系统安装器覆盖升级',
-        '联合 myui 与 Figma 重塑移动端 52px 极简三段式单行顶栏、高对比剧场磨砂卡片与全量零 Emoji 线性图标体系',
-        '对齐 dsh-Go 架构实现 DeepSeek API 直连 / 云端 API / 本地免 API 三档切换、多步屏幕感知规划与安全确认卡'
+        '网页端与移动端全链路 60fps 流畅度优化：流式输出 rAF 帧合批与原地 DOM 升级、2.5D 立绘按需休眠、静态资源预压缩 .gz 直出与 immutable 强缓存',
+        '修复手机端点击「养成」面板空白或溢出屏幕外的问题：锁定单列视口、提升右侧固定抽屉层级 (z-index: 120) 并在打开时即时刷新羁绊与日记数据',
+        '上线真正可用的双引擎混合语音输入：支持浏览器原生 Web Speech 实时听写 + 麦克风录音转硅基流动 Qwen3-ASR-1.7B 高精度语音识别',
+        '严格按模式隔离输入栏控件：在剧本模式与 DeepSeek 模式下彻底隐藏 + 号手机指令抽屉按钮，仅在手机辅助模式下展示',
+        '手机辅助模式与 DeepSeek 问答模式 100% 物理隔离：配备 38px 紧凑状态栏、4 分类多功能悬浮窗、50+ 离线指令库与原生 SHA-256 校验自动更新'
       ]
     };
 
@@ -4169,8 +4170,11 @@ function serveStatic(req, res, pathname) {
     const contentType = MIME_TYPES[ext] || 'application/octet-stream';
     const isHtml = ext === '.html';
     const isSw = safePath === 'sw.js';
+    const hasVersionParam = /[?&]v=[^&]+/.test(req.url || '');
 
-    let cacheHeader = 'public, max-age=2592000, stale-while-revalidate=86400';
+    let cacheHeader = hasVersionParam
+      ? 'public, max-age=31536000, immutable'
+      : 'public, max-age=2592000, stale-while-revalidate=86400';
     if (isHtml) {
       cacheHeader = 'no-cache, must-revalidate';
     } else if (isSw) {
@@ -4208,13 +4212,27 @@ function serveStatic(req, res, pathname) {
     };
 
     if (canGzip) {
-      headers['Content-Encoding'] = 'gzip';
-      res.writeHead(200, headers);
-      const rawStream = fs.createReadStream(resolvedPath);
-      const gzipStream = zlib.createGzip({ level: 6 });
-      rawStream.on('error', () => { if (!res.writableEnded) res.end(); });
-      gzipStream.on('error', () => { if (!res.writableEnded) res.end(); });
-      rawStream.pipe(gzipStream).pipe(res);
+      const precompressedGzPath = `${resolvedPath}.gz`;
+      fs.stat(precompressedGzPath, (gzErr, gzStats) => {
+        if (!gzErr && gzStats.isFile() && gzStats.mtimeMs >= stats.mtimeMs) {
+          headers['Content-Encoding'] = 'gzip';
+          headers['Content-Length'] = gzStats.size;
+          res.writeHead(200, headers);
+          const gzFileStream = fs.createReadStream(precompressedGzPath);
+          gzFileStream.on('error', () => {
+            if (!res.writableEnded) res.end();
+          });
+          gzFileStream.pipe(res);
+          return;
+        }
+        headers['Content-Encoding'] = 'gzip';
+        res.writeHead(200, headers);
+        const rawStream = fs.createReadStream(resolvedPath);
+        const gzipStream = zlib.createGzip({ level: 6 });
+        rawStream.on('error', () => { if (!res.writableEnded) res.end(); });
+        gzipStream.on('error', () => { if (!res.writableEnded) res.end(); });
+        rawStream.pipe(gzipStream).pipe(res);
+      });
     } else {
       headers['Content-Length'] = stats.size;
       res.writeHead(200, headers);

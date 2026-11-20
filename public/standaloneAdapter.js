@@ -2487,6 +2487,51 @@
       });
     }
 
+    if (pathname === '/api/asr/transcribe' && method === 'POST') {
+      const audioDataUrl = String(bodyObj?.audio_data_url || '').trim();
+      const sfKey =
+        (dbObj.settings.own_api_base_url || '').toLowerCase().includes('siliconflow.cn')
+          ? (dbObj.settings.deepseek_api_key || '').trim()
+          : '';
+      if (sfKey && audioDataUrl.startsWith('data:audio/')) {
+        try {
+          const commaIdx = audioDataUrl.indexOf(',');
+          const headerPart = audioDataUrl.slice(0, commaIdx);
+          const b64Part = audioDataUrl.slice(commaIdx + 1);
+          const mimeMatch = headerPart.match(/^data:(audio\/[a-zA-Z0-9.+-]+)/);
+          const mimeType = mimeMatch ? mimeMatch[1] : 'audio/webm';
+          const ext = mimeType.includes('mp4') || mimeType.includes('aac')
+            ? 'm4a'
+            : mimeType.includes('wav')
+            ? 'wav'
+            : mimeType.includes('ogg')
+            ? 'ogg'
+            : 'webm';
+          const binStr = atob(b64Part);
+          const bytes = new Uint8Array(binStr.length);
+          for (let i = 0; i < binStr.length; i++) bytes[i] = binStr.charCodeAt(i);
+          const formData = new FormData();
+          formData.append('file', new Blob([bytes], { type: mimeType }), `voice.${ext}`);
+          formData.append('model', 'Qwen/Qwen3-ASR-1.7B');
+          const sfRes = await originalFetch('https://api.siliconflow.cn/v1/audio/transcriptions', {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${sfKey}` },
+            body: formData,
+            signal
+          });
+          if (sfRes.ok) {
+            const sfData = await sfRes.json().catch(() => ({}));
+            return jsonResponse({ ok: true, text: String(sfData.text || '').trim() });
+          }
+        } catch {}
+      }
+      return jsonResponse({
+        ok: false,
+        fallback_web_speech: true,
+        error: '当前处于离线/独立模式，已切换为系统本地语音听写'
+      });
+    }
+
     return jsonResponse({ ok: true });
   }
 

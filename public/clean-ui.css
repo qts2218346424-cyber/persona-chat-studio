@@ -20,10 +20,10 @@
   grid-template-columns: 0px minmax(0, 1fr) 0px !important;
 }
 
-/* 柔和化背景星雾光球，降低色彩压迫感 */
+/* 柔和化背景星雾光球，移除高开销模糊滤镜 */
 .orb {
   opacity: light-dark(0.2, 0.14) !important;
-  filter: blur(95px) !important;
+  filter: none !important;
 }
 
 /* 2. 左侧导航栏降噪：消除厚重卡片堆叠感 */
@@ -209,7 +209,7 @@ details.sidebar-fold:not([open]) .fold-caret {
   border-radius: 16px;
   padding: 7px;
   background: var(--bg-composer);
-  backdrop-filter: blur(20px);
+  backdrop-filter: blur(10px);
   color: var(--text-primary);
   box-shadow: 0 14px 36px rgba(45, 22, 64, 0.16);
 }
@@ -429,7 +429,6 @@ details.sidebar-fold:not([open]) .fold-caret {
   width: 100%;
   max-width: min(880px, 100%) !important;
   gap: 12px !important;
-  transition: max-width 0.22s ease;
 }
 
 .app-shell.left-collapsed .messages-container,
@@ -442,12 +441,12 @@ details.sidebar-fold:not([open]) .fold-caret {
 }
 
 .persona-story-banner {
-  background: light-dark(rgba(255, 255, 255, 0.94), rgba(28, 22, 48, 0.92)) !important;
+  background: light-dark(rgba(255, 255, 255, 0.97), rgba(28, 22, 48, 0.95)) !important;
   color: light-dark(#1e293b, #f1f5f9) !important;
   border-color: light-dark(rgba(214, 51, 132, 0.16), rgba(244, 114, 182, 0.25)) !important;
   box-shadow: light-dark(0 2px 12px rgba(15, 23, 42, 0.05), 0 4px 16px rgba(0, 0, 0, 0.3)) !important;
-  backdrop-filter: blur(16px) !important;
-  -webkit-backdrop-filter: blur(16px) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
   padding: 14px 18px !important;
 }
 
@@ -559,7 +558,7 @@ details.sidebar-fold:not([open]) .fold-caret {
   border-color: var(--border-subtle) !important;
   padding: 10px 14px 8px !important;
   box-shadow: 0 6px 22px rgba(180, 110, 152, 0.08) !important;
-  transition: max-width 0.22s ease, border-color 0.16s ease, box-shadow 0.16s ease;
+  transition: border-color 0.16s ease, box-shadow 0.16s ease;
 }
 
 .app-shell.left-collapsed .composer-card,
@@ -616,7 +615,7 @@ details.sidebar-fold:not([open]) .fold-caret {
   border-radius: 999px;
   border: 1px solid light-dark(rgba(236, 94, 167, 0.34), rgba(236, 94, 167, 0.42));
   background: light-dark(rgba(255, 255, 255, 0.84), rgba(34, 28, 56, 0.84));
-  backdrop-filter: blur(12px);
+  backdrop-filter: blur(10px);
   color: var(--brand-primary);
   font-size: 12px;
   font-weight: 700;
@@ -647,7 +646,7 @@ details.sidebar-fold:not([open]) .fold-caret {
   padding: 7px 9px;
   border-radius: 15px;
   background: light-dark(rgba(255, 255, 255, 0.88), rgba(34, 28, 56, 0.88));
-  backdrop-filter: blur(16px);
+  backdrop-filter: blur(10px);
   border: 1px solid light-dark(rgba(236, 94, 167, 0.35), rgba(236, 94, 167, 0.42));
   box-shadow: 0 8px 24px rgba(196, 112, 162, 0.14);
 }
@@ -741,7 +740,7 @@ details.sidebar-fold:not([open]) .fold-caret {
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  transition: all 0.15s ease;
+  transition: border-color 0.15s ease, background-color 0.15s ease, color 0.15s ease;
 }
 
 .cv-mic-btn:hover {
@@ -955,7 +954,7 @@ dialog::backdrop {
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: border-color 0.15s ease, color 0.15s ease, background-color 0.15s ease;
 }
 
 .fim-tone-chip:hover {
@@ -1108,7 +1107,7 @@ dialog::backdrop {
   text-align: left;
   font: inherit;
   cursor: pointer;
-  transition: all 0.16s ease;
+  transition: border-color 0.16s ease, background-color 0.16s ease, transform 0.16s ease;
 }
 
 .easy-vibe-card strong {
@@ -2153,7 +2152,7 @@ dialog::backdrop {
   font: inherit;
   font-size: 12px;
   cursor: pointer;
-  transition: all 0.14s ease;
+  transition: border-color 0.14s ease, background-color 0.14s ease, color 0.14s ease;
 }
 
 .script-cast-chip small {
@@ -2769,7 +2768,7 @@ dialog::backdrop {
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.14s ease;
+  transition: border-color 0.14s ease, color 0.14s ease, background-color 0.14s ease;
 }
 
 .sq-like-btn.liked,
@@ -2885,8 +2884,8 @@ dialog::backdrop {
   display: flex;
   flex-direction: column;
   gap: 1px;
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   animation: dsMenuFadeIn 0.12s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
@@ -3014,7 +3013,7 @@ dialog::backdrop {
   border-radius: 999px;
   border: 1px solid var(--border-strong);
   background: var(--bg-composer);
-  backdrop-filter: blur(14px);
+  backdrop-filter: blur(10px);
   color: var(--text-primary);
   font-size: 12.5px;
   font-weight: 600;
@@ -4066,6 +4065,11 @@ dialog::backdrop {
   display: none !important;
 }
 
+.boot-splash.hidden,
+.boot-splash.hidden * {
+  animation: none !important;
+}
+
 .boot-splash-card {
   display: flex;
   flex-direction: column;
@@ -4128,7 +4132,7 @@ dialog::backdrop {
   line-height: 1.45;
   text-align: center;
   box-shadow: 0 12px 32px rgba(30, 18, 56, 0.22);
-  backdrop-filter: blur(14px);
+  backdrop-filter: blur(10px);
   pointer-events: none;
 }
 

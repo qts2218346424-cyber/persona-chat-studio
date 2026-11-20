@@ -1,13 +1,14 @@
 /* ==========================================================================
-   Phone Agent 手机端 AI 辅助助理与 dsh-Go 规划循环模块 (v1.9.1)
-   1. 对齐 myui 极简规范与零 Emoji 标准，支持 DeepSeek 直连 / 云端 API / 本地免 API 三档切换
-   2. 实现真实 ReAct 多步屏幕节点感知与 dsh-Go 操作安全确认卡 (允许本次 / 本轮放行 / 取消)
-   3. 接入原生 PackageManager 实时版本读取、签名票据直下、SHA-256 校验与系统安装器拉起
+   Phone Agent 手机端 AI 辅助助理与 dsh-Go 规划循环模块 (v1.9.2)
+   1. 与 DeepSeek 问答模式 100% 物理隔离：独立工作台卡片流、独立侧栏任务历史、独立控制台抽屉
+   2. 顶部单行紧凑状态条 + Bottom-Sheet 控制台 + 超薄单行胶囊输入舱
+   3. 5 大分类 50+ 本地离线指令库：智能打字、自动连刷视频、手势点选、系统媒体控制、35+ 应用与多步组合宏
+   4. 接入原生 PackageManager 实时版本读取、签名票据直下、SHA-256 校验与系统安装器拉起
    ========================================================================== */
 
 (() => {
-  const CURRENT_APK_VERSION = '1.9.1';
-  const CURRENT_APK_CODE = 121;
+  const CURRENT_APK_VERSION = '1.9.2';
+  const CURRENT_APK_CODE = 122;
   const PUBLIC_WEB_ORIGIN = 'https://star.claudexxb.online';
   const GITHUB_RELEASES_URL = 'https://github.com/qts2218346424-cyber/persona-chat-studio/releases';
 
@@ -16,10 +17,116 @@
     directModel: 'pa_direct_model_v1',
     directBaseUrl: 'pa_direct_baseurl_v1',
     autoApprove: 'pa_auto_approve_v1',
+    exclusiveKey: 'pa_exclusive_api_key_v1',
     keyPrimary: 'deepseek_user_api_key',
-    keyFallback: 'own_deepseek_api_key'
+    keyFallback: 'own_deepseek_api_key',
+    taskHistory: 'pa_task_history_v1'
   };
 
+  // 5 大分类本地离线指令库（mode: 'exec' 点击即执行 | 'fill' 填入输入框补全参数）
+  const LOCAL_COMMAND_CATALOG = [
+    {
+      id: 'video',
+      title: '刷视频',
+      items: [
+        { label: '自动刷视频', cmd: '自动刷视频', mode: 'exec', desc: '每8秒自动上滑切换' },
+        { label: '刷抖音', cmd: '打开抖音自动刷20个视频每8秒', mode: 'exec', desc: '开抖音并自动连刷' },
+        { label: '刷快手', cmd: '打开快手自动刷20个视频每8秒', mode: 'exec', desc: '开快手并自动连刷' },
+        { label: '刷视频并点赞', cmd: '自动刷20个视频每8秒并点赞', mode: 'exec', desc: '连刷同时随机点赞' },
+        { label: '停止刷视频', cmd: '停止刷视频', mode: 'exec', desc: '立即终止自动连刷' },
+        { label: '下一个视频', cmd: '下一个视频', mode: 'exec', desc: '快速上滑切下一条' },
+        { label: '上一个视频', cmd: '上一个视频', mode: 'exec', desc: '下滑回看上一条' },
+        { label: '双击点赞', cmd: '双击点赞', mode: 'exec', desc: '屏幕中心双击红心' },
+        { label: '暂停 / 播放', cmd: '暂停视频', mode: 'exec', desc: '轻点屏幕中心暂停' },
+        { label: '打开评论区', cmd: '看评论', mode: 'exec', desc: '智能定位评论按钮' },
+        { label: '点收藏', cmd: '点收藏', mode: 'exec', desc: '收藏当前视频' },
+        { label: '点关注', cmd: '点关注', mode: 'exec', desc: '关注当前创作者' }
+      ]
+    },
+    {
+      id: 'typing',
+      title: '打字 / 搜索',
+      items: [
+        { label: '打字填入...', cmd: '打字 ', mode: 'fill', desc: '填入当前输入框' },
+        { label: '输入并发送...', cmd: '输入并发送 ', mode: 'fill', desc: '填字后自动点发送' },
+        { label: '搜索内容...', cmd: '搜索 ', mode: 'fill', desc: '自动点搜索并输入' },
+        { label: '追加文字...', cmd: '追加输入 ', mode: 'fill', desc: '在原文字后继续追加' },
+        { label: '发消息...', cmd: '发消息 ', mode: 'fill', desc: '填入聊天框并发送' },
+        { label: '清空输入框', cmd: '清空输入框', mode: 'exec', desc: '清除当前输入框文字' },
+        { label: '粘贴剪贴板', cmd: '粘贴', mode: 'exec', desc: '将剪贴板内容粘贴上屏' },
+        { label: '短语：好的收到', cmd: '打字 好的，收到！', mode: 'exec', desc: '一键代打常用语' },
+        { label: '短语：稍等马上回', cmd: '打字 稍等一下，马上回复', mode: 'exec', desc: '一键代打常用语' },
+        { label: '短语：太棒了赞', cmd: '打字 太棒了，赞一个！', mode: 'exec', desc: '一键代打常用语' }
+      ]
+    },
+    {
+      id: 'gesture',
+      title: '手势 / 点选',
+      items: [
+        { label: '向下滑动', cmd: '下滑', mode: 'exec', desc: '向下翻页浏览' },
+        { label: '向上滑动', cmd: '上滑', mode: 'exec', desc: '向上翻页浏览' },
+        { label: '连续下滑3次', cmd: '下滑3次', mode: 'exec', desc: '连续下翻3屏' },
+        { label: '回到顶部', cmd: '回到顶部', mode: 'exec', desc: '连续上滑回顶部' },
+        { label: '滑到底部', cmd: '滑到底部', mode: 'exec', desc: '连续下滑至底部' },
+        { label: '向左滑动', cmd: '左滑', mode: 'exec', desc: '横向左滑切页' },
+        { label: '向右滑动', cmd: '右滑', mode: 'exec', desc: '横向右滑返回/切页' },
+        { label: '点击文字...', cmd: '点击 ', mode: 'fill', desc: '按屏幕文字精准点击' },
+        { label: '长按文字...', cmd: '长按 ', mode: 'fill', desc: '定位文字长按800ms' },
+        { label: '双击文字...', cmd: '双击 ', mode: 'fill', desc: '定位文字快速双击' },
+        { label: '点击屏幕中心', cmd: '点中间', mode: 'exec', desc: '轻点屏幕正中央' }
+      ]
+    },
+    {
+      id: 'system',
+      title: '系统 / 媒体',
+      items: [
+        { label: '回桌面', cmd: '回桌面', mode: 'exec', desc: '返回手机主屏幕' },
+        { label: '返回上一页', cmd: '返回', mode: 'exec', desc: '系统全局返回键' },
+        { label: '最近任务', cmd: '最近任务', mode: 'exec', desc: '呼出多任务后台' },
+        { label: '切回上个App', cmd: '切回上个应用', mode: 'exec', desc: '双击多任务快速切换' },
+        { label: '系统截屏', cmd: '截屏', mode: 'exec', desc: '截取当前手机画面' },
+        { label: '下拉通知栏', cmd: '通知', mode: 'exec', desc: '展开系统通知栏' },
+        { label: '控制中心', cmd: '控制中心', mode: 'exec', desc: '展开系统快捷开关' },
+        { label: '音量 +', cmd: '音量加', mode: 'exec', desc: '调高媒体音量' },
+        { label: '音量 -', cmd: '音量减', mode: 'exec', desc: '调低媒体音量' },
+        { label: '静音切换', cmd: '静音', mode: 'exec', desc: '切换媒体静音状态' },
+        { label: '锁定屏幕', cmd: '锁屏', mode: 'exec', desc: '立即息屏锁屏' },
+        { label: '读取当前屏幕', cmd: '__inspect_screen__', mode: 'exec', desc: '采集无障碍节点树' }
+      ]
+    },
+    {
+      id: 'apps',
+      title: '常用应用',
+      items: [
+        { label: '打开微信', cmd: '打开微信', mode: 'exec', desc: '直达微信' },
+        { label: '打开抖音', cmd: '打开抖音', mode: 'exec', desc: '直达抖音短视频' },
+        { label: '打开快手', cmd: '打开快手', mode: 'exec', desc: '直达快手短视频' },
+        { label: '打开小红书', cmd: '打开小红书', mode: 'exec', desc: '直达小红书' },
+        { label: '打开B站', cmd: '打开B站', mode: 'exec', desc: '直达哔哩哔哩' },
+        { label: '打开淘宝', cmd: '打开淘宝', mode: 'exec', desc: '直达手机淘宝' },
+        { label: '打开支付宝', cmd: '打开支付宝', mode: 'exec', desc: '直达支付宝' },
+        { label: '打开高德地图', cmd: '打开高德地图', mode: 'exec', desc: '直达高德导航' },
+        { label: '打开网易云', cmd: '打开网易云', mode: 'exec', desc: '直达网易云音乐' },
+        { label: '打开美团', cmd: '打开美团', mode: 'exec', desc: '直达美团外卖' },
+        { label: '打开系统设置', cmd: '打开设置', mode: 'exec', desc: '直达安卓系统设置' },
+        { label: '打开任意App...', cmd: '打开 ', mode: 'fill', desc: '输入已安装应用名' },
+        { label: '宏：开抖音并连刷', cmd: '打开抖音 然后 自动刷视频', mode: 'exec', desc: '多步离线组合宏' }
+      ]
+    }
+  ];
+
+  const EMPTY_GUIDE_PRESETS = [
+    { label: '自动刷视频', sub: '每8秒自动上滑切换', cmd: '自动刷视频', mode: 'exec' },
+    { label: '刷抖音短视频', sub: '打开抖音并自动连刷', cmd: '打开抖音自动刷20个视频每8秒', mode: 'exec' },
+    { label: '智能代打字...', sub: '自动填入底层输入框', cmd: '打字 ', mode: 'fill' },
+    { label: '输入并发送...', sub: '填字后自动点发送', cmd: '输入并发送 ', mode: 'fill' },
+    { label: '快捷搜索...', sub: '打开搜索框并查询', cmd: '搜索 ', mode: 'fill' },
+    { label: '系统截屏', sub: '一键截取当前屏幕', cmd: '截屏', mode: 'exec' }
+  ];
+
+  // 独立于 DeepSeek 问答会话的手机辅助专属 DOM 消息节点缓存
+  let paSessionNodes = [];
+  let activeCmdLibCategory = 'video';
   let installedAppsCache = null;
   let activeAbortController = null;
   let emergencyStopRequested = false;
@@ -38,6 +145,16 @@
     const b = getBridge();
     try {
       return Boolean(b && typeof b.isNativeApk === 'function' && b.isNativeApk());
+    } catch {
+      return false;
+    }
+  }
+
+  function isNativeAutoSwiping() {
+    if (!isNativeApk()) return false;
+    const b = getBridge();
+    try {
+      return Boolean(b && typeof b.isAutoSwipeRunning === 'function' && b.isAutoSwipeRunning());
     } catch {
       return false;
     }
@@ -97,7 +214,7 @@
         toastEl.classList.add('hidden');
       }, 3200);
     }
-    if (isNativeApk() && typeof getBridge().showToast === 'function' && String(msg || '').length < 48) {
+    if (isNativeApk() && typeof getBridge()?.showToast === 'function' && String(msg || '').length < 48) {
       try {
         getBridge().showToast(String(msg));
       } catch {}
@@ -146,7 +263,7 @@
       const saved = localStorage.getItem(STORAGE_KEYS.execMode);
       if (saved === 'api_direct' || saved === 'api_cloud' || saved === 'local') return saved;
     } catch {}
-    return 'api_direct';
+    return 'local';
   }
 
   function setExecMode(mode) {
@@ -165,6 +282,7 @@
     let autoApprove = false;
     try {
       apiKey = (
+        localStorage.getItem(STORAGE_KEYS.exclusiveKey) ||
         localStorage.getItem(STORAGE_KEYS.keyPrimary) ||
         localStorage.getItem(STORAGE_KEYS.keyFallback) ||
         ''
@@ -180,11 +298,9 @@
     const clean = String(key || '').trim();
     try {
       if (clean) {
-        localStorage.setItem(STORAGE_KEYS.keyPrimary, clean);
-        localStorage.setItem(STORAGE_KEYS.keyFallback, clean);
+        localStorage.setItem(STORAGE_KEYS.exclusiveKey, clean);
       } else {
-        localStorage.removeItem(STORAGE_KEYS.keyPrimary);
-        localStorage.removeItem(STORAGE_KEYS.keyFallback);
+        localStorage.removeItem(STORAGE_KEYS.exclusiveKey);
       }
     } catch {}
     const cfgInput = $('pa-cfg-apikey');
@@ -205,6 +321,237 @@
     if (mode === 'api_cloud') return '云端 API';
     if (mode === 'local') return '本地免 API';
     return 'DeepSeek API';
+  }
+
+  // ========= 独立手机辅助任务历史记录（与 DeepSeek 会话 100% 物理隔离） =========
+  function loadTaskHistory() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEYS.taskHistory);
+      const list = raw ? JSON.parse(raw) : [];
+      return Array.isArray(list) ? list : [];
+    } catch {
+      return [];
+    }
+  }
+
+  function recordTaskHistory(cmdText, mode) {
+    const clean = String(cmdText || '').trim();
+    if (!clean || clean === '__inspect_screen__') return;
+    try {
+      const prev = loadTaskHistory().filter((item) => item && item.cmd !== clean);
+      prev.unshift({
+        cmd: clean,
+        mode: getEngineLabel(mode || getExecMode()),
+        ts: Date.now()
+      });
+      localStorage.setItem(STORAGE_KEYS.taskHistory, JSON.stringify(prev.slice(0, 30)));
+    } catch {}
+    renderSidebarHistory();
+  }
+
+  function clearTaskHistory() {
+    try {
+      localStorage.removeItem(STORAGE_KEYS.taskHistory);
+    } catch {}
+    renderSidebarHistory();
+    showToast('已清空手机辅助历史指令记录');
+  }
+
+  function renderSidebarHistory() {
+    const container = $('pa-task-history-list');
+    if (!container) return;
+    const list = loadTaskHistory();
+    if (list.length === 0) {
+      container.innerHTML = `<div class="pa-history-empty">暂无最近执行的手机指令<br/>点击下方指令库或输入口令即可开始</div>`;
+      return;
+    }
+    container.innerHTML = list
+      .map((item) => {
+        const d = new Date(Number(item.ts) || Date.now());
+        const pad = (n) => String(n).padStart(2, '0');
+        const timeStr = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+        return `
+          <button type="button" class="pa-history-item" data-pa-hist-cmd="${escapeHtml(item.cmd)}">
+            <span class="pa-history-cmd">${escapeHtml(item.cmd)}</span>
+            <span class="pa-history-meta">${escapeHtml(item.mode || '本地免 API')} · ${timeStr}</span>
+          </button>
+        `;
+      })
+      .join('');
+    container.querySelectorAll('.pa-history-item').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const cmd = btn.getAttribute('data-pa-hist-cmd') || '';
+        if (!cmd) return;
+        window.__closeMobileDrawers?.();
+        executeTaskInChat(cmd);
+      });
+    });
+  }
+
+  function syncEmptyGuideVisibility() {
+    const guide = $('pa-empty-guide');
+    if (!guide) return;
+    const isPaMode = document.getElementById('app-shell')?.dataset.uiMode === 'phone-agent';
+    guide.classList.toggle('hidden', !isPaMode || paSessionNodes.length > 0);
+  }
+
+  function renderWorkspace() {
+    const container = $('messages-container');
+    if (!container) return;
+    container.innerHTML = '';
+    for (const node of paSessionNodes) {
+      container.appendChild(node);
+    }
+    syncEmptyGuideVisibility();
+    renderSidebarHistory();
+    syncStatus();
+    if (paSessionNodes.length > 0) {
+      scrollChatToBottom();
+    }
+  }
+
+  function resetTaskWorkspace() {
+    if (activeAbortController) {
+      try {
+        activeAbortController.abort();
+      } catch {}
+    }
+    emergencyStopRequested = true;
+    paSessionNodes = [];
+    const container = $('messages-container');
+    if (container) container.innerHTML = '';
+    closeControlSheet();
+    $('phone-cmd-quick-drawer')?.classList.add('hidden');
+    $('pa-open-cmdlib-btn')?.classList.remove('is-active');
+    syncEmptyGuideVisibility();
+    showToast('已重置手机辅助任务面板');
+  }
+
+  function onEnterMode() {
+    renderWorkspace();
+  }
+
+  // ========= Bottom-Sheet 控制台抽屉 & 分类离线指令库渲染 =========
+  function openControlSheet(focusApiKey = false) {
+    syncStatus();
+    $('pa-sheet-backdrop')?.classList.remove('hidden');
+    $('pa-control-sheet')?.classList.remove('hidden');
+    $('pa-cfg-toggle-btn')?.setAttribute('aria-expanded', 'true');
+    if (focusApiKey) {
+      $('pa-inline-config-drawer')?.classList.remove('hidden');
+      setTimeout(() => $('pa-cfg-apikey')?.focus(), 80);
+    }
+  }
+
+  function closeControlSheet() {
+    $('pa-sheet-backdrop')?.classList.add('hidden');
+    $('pa-control-sheet')?.classList.add('hidden');
+    $('pa-cfg-toggle-btn')?.setAttribute('aria-expanded', 'false');
+  }
+
+  function renderEmptyGuideTiles() {
+    const grid = $('pa-empty-guide-grid');
+    if (!grid) return;
+    grid.innerHTML = EMPTY_GUIDE_PRESETS.map(
+      (item) => `
+        <button type="button" class="pa-guide-tile" data-cmd="${escapeHtml(item.cmd)}" data-mode="${escapeHtml(item.mode)}">
+          <strong>${escapeHtml(item.label)}</strong>
+          <span>${escapeHtml(item.sub)}</span>
+        </button>
+      `
+    ).join('');
+
+    grid.querySelectorAll('.pa-guide-tile').forEach((tile) => {
+      tile.addEventListener('click', () => {
+        const cmd = tile.getAttribute('data-cmd') || '';
+        const mode = tile.getAttribute('data-mode') || 'exec';
+        handleCatalogItemTrigger(cmd, mode);
+      });
+    });
+  }
+
+  function renderCommandLibraryDrawer() {
+    const drawer = $('phone-cmd-quick-drawer');
+    if (!drawer) return;
+    const cat = LOCAL_COMMAND_CATALOG.find((c) => c.id === activeCmdLibCategory) || LOCAL_COMMAND_CATALOG[0];
+
+    drawer.innerHTML = `
+      <div class="pa-cmdlib-head">
+        <div class="pa-cmdlib-tabs" role="tablist" aria-label="离线指令分类">
+          ${LOCAL_COMMAND_CATALOG.map(
+            (c) => `
+              <button type="button" class="pa-cmdlib-tab ${c.id === cat.id ? 'active' : ''}" data-cat-id="${escapeHtml(c.id)}" role="tab" aria-selected="${c.id === cat.id}">
+                ${escapeHtml(c.title)}
+              </button>
+            `
+          ).join('')}
+        </div>
+        <button type="button" class="pa-cmdlib-close" id="pa-cmdlib-close-btn" title="收起指令库" aria-label="收起指令库">✕</button>
+      </div>
+      <div class="pa-cmdlib-grid">
+        ${cat.items
+          .map(
+            (item) => `
+              <button type="button" class="pa-cmd-item ${item.mode === 'fill' ? 'is-fill' : ''}" data-cmd="${escapeHtml(item.cmd)}" data-mode="${escapeHtml(item.mode)}">
+                <span>${escapeHtml(item.label)}</span>
+                <small>${escapeHtml(item.desc)}</small>
+              </button>
+            `
+          )
+          .join('')}
+      </div>
+    `;
+
+    drawer.querySelectorAll('.pa-cmdlib-tab').forEach((tabBtn) => {
+      tabBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        activeCmdLibCategory = tabBtn.getAttribute('data-cat-id') || 'video';
+        renderCommandLibraryDrawer();
+      });
+    });
+
+    drawer.querySelector('#pa-cmdlib-close-btn')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      drawer.classList.add('hidden');
+      $('pa-open-cmdlib-btn')?.classList.remove('is-active');
+    });
+
+    drawer.querySelectorAll('.pa-cmd-item').forEach((itemBtn) => {
+      itemBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const cmd = itemBtn.getAttribute('data-cmd') || '';
+        const mode = itemBtn.getAttribute('data-mode') || 'exec';
+        handleCatalogItemTrigger(cmd, mode);
+      });
+    });
+  }
+
+  function handleCatalogItemTrigger(cmd, mode) {
+    if (!cmd) return;
+    const drawer = $('phone-cmd-quick-drawer');
+    if (drawer) drawer.classList.add('hidden');
+    $('pa-open-cmdlib-btn')?.classList.remove('is-active');
+
+    if (cmd === '__inspect_screen__') {
+      inspectScreenInChat();
+      return;
+    }
+
+    const inputEl = $('chat-input');
+    if (mode === 'fill') {
+      if (inputEl) {
+        inputEl.value = cmd;
+        inputEl.dispatchEvent(new Event('input', { bubbles: true }));
+        inputEl.focus();
+        try {
+          inputEl.setSelectionRange(cmd.length, cmd.length);
+        } catch {}
+      }
+      showToast(`请补充「${cmd.trim()}」后的内容并点击右侧发送按钮`);
+      return;
+    }
+
+    executeTaskInChat(cmd);
   }
 
   function appendNativeConsoleLog(text) {
@@ -271,11 +618,11 @@
       const floatTag = $('pa-float-status-tag');
       if (floatTag) {
         floatTag.className = `phone-agent-status-tag ${floatOn ? 'active' : 'disabled'}`;
-        floatTag.textContent = floatOn ? '悬浮球运行中' : '悬浮球已停用';
+        floatTag.textContent = floatOn ? '悬浮窗运行中' : '悬浮窗已停用';
       }
       const toggleFloatBtn = $('pa-toggle-float-btn');
       if (toggleFloatBtn) {
-        toggleFloatBtn.textContent = floatOn ? '停用悬浮控制球' : '开启常驻悬浮控制球';
+        toggleFloatBtn.textContent = floatOn ? '停用多功能悬浮窗' : '开启常驻多功能悬浮窗';
       }
     }
   }
@@ -286,12 +633,18 @@
     const native = isNativeApk();
     const b = getBridge();
 
-    // 1. 引擎分段按钮选中态
-    document.querySelectorAll('#phone-agent-banner .pa-seg-btn').forEach((btn) => {
+    // 1. 控制台抽屉内引擎分段按钮选中态
+    document.querySelectorAll('.pa-seg-btn').forEach((btn) => {
       const active = btn.dataset.paMode === mode;
       btn.classList.toggle('active', active);
       btn.setAttribute('aria-selected', String(active));
     });
+
+    // 本地免 API 模式下自动折叠 API Key 输入面板，保持抽屉清爽
+    const cfgDrawer = $('pa-inline-config-drawer');
+    if (cfgDrawer) {
+      cfgDrawer.classList.toggle('hidden', mode === 'local');
+    }
 
     // 2. 同步配置抽屉表单默认值
     const keyInp = $('pa-cfg-apikey');
@@ -303,14 +656,38 @@
     const autoChk = $('pa-cfg-auto-approve');
     if (autoChk) autoChk.checked = Boolean(cfg.autoApprove);
 
-    // 3. 同步三个状态圆点胶囊 (#pa-banner-a11y-chip / #pa-banner-float-chip / #pa-banner-confirm-chip)
+    // 3. 同步权限状态与顶部单行紧凑栏
     let a11yOk = false;
     let floatOn = false;
+    let autoSwiping = false;
     if (native && b) {
       try {
         a11yOk = Boolean(b.isAccessibilityEnabled && b.isAccessibilityEnabled());
         floatOn = Boolean(b.isFloatAgentRunning && b.isFloatAgentRunning());
+        autoSwiping = Boolean(b.isAutoSwipeRunning && b.isAutoSwipeRunning());
       } catch {}
+    }
+
+    const compactDot = $('pa-compact-dot');
+    const compactEngineEl = $('pa-compact-engine-label');
+    const compactSubEl = $('pa-compact-status-sub');
+    if (compactEngineEl) {
+      compactEngineEl.textContent = getEngineLabel(mode);
+    }
+    if (compactDot && compactSubEl) {
+      compactDot.classList.remove('is-active', 'is-pending', 'is-running');
+      if (autoSwiping) {
+        compactDot.classList.add('is-running');
+        compactSubEl.textContent = '自动连刷视频中';
+      } else if (!native) {
+        compactSubEl.textContent = mode === 'local' ? '离线指令预览' : '网页规划预览';
+      } else if (a11yOk) {
+        compactDot.classList.add('is-active');
+        compactSubEl.textContent = floatOn ? '无障碍+悬浮窗就绪' : '无障碍已就绪';
+      } else {
+        compactDot.classList.add('is-pending');
+        compactSubEl.textContent = '点此开启无障碍';
+      }
     }
 
     const a11yChip = $('pa-banner-a11y-chip');
@@ -319,34 +696,38 @@
       a11yChip.classList.remove('active', 'pending', 'disabled');
       if (!native) {
         a11yChip.classList.add('disabled');
-        a11yText.textContent = '网页规划演示';
+        a11yText.textContent = '网页预览环境';
       } else if (a11yOk) {
         a11yChip.classList.add('active');
         a11yText.textContent = '无障碍已授权';
       } else {
         a11yChip.classList.add('pending');
-        a11yText.textContent = '无障碍未授权';
+        a11yText.textContent = '无障碍未授权 (点此开启)';
       }
     }
 
     const floatChip = $('pa-banner-float-chip');
     const floatText = $('pa-banner-float-text');
     const bannerFloatBtn = $('pa-banner-toggle-float-btn');
+    const floatBtnLabel = $('pa-float-btn-label');
     if (floatChip && floatText) {
       floatChip.classList.remove('active', 'pending', 'disabled');
       if (!native) {
         floatChip.classList.add('disabled');
-        floatText.textContent = '原生可用';
+        floatText.textContent = '悬浮窗 (APK可用)';
       } else if (floatOn) {
         floatChip.classList.add('active');
-        floatText.textContent = '悬浮球运行中';
+        floatText.textContent = '悬浮窗运行中';
       } else {
         floatChip.classList.add('disabled');
-        floatText.textContent = '悬浮球未启用';
+        floatText.textContent = '悬浮窗未启用';
       }
     }
     if (bannerFloatBtn) {
-      bannerFloatBtn.textContent = floatOn ? '停用悬浮球' : '悬浮球';
+      bannerFloatBtn.classList.toggle('is-active', floatOn);
+    }
+    if (floatBtnLabel) {
+      floatBtnLabel.textContent = floatOn ? '悬浮中' : '悬浮窗';
     }
 
     const confirmChip = $('pa-banner-confirm-chip');
@@ -358,11 +739,22 @@
         confirmText.textContent = '免确认自动执行';
       } else {
         confirmChip.classList.add('disabled');
-        confirmText.textContent = '需确认执行';
+        confirmText.textContent = '逐步安全确认';
       }
     }
 
-    // 4. 同步全屏设置副文本（如有显示）
+    const autoSwipeBtn = $('pa-sheet-autoswipe-btn');
+    const autoSwipeHint = $('pa-sheet-autoswipe-hint');
+    if (autoSwipeBtn) {
+      autoSwipeBtn.textContent = autoSwiping ? '停止连刷' : '开始连刷';
+      autoSwipeBtn.classList.toggle('danger', autoSwiping);
+    }
+    if (autoSwipeHint) {
+      autoSwipeHint.textContent = autoSwiping
+        ? '正在后台自动上滑刷视频，随时可点右侧停止或轻触悬浮球急停'
+        : '每 8 秒自动切换下一个视频，支持随时急停';
+    }
+
     const mfsEngineVal = $('mfs-phone-engine-value');
     if (mfsEngineVal) {
       mfsEngineVal.textContent =
@@ -472,7 +864,7 @@
     document.querySelector('.chat-stage')?.classList.remove('ds-empty-mode');
 
     const row = document.createElement('div');
-    row.className = 'msg-row user';
+    row.className = 'msg-row user pa-user-row';
 
     const wrap = document.createElement('div');
     wrap.className = 'user-msg-wrap';
@@ -483,7 +875,9 @@
 
     wrap.appendChild(bodyEl);
     row.appendChild(wrap);
+    paSessionNodes.push(row);
     container.appendChild(row);
+    syncEmptyGuideVisibility();
     scrollChatToBottom();
   }
 
@@ -509,14 +903,14 @@
             <rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect>
             <line x1="12" y1="18" x2="12.01" y2="18"></line>
           </svg>
-          <span>手机辅助规划 · dsh-Go</span>
+          <span>手机辅助 · dsh-Go</span>
         </div>
         <div style="display:flex;align-items:center;gap:6px;">
           <span class="pa-engine-badge">${escapeHtml(getEngineLabel(execMode))}</span>
           <button type="button" class="pa-banner-btn subtle pa-card-stop-btn" style="padding:3px 9px;font-size:11px;">停止</button>
         </div>
       </div>
-      <div class="pa-task-echo" style="font-size:12.5px;color:light-dark(#475569,#94a3b8);">任务目标：${escapeHtml(taskText)}</div>
+      <div class="pa-task-echo" style="font-size:12.5px;color:light-dark(#475569,#94a3b8);">任务指令：${escapeHtml(taskText)}</div>
       <div class="pa-steps-list"></div>
       <div class="pa-confirm-slot"></div>
       <div class="pa-fix-slot"></div>
@@ -525,7 +919,9 @@
     bodyEl.appendChild(card);
     row.appendChild(avatarEl);
     row.appendChild(bodyEl);
+    paSessionNodes.push(row);
     container.appendChild(row);
+    syncEmptyGuideVisibility();
     scrollChatToBottom();
 
     return {
@@ -630,7 +1026,7 @@
       <div class="pa-inline-fix-box">
         <div>${escapeHtml(messageText)}</div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-          <input type="password" class="pa-cfg-input pa-fix-key-inp" placeholder="输入 DeepSeek API Key (sk-...)" style="flex:1 1 180px;height:32px;" />
+          <input type="password" class="pa-cfg-input pa-fix-key-inp" placeholder="输入手机辅助专属 DeepSeek API Key (sk-...)" style="flex:1 1 180px;height:32px;" />
           <button type="button" class="pa-banner-btn pa-fix-save-btn">保存直连并继续</button>
           <button type="button" class="pa-banner-btn outline pa-fix-cloud-btn">改用云端 API</button>
           <button type="button" class="pa-banner-btn subtle pa-fix-local-btn">切换本地免 API</button>
@@ -721,13 +1117,12 @@
     const cfg = getDirectConfig();
     if (execMode === 'api_direct') {
       if (!cfg.apiKey) {
-        return { ok: false, code: 'NO_DIRECT_KEY', error: '个人 DeepSeek API 密钥尚未配置，请在上方填入密钥或切换至云端 API。' };
+        return { ok: false, code: 'NO_DIRECT_KEY', error: '手机辅助 DeepSeek API 密钥尚未配置，请填入密钥或切换至本地免 API / 云端 API。' };
       }
       const targetUrl = cfg.baseUrl || 'https://api.deepseek.com/v1/chat/completions';
       const targetModel = cfg.model || 'deepseek-chat';
       const messages = buildPlanningPromptMessages(task, screenNodes, history, screenSize, installedApps);
 
-      // 优先由客户端沙盒直连；如遇浏览器/WebView CORS 或 TLS 代理阻断，则经本地托管网关安全透传（不落盘）
       try {
         const directBody = {
           model: targetModel,
@@ -762,7 +1157,6 @@
         return { ok: true, plan, model: targetModel, engine: 'api_direct' };
       } catch (directErr) {
         if (directErr?.name === 'AbortError') throw directErr;
-        // CORS / 网络受限自动透传后端代理（Key 仅当前请求透传）
         const proxyRes = await apiPostJson(
           '/api/phone-agent/plan',
           {
@@ -788,7 +1182,6 @@
       }
     }
 
-    // 云端 API 模式
     const cloudRes = await apiPostJson(
       '/api/phone-agent/plan',
       {
@@ -822,7 +1215,7 @@
 
     const a11yOk = Boolean(b.isAccessibilityEnabled && b.isAccessibilityEnabled());
     if (!a11yOk && act !== 'launch_app' && act !== 'wait' && act !== 'done' && act !== 'ask_user') {
-      return { executed: false, error: true, text: '系统无障碍权限尚未开启，请先点上方「无障碍未授权」去开启服务' };
+      return { executed: false, error: true, text: '系统无障碍权限尚未开启，请先点上方状态栏开启无障碍服务' };
     }
 
     try {
@@ -878,7 +1271,9 @@
       if (act === 'input') {
         const txt = String(p.text || '');
         const viewId = String(p.viewId || '');
-        const ok = b.dispatchInputText(viewId, txt);
+        const ok = typeof b.dispatchSmartInput === 'function'
+          ? b.dispatchSmartInput(txt, false, false)
+          : b.dispatchInputText(viewId, txt);
         return { executed: Boolean(ok), error: !ok, text: ok ? `已向输入框填入文本` : '未能定位到可编辑输入框' };
       }
       if (act === 'home' || act === 'back' || act === 'recents') {
@@ -911,6 +1306,72 @@
     return true;
   }
 
+  // 判断是否为可直接命中本地离线指令库的口令（包含打字、刷视频、手势、系统控制、应用启动与多步组合宏）
+  function isSimpleBuiltInLocalCmd(text) {
+    const clean = String(text || '').trim();
+    if (!clean) return false;
+    if (/(?:然后|接着|[;；])/.test(clean)) return true;
+    if (/^(回桌面|桌面|主页|home|返回|后退|上一页|back|最近任务|多任务|后台|切回上个应用|上个应用|切上个app|切换应用|下拉通知|通知栏|通知|控制中心|快捷设置|快捷开关|截屏|截图|屏幕截图|锁屏|息屏|电源菜单|音量\+|音量-|音量加|音量减|调大音量|调小音量|增大音量|降低音量|静音|取消静音|切换静音|下一首|下一首歌|切歌|上一首|上一首歌|暂停音乐|播放音乐|继续播放|读屏幕|读取屏幕|查看屏幕|点中间|点击中间)$/i.test(clean)) {
+      return true;
+    }
+    if (/^(自动刷|连续刷|连刷|开始刷|定时刷|挂机刷|帮我刷|刷视频|刷抖音|刷快手|刷小红书|刷b站|刷哔哩哔哩|停止刷|别刷|停刷|停止连刷|停止自动|下一个视频|刷下一个|换一个|下一个|下个视频|上一个视频|回看上一个|上一个|上个视频|双击点赞|点赞|点红心|点个赞|喜欢|暂停视频|播放视频|暂停播放|暂停\/播|看评论|打开评论|评论区|点收藏|收藏视频|收藏|点关注|关注作者|分享视频|转发视频|转发)/i.test(clean)) {
+      return true;
+    }
+    if (/.*刷\s*\d+\s*(?:个|条).*视频.*/i.test(clean)) {
+      return true;
+    }
+    if (/^(打字并发送|输入并发送|发送消息|发消息|发送文字|回复|评论|追加输入|接着打字|接着输入|追加|帮我打字|打字|输入|填入|写字|清空输入框|清空输入|清空文字|清除输入|删掉输入|粘贴|粘贴剪贴板|粘贴文字|搜索|搜一下|查一下|查找)\b/i.test(clean) ||
+        /^(打字并发送|输入并发送|发送消息|发消息|发送文字|回复|评论|追加输入|接着打字|接着输入|追加|帮我打字|打字|输入|填入|写字|搜索|搜一下|查一下|查找)\s*.+/i.test(clean)) {
+      return true;
+    }
+    if (/^(回到顶部|滚到顶部|回顶部|最上面|滑到底部|滚到底部|最下面|(?:连续)?(?:下滑|向下|下翻|上滑|向上|上翻|左滑|向左|右滑|向右)(?:\s*\d+\s*次)?)$/i.test(clean)) {
+      return true;
+    }
+    if (/^(打开|启动|进入|运行)\s*\S+/i.test(clean) && !/(?:然后|并且|帮我找|发给)/.test(clean)) {
+      return true;
+    }
+    if (/^(点击|点一下|按下|点|长按|双击)\s*\S+/i.test(clean) && clean.length <= 24) {
+      return true;
+    }
+    return false;
+  }
+
+  // 网页预览环境下的本地离线规则解析器（在非 APK 浏览器里也能直观验证离线指令库）
+  function simulateWebLocalPreview(cmdText) {
+    const clean = String(cmdText || '').trim();
+    const lower = clean.toLowerCase();
+    if (/(?:然后|接着|[;；])/.test(clean)) {
+      const steps = clean.split(/(?:然后|接着|[;；])+/).map((s) => s.trim()).filter(Boolean);
+      return `已解析为 ${steps.length} 步离线组合宏：${steps.join(' → ')}（安装随身版 APK 后可在真机免 API 自动连续执行）`;
+    }
+    if (lower.includes('停止刷') || lower.includes('别刷') || lower.includes('停止连刷')) {
+      return '离线引擎预览：立即终止后台自动连刷视频定时器并恢复待命';
+    }
+    if (lower.includes('刷') && (lower.includes('视频') || lower.includes('抖音') || lower.includes('快手') || lower.includes('小红书') || lower.includes('b站'))) {
+      const cnt = (clean.match(/(\d+)\s*(?:个|条)/) || [])[1] || '20';
+      const sec = (clean.match(/(?:每|间隔)\s*(\d+)\s*秒/) || [])[1] || '8';
+      const like = lower.includes('赞') ? ' + 随机双击点赞' : '';
+      return `离线连刷引擎预览：自动循环上滑刷 ${cnt} 条短视频（间隔 ${sec} 秒${like}，悬浮球实时显示进度并支持轻触急停）`;
+    }
+    if (/^(打字并发送|输入并发送|发消息|回复|评论)/.test(clean)) {
+      const body = clean.replace(/^(打字并发送|输入并发送|发消息|回复|评论)\s*/, '');
+      return `离线智能打字预览：自动定位底层应用输入框 → 填入「${body}」→ 自动点击「发送/发布」按钮`;
+    }
+    if (/^(追加输入|接着打字|追加)/.test(clean)) {
+      const body = clean.replace(/^(追加输入|接着打字|追加)\s*/, '');
+      return `离线追加打字预览：保留原输入框已有文字，在末尾追加「${body}」`;
+    }
+    if (/^(帮我打字|打字|输入|填入|写字)/.test(clean)) {
+      const body = clean.replace(/^(帮我打字|打字|输入|填入|写字)\s*/, '');
+      return `离线智能打字预览：自动聚焦当前屏幕可见 EditText 输入框并填入「${body}」（支持剪贴板粘贴兜底）`;
+    }
+    if (/^(搜索|搜一下|查一下|查找)/.test(clean)) {
+      const kw = clean.replace(/^(搜索|搜一下|查一下|查找)\s*/, '');
+      return `离线搜索预览：自动点击屏幕搜索栏 → 填入关键词「${kw}」并触发搜索`;
+    }
+    return `已命中本地离线指令「${clean}」（在安卓随身版 APK 中无需配置 API Key 即可毫秒级直控手机）`;
+  }
+
   function tryExecuteLocalQuickCommand(cmdText) {
     const clean = String(cmdText || '').trim();
     if (!isNativeApk()) {
@@ -919,20 +1380,21 @@
     const b = getBridge();
     if (!b) return { handled: false, reason: 'no_bridge' };
 
-    // 1. 若明确是「打开 XXX」且原生支持动态应用匹配，优先拉起全量已安装应用
+    // 1. 先交由原生丰富离线规则引擎处理（支持组合宏、刷视频、智能打字、搜索、音量、截屏、35+应用等）
+    if (typeof b.executeLocalRule === 'function') {
+      const msg = String(b.executeLocalRule(clean) || '');
+      if (isLocalRuleSucceeded(msg)) {
+        setTimeout(syncStatus, 250);
+        return { handled: true, summary: msg.replace(/^UNMATCHED:/, '') };
+      }
+    }
+
+    // 2. 兜底匹配动态打开应用
     const openMatch = clean.match(/^(?:打开|启动|进入|运行)\s*(.+)$/);
     if (openMatch && typeof b.launchAppByName === 'function') {
       const appName = openMatch[1].trim();
       const ok = b.launchAppByName(appName);
       if (ok) return { handled: true, summary: `已为您直接拉起「${appName}」` };
-    }
-
-    // 2. 执行原生本地指令集（全局系统键、滑动手势、点击文字、输入框填字）
-    if (typeof b.executeLocalRule === 'function') {
-      const msg = String(b.executeLocalRule(clean) || '');
-      if (isLocalRuleSucceeded(msg)) {
-        return { handled: true, summary: msg.replace(/^UNMATCHED:/, '') };
-      }
     }
 
     // 3. 兜底识别「点击 XXX」
@@ -943,12 +1405,6 @@
       if (ok) return { handled: true, summary: `已点击屏幕上「${target}」` };
     }
     return { handled: false, reason: 'unmatched' };
-  }
-
-  function isSimpleBuiltInLocalCmd(text) {
-    return /^(回桌面|桌面|返回|后退|下滑|向下|上滑|向上|左滑|右滑|最近任务|多任务|下拉通知|通知栏|打开微信|微信|打开设置|设置)$/.test(
-      String(text || '').trim()
-    );
   }
 
   async function runReActLoop(taskText, cardCtx, overrideMode = null) {
@@ -979,51 +1435,83 @@
         try {
           activeAbortController.abort();
         } catch {}
+        if (native && b && typeof b.stopAutoSwipeVideos === 'function') {
+          try {
+            b.stopAutoSwipeVideos();
+          } catch {}
+        }
         if (cardCtx.stopBtn) {
           cardCtx.stopBtn.disabled = true;
           cardCtx.stopBtn.textContent = '已停止';
         }
         if (native && b && typeof b.updateFloatState === 'function') {
           try {
-            b.updateFloatState('idle', '任务已手动中止');
+            b.updateFloatState('idle', '星语 AI');
           } catch {}
         }
+        syncStatus();
       };
     }
 
-    // 分支 A：本地免 API 模式，或者明确点击内置无参手势快捷按钮时直达本地极速引擎
-    if (execMode === 'local' || isSimpleBuiltInLocalCmd(taskText)) {
+    // 分支 A：本地免 API 模式，或命中内置丰富离线指令库时直达本地极速引擎
+    const matchedOffline = isSimpleBuiltInLocalCmd(taskText);
+    if (execMode === 'local' || matchedOffline) {
       if (!native) {
-        addStepItem(
-          cardCtx.stepsList,
-          1,
-          '本地口令检测',
-          '当前处于浏览器环境，无法直接触达手机无障碍服务。',
-          '请在安卓设备上安装星语随身版 APK，或在上方切换「DeepSeek API」进行云端规划推演。',
-          false
-        );
+        if (matchedOffline) {
+          addStepItem(
+            cardCtx.stepsList,
+            1,
+            '命中本地离线指令库',
+            '网页预览环境模拟执行（免 API Key）',
+            simulateWebLocalPreview(taskText),
+            false
+          );
+        } else {
+          addStepItem(
+            cardCtx.stepsList,
+            1,
+            '超出固定离线口令范围',
+            '该任务包含复杂动态语义，建议切换至「DeepSeek API / 云端 API」进行多步识屏规划。',
+            '也可点击下方按钮切换引擎重试',
+            true
+          );
+          showInlineFixBox(
+            cardCtx.fixSlot,
+            '复杂多步任务需要大模型识屏规划，可切换至 API 引擎继续：',
+            (nextMode) => runReActLoop(taskText, cardCtx, nextMode)
+          );
+        }
         if (cardCtx.stopBtn) cardCtx.stopBtn.classList.add('hidden');
         return;
       }
+
       const res = tryExecuteLocalQuickCommand(taskText);
       if (res.handled) {
-        addStepItem(cardCtx.stepsList, 1, taskText, '命中本地离线指令库，毫秒级直控', res.summary, false);
-        appendNativeConsoleLog(`本地执行成功: ${taskText}`);
-        if (cardCtx.stopBtn) cardCtx.stopBtn.classList.add('hidden');
+        addStepItem(cardCtx.stepsList, 1, taskText, '命中本地离线指令库 · 免 API 毫秒级直控', res.summary, false);
+        appendNativeConsoleLog(`本地执行成功: ${taskText} -> ${res.summary}`);
+        // 若启动了自动连刷视频，保留卡片上的「停止连刷」按钮以便一键叫停
+        if (isNativeAutoSwiping() && cardCtx.stopBtn) {
+          cardCtx.stopBtn.classList.remove('hidden');
+          cardCtx.stopBtn.textContent = '停止连刷';
+        } else if (cardCtx.stopBtn) {
+          cardCtx.stopBtn.classList.add('hidden');
+        }
+        syncStatus();
         return;
       }
+
       if (execMode === 'local') {
         addStepItem(
           cardCtx.stepsList,
           1,
-          '本地口令未匹配',
-          '「本地免 API」仅支持固定手势与「打开 应用名 / 点击 文字 / 输入 内容」。',
-          '复杂多步任务需要大模型识屏决策',
+          '本地离线口令未匹配',
+          '支持口令：自动刷视频、下一个视频、双击点赞、打字 [内容]、输入并发送 [内容]、搜索 [词]、打开 [应用]、点击 [文字]、截屏、下滑3次，或用“然后”串联多步。',
+          '更复杂的跨应用推理任务可切换 API 模式自动识屏规划',
           true
         );
         showInlineFixBox(
           cardCtx.fixSlot,
-          '该复杂任务超出本地固定口令范围，建议立即切换为 API 智能规划：',
+          '该任务超出本地离线口令范围，是否切换为 API 智能识屏规划？',
           (nextMode) => runReActLoop(taskText, cardCtx, nextMode)
         );
         if (cardCtx.stopBtn) cardCtx.stopBtn.classList.add('hidden');
@@ -1088,7 +1576,7 @@
         updateStepResult(pendingStepEl, planResp.error || '未能获取有效规划指令', true);
         showInlineFixBox(
           cardCtx.fixSlot,
-          planResp.error || '当前 API 不可用，您可以填入密钥或切换引擎后继续：',
+          planResp.error || '当前 API 不可用，您可以填入密钥或切换本地免 API 引擎：',
           (nextMode) => runReActLoop(taskText, cardCtx, nextMode)
         );
         break;
@@ -1113,7 +1601,6 @@
         break;
       }
 
-      // dsh-Go 安全确认关口：非 wait 动作在未开启免确认模式时，弹窗请求人工确认
       const needsConfirm = plan.action !== 'wait' && (!roundAutoApproved || plan.needConfirm);
       if (needsConfirm) {
         updateStepResult(pendingStepEl, '等待用户安全确认...', false);
@@ -1144,7 +1631,6 @@
         result: execRes.text
       });
 
-      // 网页端单次演示推演完成后即止，防止无意义的真机死循环
       if (!native) {
         addStepItem(
           cardCtx.stepsList,
@@ -1161,21 +1647,28 @@
       await sleep(waitTime);
     }
 
-    if (native && b && typeof b.updateFloatState === 'function') {
+    if (native && b && typeof b.updateFloatState === 'function' && !isNativeAutoSwiping()) {
       try {
-        b.updateFloatState('idle', '待命');
+        b.updateFloatState('idle', '星语 AI');
       } catch {}
     }
-    if (cardCtx.stopBtn) {
+    if (cardCtx.stopBtn && !isNativeAutoSwiping()) {
       cardCtx.stopBtn.classList.add('hidden');
     }
+    syncStatus();
   }
 
   async function executeTaskInChat(taskText) {
     const clean = String(taskText || '').trim();
     if (!clean) return;
-    appendUserMessageRow(clean);
+    // 确保处于手机辅助模式
+    const shell = document.getElementById('app-shell');
+    if (shell && shell.dataset.uiMode !== 'phone-agent') {
+      document.getElementById('ws-mode-phone-agent')?.click();
+    }
     const mode = getExecMode();
+    recordTaskHistory(clean, mode);
+    appendUserMessageRow(clean);
     const cardCtx = createAgentCardRow(clean, mode);
     if (!cardCtx) return;
     await runReActLoop(clean, cardCtx, mode);
@@ -1191,7 +1684,7 @@
         1,
         '非原生 APK 环境',
         '浏览器无法读取系统桌面或其他应用屏幕控件。',
-        '请在 Android 手机安装随身版 APK 并开启无障碍权限后点击「读取屏幕」。',
+        '请在 Android 手机安装随身版 APK 并开启无障碍权限后点击「读取当前屏幕」。',
         false
       );
       cardCtx.stopBtn?.classList.add('hidden');
@@ -1214,6 +1707,24 @@
     );
     cardCtx.stopBtn?.classList.add('hidden');
   }
+
+  // 接收来自原生悬浮窗「交给星语 AI 规划」传回的任务
+  window.__receiveFloatAgentTask = (taskText) => {
+    const clean = String(taskText || '').trim();
+    const shell = document.getElementById('app-shell');
+    if (shell && shell.dataset.uiMode !== 'phone-agent') {
+      document.getElementById('ws-mode-phone-agent')?.click();
+    }
+    if (!clean) {
+      showToast('已回到星语手机辅助工作台');
+      return;
+    }
+    if (getExecMode() === 'local' && !isSimpleBuiltInLocalCmd(clean)) {
+      const cfg = getDirectConfig();
+      setExecMode(cfg.apiKey ? 'api_direct' : 'api_cloud');
+    }
+    executeTaskInChat(clean);
+  };
 
   function formatBytesMb(bytes) {
     const n = Number(bytes) || 0;
@@ -1372,7 +1883,6 @@
       );
       return;
     }
-    // 网页端或旧桥接：跳转到鉴权直链或官网主页
     const dlUrl = info.fallbackDownloadUrl || info.downloadUrl || `${PUBLIC_WEB_ORIGIN}/api/download/apk`;
     openExternalDownloadUrl(dlUrl);
   }
@@ -1522,7 +2032,6 @@
         nativeCheckTimeoutId = setTimeout(async () => {
           pendingNativeCheckResolve = null;
           nativeCheckTimeoutId = null;
-          // 超时自动回退 JS 直连云端版本接口（带 CORS 头）
           const fb = await fetchWebAppVersionDirect(localInfo);
           resolve(fb);
         }, 15000);
@@ -1626,8 +2135,15 @@
     if (dlg && dlg.open) dlg.close();
   }
 
+  function toggleCmdLibDrawer() {
+    const drawer = $('phone-cmd-quick-drawer');
+    if (!drawer) return;
+    const isHidden = drawer.classList.toggle('hidden');
+    $('pa-open-cmdlib-btn')?.classList.toggle('is-active', !isHidden);
+  }
+
   function bindUiEvents() {
-    // 0. 新版更新弹窗关闭/取消按钮 (#app-update-dialog)
+    // 0. 更新弹窗关闭/取消按钮 (#app-update-dialog)
     const closeUpdateDialog = () => {
       if (isDownloadingUpdate) {
         const b = getBridge();
@@ -1642,39 +2158,56 @@
     $('upd-close-btn')?.addEventListener('click', closeUpdateDialog);
     $('upd-cancel-btn')?.addEventListener('click', closeUpdateDialog);
 
-    // 1. 引擎分段切换 (#pa-mode-api-direct / #pa-mode-api-cloud / #pa-mode-local)
-    document.querySelectorAll('#phone-agent-banner .pa-seg-btn').forEach((btn) => {
+    // 1. 顶部紧凑栏与 Bottom-Sheet 控制台抽屉开关
+    $('pa-open-sheet-btn')?.addEventListener('click', () => openControlSheet(false));
+    $('pa-cfg-toggle-btn')?.addEventListener('click', () => {
+      const sheet = $('pa-control-sheet');
+      if (sheet && !sheet.classList.contains('hidden')) {
+        closeControlSheet();
+      } else {
+        openControlSheet(false);
+      }
+    });
+    $('pa-sheet-close-btn')?.addEventListener('click', closeControlSheet);
+    $('pa-sheet-backdrop')?.addEventListener('click', closeControlSheet);
+    $('pa-open-cmdlib-btn')?.addEventListener('click', toggleCmdLibDrawer);
+
+    // 左侧栏手机辅助专属按钮
+    $('pa-sidebar-new-task-btn')?.addEventListener('click', () => {
+      window.__closeMobileDrawers?.();
+      resetTaskWorkspace();
+    });
+    $('pa-sidebar-open-sheet-btn')?.addEventListener('click', () => {
+      window.__closeMobileDrawers?.();
+      openControlSheet(false);
+    });
+    $('pa-sidebar-open-cmdlib-btn')?.addEventListener('click', () => {
+      window.__closeMobileDrawers?.();
+      const drawer = $('phone-cmd-quick-drawer');
+      if (drawer) {
+        drawer.classList.remove('hidden');
+        $('pa-open-cmdlib-btn')?.classList.add('is-active');
+      }
+    });
+    $('pa-clear-history-btn')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      clearTaskHistory();
+    });
+
+    // 2. 引擎分段切换 (#pa-mode-api-direct / #pa-mode-api-cloud / #pa-mode-local)
+    document.querySelectorAll('.pa-seg-btn').forEach((btn) => {
       btn.addEventListener('click', () => {
         const mode = btn.dataset.paMode;
         setExecMode(mode);
         const cfg = getDirectConfig();
         if (mode === 'api_direct' && !cfg.apiKey) {
-          const drawer = $('pa-inline-config-drawer');
-          const toggle = $('pa-cfg-toggle-btn');
-          if (drawer) drawer.classList.remove('hidden');
-          if (toggle) toggle.setAttribute('aria-expanded', 'true');
+          $('pa-inline-config-drawer')?.classList.remove('hidden');
           $('pa-cfg-apikey')?.focus();
-          showToast('已切换到 DeepSeek API 直连，请先填入密钥并保存');
+          showToast('已切换至 DeepSeek API 直连，请在下方填入密钥并保存');
         } else {
           showToast(`手机辅助已切换至「${getEngineLabel(mode)}」`);
         }
       });
-    });
-
-    // 2. 配置抽屉展开/收起 (#pa-cfg-toggle-btn)
-    $('pa-cfg-toggle-btn')?.addEventListener('click', () => {
-      const drawer = $('pa-inline-config-drawer');
-      const btn = $('pa-cfg-toggle-btn');
-      if (!drawer) return;
-      const isHidden = drawer.classList.toggle('hidden');
-      if (btn) btn.setAttribute('aria-expanded', String(!isHidden));
-      if (!isHidden) {
-        const cfg = getDirectConfig();
-        if ($('pa-cfg-apikey')) $('pa-cfg-apikey').value = cfg.apiKey;
-        if ($('pa-cfg-model')) $('pa-cfg-model').value = cfg.model;
-        if ($('pa-cfg-baseurl')) $('pa-cfg-baseurl').value = cfg.baseUrl;
-        if ($('pa-cfg-auto-approve')) $('pa-cfg-auto-approve').checked = cfg.autoApprove;
-      }
     });
 
     // 3. 配置保存应用 (#pa-cfg-save-btn)
@@ -1691,16 +2224,16 @@
         localStorage.setItem(STORAGE_KEYS.autoApprove, autoApprove ? '1' : '0');
       } catch {}
 
-      $('pa-inline-config-drawer')?.classList.add('hidden');
-      $('pa-cfg-toggle-btn')?.setAttribute('aria-expanded', 'false');
+      closeControlSheet();
       syncStatus();
-      showToast('手机辅助 API 参数与确认策略已保存并生效');
+      showToast('手机辅助独立参数与确认策略已保存');
     });
 
-    // 4. 三大状态胶囊与右侧快捷按钮联动
+    // 4. 权限状态胶囊与悬浮窗/自动刷视频快捷开关
     const handleOpenA11y = () => {
       if (!isNativeApk()) {
-        showToast('当前为网页端：请先在安卓设备安装随身版 APK 后再开启无障碍服务');
+        showToast('当前为网页端：请在安卓设备安装随身版 APK 后开启无障碍服务');
+        closeControlSheet();
         openModal();
         return;
       }
@@ -1711,12 +2244,12 @@
       setTimeout(syncStatus, 1000);
     };
     $('pa-banner-a11y-chip')?.addEventListener('click', handleOpenA11y);
-    $('pa-banner-open-a11y-btn')?.addEventListener('click', handleOpenA11y);
     $('pa-open-a11y-btn')?.addEventListener('click', handleOpenA11y);
 
     const handleToggleFloat = () => {
       if (!isNativeApk()) {
-        showToast('悬浮控球功能需在 Android 原生随身版 APK 中运行');
+        showToast('多功能桌面悬浮窗需在 Android 原生随身版 APK 中运行');
+        closeControlSheet();
         openModal();
         return;
       }
@@ -1724,7 +2257,7 @@
       try {
         if (b.isFloatAgentRunning && b.isFloatAgentRunning()) {
           b.stopFloatAgent();
-          showToast('已停用桌面悬浮控球');
+          showToast('已停用桌面多功能悬浮窗');
         } else {
           if (b.hasOverlayPermission && !b.hasOverlayPermission()) {
             b.requestOverlayPermission();
@@ -1732,10 +2265,10 @@
             return;
           }
           b.startFloatAgent();
-          showToast('已开启桌面悬浮控制球');
+          showToast('已开启桌面多功能悬浮窗（可刷视频、智能打字、快捷控制）');
         }
       } catch (e) {
-        showToast(`操作悬浮球失败: ${e?.message || e}`);
+        showToast(`操作悬浮窗失败: ${e?.message || e}`);
       }
       setTimeout(syncStatus, 350);
     };
@@ -1748,27 +2281,24 @@
       setAutoApprove(nextVal);
       showToast(
         nextVal
-          ? '已开启 dsh-Go 免确认自动执行（敏感高风险步仍建议留心）'
+          ? '已开启 dsh-Go 免确认自动执行'
           : '已切换为逐步安全确认模式'
       );
     });
 
-    // 5. 快捷指令芯片组 (#phone-agent-banner .pa-quick-chip)
-    document.querySelectorAll('#phone-agent-banner .pa-quick-chip').forEach((chip) => {
-      chip.addEventListener('click', () => {
-        const cmd = chip.dataset.cmd || '';
-        if (!cmd) return;
-        if (cmd === '__inspect_screen__') {
-          inspectScreenInChat();
-        } else {
-          executeTaskInChat(cmd);
-        }
-      });
+    $('pa-sheet-autoswipe-btn')?.addEventListener('click', () => {
+      closeControlSheet();
+      if (isNativeAutoSwiping()) {
+        executeTaskInChat('停止刷视频');
+      } else {
+        executeTaskInChat('自动刷视频');
+      }
     });
 
-    // 6. 原生面板弹窗内的绑定 (#apk-download-modal)
+    // 5. 原生面板弹窗内的绑定 (#apk-download-modal)
     $('more-apk-download-btn')?.addEventListener('click', openModal);
     $('topbar-apk-download-btn')?.addEventListener('click', openModal);
+    $('sidebar-apk-download-btn')?.addEventListener('click', openModal);
     $('apk-modal-close-btn')?.addEventListener('click', closeModal);
     $('anv-check-update-btn')?.addEventListener('click', () => checkUpdate(false));
 
@@ -1797,10 +2327,25 @@
           appendNativeConsoleLog(res.summary);
           showToast(res.summary);
         } else {
-          appendNativeConsoleLog(`未命中本地直控或未在原生环境: ${cmd}`);
-          showToast('请在原生环境打开无障碍后测试，或在手机辅助聊天页运行');
+          appendNativeConsoleLog(`预览指令: ${cmd} -> ${simulateWebLocalPreview(cmd)}`);
+          showToast(simulateWebLocalPreview(cmd));
         }
       });
+    });
+
+    // 6. ESC 关闭控制台抽屉或指令库
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        const sheet = $('pa-control-sheet');
+        if (sheet && !sheet.classList.contains('hidden')) {
+          closeControlSheet();
+        }
+        const cmdDrawer = $('phone-cmd-quick-drawer');
+        if (cmdDrawer && !cmdDrawer.classList.contains('hidden')) {
+          cmdDrawer.classList.add('hidden');
+          $('pa-open-cmdlib-btn')?.classList.remove('is-active');
+        }
+      }
     });
 
     // 7. 切回应用或获得焦点时刷新权限状态
@@ -1813,7 +2358,11 @@
   }
 
   function init() {
+    renderEmptyGuideTiles();
+    renderCommandLibraryDrawer();
+    renderSidebarHistory();
     bindUiEvents();
+
     const updDlg = $('app-update-dialog');
     if (updDlg) {
       updDlg.addEventListener('cancel', () => {
@@ -1827,7 +2376,6 @@
       });
     }
     syncStatus();
-    // 原生 APK 启动时静默检查一次更新（仅同步最新标记，不打断操作）
     if (isNativeApk()) {
       setTimeout(() => checkUpdate(true), 2500);
     }
@@ -1843,6 +2391,7 @@
     currentVersion: CURRENT_APK_VERSION,
     currentVersionCode: CURRENT_APK_CODE,
     githubReleasesUrl: GITHUB_RELEASES_URL,
+    catalog: LOCAL_COMMAND_CATALOG,
     get isNative() {
       return isNativeApk();
     },
@@ -1855,6 +2404,11 @@
     checkUpdate,
     executeTaskInChat,
     inspectScreenInChat,
+    onEnterMode,
+    renderWorkspace,
+    resetTaskWorkspace,
+    openControlSheet,
+    closeControlSheet,
     openModal,
     closeModal
   };

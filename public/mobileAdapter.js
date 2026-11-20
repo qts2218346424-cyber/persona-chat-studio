@@ -13,7 +13,7 @@
     try {
       const params = new URLSearchParams(window.location.search);
       const queryMode = params.get('mode');
-      if (queryMode === 'roleplay' || queryMode === 'deepseek') {
+      if (queryMode === 'roleplay' || queryMode === 'deepseek' || queryMode === 'phone-agent') {
         localStorage.setItem('ui_mode_v5', queryMode);
         return queryMode;
       }
@@ -22,7 +22,7 @@
         return 'roleplay';
       }
       const currentSaved = localStorage.getItem('ui_mode_v5');
-      if (currentSaved === 'roleplay' || currentSaved === 'deepseek') {
+      if (currentSaved === 'roleplay' || currentSaved === 'deepseek' || currentSaved === 'phone-agent') {
         return currentSaved;
       }
     } catch {}
@@ -112,6 +112,10 @@
         </svg>
       `;
       newChatIconBtn.addEventListener('click', () => {
+        if (appShell.dataset.uiMode === 'phone-agent') {
+          window.PhoneAgent?.resetTaskWorkspace?.();
+          return;
+        }
         document.getElementById('ds-new-chat-btn')?.click();
       });
       topbarRight.insertBefore(newChatIconBtn, moreBtn);
@@ -131,6 +135,10 @@
         </svg>
       `;
       mobSettingsBtn.addEventListener('click', () => {
+        if (appShell.dataset.uiMode === 'phone-agent') {
+          window.PhoneAgent?.openControlSheet?.();
+          return;
+        }
         document.getElementById('open-settings-btn')?.click();
       });
       topbarRight.insertBefore(mobSettingsBtn, moreBtn);
@@ -161,14 +169,16 @@
 
   // 3. 登录门扉与网页标题随模式动态同步（始终保留「星语恋庭」品牌标识）
   function syncBrandAndTitleByMode(mode) {
-    const isDs = mode === 'deepseek';
-    document.documentElement.dataset.uiMode = isDs ? 'deepseek' : 'roleplay';
+    const normalized = mode === 'phone-agent' ? 'phone-agent' : (mode === 'deepseek' ? 'deepseek' : 'roleplay');
+    document.documentElement.dataset.uiMode = normalized;
     if (document.body) {
-      document.body.dataset.uiMode = isDs ? 'deepseek' : 'roleplay';
+      document.body.dataset.uiMode = normalized;
     }
-    document.title = isDs
-      ? '星语恋庭 · DeepSeek 原生助手模式'
-      : '星语恋庭 · 互动剧本与沉浸角色扮演馆';
+    document.title = normalized === 'phone-agent'
+      ? '星语恋庭 · 手机辅助模式'
+      : (normalized === 'deepseek'
+        ? '星语恋庭 · DeepSeek 原生助手模式'
+        : '星语恋庭 · 互动剧本与沉浸角色扮演馆');
 
     const authHeading = document.getElementById('auth-brand-heading');
     const authSub = document.getElementById('auth-brand-subtitle') || document.querySelector('.auth-hero p');

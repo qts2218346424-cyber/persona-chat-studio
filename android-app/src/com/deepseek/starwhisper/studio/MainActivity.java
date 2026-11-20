@@ -1,5 +1,6 @@
 package com.deepseek.starwhisper.studio;
 
+import android.Manifest;
 import android.app.Activity;
 import android.content.ActivityNotFoundException;
 import android.content.ClipData;
@@ -17,6 +18,7 @@ import android.view.View;
 import android.view.Window;
 import android.webkit.DownloadListener;
 import android.webkit.JavascriptInterface;
+import android.webkit.PermissionRequest;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
@@ -26,6 +28,8 @@ import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.FrameLayout;
 import android.widget.Toast;
+
+import org.json.JSONObject;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -40,13 +44,18 @@ import java.util.Map;
  * 通过本地 HTTPS 安全源映射 (https://appassets.androidplatform.net) 承载全套内置离线资产与直连 API
  */
 public class MainActivity extends Activity {
+    public static final String EXTRA_PENDING_AGENT_TASK = "extra_pending_agent_task";
     private static final String VIRTUAL_HOST = "appassets.androidplatform.net";
     private static final String START_URL = "https://" + VIRTUAL_HOST + "/index.html";
     private static final int FILE_CHOOSER_REQ_CODE = 1001;
+    private static final int AUDIO_PERM_REQ_CODE = 1002;
 
     private WebView webView;
     private ValueCallback<Uri[]> filePathCallback;
+    private PermissionRequest pendingWebPermissionRequest;
     private long lastBackPressMs = 0L;
+    private String pendingAgentTaskFromFloat = null;
+    private boolean webPageReady = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -99,9 +108,69 @@ public class MainActivity extends Activity {
         } else {
             webView.loadUrl(START_URL);
         }
+        handleIncomingAgentIntent(getIntent());
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        handleIncomingAgentIntent(intent);
+    }
+
+    private void handleIncomingAgentIntent(Intent intent) {
+        if (intent == null) return;
+        String task = intent.getStringExtra(EXTRA_PENDING_AGENT_TASK);
+        if (task != null && !task.trim().isEmpty()) {
+            intent.removeExtra(EXTRA_PENDING_AGENT_TASK);
+            pendingAgentTaskFromFloat = task.trim();
+            if (webPageReady && webView != null) {
+                final String readyTask = pendingAgentTaskFromFloat;
+                pendingAgentTaskFromFloat = null;
+                webView.postDelayed(new Runnable() {
+                    @Override
+                    public void run() {
+                        dispatchPendingTaskToWebView(readyTask);
+                    }
+                }, 250);
+            }
+        }
+    }
+
+    private void dispatchPendingTaskToWebView(final String task) {
+        if (task == null || task.trim().isEmpty()) return;
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                if (webView == null) return;
+                String quoted = JSONObject.quote(task.trim());
+                webView.evaluateJavascript(
+                        "if(window.__receiveFloatAgentTask){window.__receiveFloatAgentTask(" + quoted + ");}",
+                        null
+                );
+            }
+        });
     }
 
     private final class LocalAssetWebViewClient extends WebViewClient {
+        @Override
+        public void onPageFinished(WebView view, String url) {
+            super.onPageFinished(view, url);
+            if (url != null && url.contains(VIRTUAL_HOST)) {
+                webPageReady = true;
+                if (pendingAgentTaskFromFloat != null && !pendingAgentTaskFromFloat.trim().isEmpty()) {
+                    final String taskToSend = pendingAgentTaskFromFloat;
+                    pendingAgentTaskFromFloat = null;
+                    view.postDelayed(new Runnable() {
+                        @Override
+                        public void run() {
+                            dispatchPendingTaskToWebView(taskToSend);
+                        }
+                    }, 600);
+                }
+            }
+        }
+
         @Override
         public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
             Uri url = request.getUrl();
@@ -144,6 +213,30 @@ public class MainActivity extends Activity {
     }
 
     private final class FileUploadChromeClient extends WebChromeClient {
+        @Override
+        public void onPermissionRequest(final PermissionRequest request) {
+            if (request == null) return;
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                            try {
+                                request.grant(request.getResources());
+                            } catch (Exception ignored) {}
+                        } else {
+                            pendingWebPermissionRequest = request;
+                            requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, AUDIO_PERM_REQ_CODE);
+                        }
+                    } else {
+                        try {
+                            request.grant(request.getResources());
+                        } catch (Exception ignored) {}
+                    }
+                }
+            });
+        }
+
         @Override
         public boolean onShowFileChooser(
                 WebView view,
@@ -266,6 +359,25 @@ public class MainActivity extends Activity {
                 webView.evaluateJavascript("if(window.__onNativeUpdateProgress){window.__onNativeUpdateProgress(" + safe + ");}", null);
             }
         });
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == AUDIO_PERM_REQ_CODE) {
+            PermissionRequest req = pendingWebPermissionRequest;
+            pendingWebPermissionRequest = null;
+            if (req != null) {
+                try {
+                    if (grantResults != null && grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                        req.grant(req.getResources());
+                    } else {
+                        req.deny();
+                        Toast.makeText(MainActivity.this, "需要允许麦克风权限才能使用语音输入", Toast.LENGTH_SHORT).show();
+                    }
+                } catch (Exception ignored) {}
+            }
+        }
     }
 
     @Override
@@ -645,6 +757,59 @@ public class MainActivity extends Activity {
             AgentAccessibilityService service = AgentAccessibilityService.getInstance();
             if (service == null) return false;
             return service.performInputText(viewId, text);
+        }
+
+        @JavascriptInterface
+        public boolean dispatchSmartInput(String text, boolean appendMode, boolean autoSubmit) {
+            AgentAccessibilityService service = AgentAccessibilityService.getInstance();
+            if (service == null) return false;
+            return service.performSmartInputText(null, text, appendMode, autoSubmit);
+        }
+
+        @JavascriptInterface
+        public boolean dispatchDoubleClick(int x, int y) {
+            AgentAccessibilityService service = AgentAccessibilityService.getInstance();
+            if (service == null) return false;
+            return service.performDoubleClickCoordinate(x, y);
+        }
+
+        @JavascriptInterface
+        public String startAutoSwipeVideos(int count, int intervalSec, boolean randomLike) {
+            AgentAccessibilityService service = AgentAccessibilityService.getInstance();
+            if (service == null) {
+                return "无障碍服务未就绪，请先在系统设置中开启无障碍服务";
+            }
+            return service.startAutoSwipeVideos(count, intervalSec, randomLike);
+        }
+
+        @JavascriptInterface
+        public String stopAutoSwipeVideos() {
+            AgentAccessibilityService service = AgentAccessibilityService.getInstance();
+            if (service != null) {
+                service.stopAllBackgroundTasks("前端停止连刷");
+            }
+            FloatAgentService.updateState("idle", "星语 AI");
+            return "已停止自动刷视频";
+        }
+
+        @JavascriptInterface
+        public boolean isAutoSwipeRunning() {
+            AgentAccessibilityService service = AgentAccessibilityService.getInstance();
+            return service != null && service.isAutoSwipeRunning();
+        }
+
+        @JavascriptInterface
+        public String adjustMediaVolume(int direction) {
+            AgentAccessibilityService service = AgentAccessibilityService.getInstance();
+            if (service == null) return "无障碍服务未就绪";
+            return service.adjustMediaVolume(direction);
+        }
+
+        @JavascriptInterface
+        public String dispatchMediaKey(String action) {
+            AgentAccessibilityService service = AgentAccessibilityService.getInstance();
+            if (service == null) return "无障碍服务未就绪";
+            return service.dispatchMediaKey(action);
         }
 
         @JavascriptInterface

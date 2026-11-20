@@ -2,15 +2,22 @@ package com.deepseek.starwhisper.studio;
 
 import android.accessibilityservice.AccessibilityService;
 import android.accessibilityservice.GestureDescription;
+import android.content.ClipData;
+import android.content.ClipboardManager;
+import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.graphics.Path;
 import android.graphics.Rect;
+import android.media.AudioManager;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.util.DisplayMetrics;
 import android.util.Log;
+import android.view.KeyEvent;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
 
@@ -19,16 +26,34 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Random;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * 星语恋庭 × DeepSeek 手机端 AI 辅助助理无障碍服务 (Phone Agent Service)
- * 参考 dsh-Go 架构：在用户明确授权与下达指令的前提下，负责屏幕感知与辅助模拟操作。
+ * 参考 dsh-Go 架构：在用户明确授权与下达指令的前提下，负责屏幕感知、智能打字、自动刷视频与丰富离线辅助操作。
  */
 public class AgentAccessibilityService extends AccessibilityService {
     private static final String TAG = "AgentAccessibility";
     private static volatile AgentAccessibilityService sInstance = null;
     private final AtomicInteger nodeCounter = new AtomicInteger(1);
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    private final Random random = new Random();
+
+    // 自动连刷视频任务状态
+    private volatile boolean autoSwipeRunning = false;
+    private int autoSwipeTotal = 0;
+    private int autoSwipeDone = 0;
+    private int autoSwipeIntervalMs = 8000;
+    private boolean autoSwipeRandomLike = false;
+    private Runnable autoSwipeRunnable = null;
+    private Runnable autoSwipeLikeRunnable = null;
+
+    // 离线多步宏队列状态
+    private volatile boolean macroRunning = false;
+    private final List<Runnable> pendingRunnables = new ArrayList<>();
 
     public static AgentAccessibilityService getInstance() {
         return sInstance;
@@ -57,6 +82,7 @@ public class AgentAccessibilityService extends AccessibilityService {
 
     @Override
     public void onDestroy() {
+        stopAllBackgroundTasks("无障碍服务关闭");
         super.onDestroy();
         if (sInstance == this) {
             sInstance = null;
@@ -175,6 +201,242 @@ public class AgentAccessibilityService extends AccessibilityService {
         return dispatchGesture(builder.build(), null, null);
     }
 
+    /**
+     * 模拟双指/连续双击坐标 (用于短视频双击点赞或放大)
+     */
+    public boolean performDoubleClickCoordinate(final int x, final int y) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return false;
+        boolean firstOk = performQuickTap(x, y, 40);
+        mainHandler.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                performQuickTap(x, y, 40);
+            }
+        }, 95);
+        return firstOk;
+    }
+
+    private boolean performQuickTap(int x, int y, int durMs) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return false;
+        Path path = new Path();
+        path.moveTo(x, y);
+        GestureDescription.Builder builder = new GestureDescription.Builder();
+        builder.addStroke(new GestureDescription.StrokeDescription(path, 0, Math.max(25, durMs)));
+        return dispatchGesture(builder.build(), null, null);
+    }
+
+    /**
+     * 短视频屏幕中心双击点赞
+     */
+    public boolean performDoubleClickCenter() {
+        DisplayMetrics dm = getResources().getDisplayMetrics();
+        int x = dm.widthPixels / 2 + (random.nextInt(32) - 16);
+        int y = (int) (dm.heightPixels * 0.48) + (random.nextInt(40) - 20);
+        return performDoubleClickCoordinate(x, y);
+    }
+
+    /**
+     * 屏幕中心轻点（暂停 / 播放视频）
+     */
+    public boolean performTapCenter() {
+        DisplayMetrics dm = getResources().getDisplayMetrics();
+        int x = dm.widthPixels / 2;
+        int y = (int) (dm.heightPixels * 0.46);
+        return performClickCoordinate(x, y);
+    }
+
+    /**
+     * 短视频下一个（向上快速滑动，贴近真人拇指轨迹）
+     */
+    public boolean performVideoSwipeNext() {
+        DisplayMetrics dm = getResources().getDisplayMetrics();
+        int w = dm.widthPixels;
+        int h = dm.heightPixels;
+        int jitterX = random.nextInt(28) - 14;
+        return performSwipe(
+                (int) (w * 0.52) + jitterX,
+                (int) (h * 0.78),
+                (int) (w * 0.48) + jitterX,
+                (int) (h * 0.22),
+                260
+        );
+    }
+
+    /**
+     * 短视频上一个（向下滑动）
+     */
+    public boolean performVideoSwipePrev() {
+        DisplayMetrics dm = getResources().getDisplayMetrics();
+        int w = dm.widthPixels;
+        int h = dm.heightPixels;
+        return performSwipe(
+                (int) (w * 0.50),
+                (int) (h * 0.25),
+                (int) (w * 0.50),
+                (int) (h * 0.78),
+                280
+        );
+    }
+
+    /**
+     * 连续多次定向滑动（支持“下滑3次”或“回顶部/滑到底部”）
+     */
+    public boolean performMultiSwipe(final String dir, int times) {
+        final int safeTimes = Math.max(1, Math.min(times, 8));
+        final DisplayMetrics dm = getResources().getDisplayMetrics();
+        final int w = dm.widthPixels;
+        final int h = dm.heightPixels;
+        boolean firstOk = executeSingleDirectionalSwipe(dir, w, h);
+        for (int i = 1; i < safeTimes; i++) {
+            final int delay = i * 480;
+            Runnable stepTask = new Runnable() {
+                @Override
+                public void run() {
+                    if (FloatAgentService.sEmergencyStopRequested) return;
+                    executeSingleDirectionalSwipe(dir, w, h);
+                }
+            };
+            pendingRunnables.add(stepTask);
+            mainHandler.postDelayed(stepTask, delay);
+        }
+        return firstOk;
+    }
+
+    private boolean executeSingleDirectionalSwipe(String dir, int w, int h) {
+        if ("down".equals(dir)) {
+            return performSwipe(w / 2, (int) (h * 0.74), w / 2, (int) (h * 0.26), 340);
+        } else if ("up".equals(dir)) {
+            return performSwipe(w / 2, (int) (h * 0.26), w / 2, (int) (h * 0.74), 340);
+        } else if ("left".equals(dir)) {
+            return performSwipe((int) (w * 0.82), h / 2, (int) (w * 0.18), h / 2, 320);
+        } else if ("right".equals(dir)) {
+            return performSwipe((int) (w * 0.18), h / 2, (int) (w * 0.82), h / 2, 320);
+        }
+        return false;
+    }
+
+    public boolean isAutoSwipeRunning() {
+        return autoSwipeRunning;
+    }
+
+    public String getAutoSwipeSummary() {
+        if (!autoSwipeRunning) return "未运行";
+        return "连刷中 (" + autoSwipeDone + "/" + autoSwipeTotal + ")";
+    }
+
+    /**
+     * 启动自动连刷短视频任务（支持指定条数、间隔秒数及随机点赞）
+     */
+    public String startAutoSwipeVideos(int count, int intervalSec, boolean randomLike) {
+        stopAutoSwipeInternal(false);
+        FloatAgentService.sEmergencyStopRequested = false;
+
+        this.autoSwipeTotal = (count <= 0) ? 20 : Math.min(count, 200);
+        this.autoSwipeDone = 0;
+        int safeSec = (intervalSec <= 0) ? 8 : Math.max(2, Math.min(intervalSec, 60));
+        this.autoSwipeIntervalMs = safeSec * 1000;
+        this.autoSwipeRandomLike = randomLike;
+        this.autoSwipeRunning = true;
+
+        FloatAgentService.updateState("executing", "连刷 0/" + autoSwipeTotal);
+        scheduleNextAutoSwipeStep(650);
+
+        String likeNote = randomLike ? "（含随机点赞）" : "";
+        return "已启动自动刷视频：共 " + autoSwipeTotal + " 条，每 " + safeSec + " 秒切换" + likeNote;
+    }
+
+    private void scheduleNextAutoSwipeStep(long delayMs) {
+        if (autoSwipeRunnable != null) {
+            mainHandler.removeCallbacks(autoSwipeRunnable);
+        }
+        if (autoSwipeLikeRunnable != null) {
+            mainHandler.removeCallbacks(autoSwipeLikeRunnable);
+        }
+        autoSwipeRunnable = new Runnable() {
+            @Override
+            public void run() {
+                if (!autoSwipeRunning || FloatAgentService.sEmergencyStopRequested) {
+                    stopAutoSwipeInternal(true);
+                    return;
+                }
+                if (autoSwipeDone >= autoSwipeTotal) {
+                    stopAutoSwipeInternal(true);
+                    return;
+                }
+
+                performVideoSwipeNext();
+                autoSwipeDone++;
+                FloatAgentService.updateState("executing", "连刷 " + autoSwipeDone + "/" + autoSwipeTotal);
+
+                if (autoSwipeDone >= autoSwipeTotal) {
+                    mainHandler.postDelayed(new Runnable() {
+                        @Override
+                        public void run() {
+                            stopAutoSwipeInternal(true);
+                        }
+                    }, 900);
+                    return;
+                }
+
+                // 若开启随机点赞，则在视频停留中段约 35% 概率触发双击点赞
+                if (autoSwipeRandomLike && random.nextInt(100) < 35) {
+                    int likeDelay = Math.max(1200, (int) (autoSwipeIntervalMs * 0.45f));
+                    autoSwipeLikeRunnable = new Runnable() {
+                        @Override
+                        public void run() {
+                            if (autoSwipeRunning && !FloatAgentService.sEmergencyStopRequested) {
+                                performDoubleClickCenter();
+                            }
+                        }
+                    };
+                    mainHandler.postDelayed(autoSwipeLikeRunnable, likeDelay);
+                }
+
+                // 自然节奏抖动 [-600ms, +900ms]
+                int jitter = random.nextInt(1501) - 600;
+                long nextDelay = Math.max(1800L, autoSwipeIntervalMs + jitter);
+                scheduleNextAutoSwipeStep(nextDelay);
+            }
+        };
+        mainHandler.postDelayed(autoSwipeRunnable, delayMs);
+    }
+
+    private void stopAutoSwipeInternal(boolean resetFloatUi) {
+        autoSwipeRunning = false;
+        if (autoSwipeRunnable != null) {
+            mainHandler.removeCallbacks(autoSwipeRunnable);
+            autoSwipeRunnable = null;
+        }
+        if (autoSwipeLikeRunnable != null) {
+            mainHandler.removeCallbacks(autoSwipeLikeRunnable);
+            autoSwipeLikeRunnable = null;
+        }
+        if (resetFloatUi && !FloatAgentService.sEmergencyStopRequested) {
+            FloatAgentService.updateState("idle", "星语 AI");
+        }
+    }
+
+    /**
+     * 急停或关闭所有后台自动任务（连刷视频、组合宏等）
+     */
+    public void stopAllBackgroundTasks(String reason) {
+        autoSwipeRunning = false;
+        macroRunning = false;
+        if (autoSwipeRunnable != null) {
+            mainHandler.removeCallbacks(autoSwipeRunnable);
+            autoSwipeRunnable = null;
+        }
+        if (autoSwipeLikeRunnable != null) {
+            mainHandler.removeCallbacks(autoSwipeLikeRunnable);
+            autoSwipeLikeRunnable = null;
+        }
+        for (Runnable r : pendingRunnables) {
+            mainHandler.removeCallbacks(r);
+        }
+        pendingRunnables.clear();
+        Log.i(TAG, "已停止后台自动任务: " + reason);
+    }
+
     public String getScreenSizeJson() {
         DisplayMetrics dm = getResources().getDisplayMetrics();
         return "{\"width\":" + dm.widthPixels + ",\"height\":" + dm.heightPixels + "}";
@@ -190,7 +452,7 @@ public class AgentAccessibilityService extends AccessibilityService {
         int count = 0;
         if (apps != null) {
             for (ResolveInfo info : apps) {
-                if (count >= 100) break;
+                if (count >= 120) break;
                 String label = info.loadLabel(pm) != null ? info.loadLabel(pm).toString() : "";
                 String pkg = info.activityInfo != null ? info.activityInfo.packageName : "";
                 if (!label.isEmpty() && !pkg.isEmpty()) {
@@ -221,42 +483,91 @@ public class AgentAccessibilityService extends AccessibilityService {
         Map<String, String> aliasPkg = new HashMap<>();
         aliasPkg.put("微信", "com.tencent.mm");
         aliasPkg.put("wechat", "com.tencent.mm");
+        aliasPkg.put("企业微信", "com.tencent.wework");
         aliasPkg.put("qq", "com.tencent.mobileqq");
+        aliasPkg.put("钉钉", "com.alibaba.android.rimet");
+        aliasPkg.put("飞书", "com.ss.android.lark");
         aliasPkg.put("支付宝", "com.eg.android.AlipayGphone");
         aliasPkg.put("alipay", "com.eg.android.AlipayGphone");
+        aliasPkg.put("云闪付", "com.unionpay");
         aliasPkg.put("淘宝", "com.taobao.taobao");
+        aliasPkg.put("天猫", "com.tmall.wireless");
+        aliasPkg.put("闲鱼", "com.taobao.idlefish");
         aliasPkg.put("京东", "com.jingdong.app.mall");
+        aliasPkg.put("拼多多", "com.xunmeng.pinduoduo");
         aliasPkg.put("美团", "com.sankuai.meituan");
+        aliasPkg.put("饿了么", "me.ele");
+        aliasPkg.put("大众点评", "com.dianping.v1");
+        aliasPkg.put("滴滴", "com.sdu.didi.psnger");
+        aliasPkg.put("滴滴出行", "com.sdu.didi.psnger");
+        aliasPkg.put("12306", "com.MobileTicket");
+        aliasPkg.put("携程", "ctrip.android.view");
+        aliasPkg.put("抖音极速版", "com.ss.android.ugc.aweme.lite");
         aliasPkg.put("抖音", "com.ss.android.ugc.aweme");
+        aliasPkg.put("快手极速版", "com.kuaishou.nebula");
         aliasPkg.put("快手", "com.smile.gifmaker");
         aliasPkg.put("小红书", "com.xingin.xhs");
         aliasPkg.put("b站", "tv.danmaku.bili");
         aliasPkg.put("哔哩哔哩", "tv.danmaku.bili");
         aliasPkg.put("bilibili", "tv.danmaku.bili");
+        aliasPkg.put("微博", "com.sina.weibo");
+        aliasPkg.put("知乎", "com.zhihu.android");
+        aliasPkg.put("今日头条", "com.ss.android.article.news");
+        aliasPkg.put("头条", "com.ss.android.article.news");
         aliasPkg.put("高德", "com.autonavi.minimap");
         aliasPkg.put("高德地图", "com.autonavi.minimap");
         aliasPkg.put("百度地图", "com.baidu.BaiduMap");
         aliasPkg.put("网易云音乐", "com.netease.cloudmusic");
         aliasPkg.put("网易云", "com.netease.cloudmusic");
         aliasPkg.put("qq音乐", "com.tencent.qqmusic");
-        aliasPkg.put("拼多多", "com.xunmeng.pinduoduo");
+        aliasPkg.put("酷狗", "com.kugou.android");
+        aliasPkg.put("酷狗音乐", "com.kugou.android");
+        aliasPkg.put("喜马拉雅", "com.ximalaya.ting.android");
+        aliasPkg.put("汽水音乐", "com.luna.music");
+        aliasPkg.put("腾讯视频", "com.tencent.qqlive");
+        aliasPkg.put("爱奇艺", "com.qiyi.video");
+        aliasPkg.put("优酷", "com.youku.phone");
+        aliasPkg.put("wps", "cn.wps.moffice_eng");
+        aliasPkg.put("豆包", "com.larus.nova");
+        aliasPkg.put("kimi", "com.moonshot.kimichat");
         aliasPkg.put("deepseek", "com.deepseek.chat");
 
         PackageManager pm = getPackageManager();
-        for (Map.Entry<String, String> entry : aliasPkg.entrySet()) {
-            if (clean.contains(entry.getKey())) {
-                try {
-                    Intent li = pm.getLaunchIntentForPackage(entry.getValue());
-                    if (li != null) {
-                        li.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                        startActivity(li);
-                        return true;
-                    }
-                } catch (Exception ignored) {}
-            }
+        // 优先精确命中别名表（避免「抖音」抢先命中「抖音极速版」或反过来）
+        String directPkg = aliasPkg.get(clean);
+        if (directPkg != null) {
+            try {
+                Intent li = pm.getLaunchIntentForPackage(directPkg);
+                if (li != null) {
+                    li.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    startActivity(li);
+                    return true;
+                }
+            } catch (Exception ignored) {}
         }
 
-        // 动态匹配手机里所有已安装桌面应用名称
+        // 次优按别名长度倒序包含匹配
+        String bestAliasKey = null;
+        String bestAliasPkg = null;
+        for (Map.Entry<String, String> entry : aliasPkg.entrySet()) {
+            String key = entry.getKey();
+            if (clean.contains(key) && (bestAliasKey == null || key.length() > bestAliasKey.length())) {
+                bestAliasKey = key;
+                bestAliasPkg = entry.getValue();
+            }
+        }
+        if (bestAliasPkg != null) {
+            try {
+                Intent li = pm.getLaunchIntentForPackage(bestAliasPkg);
+                if (li != null) {
+                    li.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    startActivity(li);
+                    return true;
+                }
+            } catch (Exception ignored) {}
+        }
+
+        // 动态匹配手机里所有已安装桌面应用名称（含系统相册、相机、时钟、计算器、日历、浏览器、备忘录、电话、短信）
         Intent mainIntent = new Intent(Intent.ACTION_MAIN, null);
         mainIntent.addCategory(Intent.CATEGORY_LAUNCHER);
         List<ResolveInfo> apps = pm.queryIntentActivities(mainIntent, 0);
@@ -302,40 +613,244 @@ public class AgentAccessibilityService extends AccessibilityService {
     }
 
     /**
-     * 查找当前屏幕处于编辑状态或指定 ID 的控件并自动填充文本
+     * 兼容旧签名的单文本输入方法
      */
     public boolean performInputText(String viewId, String text) {
+        return performSmartInputText(viewId, text, false, false);
+    }
+
+    /**
+     * 智能打字引擎：
+     * 1. 多路径查找可见可编辑输入框（指定 viewId > 当前输入焦点 > 递归扫描屏幕 EditText）
+     * 2. 自动聚焦并支持清空/覆盖/追加写入，ACTION_SET_TEXT 失败时自动回退系统剪贴板 + ACTION_PASTE
+     * 3. 可选自动点击发送/搜索/评论/发布按钮
+     */
+    public boolean performSmartInputText(String viewId, String text, boolean appendMode, boolean autoSubmit) {
         AccessibilityNodeInfo root = getRootInActiveWindow();
         if (root == null) return false;
 
-        AccessibilityNodeInfo target = null;
-        if (viewId != null && !viewId.trim().isEmpty()) {
-            List<AccessibilityNodeInfo> list = root.findAccessibilityNodeInfosByViewId(viewId.trim());
-            if (list != null && !list.isEmpty()) {
-                target = list.get(0);
+        AccessibilityNodeInfo target = findEditableTarget(root, viewId);
+        if (target == null) {
+            root.recycle();
+            return false;
+        }
+
+        if (!target.isFocused()) {
+            target.performAction(AccessibilityNodeInfo.ACTION_FOCUS);
+            target.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+        }
+
+        String rawInput = text != null ? text : "";
+        String finalText = rawInput;
+        if (appendMode) {
+            CharSequence existing = target.getText();
+            CharSequence hint = (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) ? target.getHintText() : null;
+            String existingStr = existing != null ? existing.toString() : "";
+            String hintStr = hint != null ? hint.toString() : "";
+            if (!existingStr.isEmpty() && !existingStr.equals(hintStr)) {
+                finalText = existingStr + rawInput;
             }
         }
 
-        if (target == null) {
-            target = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT);
+        boolean ok = false;
+        Bundle arguments = new Bundle();
+        arguments.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, finalText);
+        ok = target.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, arguments);
+
+        // 部分第三方输入法或自定义控件拦截 ACTION_SET_TEXT，自动用剪贴板 + 粘贴兜底
+        if (!ok && !finalText.isEmpty()) {
+            ok = pasteTextViaClipboard(target, finalText, !appendMode);
         }
 
-        if (target != null) {
-            Bundle arguments = new Bundle();
-            arguments.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text != null ? text : "");
-            boolean ok = target.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, arguments);
-            target.recycle();
-            root.recycle();
-            return ok;
-        }
-
+        target.recycle();
         root.recycle();
+
+        if (ok && autoSubmit) {
+            mainHandler.postDelayed(new Runnable() {
+                @Override
+                public void run() {
+                    if (!FloatAgentService.sEmergencyStopRequested) {
+                        clickAnyMatchingButton(new String[]{"发送", "搜索", "评论", "发布", "确认", "完成", "前往"});
+                    }
+                }
+            }, 340);
+        }
+        return ok;
+    }
+
+    /**
+     * 将剪贴板现有内容粘贴到当前屏幕可编辑输入框
+     */
+    public boolean pasteFromClipboard() {
+        AccessibilityNodeInfo root = getRootInActiveWindow();
+        if (root == null) return false;
+        AccessibilityNodeInfo target = findEditableTarget(root, null);
+        if (target == null) {
+            root.recycle();
+            return false;
+        }
+        if (!target.isFocused()) {
+            target.performAction(AccessibilityNodeInfo.ACTION_FOCUS);
+            target.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+        }
+        boolean ok = target.performAction(AccessibilityNodeInfo.ACTION_PASTE);
+        target.recycle();
+        root.recycle();
+        return ok;
+    }
+
+    private boolean pasteTextViaClipboard(AccessibilityNodeInfo target, String value, boolean selectAllBeforePaste) {
+        try {
+            ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+            if (cm == null) return false;
+            cm.setPrimaryClip(ClipData.newPlainText("starwhisper_input", value));
+            if (selectAllBeforePaste) {
+                CharSequence existing = target.getText();
+                if (existing != null && existing.length() > 0) {
+                    Bundle selArgs = new Bundle();
+                    selArgs.putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_START_INT, 0);
+                    selArgs.putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_END_INT, existing.length());
+                    target.performAction(AccessibilityNodeInfo.ACTION_SET_SELECTION, selArgs);
+                }
+            }
+            return target.performAction(AccessibilityNodeInfo.ACTION_PASTE);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private AccessibilityNodeInfo findEditableTarget(AccessibilityNodeInfo root, String viewId) {
+        if (root == null) return null;
+
+        if (viewId != null && !viewId.trim().isEmpty()) {
+            List<AccessibilityNodeInfo> byId = root.findAccessibilityNodeInfosByViewId(viewId.trim());
+            if (byId != null && !byId.isEmpty()) {
+                AccessibilityNodeInfo hit = byId.get(0);
+                for (int i = 1; i < byId.size(); i++) {
+                    if (byId.get(i) != null) byId.get(i).recycle();
+                }
+                return hit;
+            }
+        }
+
+        AccessibilityNodeInfo focused = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT);
+        if (focused != null) {
+            if (focused.isEditable()) {
+                return focused;
+            }
+            focused.recycle();
+        }
+
+        List<AccessibilityNodeInfo> candidates = new ArrayList<>();
+        collectEditableNodes(root, candidates);
+        if (candidates.isEmpty()) return null;
+
+        AccessibilityNodeInfo best = null;
+        int bestScore = Integer.MIN_VALUE;
+        String selfPkg = getPackageName();
+        for (AccessibilityNodeInfo cand : candidates) {
+            Rect r = new Rect();
+            cand.getBoundsInScreen(r);
+            int score = r.bottom; // 同屏下优先最靠下的主聊天/评论输入框
+            CharSequence candPkg = cand.getPackageName();
+            if (selfPkg != null && candPkg != null && selfPkg.equals(candPkg.toString())) {
+                score -= 50000;
+            }
+            if (cand.isFocused()) score += 2000;
+            if (score > bestScore) {
+                bestScore = score;
+                best = cand;
+            }
+        }
+
+        for (AccessibilityNodeInfo cand : candidates) {
+            if (cand != best) cand.recycle();
+        }
+        return best;
+    }
+
+    private void collectEditableNodes(AccessibilityNodeInfo node, List<AccessibilityNodeInfo> out) {
+        if (node == null) return;
+        CharSequence cls = node.getClassName();
+        boolean looksEditable = node.isEditable() || (cls != null && cls.toString().contains("EditText"));
+        if (looksEditable && node.isVisibleToUser()) {
+            Rect bounds = new Rect();
+            node.getBoundsInScreen(bounds);
+            if (bounds.width() > 20 && bounds.height() > 16) {
+                out.add(AccessibilityNodeInfo.obtain(node));
+            }
+        }
+        int count = node.getChildCount();
+        for (int i = 0; i < count; i++) {
+            AccessibilityNodeInfo child = node.getChild(i);
+            if (child != null) {
+                collectEditableNodes(child, out);
+                child.recycle();
+            }
+        }
+    }
+
+    private boolean clickAnyMatchingButton(String[] labels) {
+        for (String label : labels) {
+            if (clickNodeByText(label)) {
+                return true;
+            }
+        }
         return false;
     }
 
     /**
-     * 免 API 本地规则执行引擎：无需配置 API Key 即可直接操控手机（零 Emoji 输出）
-     * 支持全局系统键、滑动手势、任意已安装应用唤起、文字搜索点击与输入框填入
+     * 调整媒体音量（1: 音量加 / -1: 音量减 / 0: 静音）
+     */
+    public String adjustMediaVolume(int direction) {
+        try {
+            AudioManager am = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
+            if (am == null) return "无法访问系统音量服务";
+            if (direction > 0) {
+                am.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_RAISE, AudioManager.FLAG_SHOW_UI);
+                return "已调高媒体音量";
+            } else if (direction < 0) {
+                am.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_LOWER, AudioManager.FLAG_SHOW_UI);
+                return "已调低媒体音量";
+            } else {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    am.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_TOGGLE_MUTE, AudioManager.FLAG_SHOW_UI);
+                } else {
+                    am.setStreamVolume(AudioManager.STREAM_MUSIC, 0, AudioManager.FLAG_SHOW_UI);
+                }
+                return "已切换媒体静音状态";
+            }
+        } catch (Exception e) {
+            return "调节音量失败";
+        }
+    }
+
+    /**
+     * 发送系统媒体控制按键（播放/暂停、下一首、上一首）
+     */
+    public String dispatchMediaKey(String action) {
+        try {
+            AudioManager am = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
+            if (am == null) return "无法访问媒体控制服务";
+            int keyCode = KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE;
+            String label = "暂停/播放";
+            if ("next".equals(action)) {
+                keyCode = KeyEvent.KEYCODE_MEDIA_NEXT;
+                label = "下一首";
+            } else if ("prev".equals(action)) {
+                keyCode = KeyEvent.KEYCODE_MEDIA_PREVIOUS;
+                label = "上一首";
+            }
+            am.dispatchMediaKeyEvent(new KeyEvent(KeyEvent.ACTION_DOWN, keyCode));
+            am.dispatchMediaKeyEvent(new KeyEvent(KeyEvent.ACTION_UP, keyCode));
+            return "已发送媒体控制：" + label;
+        } catch (Exception e) {
+            return "媒体控制发送失败";
+        }
+    }
+
+    /**
+     * 丰富免 API 本地规则执行引擎：无需配置任何 API Key 即可完成日常控制、智能打字、刷视频与组合宏
      */
     public String executeLocalRule(String rawCmd) {
         if (rawCmd == null || rawCmd.trim().isEmpty()) {
@@ -346,76 +861,407 @@ public class AgentAccessibilityService extends AccessibilityService {
         int width = getResources().getDisplayMetrics().widthPixels;
         int height = getResources().getDisplayMetrics().heightPixels;
 
-        // 1. 系统全局键
+        // 0. 多步离线组合宏（如："打开抖音然后自动刷视频" / "点击搜索接着输入星语" / 用分号分隔）
+        if (trimmedRaw.contains("然后") || trimmedRaw.contains("接着") || trimmedRaw.contains(";") || trimmedRaw.contains("；")) {
+            String[] parts = trimmedRaw.split("(?:然后|接着|[;；])+");
+            List<String> validSteps = new ArrayList<>();
+            for (String p : parts) {
+                String cleanPart = p != null ? p.trim() : "";
+                if (!cleanPart.isEmpty()) {
+                    validSteps.add(cleanPart);
+                }
+            }
+            if (validSteps.size() >= 2 && validSteps.size() <= 6) {
+                return executeLocalMacroSteps(validSteps);
+            }
+        }
+
+        // 1. 停止自动任务 & 刷视频控制族
+        if (cmd.contains("停止刷") || cmd.contains("别刷") || cmd.contains("停刷")
+                || cmd.contains("停止连刷") || cmd.contains("停止自动") || cmd.equals("停止")) {
+            stopAllBackgroundTasks("口令停止");
+            FloatAgentService.updateState("idle", "星语 AI");
+            return "已停止自动刷视频及后台手势任务";
+        }
+
+        if (isAutoVideoSwipeCommand(cmd)) {
+            int count = extractNumberByRegex(trimmedRaw, "(\\d+)\\s*(?:个|条|次)", 20);
+            int intervalSec = extractNumberByRegex(trimmedRaw, "(?:每|间隔)\\s*(\\d+)\\s*秒", 8);
+            boolean randomLike = cmd.contains("点赞") || cmd.contains("赞");
+
+            String appToLaunch = null;
+            if (cmd.contains("抖音极速版")) appToLaunch = "抖音极速版";
+            else if (cmd.contains("抖音")) appToLaunch = "抖音";
+            else if (cmd.contains("快手极速版")) appToLaunch = "快手极速版";
+            else if (cmd.contains("快手")) appToLaunch = "快手";
+            else if (cmd.contains("小红书")) appToLaunch = "小红书";
+            else if (cmd.contains("b站") || cmd.contains("哔哩哔哩")) appToLaunch = "B站";
+
+            if (appToLaunch != null) {
+                boolean launched = launchAppByName(appToLaunch);
+                if (!launched) {
+                    return "未找到或无法打开「" + appToLaunch + "」";
+                }
+                final int fCount = count;
+                final int fSec = intervalSec;
+                final boolean fLike = randomLike;
+                Runnable startTask = new Runnable() {
+                    @Override
+                    public void run() {
+                        if (!FloatAgentService.sEmergencyStopRequested) {
+                            startAutoSwipeVideos(fCount, fSec, fLike);
+                        }
+                    }
+                };
+                pendingRunnables.add(startTask);
+                mainHandler.postDelayed(startTask, 2400);
+                return "已打开「" + appToLaunch + "」，将在 2.4 秒后自动连刷 " + fCount + " 条视频（每 " + fSec + " 秒）";
+            }
+            return startAutoSwipeVideos(count, intervalSec, randomLike);
+        }
+
+        // 单步短视频手势
+        if (cmd.equals("下一个视频") || cmd.equals("刷下一个") || cmd.equals("换一个") || cmd.equals("下一个") || cmd.equals("下个视频")) {
+            boolean ok = performVideoSwipeNext();
+            return ok ? "已切到下一个视频" : "切换下一个视频失败";
+        }
+        if (cmd.equals("上一个视频") || cmd.equals("回看上一个") || cmd.equals("上一个") || cmd.equals("上个视频")) {
+            boolean ok = performVideoSwipePrev();
+            return ok ? "已切回上一个视频" : "切换上一个视频失败";
+        }
+        if (cmd.equals("双击点赞") || cmd.equals("点赞") || cmd.equals("点红心") || cmd.equals("点个赞") || cmd.equals("喜欢")) {
+            boolean ok = performDoubleClickCenter();
+            return ok ? "已在屏幕中心双击点赞" : "双击点赞失败";
+        }
+        if (cmd.equals("暂停视频") || cmd.equals("播放视频") || cmd.equals("暂停播放") || cmd.equals("暂停/播")) {
+            boolean ok = performTapCenter();
+            return ok ? "已切换视频播放/暂停" : "切换播放状态失败";
+        }
+        if (cmd.equals("看评论") || cmd.equals("打开评论") || cmd.equals("评论区")) {
+            boolean ok = clickAnyMatchingButton(new String[]{"评论", "抢首评", "写评论"});
+            return ok ? "已尝试打开评论区" : "当前屏幕未找到评论按钮";
+        }
+        if (cmd.equals("点收藏") || cmd.equals("收藏视频") || cmd.equals("收藏")) {
+            boolean ok = clickAnyMatchingButton(new String[]{"收藏"});
+            return ok ? "已点击收藏" : "当前屏幕未找到收藏按钮";
+        }
+        if (cmd.equals("点关注") || cmd.equals("关注作者")) {
+            boolean ok = clickAnyMatchingButton(new String[]{"关注", "+ 关注"});
+            return ok ? "已点击关注" : "当前屏幕未找到关注按钮";
+        }
+        if (cmd.equals("分享视频") || cmd.equals("转发视频") || cmd.equals("转发")) {
+            boolean ok = clickAnyMatchingButton(new String[]{"分享", "转发"});
+            return ok ? "已点击分享/转发" : "当前屏幕未找到分享按钮";
+        }
+
+        // 2. 系统全局、截屏锁屏、媒体与音量控制
         if (cmd.contains("桌面") || cmd.contains("主屏") || cmd.equals("home")) {
             boolean ok = performGlobalAction(GLOBAL_ACTION_HOME);
             return ok ? "已返回手机桌面" : "返回桌面失败";
         }
-        if (cmd.contains("返回") || cmd.contains("后退") || cmd.equals("back")) {
+        if (cmd.equals("返回") || cmd.equals("后退") || cmd.equals("上一页") || cmd.equals("back")) {
             boolean ok = performGlobalAction(GLOBAL_ACTION_BACK);
             return ok ? "已执行系统返回键" : "返回键执行失败";
+        }
+        if (cmd.contains("切回上个") || cmd.contains("上个应用") || cmd.contains("切上个app") || cmd.contains("切换应用")) {
+            boolean ok = performGlobal("switch_last_app");
+            return ok ? "已切换到上一个应用" : "切换上个应用失败";
         }
         if (cmd.contains("任务") || cmd.contains("后台") || cmd.contains("最近") || cmd.equals("recents")) {
             boolean ok = performGlobalAction(GLOBAL_ACTION_RECENTS);
             return ok ? "已呼出多任务后台" : "呼出后台失败";
         }
+        if (cmd.contains("控制中心") || cmd.contains("快捷开关") || cmd.contains("快捷设置")) {
+            boolean ok = performGlobalAction(GLOBAL_ACTION_QUICK_SETTINGS);
+            return ok ? "已下拉系统控制中心" : "下拉控制中心失败";
+        }
         if (cmd.contains("通知") || cmd.equals("notifications")) {
             boolean ok = performGlobalAction(GLOBAL_ACTION_NOTIFICATIONS);
             return ok ? "已下拉通知栏" : "下拉通知栏失败";
         }
+        if (cmd.equals("截屏") || cmd.equals("截图") || cmd.equals("屏幕截图") || cmd.equals("截一张图")) {
+            boolean ok = performGlobal("screenshot");
+            return ok ? "已触发系统截屏" : "系统截屏需要 Android 9.0 及以上系统支持";
+        }
+        if (cmd.equals("锁屏") || cmd.equals("息屏") || cmd.equals("锁定屏幕")) {
+            boolean ok = performGlobal("lock_screen");
+            return ok ? "已锁定屏幕" : "锁屏需要 Android 9.0 及以上系统支持";
+        }
+        if (cmd.equals("电源菜单") || cmd.equals("关机菜单")) {
+            boolean ok = performGlobalAction(GLOBAL_ACTION_POWER_DIALOG);
+            return ok ? "已呼出系统电源菜单" : "呼出电源菜单失败";
+        }
+        if (cmd.contains("音量+") || cmd.contains("音量加") || cmd.contains("大声") || cmd.contains("增大音量") || cmd.contains("调大音量")) {
+            return adjustMediaVolume(1);
+        }
+        if (cmd.contains("音量-") || cmd.contains("音量减") || cmd.contains("小声") || cmd.contains("降低音量") || cmd.contains("调小音量")) {
+            return adjustMediaVolume(-1);
+        }
+        if (cmd.equals("静音") || cmd.equals("取消静音") || cmd.equals("切换静音")) {
+            return adjustMediaVolume(0);
+        }
+        if (cmd.equals("下一首") || cmd.equals("下一首歌") || cmd.equals("切歌")) {
+            return dispatchMediaKey("next");
+        }
+        if (cmd.equals("上一首") || cmd.equals("上一首歌")) {
+            return dispatchMediaKey("prev");
+        }
+        if (cmd.equals("暂停音乐") || cmd.equals("播放音乐") || cmd.equals("继续播放") || cmd.equals("音乐暂停")) {
+            return dispatchMediaKey("toggle");
+        }
+        if (cmd.equals("读屏幕") || cmd.equals("读取屏幕") || cmd.equals("查看屏幕")) {
+            return summarizeCurrentScreen();
+        }
 
-        // 2. 模拟滑动手势
+        // 3. 智能打字、输入并发送、追加、清空、粘贴、搜索
+        if (cmd.startsWith("输入并发送") || cmd.startsWith("打字并发送") || cmd.startsWith("发送消息")
+                || cmd.startsWith("发消息") || cmd.startsWith("发送文字") || cmd.startsWith("回复 ") || cmd.startsWith("评论 ")) {
+            final String content = trimmedRaw.replaceFirst("^(输入并发送|打字并发送|发送消息|发消息|发送文字|回复|评论)\\s*", "").trim();
+            if (content.isEmpty()) {
+                return "UNMATCHED:请在口令后加上要发送的内容，例如「打字并发送 我马上到」";
+            }
+            boolean ok = performSmartInputText(null, content, false, true);
+            return ok ? "已输入并尝试发送「" + content + "」" : "UNMATCHED:当前屏幕未找到可输入的文本框";
+        }
+
+        if (cmd.startsWith("追加输入") || cmd.startsWith("接着打字") || cmd.startsWith("接着输入") || cmd.startsWith("追加 ")) {
+            final String content = trimmedRaw.replaceFirst("^(追加输入|接着打字|接着输入|追加)\\s*", "").trim();
+            if (content.isEmpty()) {
+                return "UNMATCHED:请在「追加输入」后加上文字内容";
+            }
+            boolean ok = performSmartInputText(null, content, true, false);
+            return ok ? "已在原有内容后追加「" + content + "」" : "UNMATCHED:当前屏幕未找到可输入的文本框";
+        }
+
+        if (cmd.equals("清空输入框") || cmd.equals("清空输入") || cmd.equals("清空文字") || cmd.equals("清除输入") || cmd.equals("删掉输入")) {
+            boolean ok = performSmartInputText(null, "", false, false);
+            return ok ? "已清空当前输入框内容" : "UNMATCHED:当前屏幕未找到可清空的输入框";
+        }
+
+        if (cmd.equals("粘贴") || cmd.equals("粘贴剪贴板") || cmd.equals("粘贴文字")) {
+            boolean ok = pasteFromClipboard();
+            return ok ? "已将剪贴板内容粘贴到输入框" : "粘贴失败，请确认输入框可编辑且剪贴板有内容";
+        }
+
+        if (cmd.startsWith("搜一下") || cmd.startsWith("搜索") || cmd.startsWith("查一下") || cmd.startsWith("查找")) {
+            final String kw = trimmedRaw.replaceFirst("^(搜一下|搜索|查一下|查找)\\s*", "").trim();
+            if (kw.isEmpty()) {
+                boolean ok = clickAnyMatchingButton(new String[]{"搜索", "查找", "搜"});
+                return ok ? "已点击搜索入口" : "当前屏幕未找到搜索按钮";
+            }
+            // 若当前已有可见输入框直接填入提交；否则先点“搜索”图标再填入
+            AccessibilityNodeInfo root = getRootInActiveWindow();
+            AccessibilityNodeInfo existingEdit = root != null ? findEditableTarget(root, null) : null;
+            boolean hasEdit = existingEdit != null;
+            if (existingEdit != null) existingEdit.recycle();
+            if (root != null) root.recycle();
+
+            if (hasEdit) {
+                boolean ok = performSmartInputText(null, kw, false, true);
+                return ok ? "已填入搜索词「" + kw + "」并尝试搜索" : "搜索填入失败";
+            } else if (clickAnyMatchingButton(new String[]{"搜索", "查找", "搜"})) {
+                Runnable searchTask = new Runnable() {
+                    @Override
+                    public void run() {
+                        if (!FloatAgentService.sEmergencyStopRequested) {
+                            performSmartInputText(null, kw, false, true);
+                        }
+                    }
+                };
+                pendingRunnables.add(searchTask);
+                mainHandler.postDelayed(searchTask, 620);
+                return "已打开搜索栏，正在输入并搜索「" + kw + "」";
+            }
+            return "UNMATCHED:未找到搜索栏或输入框";
+        }
+
+        if (cmd.startsWith("帮我打字") || cmd.startsWith("输入") || cmd.startsWith("填入") || cmd.startsWith("打字") || cmd.startsWith("写字")) {
+            final String textToInput = trimmedRaw.replaceFirst("^(帮我打字|输入|填入|打字|写字)\\s*", "").trim();
+            if (textToInput.isEmpty()) {
+                return "UNMATCHED:请在「打字」后加上要输入的文字，例如「打字 今天天气真好」";
+            }
+            boolean ok = performSmartInputText(null, textToInput, false, false);
+            return ok ? "已在输入框打字填入「" + textToInput + "」" : "UNMATCHED:当前屏幕未找到处于焦点或可编辑的输入框";
+        }
+
+        // 4. 滑动手势与多次滚动
+        if (cmd.equals("回到顶部") || cmd.equals("滚到顶部") || cmd.equals("回顶部") || cmd.equals("最上面")) {
+            boolean ok = performMultiSwipe("up", 3);
+            return ok ? "已连续上滑回到页面顶部" : "回到顶部失败";
+        }
+        if (cmd.equals("滑到底部") || cmd.equals("滚到底部") || cmd.equals("最下面")) {
+            boolean ok = performMultiSwipe("down", 3);
+            return ok ? "已连续下滑浏览底部" : "滑到底部失败";
+        }
         if (cmd.contains("下滑") || cmd.contains("向下") || cmd.contains("下翻") || cmd.contains("翻下") || cmd.contains("看下面")) {
-            boolean ok = performSwipe(width / 2, (int) (height * 0.72), width / 2, (int) (height * 0.28), 350);
-            return ok ? "已向下翻页浏览" : "向下滑动失败";
+            int times = extractNumberByRegex(trimmedRaw, "(\\d+)\\s*次", 1);
+            boolean ok = performMultiSwipe("down", times);
+            return ok ? (times > 1 ? "已连续向下翻页 " + times + " 次" : "已向下翻页浏览") : "向下滑动失败";
         }
         if (cmd.contains("上滑") || cmd.contains("向上") || cmd.contains("上翻") || cmd.contains("翻上") || cmd.contains("看上面")) {
-            boolean ok = performSwipe(width / 2, (int) (height * 0.28), width / 2, (int) (height * 0.72), 350);
-            return ok ? "已向上翻页浏览" : "向上滑动失败";
+            int times = extractNumberByRegex(trimmedRaw, "(\\d+)\\s*次", 1);
+            boolean ok = performMultiSwipe("up", times);
+            return ok ? (times > 1 ? "已连续向上翻页 " + times + " 次" : "已向上翻页浏览") : "向上滑动失败";
         }
         if (cmd.contains("左滑") || cmd.contains("向左")) {
-            boolean ok = performSwipe((int) (width * 0.8), height / 2, (int) (width * 0.2), height / 2, 350);
+            int times = extractNumberByRegex(trimmedRaw, "(\\d+)\\s*次", 1);
+            boolean ok = performMultiSwipe("left", times);
             return ok ? "已向左滑动" : "向左滑动失败";
         }
         if (cmd.contains("右滑") || cmd.contains("向右")) {
-            boolean ok = performSwipe((int) (width * 0.2), height / 2, (int) (width * 0.8), height / 2, 350);
+            int times = extractNumberByRegex(trimmedRaw, "(\\d+)\\s*次", 1);
+            boolean ok = performMultiSwipe("right", times);
             return ok ? "已向右滑动" : "向右滑动失败";
         }
 
-        // 3. 动态打开任意已安装应用 ("打开 微信" / "启动 支付宝" / "打开设置")
-        if (cmd.startsWith("打开") || cmd.startsWith("启动") || cmd.startsWith("进入") || cmd.startsWith("运行") || cmd.equals("微信") || cmd.equals("设置")) {
+        // 5. 动态打开任意已安装应用（前缀匹配 + 热门直呼）
+        if (cmd.startsWith("打开") || cmd.startsWith("启动") || cmd.startsWith("进入") || cmd.startsWith("运行")
+                || isDirectAppShortcut(cmd)) {
             String targetApp = trimmedRaw.replaceFirst("^(打开|启动|进入|运行)\\s*", "").trim();
             if (!targetApp.isEmpty() && launchAppByName(targetApp)) {
                 return "已打开应用「" + targetApp + "」";
             }
         }
 
-        // 4. 文字输入匹配: "输入 xxx" / "填入 xxx"
-        if (cmd.startsWith("输入") || cmd.startsWith("填入") || cmd.startsWith("打字")) {
-            String textToInput = trimmedRaw.replaceFirst("^(输入|填入|打字)\\s*", "").trim();
-            boolean ok = performInputText(null, textToInput);
-            return ok ? "已在输入框填入「" + textToInput + "」" : "UNMATCHED:当前屏幕未找到处于焦点或可编辑的输入框";
+        // 6. 点击 / 长按 / 双击屏幕控件或中心
+        if (cmd.equals("点中间") || cmd.equals("点击中间")) {
+            boolean ok = performClickCoordinate(width / 2, height / 2);
+            return ok ? "已点击屏幕中心" : "点击屏幕中心失败";
+        }
+        if (trimmedRaw.startsWith("长按")) {
+            String targetText = trimmedRaw.substring(2).trim();
+            if (!targetText.isEmpty() && longClickNodeByText(targetText)) {
+                return "已定位并长按「" + targetText + "」";
+            }
+        }
+        if (trimmedRaw.startsWith("双击")) {
+            String targetText = trimmedRaw.substring(2).trim();
+            if (!targetText.isEmpty() && doubleClickNodeByText(targetText)) {
+                return "已定位并双击「" + targetText + "」";
+            }
         }
 
-        // 5. 点击文字匹配: "点击 xxx" / "点 xxx" / "按下 xxx"
         String targetText = trimmedRaw;
-        if (targetText.startsWith("点击")) targetText = targetText.substring(2).trim();
-        else if (targetText.startsWith("点")) targetText = targetText.substring(1).trim();
+        if (targetText.startsWith("点一下")) targetText = targetText.substring(3).trim();
+        else if (targetText.startsWith("点击")) targetText = targetText.substring(2).trim();
         else if (targetText.startsWith("按下")) targetText = targetText.substring(2).trim();
+        else if (targetText.startsWith("点")) targetText = targetText.substring(1).trim();
 
-        if (!targetText.isEmpty() && (trimmedRaw.startsWith("点击") || trimmedRaw.startsWith("点") || trimmedRaw.startsWith("按下"))) {
+        if (!targetText.isEmpty() && (trimmedRaw.startsWith("点一下") || trimmedRaw.startsWith("点击")
+                || trimmedRaw.startsWith("点") || trimmedRaw.startsWith("按下"))) {
             boolean clickOk = clickNodeByText(targetText);
             if (clickOk) {
                 return "已定位并点击「" + targetText + "」";
             }
         }
 
-        return "UNMATCHED:本地口令未匹配。支持：回桌面、返回、下滑、上滑、打开 [应用名]、点击 [文字]、输入 [内容]";
+        return "UNMATCHED:离线未匹配。可试：打字 [内容]、输入并发送 [内容]、自动刷视频、下一个视频、双击点赞、搜索 [词]、打开 [App]、截屏、下滑3次";
     }
 
-    public boolean clickNodeByText(String targetText) {
+    private String executeLocalMacroSteps(final List<String> steps) {
+        macroRunning = true;
+        FloatAgentService.sEmergencyStopRequested = false;
+        long offsetMs = 0L;
+        for (int i = 0; i < steps.size(); i++) {
+            final String stepCmd = steps.get(i);
+            final int idx = i + 1;
+            final int total = steps.size();
+            Runnable task = new Runnable() {
+                @Override
+                public void run() {
+                    if (!macroRunning || FloatAgentService.sEmergencyStopRequested) return;
+                    FloatAgentService.updateState("executing", "宏 " + idx + "/" + total + ": " + stepCmd);
+                    executeLocalRule(stepCmd);
+                    if (idx == total && !autoSwipeRunning && !FloatAgentService.sEmergencyStopRequested) {
+                        mainHandler.postDelayed(new Runnable() {
+                            @Override
+                            public void run() {
+                                if (!autoSwipeRunning && !FloatAgentService.sEmergencyStopRequested) {
+                                    FloatAgentService.updateState("idle", "星语 AI");
+                                }
+                            }
+                        }, 600);
+                    }
+                }
+            };
+            pendingRunnables.add(task);
+            mainHandler.postDelayed(task, offsetMs);
+            String lower = stepCmd.toLowerCase(Locale.ROOT);
+            if (lower.startsWith("打开") || lower.startsWith("启动") || lower.startsWith("进入")) {
+                offsetMs += 1900L;
+            } else if (lower.startsWith("搜索") || lower.startsWith("搜一下") || lower.startsWith("输入") || lower.startsWith("打字")) {
+                offsetMs += 1000L;
+            } else {
+                offsetMs += 700L;
+            }
+        }
+        return "已启动 " + steps.size() + " 步离线组合指令：" + String.join(" → ", steps);
+    }
+
+    private boolean isAutoVideoSwipeCommand(String cmd) {
+        if (cmd.contains("自动刷") || cmd.contains("连刷") || cmd.contains("连续刷")
+                || cmd.contains("定时刷") || cmd.contains("挂机刷")) {
+            return true;
+        }
+        if (cmd.matches(".*刷\\s*\\d+\\s*(?:个|条).*视频.*")) return true;
+        if (cmd.equals("刷视频") || cmd.equals("刷抖音") || cmd.equals("刷快手")
+                || cmd.equals("刷小红书") || cmd.equals("刷b站") || cmd.equals("刷哔哩哔哩")
+                || cmd.equals("开始刷视频") || cmd.equals("帮我刷视频") || cmd.equals("帮我刷抖音")) {
+            return true;
+        }
+        return false;
+    }
+
+    private boolean isDirectAppShortcut(String cmd) {
+        return "微信".equals(cmd) || "设置".equals(cmd) || "抖音".equals(cmd)
+                || "快手".equals(cmd) || "小红书".equals(cmd) || "b站".equals(cmd)
+                || "淘宝".equals(cmd) || "支付宝".equals(cmd) || "高德地图".equals(cmd)
+                || "网易云".equals(cmd) || "qq".equals(cmd) || "美团".equals(cmd);
+    }
+
+    private int extractNumberByRegex(String text, String patternStr, int fallback) {
+        try {
+            Matcher m = Pattern.compile(patternStr).matcher(text);
+            if (m.find()) {
+                return Integer.parseInt(m.group(1));
+            }
+        } catch (Exception ignored) {}
+        return fallback;
+    }
+
+    private String summarizeCurrentScreen() {
         AccessibilityNodeInfo root = getRootInActiveWindow();
-        if (root == null) return false;
+        if (root == null) return "暂无法读取当前屏幕（可能锁屏或受系统保护）";
+        CharSequence pkg = root.getPackageName();
+        List<String> samples = new ArrayList<>();
+        collectVisibleTexts(root, samples, 8);
+        root.recycle();
+        String joined = samples.isEmpty() ? "未检测到可见文本控件" : String.join("、", samples);
+        return "当前窗口(" + (pkg != null ? pkg : "未知") + ")：" + joined;
+    }
+
+    private void collectVisibleTexts(AccessibilityNodeInfo node, List<String> out, int limit) {
+        if (node == null || out.size() >= limit) return;
+        CharSequence txt = node.getText();
+        CharSequence desc = node.getContentDescription();
+        String v = txt != null && txt.length() > 0 ? txt.toString().trim()
+                : (desc != null && desc.length() > 0 ? desc.toString().trim() : "");
+        if (!v.isEmpty() && v.length() <= 18 && !out.contains(v)) {
+            out.add(v);
+        }
+        int c = node.getChildCount();
+        for (int i = 0; i < c && out.size() < limit; i++) {
+            AccessibilityNodeInfo child = node.getChild(i);
+            if (child != null) {
+                collectVisibleTexts(child, out, limit);
+                child.recycle();
+            }
+        }
+    }
+
+    private Rect findNodeBoundsByText(String targetText) {
+        AccessibilityNodeInfo root = getRootInActiveWindow();
+        if (root == null) return null;
 
         List<AccessibilityNodeInfo> list = root.findAccessibilityNodeInfosByText(targetText);
         if (list != null && !list.isEmpty()) {
@@ -423,63 +1269,79 @@ public class AgentAccessibilityService extends AccessibilityService {
                 if (node != null) {
                     Rect bounds = new Rect();
                     node.getBoundsInScreen(bounds);
-                    if (bounds.width() > 0 && bounds.height() > 0) {
-                        int cx = bounds.centerX();
-                        int cy = bounds.centerY();
-                        boolean ok = performClickCoordinate(cx, cy);
-                        node.recycle();
-                        root.recycle();
-                        return ok;
-                    }
                     node.recycle();
+                    if (bounds.width() > 0 && bounds.height() > 0) {
+                        root.recycle();
+                        return bounds;
+                    }
                 }
             }
         }
 
-        AccessibilityNodeInfo fuzzyNode = findFuzzyNode(root, targetText.toLowerCase());
+        AccessibilityNodeInfo fuzzyNode = findFuzzyNode(root, targetText.toLowerCase(Locale.ROOT));
         if (fuzzyNode != null) {
             Rect bounds = new Rect();
             fuzzyNode.getBoundsInScreen(bounds);
-            int cx = bounds.centerX();
-            int cy = bounds.centerY();
-            boolean ok = performClickCoordinate(cx, cy);
             fuzzyNode.recycle();
             root.recycle();
-            return ok;
+            if (bounds.width() > 0 && bounds.height() > 0) {
+                return bounds;
+            }
+            return null;
         }
 
         root.recycle();
-        return false;
+        return null;
+    }
+
+    public boolean clickNodeByText(String targetText) {
+        Rect bounds = findNodeBoundsByText(targetText);
+        if (bounds == null) return false;
+        return performClickCoordinate(bounds.centerX(), bounds.centerY());
+    }
+
+    public boolean longClickNodeByText(String targetText) {
+        Rect bounds = findNodeBoundsByText(targetText);
+        if (bounds == null) return false;
+        return performLongClickCoordinate(bounds.centerX(), bounds.centerY(), 800);
+    }
+
+    public boolean doubleClickNodeByText(String targetText) {
+        Rect bounds = findNodeBoundsByText(targetText);
+        if (bounds == null) return false;
+        return performDoubleClickCoordinate(bounds.centerX(), bounds.centerY());
     }
 
     private AccessibilityNodeInfo findFuzzyNode(AccessibilityNodeInfo node, String query) {
         if (node == null) return null;
         CharSequence text = node.getText();
         CharSequence desc = node.getContentDescription();
-        if (text != null && text.toString().toLowerCase().contains(query)) {
-            return node;
+        if (text != null && text.toString().toLowerCase(Locale.ROOT).contains(query)) {
+            return AccessibilityNodeInfo.obtain(node);
         }
-        if (desc != null && desc.toString().toLowerCase().contains(query)) {
-            return node;
+        if (desc != null && desc.toString().toLowerCase(Locale.ROOT).contains(query)) {
+            return AccessibilityNodeInfo.obtain(node);
         }
         int count = node.getChildCount();
         for (int i = 0; i < count; i++) {
             AccessibilityNodeInfo child = node.getChild(i);
-            AccessibilityNodeInfo match = findFuzzyNode(child, query);
-            if (match != null) {
-                return match;
+            if (child != null) {
+                AccessibilityNodeInfo match = findFuzzyNode(child, query);
+                child.recycle();
+                if (match != null) {
+                    return match;
+                }
             }
-            if (child != null) child.recycle();
         }
         return null;
     }
 
     /**
-     * 执行系统级全局动作（返回、桌面、最近任务、通知栏）
+     * 执行系统级全局动作（返回、桌面、最近任务、通知栏、控制中心、截屏、锁屏、电源菜单、切回上个App）
      */
     public boolean performGlobal(String actionType) {
         if (actionType == null) return false;
-        String act = actionType.trim().toLowerCase();
+        String act = actionType.trim().toLowerCase(Locale.ROOT);
         switch (act) {
             case "back":
                 return performGlobalAction(GLOBAL_ACTION_BACK);
@@ -489,6 +1351,33 @@ public class AgentAccessibilityService extends AccessibilityService {
                 return performGlobalAction(GLOBAL_ACTION_RECENTS);
             case "notifications":
                 return performGlobalAction(GLOBAL_ACTION_NOTIFICATIONS);
+            case "quick_settings":
+                return performGlobalAction(GLOBAL_ACTION_QUICK_SETTINGS);
+            case "power_dialog":
+                return performGlobalAction(GLOBAL_ACTION_POWER_DIALOG);
+            case "screenshot":
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    return performGlobalAction(GLOBAL_ACTION_TAKE_SCREENSHOT);
+                }
+                return false;
+            case "lock_screen":
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    return performGlobalAction(GLOBAL_ACTION_LOCK_SCREEN);
+                }
+                return false;
+            case "switch_last_app":
+                boolean firstOk = performGlobalAction(GLOBAL_ACTION_RECENTS);
+                if (firstOk) {
+                    Runnable secondSwitch = new Runnable() {
+                        @Override
+                        public void run() {
+                            performGlobalAction(GLOBAL_ACTION_RECENTS);
+                        }
+                    };
+                    pendingRunnables.add(secondSwitch);
+                    mainHandler.postDelayed(secondSwitch, 220);
+                }
+                return firstOk;
             default:
                 return false;
         }

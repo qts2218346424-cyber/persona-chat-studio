@@ -1,7 +1,20 @@
 // 星语恋庭 · PWA 极速离线与边缘加速 Service Worker
-const CACHE_VERSION = 'star-whisper-v20261120-strict-auth-v3';
+const CACHE_VERSION = 'star-whisper-v20261120-perf-v4';
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const ASSETS_CACHE = `${CACHE_VERSION}-assets`;
+const MAX_STATIC_CACHE_ENTRIES = 80;
+
+async function putAndTrimStaticCache(req, resClone) {
+  const cache = await caches.open(STATIC_CACHE);
+  await cache.put(req, resClone);
+  const keys = await cache.keys();
+  if (keys.length > MAX_STATIC_CACHE_ENTRIES) {
+    const excess = keys.length - MAX_STATIC_CACHE_ENTRIES;
+    for (let i = 0; i < excess; i++) {
+      await cache.delete(keys[i]);
+    }
+  }
+}
 
 const PRECACHE_MANIFEST = [
   './',
@@ -10,6 +23,7 @@ const PRECACHE_MANIFEST = [
   './companion3d.css',
   './mobile-responsive.css',
   './phone-agent.css',
+  './mobile-deepseek.css',
   './standaloneAdapter.js',
   './mobileAdapter.js',
   './plugins/deepseekUsageMonitor.js',
@@ -95,14 +109,31 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 4. JS 脚本与 CSS 样式表（网络优先 Network-First 策略：确保实时更新与鉴权逻辑同步生效，弱网离线降级到缓存）
+  // 4. JS 脚本与 CSS 样式表（带 ?v= 版本指纹的静态资产走 Cache-First 零等待秒开，无版本指纹走 Network-First）
   if (url.pathname.endsWith('.js') || url.pathname.endsWith('.css')) {
+    const hasVersionFingerprint = Boolean(url.searchParams.get('v'));
+    if (hasVersionFingerprint) {
+      event.respondWith(
+        caches.open(STATIC_CACHE).then((cache) => {
+          return cache.match(req).then((cached) => {
+            if (cached) return cached;
+            return fetch(req).then((networkRes) => {
+              if (networkRes && networkRes.status === 200) {
+                putAndTrimStaticCache(req, networkRes.clone()).catch(() => {});
+              }
+              return networkRes;
+            });
+          });
+        })
+      );
+      return;
+    }
+
     event.respondWith(
       fetch(req)
         .then((networkRes) => {
           if (networkRes && networkRes.status === 200) {
-            const clone = networkRes.clone();
-            caches.open(STATIC_CACHE).then((cache) => cache.put(req, clone));
+            putAndTrimStaticCache(req, networkRes.clone()).catch(() => {});
           }
           return networkRes;
         })

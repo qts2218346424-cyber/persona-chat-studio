@@ -28,7 +28,7 @@
   color: light-dark(#64748b, #94a3b8);
   cursor: pointer;
   white-space: nowrap;
-  transition: all 0.16s ease;
+  transition: background-color 0.16s ease, color 0.16s ease, box-shadow 0.16s ease;
 }
 
 .workspace-mode-bar .ws-mode-btn.active {
@@ -48,7 +48,7 @@
   font-weight: 600;
   padding: 5px 12px;
   border-radius: 9999px;
-  transition: all 0.18s ease;
+  transition: background-color 0.18s ease, border-color 0.18s ease, color 0.18s ease;
 }
 
 .apk-pill-icon {
@@ -61,28 +61,305 @@
   font-size: 12.5px;
 }
 
-/* 3. dsh-Go 手机辅助顶部引擎控制台 (#phone-agent-banner) */
+/* 3. dsh-Go 手机辅助单行紧凑状态条 (#phone-agent-banner) & Bottom-Sheet 控制台 */
 .phone-agent-banner {
-  margin: 0 auto 14px;
-  width: min(100%, 780px);
-  padding: 12px 14px;
-  border-radius: 16px;
-  background: light-dark(#f8fafc, #191c25);
-  border: 1px solid light-dark(rgba(15, 23, 42, 0.08), rgba(255, 255, 255, 0.09));
-  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.03);
+  margin: 0 auto 10px;
+  width: min(100%, 750px);
   display: flex;
   flex-direction: column;
-  gap: 10px;
 }
 
 .phone-agent-banner.hidden {
   display: none !important;
 }
 
-.pa-engine-row {
+.pa-compact-bar {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 8px;
+  min-height: 38px;
+  padding: 4px 6px 4px 10px;
+  border-radius: 12px;
+  background: light-dark(#f8fafc, #181b25);
+  border: 1px solid light-dark(rgba(15, 23, 42, 0.08), rgba(255, 255, 255, 0.09));
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.03);
+}
+
+.pa-compact-status-trigger {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 30px;
+  padding: 0 4px;
+  border: none;
+  background: transparent;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  text-align: left;
+  color: light-dark(#0f172a, #f1f5f9);
+}
+
+.pa-compact-status-trigger .pa-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #94a3b8;
+  flex-shrink: 0;
+}
+
+.pa-compact-status-trigger .pa-dot.is-active {
+  background: #10b981;
+}
+
+.pa-compact-status-trigger .pa-dot.is-pending {
+  background: #f59e0b;
+}
+
+.pa-compact-status-trigger .pa-dot.is-running {
+  background: #4d6bfe;
+  box-shadow: 0 0 0 3px rgba(77, 107, 254, 0.22);
+}
+
+.pa-compact-engine {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: light-dark(#0f172a, #f8fafc);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.pa-compact-sep {
+  color: light-dark(#94a3b8, #64748b);
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.pa-compact-sub {
+  font-size: 11.5px;
+  font-weight: 500;
+  color: light-dark(#64748b, #94a3b8);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.pa-compact-caret {
+  color: light-dark(#94a3b8, #64748b);
+  flex-shrink: 0;
+}
+
+.pa-compact-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+}
+
+.pa-mini-pill {
+  height: 28px;
+  padding: 0 9px;
+  border-radius: 999px;
+  border: 1px solid light-dark(rgba(15, 23, 42, 0.08), rgba(255, 255, 255, 0.12));
+  background: light-dark(#ffffff, #232735);
+  color: light-dark(#334155, #e2e8f0);
+  font-size: 11.5px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color 0.15s ease, color 0.15s ease, background-color 0.15s ease;
+}
+
+.pa-mini-pill.is-active {
+  border-color: rgba(77, 107, 254, 0.45);
+  background: light-dark(#eff6ff, rgba(77, 107, 254, 0.2));
+  color: light-dark(#3b58e8, #93c5fd);
+}
+
+.pa-cfg-toggle-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  border: 1px solid light-dark(rgba(15, 23, 42, 0.08), rgba(255, 255, 255, 0.12));
+  background: light-dark(#ffffff, #232735);
+  color: light-dark(#475569, #cbd5e1);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: border-color 0.15s ease, background-color 0.15s ease, color 0.15s ease;
+}
+
+.pa-cfg-toggle-btn[aria-expanded="true"] {
+  border-color: #4d6bfe;
+  color: #4d6bfe;
+  background: light-dark(#eff6ff, rgba(77, 107, 254, 0.18));
+}
+
+/* Bottom-Sheet 手机辅助控制台抽屉 */
+.pa-sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1190;
+  background: rgba(15, 23, 42, 0.42);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+.pa-sheet-backdrop.hidden {
+  display: none !important;
+}
+
+.pa-control-sheet {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(500px, 92vw);
+  max-height: 82dvh;
+  z-index: 1200;
+  border-radius: 20px;
+  background: light-dark(#ffffff, #161923);
+  border: 1px solid light-dark(rgba(15, 23, 42, 0.09), rgba(255, 255, 255, 0.12));
+  box-shadow: 0 24px 48px -12px rgba(15, 23, 42, 0.24);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  color: light-dark(#0f172a, #f1f5f9);
+}
+
+.pa-control-sheet.hidden {
+  display: none !important;
+}
+
+.pa-sheet-handle {
+  display: none;
+}
+
+.pa-sheet-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 14px 16px 12px;
+  border-bottom: 1px solid light-dark(rgba(15, 23, 42, 0.06), rgba(255, 255, 255, 0.08));
+}
+
+.pa-sheet-title-wrap h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.pa-sheet-title-wrap p {
+  margin: 2px 0 0;
+  font-size: 11.5px;
+  color: light-dark(#64748b, #94a3b8);
+}
+
+.pa-sheet-close-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: none;
+  background: light-dark(#f1f5f9, rgba(255, 255, 255, 0.08));
+  color: light-dark(#475569, #cbd5e1);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.pa-sheet-body {
+  padding: 14px 16px 18px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.pa-sheet-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.pa-sheet-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: light-dark(#475569, #94a3b8);
+}
+
+.pa-sheet-hint {
+  font-size: 11.5px;
+  color: light-dark(#64748b, #94a3b8);
+}
+
+.pa-sheet-autoswipe-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: light-dark(#f8fafc, rgba(255, 255, 255, 0.04));
+  border: 1px solid light-dark(rgba(15, 23, 42, 0.06), rgba(255, 255, 255, 0.08));
+}
+
+@keyframes paSheetUp {
+  from {
+    transform: translateY(24px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@media (max-width: 860px) {
+  .phone-agent-banner {
+    margin: 0 0 8px;
+    width: 100%;
+  }
+
+  .pa-control-sheet {
+    top: auto;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    transform: none;
+    width: 100vw;
+    max-width: 100vw;
+    max-height: 82dvh;
+    border-radius: 20px 20px 0 0;
+    border-left: none;
+    border-right: none;
+    border-bottom: none;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    animation: paSheetUp 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .pa-sheet-handle {
+    display: block;
+    width: 36px;
+    height: 4px;
+    border-radius: 999px;
+    background: light-dark(#cbd5e1, #475569);
+    margin: 8px auto 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pa-control-sheet {
+    animation: none !important;
+  }
 }
 
 .pa-engine-segmented {
@@ -98,7 +375,7 @@
 
 .pa-seg-btn {
   flex: 1 1 0;
-  height: 30px;
+  height: 32px;
   padding: 0 8px;
   border-radius: 8px;
   border: none;
@@ -108,7 +385,7 @@
   font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
-  transition: all 0.16s ease;
+  transition: background-color 0.16s ease, color 0.16s ease, box-shadow 0.16s ease;
 }
 
 .pa-seg-btn.active {
@@ -117,33 +394,12 @@
   box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
 }
 
-.pa-cfg-toggle-btn {
-  width: 34px;
-  height: 34px;
-  border-radius: 10px;
-  border: 1px solid light-dark(rgba(15, 23, 42, 0.08), rgba(255, 255, 255, 0.1));
-  background: light-dark(#ffffff, #252936);
-  color: light-dark(#475569, #cbd5e1);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  flex-shrink: 0;
-  transition: all 0.15s ease;
-}
-
-.pa-cfg-toggle-btn[aria-expanded="true"] {
-  border-color: #4d6bfe;
-  color: #4d6bfe;
-  background: light-dark(#eff6ff, rgba(77, 107, 254, 0.18));
-}
-
 /* 可折叠 API 与免确认配置抽屉 */
 .pa-config-drawer {
   padding: 12px;
   border-radius: 12px;
-  background: light-dark(#ffffff, #141720);
-  border: 1px solid light-dark(rgba(15, 23, 42, 0.08), rgba(255, 255, 255, 0.1));
+  background: light-dark(#f8fafc, #12151e);
+  border: 1px solid light-dark(rgba(15, 23, 42, 0.07), rgba(255, 255, 255, 0.08));
 }
 
 .pa-config-drawer.hidden {
@@ -186,7 +442,7 @@
   padding: 0 10px;
   border-radius: 9px;
   border: 1px solid light-dark(rgba(15, 23, 42, 0.12), rgba(255, 255, 255, 0.14));
-  background: light-dark(#f8fafc, #1d212d);
+  background: light-dark(#ffffff, #1d212d);
   color: light-dark(#1e293b, #f1f5f9);
   font-size: 13px;
   box-sizing: border-box;
@@ -214,35 +470,26 @@
   cursor: pointer;
 }
 
-/* 第二行：可点击状态圆点胶囊 */
-.pa-status-actions-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
 .pa-status-chips {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 7px;
   flex-wrap: wrap;
 }
 
 .pa-chip {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  font-size: 11.5px;
+  gap: 6px;
+  font-size: 12px;
   font-weight: 600;
-  padding: 4px 10px;
+  padding: 6px 12px;
   border-radius: 999px;
   border: 1px solid transparent;
   cursor: pointer;
   background: light-dark(#f1f5f9, rgba(255, 255, 255, 0.08));
   color: light-dark(#475569, #cbd5e1);
-  transition: all 0.15s ease;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
 
 .pa-chip .pa-dot {
@@ -286,21 +533,17 @@
   background: #4d6bfe;
 }
 
-.pa-banner-actions {
-  display: flex;
-  gap: 6px;
-}
-
 .pa-banner-btn {
   font-size: 12px;
   font-weight: 600;
-  padding: 5px 12px;
+  padding: 6px 12px;
   border-radius: 8px;
   border: none;
   background: #4d6bfe;
   color: #ffffff;
   cursor: pointer;
-  transition: all 0.15s ease;
+  white-space: nowrap;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
 
 .pa-banner-btn:hover {
@@ -324,43 +567,378 @@
   border: 1px solid rgba(239, 68, 68, 0.25);
 }
 
-/* 第三行：线性 SVG 快捷动作胶囊横滑条 */
-.pa-quick-chips-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  overflow-x: auto;
-  white-space: nowrap;
-  padding-bottom: 2px;
-  scrollbar-width: none;
-  -webkit-overflow-scrolling: touch;
+/* 空态轻盈引导卡片 */
+.pa-empty-guide {
+  margin: 12px auto 10px;
+  width: min(100%, 750px);
+  padding: 12px;
+  border-radius: 16px;
+  background: light-dark(rgba(248, 250, 252, 0.85), rgba(25, 28, 37, 0.72));
+  border: 1px solid light-dark(rgba(15, 23, 42, 0.06), rgba(255, 255, 255, 0.08));
 }
 
-.pa-quick-chips-row::-webkit-scrollbar {
+.pa-empty-guide.hidden {
+  display: none !important;
+}
+
+.pa-empty-guide-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: light-dark(#64748b, #94a3b8);
+  margin-bottom: 8px;
+}
+
+.pa-empty-guide-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+}
+
+@media (max-width: 520px) {
+  .pa-empty-guide-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.pa-guide-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 9px 10px;
+  border-radius: 11px;
+  border: 1px solid light-dark(rgba(15, 23, 42, 0.07), rgba(255, 255, 255, 0.09));
+  background: light-dark(#ffffff, #202431);
+  color: light-dark(#1e293b, #f1f5f9);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.pa-guide-tile:active,
+.pa-guide-tile:hover {
+  border-color: #4d6bfe;
+  background: light-dark(#eff6ff, rgba(77, 107, 254, 0.14));
+}
+
+.pa-guide-tile strong {
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.pa-guide-tile span {
+  font-size: 11px;
+  color: light-dark(#64748b, #94a3b8);
+}
+
+/* 分类离线指令库抽屉 (置于输入舱上方) */
+.pa-cmdlib-drawer {
+  width: min(100%, 750px);
+  margin: 0 auto 8px;
+  padding: 10px 10px 10px;
+  border-radius: 16px;
+  background: light-dark(#ffffff, #191c27);
+  border: 1px solid light-dark(rgba(15, 23, 42, 0.08), rgba(255, 255, 255, 0.12));
+  box-shadow: 0 10px 28px -6px rgba(15, 23, 42, 0.12);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pa-cmdlib-drawer.hidden {
+  display: none !important;
+}
+
+.pa-cmdlib-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.pa-cmdlib-tabs {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  flex: 1 1 auto;
+}
+
+.pa-cmdlib-tabs::-webkit-scrollbar {
   display: none;
 }
 
-.pa-quick-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
+.pa-cmdlib-tab {
+  height: 28px;
+  padding: 0 11px;
+  border-radius: 999px;
+  border: 1px solid light-dark(rgba(15, 23, 42, 0.07), rgba(255, 255, 255, 0.1));
+  background: light-dark(#f8fafc, rgba(255, 255, 255, 0.06));
+  color: light-dark(#475569, #94a3b8);
   font-size: 12px;
-  font-weight: 500;
-  padding: 5px 11px;
-  border-radius: 9999px;
-  background: light-dark(#ffffff, #222634);
-  border: 1px solid light-dark(rgba(15, 23, 42, 0.08), rgba(255, 255, 255, 0.12));
-  color: light-dark(#334155, #e2e8f0);
+  font-weight: 600;
+  white-space: nowrap;
   cursor: pointer;
   flex-shrink: 0;
-  transition: all 0.15s ease;
 }
 
-.pa-quick-chip:hover,
-.pa-quick-chip:active {
+.pa-cmdlib-tab.active {
+  background: #4d6bfe;
+  border-color: #4d6bfe;
+  color: #ffffff;
+}
+
+.pa-cmdlib-close {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: none;
+  background: light-dark(#f1f5f9, rgba(255, 255, 255, 0.08));
+  color: light-dark(#64748b, #94a3b8);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.pa-cmdlib-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+  gap: 6px;
+  max-height: 184px;
+  overflow-y: auto;
+}
+
+.pa-cmd-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 1px;
+  min-height: 36px;
+  padding: 6px 9px;
+  border-radius: 10px;
+  border: 1px solid light-dark(rgba(15, 23, 42, 0.07), rgba(255, 255, 255, 0.1));
+  background: light-dark(#f8fafc, #222634);
+  color: light-dark(#1e293b, #f1f5f9);
+  font-size: 12px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.14s ease, background-color 0.14s ease;
+}
+
+.pa-cmd-item small {
+  font-size: 10.5px;
+  font-weight: 400;
+  color: light-dark(#64748b, #94a3b8);
+}
+
+.pa-cmd-item:hover,
+.pa-cmd-item:active {
+  border-color: #4d6bfe;
+  background: light-dark(#eff6ff, rgba(77, 107, 254, 0.16));
+}
+
+.pa-cmd-item.is-fill {
+  border-style: dashed;
+}
+
+/* ==========================================================================
+   3.5 三模式严格功能边界隔离（彻底根治 DeepSeek 问答模式与手机辅助模式串台）
+   ========================================================================== */
+
+/* 非 phone-agent 模式（即 deepseek / roleplay）下彻底隐藏所有手机辅助专属元素 */
+.app-shell:not([data-ui-mode="phone-agent"]) .pa-only-block,
+.app-shell:not([data-ui-mode="phone-agent"]) .pa-only-flex,
+.app-shell:not([data-ui-mode="phone-agent"]) .pa-only-inline,
+.app-shell:not([data-ui-mode="phone-agent"]) #phone-agent-banner,
+.app-shell:not([data-ui-mode="phone-agent"]) #pa-empty-guide,
+.app-shell:not([data-ui-mode="phone-agent"]) #mobile-tools-plus-btn,
+.app-shell:not([data-ui-mode="phone-agent"]) #phone-cmd-quick-drawer,
+.app-shell:not([data-ui-mode="phone-agent"]) .pa-sidebar-zone {
+  display: none !important;
+}
+
+/* phone-agent 模式下彻底隐藏所有 DeepSeek 问答专属元素（桌面端与手机端全覆盖） */
+.app-shell[data-ui-mode="phone-agent"] .ds-sidebar-zone,
+.app-shell[data-ui-mode="phone-agent"] .sidebar-sessions-wrap,
+.app-shell[data-ui-mode="phone-agent"] #ds-model-pill,
+.app-shell[data-ui-mode="phone-agent"] #ds-session-setting-pill,
+.app-shell[data-ui-mode="phone-agent"] #open-ds-artifacts-btn,
+.app-shell[data-ui-mode="phone-agent"] #ds-open-memory-setting-btn,
+.app-shell[data-ui-mode="phone-agent"] #open-ds-inspector-btn,
+.app-shell[data-ui-mode="phone-agent"] #ds-share-session-btn,
+.app-shell[data-ui-mode="phone-agent"] #ds-topbar-mute-btn,
+.app-shell[data-ui-mode="phone-agent"] #more-ds-suite-btn,
+.app-shell[data-ui-mode="phone-agent"] .ds-mobile-empty-brand,
+.app-shell[data-ui-mode="phone-agent"] #ds-home-greeting,
+.app-shell[data-ui-mode="phone-agent"] .composer-toggles.ds-only-flex,
+.app-shell[data-ui-mode="phone-agent"] #ds-prefix-bar,
+.app-shell[data-ui-mode="phone-agent"] #attach-file-btn,
+.app-shell[data-ui-mode="phone-agent"] #ds-composer-api-chip,
+.app-shell[data-ui-mode="phone-agent"] #voice-input-btn,
+.app-shell[data-ui-mode="phone-agent"] .composer-disclaimer {
+  display: none !important;
+}
+
+/* phone-agent 专属超薄单行胶囊输入舱（桌面端与手机端统一清爽单行） */
+.app-shell[data-ui-mode="phone-agent"] .composer-card {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: flex-end !important;
+  gap: 8px !important;
+  padding: 6px 8px 6px 14px !important;
+  border-radius: 22px !important;
+}
+
+.app-shell[data-ui-mode="phone-agent"] #chat-input {
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  min-height: 28px !important;
+  min-block-size: 1.35lh !important;
+  max-block-size: 4.2lh !important;
+  padding: 4px 0 !important;
+  line-height: 1.4 !important;
+  font-size: 14.5px !important;
+}
+
+.app-shell[data-ui-mode="phone-agent"] .composer-toolbar {
+  flex: 0 0 auto !important;
+  width: auto !important;
+  padding-top: 0 !important;
+  border-top: none !important;
+}
+
+.app-shell[data-ui-mode="phone-agent"] .composer-actions {
+  gap: 5px !important;
+}
+
+/* phone-agent 专属独立左侧边栏与最近指令历史记录 */
+.pa-sidebar-zone {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 4px 12px 10px;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.pa-sidebar-quick-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.pa-sidebar-tool-btn {
+  height: 32px;
+  padding: 0 8px;
+  border-radius: 9px;
+  border: 1px solid light-dark(rgba(15, 23, 42, 0.08), rgba(255, 255, 255, 0.1));
+  background: light-dark(#ffffff, #222634);
+  color: light-dark(#334155, #e2e8f0);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.pa-sidebar-tool-btn:hover,
+.pa-sidebar-tool-btn:active {
   border-color: #4d6bfe;
   color: #4d6bfe;
-  background: light-dark(#eff6ff, rgba(77, 107, 254, 0.16));
+}
+
+.pa-history-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1 1 auto;
+  min-height: 0;
+  margin-top: 4px;
+}
+
+.pa-history-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: light-dark(#64748b, #94a3b8);
+  padding: 0 2px;
+}
+
+.pa-history-clear-btn {
+  border: none;
+  background: transparent;
+  color: light-dark(#64748b, #94a3b8);
+  font-size: 11.5px;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 6px;
+}
+
+.pa-history-clear-btn:hover {
+  color: #ef4444;
+}
+
+.pa-task-history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  overflow-y: auto;
+  flex: 1 1 auto;
+  padding-right: 2px;
+}
+
+.pa-history-empty {
+  padding: 18px 10px;
+  text-align: center;
+  font-size: 12px;
+  color: light-dark(#94a3b8, #64748b);
+  border-radius: 10px;
+  border: 1px dashed light-dark(rgba(15, 23, 42, 0.08), rgba(255, 255, 255, 0.08));
+}
+
+.pa-history-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid light-dark(rgba(15, 23, 42, 0.06), rgba(255, 255, 255, 0.07));
+  background: light-dark(#ffffff, #1d212d);
+  color: light-dark(#1e293b, #f1f5f9);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.14s ease, background-color 0.14s ease;
+}
+
+.pa-history-item:hover,
+.pa-history-item:active {
+  border-color: #4d6bfe;
+  background: light-dark(#eff6ff, rgba(77, 107, 254, 0.14));
+}
+
+.pa-history-cmd {
+  font-size: 12.5px;
+  font-weight: 600;
+  width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pa-history-meta {
+  font-size: 10.5px;
+  color: light-dark(#64748b, #94a3b8);
 }
 
 /* 4. 聊天流内 dsh-Go 规划卡片、步骤时间轴与安全确认卡 */
@@ -1076,5 +1654,12 @@
 
 .upd-footer .hidden,
 .upd-body .hidden {
+  display: none !important;
+}
+
+/* 仅在手机辅助模式 (phone-agent) 下展示 + 号快捷指令按钮与快捷指令抽屉 */
+.app-shell:not([data-ui-mode="phone-agent"]) #mobile-tools-plus-btn,
+.app-shell:not([data-ui-mode="phone-agent"]) .ds-composer-plus-btn,
+.app-shell:not([data-ui-mode="phone-agent"]) #phone-cmd-quick-drawer {
   display: none !important;
 }

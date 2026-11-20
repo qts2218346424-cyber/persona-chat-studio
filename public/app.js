@@ -187,9 +187,51 @@
     return `<span class="ds-filename"><span>${escapeHtml(str)}</span></span>`;
   }
 
+  // 主线程分片让出（遵循 performance 指南：优先 scheduler.yield）与防抖工具
+  function yieldToMain() {
+    if ('scheduler' in window && typeof window.scheduler?.yield === 'function') {
+      return window.scheduler.yield();
+    }
+    return new Promise((resolve) => setTimeout(resolve, 0));
+  }
+
+  function debounce(fn, delay = 120) {
+    let timer = 0;
+    return function debounced(...args) {
+      clearTimeout(timer);
+      timer = setTimeout(() => fn.apply(this, args), delay);
+    };
+  }
+
   // 代码块内容注册池（用于一键复制、下载文件与右侧 Artifacts 实时预览）
   const codeSnippetStore = new Map();
   let codeSeq = 0;
+
+  // 有界 LRU Markdown 渲染缓存（仅缓存非流式完成态消息，加速会话切换与二次渲染）
+  const MARKDOWN_CACHE_LIMIT = 160;
+  const markdownRenderCache = new Map();
+
+  function getCachedMarkdownResult(cacheKey) {
+    const cached = markdownRenderCache.get(cacheKey);
+    if (!cached) return null;
+    markdownRenderCache.delete(cacheKey);
+    markdownRenderCache.set(cacheKey, cached);
+    if (Array.isArray(cached.snippets)) {
+      for (const [cid, entry] of cached.snippets) {
+        codeSnippetStore.set(cid, entry);
+      }
+    }
+    return cached.html;
+  }
+
+  function setCachedMarkdownResult(cacheKey, html, snippets) {
+    if (!cacheKey || typeof html !== 'string') return;
+    if (markdownRenderCache.size >= MARKDOWN_CACHE_LIMIT) {
+      const oldestKey = markdownRenderCache.keys().next().value;
+      if (oldestKey !== undefined) markdownRenderCache.delete(oldestKey);
+    }
+    markdownRenderCache.set(cacheKey, { html, snippets });
+  }
 
   // 单遍零依赖代码语法着色引擎（先从源码切词再分别转义，杜绝 HTML 属性二次污染）
   const CODE_KEYWORDS_SET = new Set([
@@ -334,9 +376,22 @@
     return map[lang] || 'txt';
   }
 
-  function renderNativeDeepSeekMarkdown(rawText, searchResults = []) {
+  function renderNativeDeepSeekMarkdown(rawText, searchResults = [], options = {}) {
     if (!rawText) return '';
+    const isStreaming = Boolean(options?.isStreaming);
+    const streamPrefix = options?.streamKeyPrefix || 'stream_cb';
     let workingRaw = String(rawText);
+
+    const srKey =
+      Array.isArray(searchResults) && searchResults.length > 0
+        ? searchResults.map((s) => `${s?.index ?? ''}:${s?.url || ''}`).join('|')
+        : '';
+    const canCache = !isStreaming && workingRaw.length <= 40000;
+    const cacheKey = canCache ? `ds\x00${srKey}\x00${workingRaw}` : '';
+    if (cacheKey) {
+      const cachedHtml = getCachedMarkdownResult(cacheKey);
+      if (cachedHtml !== null) return cachedHtml;
+    }
 
     // 流式输出过程中若围栏代码块尚未闭合，自动临时闭合以避免流式打字跳变
     const fenceCount = (workingRaw.match(/```/g) || []).length;
@@ -346,14 +401,18 @@
 
     const codeBlocks = [];
     const mathBlocks = [];
+    const capturedSnippets = canCache ? [] : null;
 
     // 1) 保护围栏代码块（从源码走语法高亮，提供右侧预览/自动换行/下载/无障碍复制）
     workingRaw = workingRaw.replace(/```([a-zA-Z0-9_+-]*)\r?\n?([\s\S]*?)```/g, (_, langRaw, rawCodeBody) => {
       const lang = (langRaw || 'text').trim().toLowerCase();
       const rawCode = String(rawCodeBody || '').replace(/\s+$/, '');
       const lineCount = rawCode ? rawCode.split(/\r?\n/).length : 1;
-      const codeId = `cb_${++codeSeq}`;
-      codeSnippetStore.set(codeId, { code: rawCode, lang });
+      const idx = codeBlocks.length;
+      const codeId = isStreaming ? `${streamPrefix}_${idx}` : `cb_${++codeSeq}`;
+      const snippetEntry = { code: rawCode, lang };
+      codeSnippetStore.set(codeId, snippetEntry);
+      if (capturedSnippets) capturedSnippets.push([codeId, snippetEntry]);
 
       const canPreview =
         lang === 'html' ||
@@ -362,7 +421,6 @@
         /<!doctype html>|<html|<canvas|<svg/i.test(rawCode);
 
       const highlighted = highlightCodeSyntax(rawCode, lang);
-      const idx = codeBlocks.length;
       codeBlocks.push(`
         <div class="ds-code-block" data-block-id="${codeId}">
           <div class="ds-code-header">
@@ -638,13 +696,30 @@
     codeBlocks.forEach((cb, idx) => {
       joined = joined.replace(`@@DSCODE_${idx}@@`, () => cb);
     });
+    if (cacheKey) {
+      setCachedMarkdownResult(cacheKey, joined, capturedSnippets);
+    }
     return joined;
   }
 
-  function renderMessageMarkdown(rawText, searchResults = []) {
-    return (state.uiMode === 'deepseek' || state.uiMode === 'phone-agent')
-      ? renderNativeDeepSeekMarkdown(rawText, searchResults)
-      : renderRoleplayMarkdown(rawText);
+  function renderMessageMarkdown(rawText, searchResults = [], options = {}) {
+    if (state.uiMode === 'deepseek' || state.uiMode === 'phone-agent') {
+      return renderNativeDeepSeekMarkdown(rawText, searchResults, options);
+    }
+    if (!rawText) return '';
+    const isStreaming = Boolean(options?.isStreaming);
+    const textStr = String(rawText);
+    const canCache = !isStreaming && textStr.length <= 40000;
+    const cacheKey = canCache ? `rp\x00${textStr}` : '';
+    if (cacheKey) {
+      const cached = getCachedMarkdownResult(cacheKey);
+      if (cached !== null) return cached;
+    }
+    const html = renderRoleplayMarkdown(textStr);
+    if (cacheKey) {
+      setCachedMarkdownResult(cacheKey, html, null);
+    }
+    return html;
   }
 
   function renderRoleplayMarkdown(rawText) {
@@ -773,7 +848,7 @@
   function renderSmartAvatarHtml(avatarRaw, nameRaw, sizeClass = 'size-md', isUser = false) {
     const raw = String(avatarRaw || '').trim();
     if (raw.startsWith('http://') || raw.startsWith('https://') || raw.startsWith('data:image/') || raw.startsWith('/')) {
-      return `<img src="${escapeHtml(raw)}" class="avatar-img ${sizeClass}" alt="${escapeHtml(nameRaw || '')}" />`;
+      return `<img src="${escapeHtml(raw)}" class="avatar-img ${sizeClass}" alt="${escapeHtml(nameRaw || '')}" loading="lazy" decoding="async" />`;
     }
     if (!isUser && (nameRaw?.includes('DeepSeek') || raw === '🐋')) {
       return `<span class="art-badge-avatar ${sizeClass}" style="background: linear-gradient(135deg, #1d4ed8 0%, #3b82f6 100%);">${DS_WHALE_AVATAR_SVG}</span>`;
@@ -934,6 +1009,8 @@
     state.dsBalance = null;
     state.lastSandboxCode = '';
     codeSnippetStore.clear();
+    codeSeq = 0;
+    markdownRenderCache.clear();
     window.__activeSessionId = null;
     window.__isAdminUser = false;
     window.dispatchEvent(new CustomEvent('user-role-changed'));
@@ -1699,11 +1776,17 @@
   // ================= 5. 侧栏与抽屉控制（持久化折叠状态 + 顶栏兜底入口 + 宽屏默认展开右侧面板） =================
   const collapsedQuickNav = document.getElementById('collapsed-quick-nav');
   function setLeftSidebarCollapsed(collapsed, persist = true) {
+    const isMobileViewport = window.matchMedia('(max-width: 860px)').matches;
+    if (isMobileViewport && !collapsed && !appShell.classList.contains('right-collapsed')) {
+      appShell.classList.add('right-collapsed');
+      appShell.classList.remove('artifacts-wide');
+      toggleRightBtn?.classList.remove('active');
+    }
     appShell.classList.toggle('left-collapsed', collapsed);
     expandLeftBtn.classList.toggle('hidden', !collapsed);
     expandLeftBtn.setAttribute('aria-expanded', String(!collapsed));
     collapsedQuickNav?.classList.toggle('hidden', !collapsed);
-    if (window.matchMedia('(max-width: 860px)').matches) {
+    if (isMobileViewport) {
       const bothClosed = collapsed && appShell.classList.contains('right-collapsed');
       document.getElementById('mobile-drawer-backdrop')?.classList.toggle('hidden', bothClosed);
     } else if (persist) {
@@ -1714,12 +1797,19 @@
   }
 
   function setRightPanelCollapsed(collapsed, persist = true) {
+    const isMobileViewport = window.matchMedia('(max-width: 860px)').matches;
+    if (isMobileViewport && !collapsed && !appShell.classList.contains('left-collapsed')) {
+      appShell.classList.add('left-collapsed');
+      expandLeftBtn.classList.remove('hidden');
+      expandLeftBtn.setAttribute('aria-expanded', 'false');
+      collapsedQuickNav?.classList.remove('hidden');
+    }
     appShell.classList.toggle('right-collapsed', collapsed);
     if (collapsed) {
       appShell.classList.remove('artifacts-wide');
     }
     toggleRightBtn?.classList.toggle('active', !collapsed);
-    if (window.matchMedia('(max-width: 860px)').matches) {
+    if (isMobileViewport) {
       const bothClosed = collapsed && appShell.classList.contains('left-collapsed');
       document.getElementById('mobile-drawer-backdrop')?.classList.toggle('hidden', bothClosed);
     } else if (persist) {
@@ -1742,7 +1832,9 @@
 
   // 左侧栏收起时的顶栏兜底快捷入口绑定
   document.getElementById('topbar-collapsed-new-chat-btn')?.addEventListener('click', () => {
-    if (state.uiMode === 'deepseek' || state.uiMode === 'phone-agent') {
+    if (state.uiMode === 'phone-agent') {
+      window.PhoneAgent?.resetTaskWorkspace?.();
+    } else if (state.uiMode === 'deepseek') {
       document.getElementById('ds-new-chat-btn')?.click();
     } else {
       document.getElementById('new-chat-btn')?.click();
@@ -1766,7 +1858,9 @@
   });
   document.getElementById('more-new-chat-btn')?.addEventListener('click', () => {
     hidePopoverSafe('topbar-more-popover');
-    if (state.uiMode === 'deepseek' || state.uiMode === 'phone-agent') {
+    if (state.uiMode === 'phone-agent') {
+      window.PhoneAgent?.resetTaskWorkspace?.();
+    } else if (state.uiMode === 'deepseek') {
       document.getElementById('ds-new-chat-btn')?.click();
     } else {
       document.getElementById('new-chat-btn')?.click();
@@ -1796,13 +1890,34 @@
       btn.classList.toggle('active', active);
       btn.setAttribute('aria-selected', String(active));
     });
-    document.getElementById('nurture-tab').classList.toggle('hidden', safeTabId !== 'nurture-tab');
-    document.getElementById('memory-tab').classList.toggle('hidden', safeTabId !== 'memory-tab');
-    document.getElementById('persona-tab').classList.toggle('hidden', safeTabId !== 'persona-tab');
+    const nurtureEl = document.getElementById('nurture-tab');
+    const memoryEl = document.getElementById('memory-tab');
+    const personaEl = document.getElementById('persona-tab');
     const dsSuiteEl = document.getElementById('ds-suite-tab');
-    if (dsSuiteEl) dsSuiteEl.classList.toggle('hidden', safeTabId !== 'ds-suite-tab');
     const dsArtEl = document.getElementById('ds-artifacts-tab');
+    if (nurtureEl) nurtureEl.classList.toggle('hidden', safeTabId !== 'nurture-tab');
+    if (memoryEl) memoryEl.classList.toggle('hidden', safeTabId !== 'memory-tab');
+    if (personaEl) personaEl.classList.toggle('hidden', safeTabId !== 'persona-tab');
+    if (dsSuiteEl) dsSuiteEl.classList.toggle('hidden', safeTabId !== 'ds-suite-tab');
     if (dsArtEl) dsArtEl.classList.toggle('hidden', safeTabId !== 'ds-artifacts-tab');
+
+    // 打开面板时立即同步最新数据并复位滚动条，杜绝移动端抽屉打开后内容空白或停留在不可见偏移处
+    try {
+      if (safeTabId === 'nurture-tab') {
+        renderNurturingAndDiary();
+        if (nurtureEl) nurtureEl.scrollTop = 0;
+      } else if (safeTabId === 'memory-tab') {
+        renderTelemetryAndMemories();
+        renderLorebooks();
+        if (memoryEl) memoryEl.scrollTop = 0;
+      } else if (safeTabId === 'persona-tab') {
+        populatePersonaEditor();
+        if (personaEl) personaEl.scrollTop = 0;
+      } else if (safeTabId === 'ds-suite-tab') {
+        renderDeepSeekSuiteTelemetry();
+        if (dsSuiteEl) dsSuiteEl.scrollTop = 0;
+      }
+    } catch {}
   }
 
   toggleRightBtn.addEventListener('click', () => {
@@ -2981,7 +3096,6 @@
   }
 
   function renderPersonaList() {
-    personaListEl.innerHTML = '';
     const allRoleplayPersonas = state.personas.filter((p) => p.id !== 'persona_deepseek_official');
     const scriptCast = allRoleplayPersonas.filter(
       (p) => resolvePersonaScriptId(p) === state.activeScriptId
@@ -2993,6 +3107,7 @@
       headLabel.textContent = `本剧登场人设（${displayCast.length}）`;
     }
 
+    const frag = document.createDocumentFragment();
     for (const p of displayCast) {
       const isActivePersona = Boolean(state.activePersona && state.activePersona.id === p.id);
       const isCustomOwned = Boolean(state.user?.id && p.user_id === state.user.id);
@@ -3048,12 +3163,13 @@
           await deleteCustomPersona(p);
         });
       }
-      personaListEl.appendChild(item);
+      frag.appendChild(item);
     }
+    personaListEl.replaceChildren(frag);
 
     // 同步原生 DeepSeek 侧栏助手标识（与剧本扮演角色列表严格隔离）
     const soulSelect = document.getElementById('ds-soul-select');
-    if (soulSelect) {
+    if (soulSelect && soulSelect.value !== 'persona_deepseek_official') {
       soulSelect.innerHTML = '<option value="persona_deepseek_official">DeepSeek 官方问答助手</option>';
       soulSelect.value = 'persona_deepseek_official';
     }
@@ -3077,19 +3193,26 @@
     if (e.key === 'Escape' && activeSessionCtxMenu) closeSessionContextMenu();
   });
 
-  function resolveDsTimelineGroup(session) {
-    if (session.pinned === 1) return '置顶';
-    const ts = Number(session.updated_at || Date.now());
+  function getDsTimelineBounds() {
     const now = new Date();
     const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-    const startOfYesterday = startOfToday - 86400000;
-    const sevenDaysAgo = startOfToday - 7 * 86400000;
-    const thirtyDaysAgo = startOfToday - 30 * 86400000;
+    return {
+      startOfToday,
+      startOfYesterday: startOfToday - 86400000,
+      sevenDaysAgo: startOfToday - 7 * 86400000,
+      thirtyDaysAgo: startOfToday - 30 * 86400000
+    };
+  }
 
-    if (ts >= startOfToday) return '今天';
-    if (ts >= startOfYesterday) return '昨天';
-    if (ts >= sevenDaysAgo) return '7 天内';
-    if (ts >= thirtyDaysAgo) return '30 天内';
+  function resolveDsTimelineGroup(session, bounds = null) {
+    if (session.pinned === 1) return '置顶';
+    const b = bounds || getDsTimelineBounds();
+    const ts = Number(session.updated_at || Date.now());
+
+    if (ts >= b.startOfToday) return '今天';
+    if (ts >= b.startOfYesterday) return '昨天';
+    if (ts >= b.sevenDaysAgo) return '7 天内';
+    if (ts >= b.thirtyDaysAgo) return '30 天内';
     const dt = new Date(ts);
     return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`;
   }
@@ -3275,7 +3398,6 @@
 
   function renderSessionList() {
     closeSessionContextMenu();
-    sessionListEl.replaceChildren();
     const isDsUi = state.uiMode === 'deepseek' || state.uiMode === 'phone-agent';
     const headingEl = document.getElementById('session-list-heading');
     if (headingEl) {
@@ -3314,17 +3436,19 @@
       return true;
     });
 
+    const timelineBounds = isDsUi ? getDsTimelineBounds() : null;
+    const frag = document.createDocumentFragment();
     let lastGroup = '';
 
     for (const s of filtered) {
       if (isDsUi) {
-        const grp = resolveDsTimelineGroup(s);
+        const grp = resolveDsTimelineGroup(s, timelineBounds);
         if (grp !== lastGroup) {
           lastGroup = grp;
           const grpEl = document.createElement('div');
           grpEl.className = 'session-group-label';
           grpEl.innerHTML = `<span>${escapeHtml(grp)}</span>`;
-          sessionListEl.appendChild(grpEl);
+          frag.appendChild(grpEl);
         }
       }
 
@@ -3406,8 +3530,9 @@
         });
       }
 
-      sessionListEl.appendChild(item);
+      frag.appendChild(item);
     }
+    sessionListEl.replaceChildren(frag);
   }
 
   function updateBondBadge() {
@@ -3485,8 +3610,8 @@
     const countEl = document.getElementById('lorebook-count-label');
     if (!listEl) return;
     countEl.textContent = `${state.lorebooks.length} 条`;
-    listEl.innerHTML = '';
 
+    const frag = document.createDocumentFragment();
     for (const lb of state.lorebooks) {
       const hit = state.triggeredLoreIds.has(lb.id);
       const card = document.createElement('div');
@@ -3508,8 +3633,9 @@
           renderLorebooks();
         });
       }
-      listEl.appendChild(card);
+      frag.appendChild(card);
     }
+    listEl.replaceChildren(frag);
   }
 
   function syncSessionIsolationBadges() {
@@ -3616,7 +3742,6 @@
     }
 
     memoryCountLabel.textContent = `${state.memories.length} 条`;
-    memoryCardsList.replaceChildren();
     syncSessionIsolationBadges();
 
     const isDsUi = state.uiMode === 'deepseek' || state.uiMode === 'phone-agent';
@@ -3634,6 +3759,7 @@
           event: '共同回忆'
         };
 
+    const memFrag = document.createDocumentFragment();
     for (const mem of state.memories) {
       const isRecalled = mem.pinned === 1 || state.recalledIds.has(mem.id);
       const retPct = mem.retention_pct !== undefined ? mem.retention_pct : 100;
@@ -3671,33 +3797,52 @@
         renderTelemetryAndMemories();
       });
 
-      memoryCardsList.appendChild(card);
+      memFrag.appendChild(card);
     }
+    memoryCardsList.replaceChildren(memFrag);
   }
 
   // ================= 8. 对话流渲染、智能防抢滚与流式通信 =================
   let userManuallyScrolledUp = false;
+  let lastScrollBtnVisible = null;
+  let scrollReadRaf = 0;
+  let scrollBottomRaf = 0;
+  let pendingForceScroll = false;
   const scrollBottomBtn = document.getElementById('ds-scroll-bottom-btn');
 
-  function updateScrollBottomBtnVisibility() {
+  function updateScrollBottomBtnVisibility(distOverride = null) {
     if (!messagesViewport || !scrollBottomBtn) return;
-    const dist = messagesViewport.scrollHeight - messagesViewport.scrollTop - messagesViewport.clientHeight;
+    const dist =
+      distOverride !== null
+        ? distOverride
+        : messagesViewport.scrollHeight - messagesViewport.scrollTop - messagesViewport.clientHeight;
     const shouldShow = state.messages.length > 0 && dist > 150;
-    scrollBottomBtn.classList.toggle('hidden', !shouldShow);
+    if (shouldShow !== lastScrollBtnVisible) {
+      lastScrollBtnVisible = shouldShow;
+      scrollBottomBtn.classList.toggle('hidden', !shouldShow);
+    }
     if (dist < 60) {
       userManuallyScrolledUp = false;
     }
   }
 
-  messagesViewport.addEventListener('scroll', () => {
-    const dist = messagesViewport.scrollHeight - messagesViewport.scrollTop - messagesViewport.clientHeight;
-    if (dist > 150) {
-      userManuallyScrolledUp = true;
-    } else if (dist < 50) {
-      userManuallyScrolledUp = false;
-    }
-    updateScrollBottomBtnVisibility();
-  });
+  messagesViewport.addEventListener(
+    'scroll',
+    () => {
+      if (scrollReadRaf) return;
+      scrollReadRaf = requestAnimationFrame(() => {
+        scrollReadRaf = 0;
+        const dist = messagesViewport.scrollHeight - messagesViewport.scrollTop - messagesViewport.clientHeight;
+        if (dist > 150) {
+          userManuallyScrolledUp = true;
+        } else if (dist < 50) {
+          userManuallyScrolledUp = false;
+        }
+        updateScrollBottomBtnVisibility(dist);
+      });
+    },
+    { passive: true }
+  );
 
   scrollBottomBtn?.addEventListener('click', () => {
     userManuallyScrolledUp = false;
@@ -3708,13 +3853,26 @@
     if (force) {
       userManuallyScrolledUp = false;
       messagesViewport.scrollTop = messagesViewport.scrollHeight;
-      updateScrollBottomBtnVisibility();
+      updateScrollBottomBtnVisibility(0);
       return;
     }
     if (!userManuallyScrolledUp) {
       messagesViewport.scrollTop = messagesViewport.scrollHeight;
+      updateScrollBottomBtnVisibility(0);
+      return;
     }
     updateScrollBottomBtnVisibility();
+  }
+
+  function scheduleScrollToBottom(force = false) {
+    if (force) pendingForceScroll = true;
+    if (scrollBottomRaf) return;
+    scrollBottomRaf = requestAnimationFrame(() => {
+      scrollBottomRaf = 0;
+      const shouldForce = pendingForceScroll;
+      pendingForceScroll = false;
+      scrollToBottom(shouldForce);
+    });
   }
 
   // 广播剧级温柔语音合成（优先路由至 24kHz Kokoro 神经网络帅气/可爱声线引擎）
@@ -4097,7 +4255,7 @@
       `;
     }
 
-    // 绑定 < 1 / 2 > 多版本切换
+    // 绑定 < 1 / 2 > 多版本切换（原地替换单条消息 DOM）
     const switchVersionTo = async (targetVerIdx) => {
       if (!versions[targetVerIdx] || state.isStreaming) return;
       const v = versions[targetVerIdx];
@@ -4118,7 +4276,20 @@
         } catch {}
       }
       renderDeepSeekSuiteTelemetry();
-      renderMessages();
+      if (row.isConnected) {
+        let lastAst = -1;
+        for (let k = state.messages.length - 1; k >= 0; k--) {
+          if (state.messages[k]?.role === 'assistant') {
+            lastAst = k;
+            break;
+          }
+        }
+        const isCurLast = state.messages.indexOf(msg) === lastAst;
+        row.replaceWith(createAssistantMessageDom(msg, isCurLast));
+        syncArtifactsIndicator();
+      } else {
+        renderMessages();
+      }
     };
 
     footer.querySelector('.ver-prev-btn')?.addEventListener('click', () => switchVersionTo(curVerIdx - 1));
@@ -4141,6 +4312,16 @@
         const nextFb = meta.feedback === targetVal ? '' : targetVal;
         meta.feedback = nextFb;
         msg._parsedMeta = meta;
+        const upBtn = footer.querySelector('.fb-up-btn');
+        const downBtn = footer.querySelector('.fb-down-btn');
+        if (upBtn) {
+          upBtn.classList.toggle('liked', nextFb === 'up');
+          upBtn.setAttribute('aria-pressed', String(nextFb === 'up'));
+        }
+        if (downBtn) {
+          downBtn.classList.toggle('disliked', nextFb === 'down');
+          downBtn.setAttribute('aria-pressed', String(nextFb === 'down'));
+        }
         if (msg.id) {
           try {
             await apiJson(`/api/messages/${msg.id}`, {
@@ -4149,7 +4330,6 @@
             });
           } catch {}
         }
-        renderMessages();
         if (nextFb === 'up') showToast('感谢反馈，已标记该回答有帮助');
         else if (nextFb === 'down') showToast('已记录反馈，你也可以点击「重新生成」获取另一版本对比');
       });
@@ -4245,224 +4425,151 @@
     return row;
   }
 
+  let lastComposerEmpty = null;
+  let lastSendDisabled = null;
   function syncComposerEmptyState() {
     const isEmpty = !chatInput.value.trim() && state.pendingAttachments.length === 0;
-    chatForm.classList.toggle('input-empty', isEmpty);
-    if (sendBtn) {
-      sendBtn.disabled = Boolean(state.isStreaming || isEmpty);
+    const isDisabled = Boolean(state.isStreaming || isEmpty);
+    if (isEmpty !== lastComposerEmpty) {
+      lastComposerEmpty = isEmpty;
+      chatForm.classList.toggle('input-empty', isEmpty);
+    }
+    if (sendBtn && isDisabled !== lastSendDisabled) {
+      lastSendDisabled = isDisabled;
+      sendBtn.disabled = isDisabled;
     }
   }
 
-  function renderMessages() {
-    messagesContainer.innerHTML = '';
-    const p = state.activePersona;
-    const isDsUi = state.uiMode === 'deepseek';
-    const isPhoneAgentUi = state.uiMode === 'phone-agent';
-    const chatStageEl = document.querySelector('.chat-stage');
+  function createUserMessageDom(msg, idx) {
+    const uMeta = parseMsgMeta(msg);
+    const rawAtts = Array.isArray(uMeta.attachments_full)
+      ? uMeta.attachments_full
+      : Array.isArray(uMeta.attachments)
+      ? uMeta.attachments
+      : [];
+    const imgAtts = rawAtts.filter((a) => a && a.is_image && a.data_url);
+    const docAtts = rawAtts.filter((a) => a && !(a.is_image && a.data_url));
 
-    if (isDsUi) {
-      const isEmpty = state.messages.length === 0;
-      if (chatStageEl) chatStageEl.classList.toggle('ds-empty-mode', isEmpty);
-      const greetTitleEl = document.getElementById('ds-greeting-title');
-      if (greetTitleEl) {
-        greetTitleEl.textContent = '今天有什么可以帮到你？';
-      }
-      syncComposerEmptyState();
-    } else if (isPhoneAgentUi) {
-      if (chatStageEl) chatStageEl.classList.remove('ds-empty-mode');
-      syncComposerEmptyState();
-    } else {
-      if (chatStageEl) chatStageEl.classList.remove('ds-empty-mode');
-      if (p) {
-      const banner = document.createElement('div');
-      banner.className = 'persona-story-banner';
-      const hasUserTurn = state.messages.some((m) => m.role === 'user');
-      const promptsHtml =
-        !hasUserTurn && Array.isArray(p.starter_prompts) && p.starter_prompts.length > 0
-          ? `<div class="starter-prompts-grid">
-              ${p.starter_prompts
-                .map((sp) => {
-                  const prettySp = escapeHtml(sp).replace(
-                    /\*([^*\n]+)\*/g,
-                    '<em class="rp-action">（$1）</em>'
-                  );
-                  return `<button type="button" class="starter-chip" data-raw-prompt="${escapeHtml(sp)}">${prettySp}</button>`;
-                })
-                .join('')}
-            </div>`
-          : '';
-
-      const userNickStr = state.user?.nickname || '你';
-      const cleanBackstory = String(p.backstory || p.tagline || '可在右侧设定书查看详细背景')
-        .replace(/\{\{user\}\}/gi, userNickStr)
-        .replace(/\{\{char\}\}/gi, (p.name || '').split('·')[0].trim());
-      const cleanNote = String(state.activeSession?.director_note || '')
-        .replace(/\{\{user\}\}/gi, userNickStr)
-        .trim();
-
-      const directorHtml = cleanNote
-        ? `<div style="margin-top:8px;font-size:12px;color:var(--brand-primary);font-weight:600;">当前幕次情境：${escapeHtml(
-            cleanNote
-          )}</div>`
+    const imgGridHtml =
+      imgAtts.length > 0
+        ? `<div class="msg-user-images">
+            ${imgAtts
+              .map(
+                (a, imgIdx) =>
+                  `<img src="${escapeHtml(a.data_url)}" alt="${escapeHtml(
+                    a.name
+                  )}" class="msg-user-img-card" loading="lazy" decoding="async" data-preview-img-idx="${imgIdx}" title="点击查看大图：${escapeHtml(
+                    a.name
+                  )}" />`
+              )
+              .join('')}
+          </div>`
         : '';
 
-      const curSc = getActiveScriptObj();
-      banner.innerHTML = `
-        <div class="banner-title"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-2px;margin-right:5px;" aria-hidden="true"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg><span>剧本《${escapeHtml(curSc.title)}》 · 序章背景</span></div>
-        <div>${escapeHtml(cleanBackstory)}</div>
-        ${directorHtml}
-        ${promptsHtml}
-      `;
+    const attHtml =
+      docAtts.length > 0
+        ? `<div class="msg-attachments-row">
+            ${docAtts
+              .map((a, docIdx) => {
+                const fMeta = inferClientFileBadge(a.name, a.badge, a.color);
+                const subInfo = a.char_count
+                  ? `已提取 ${Number(a.char_count).toLocaleString()} 字`
+                  : formatFileByteSize(a.size || (a.content ? a.content.length : 0));
+                return `<span class="ds-file-card clickable-att" data-preview-doc-idx="${docIdx}" title="点击查看文件内容：${escapeHtml(
+                  a.name
+                )}">
+                  <span class="ds-file-badge ${escapeHtml(fMeta.color)}">${escapeHtml(fMeta.badge)}</span>
+                  <span class="ds-file-meta">
+                    <span class="ds-file-name">${escapeHtml(a.name)}</span>
+                    <span class="ds-file-sub">${escapeHtml(subInfo)}</span>
+                  </span>
+                </span>`;
+              })
+              .join('')}
+          </div>`
+        : '';
 
-      banner.querySelectorAll('.starter-chip').forEach((chip) => {
-        chip.addEventListener('click', () => {
-          if (!state.isStreaming) {
-            const rawSp = chip.getAttribute('data-raw-prompt') || chip.textContent.replace(/^✦\s*/, '');
-            sendStreamMessage(rawSp, false);
-          }
-        });
+    const row = document.createElement('div');
+    row.className = 'msg-row user';
+    const wrap = document.createElement('div');
+    wrap.className = 'user-msg-wrap';
+    const renderedUserHtml = escapeHtml(msg.content).replace(
+      /\*([^*\n]+)\*/g,
+      '<em class="rp-action">$1</em>'
+    );
+    wrap.innerHTML = `
+      ${imgGridHtml}
+      ${attHtml}
+      <div class="msg-body user-bubble">${renderedUserHtml}</div>
+      <div class="user-msg-tools">
+        <button type="button" class="msg-tool-btn u-copy-btn">复制</button>
+        <button type="button" class="msg-tool-btn u-edit-btn">编辑</button>
+        ${msg.id ? '<button type="button" class="msg-tool-btn u-rewind-btn" title="删除此句之后的内容重走对话">回溯至此</button>' : ''}
+      </div>
+    `;
+
+    wrap.querySelectorAll('[data-preview-img-idx]').forEach((imgEl) => {
+      imgEl.addEventListener('click', () => {
+        openAttachmentPreviewModal(imgAtts[Number(imgEl.dataset.previewImgIdx)]);
       });
+    });
+    wrap.querySelectorAll('[data-preview-doc-idx]').forEach((chipEl) => {
+      chipEl.addEventListener('click', () => {
+        openAttachmentPreviewModal(docAtts[Number(chipEl.dataset.previewDocIdx)]);
+      });
+    });
 
-      messagesContainer.appendChild(banner);
+    wrap.querySelector('.u-copy-btn')?.addEventListener('click', async (e) => {
+      const btn = e.currentTarget;
+      try {
+        await navigator.clipboard.writeText(msg.content);
+      } catch {
+        fallbackLegacyCopy(msg.content);
       }
+      btn.textContent = '已复制';
+      setTimeout(() => {
+        btn.textContent = '复制';
+      }, 1100);
+    });
+
+    wrap.querySelector('.u-edit-btn').addEventListener('click', () => {
+      mountInlineEditor(
+        wrap,
+        msg,
+        () => {
+          wrap.querySelector('.msg-body').textContent = msg.content;
+        },
+        true
+      );
+    });
+    const rwBtn = wrap.querySelector('.u-rewind-btn');
+    if (rwBtn) {
+      rwBtn.addEventListener('click', async () => {
+        if (state.isStreaming || !msg.id) return;
+        const curIdx = state.messages.indexOf(msg);
+        const effectiveIdx = curIdx !== -1 ? curIdx : idx;
+        const subsequentCount = Math.max(0, state.messages.length - 1 - effectiveIdx);
+        const confirmed = await askUserConfirm({
+          title: '确认回溯对话进度',
+          message:
+            subsequentCount > 0
+              ? `确定要回溯到这句话吗？\n此句之后的 ${subsequentCount} 条后续对话记录将被永久清除且无法恢复（如需保留原线，可先点回复下方的「分支」开启新周目）。`
+              : '确定要重置此节点状态吗？',
+          confirmText: '确认回溯并清除后续',
+          danger: true
+        });
+        if (!confirmed) return;
+        await apiJson(`/api/messages/${msg.id}/rewind`, { method: 'POST' });
+        await loadSession(state.activeSessionId);
+        showToast('已回溯到该对话节点');
+      });
     }
+    row.appendChild(wrap);
+    return row;
+  }
 
-    let lastAssistantIdx = -1;
-    state.messages.forEach((m, idx) => {
-      if (m.role === 'assistant') lastAssistantIdx = idx;
-    });
-
-    state.messages.forEach((msg, idx) => {
-      if (msg.role === 'user') {
-        const uMeta = parseMsgMeta(msg);
-        const rawAtts = Array.isArray(uMeta.attachments_full)
-          ? uMeta.attachments_full
-          : Array.isArray(uMeta.attachments)
-          ? uMeta.attachments
-          : [];
-        const imgAtts = rawAtts.filter((a) => a && a.is_image && a.data_url);
-        const docAtts = rawAtts.filter((a) => a && !(a.is_image && a.data_url));
-
-        const imgGridHtml =
-          imgAtts.length > 0
-            ? `<div class="msg-user-images">
-                ${imgAtts
-                  .map(
-                    (a, imgIdx) =>
-                      `<img src="${escapeHtml(a.data_url)}" alt="${escapeHtml(
-                        a.name
-                      )}" class="msg-user-img-card" data-preview-img-idx="${imgIdx}" title="点击查看大图：${escapeHtml(
-                        a.name
-                      )}" />`
-                  )
-                  .join('')}
-              </div>`
-            : '';
-
-        const attHtml =
-          docAtts.length > 0
-            ? `<div class="msg-attachments-row">
-                ${docAtts
-                  .map((a, docIdx) => {
-                    const fMeta = inferClientFileBadge(a.name, a.badge, a.color);
-                    const subInfo = a.char_count
-                      ? `已提取 ${Number(a.char_count).toLocaleString()} 字`
-                      : formatFileByteSize(a.size || (a.content ? a.content.length : 0));
-                    return `<span class="ds-file-card clickable-att" data-preview-doc-idx="${docIdx}" title="点击查看文件内容：${escapeHtml(
-                      a.name
-                    )}">
-                      <span class="ds-file-badge ${escapeHtml(fMeta.color)}">${escapeHtml(fMeta.badge)}</span>
-                      <span class="ds-file-meta">
-                        <span class="ds-file-name">${escapeHtml(a.name)}</span>
-                        <span class="ds-file-sub">${escapeHtml(subInfo)}</span>
-                      </span>
-                    </span>`;
-                  })
-                  .join('')}
-              </div>`
-            : '';
-
-        const row = document.createElement('div');
-        row.className = 'msg-row user';
-        const wrap = document.createElement('div');
-        wrap.className = 'user-msg-wrap';
-        const renderedUserHtml = escapeHtml(msg.content).replace(
-          /\*([^*\n]+)\*/g,
-          '<em class="rp-action">$1</em>'
-        );
-        wrap.innerHTML = `
-          ${imgGridHtml}
-          ${attHtml}
-          <div class="msg-body user-bubble">${renderedUserHtml}</div>
-          <div class="user-msg-tools">
-            <button type="button" class="msg-tool-btn u-copy-btn">复制</button>
-            <button type="button" class="msg-tool-btn u-edit-btn">编辑</button>
-            ${msg.id ? '<button type="button" class="msg-tool-btn u-rewind-btn" title="删除此句之后的内容重走对话">回溯至此</button>' : ''}
-          </div>
-        `;
-
-        wrap.querySelectorAll('[data-preview-img-idx]').forEach((imgEl) => {
-          imgEl.addEventListener('click', () => {
-            openAttachmentPreviewModal(imgAtts[Number(imgEl.dataset.previewImgIdx)]);
-          });
-        });
-        wrap.querySelectorAll('[data-preview-doc-idx]').forEach((chipEl) => {
-          chipEl.addEventListener('click', () => {
-            openAttachmentPreviewModal(docAtts[Number(chipEl.dataset.previewDocIdx)]);
-          });
-        });
-
-        wrap.querySelector('.u-copy-btn')?.addEventListener('click', async (e) => {
-          const btn = e.currentTarget;
-          try {
-            await navigator.clipboard.writeText(msg.content);
-          } catch {
-            fallbackLegacyCopy(msg.content);
-          }
-          btn.textContent = '已复制';
-          setTimeout(() => {
-            btn.textContent = '复制';
-          }, 1100);
-        });
-
-        wrap.querySelector('.u-edit-btn').addEventListener('click', () => {
-          mountInlineEditor(
-            wrap,
-            msg,
-            () => {
-              wrap.querySelector('.msg-body').textContent = msg.content;
-            },
-            true
-          );
-        });
-        const rwBtn = wrap.querySelector('.u-rewind-btn');
-        if (rwBtn) {
-          rwBtn.addEventListener('click', async () => {
-            if (state.isStreaming || !msg.id) return;
-            const subsequentCount = Math.max(0, state.messages.length - 1 - idx);
-            const confirmed = await askUserConfirm({
-              title: '确认回溯对话进度',
-              message:
-                subsequentCount > 0
-                  ? `确定要回溯到这句话吗？\n此句之后的 ${subsequentCount} 条后续对话记录将被永久清除且无法恢复（如需保留原线，可先点回复下方的「分支」开启新周目）。`
-                  : '确定要重置此节点状态吗？',
-              confirmText: '确认回溯并清除后续',
-              danger: true
-            });
-            if (!confirmed) return;
-            await apiJson(`/api/messages/${msg.id}/rewind`, { method: 'POST' });
-            await loadSession(state.activeSessionId);
-            showToast('已回溯到该对话节点');
-          });
-        }
-        row.appendChild(wrap);
-        messagesContainer.appendChild(row);
-      } else {
-        messagesContainer.appendChild(createAssistantMessageDom(msg, idx === lastAssistantIdx));
-      }
-    });
-
-    // 仅在 DeepSeek 问答模式下同步顶栏「🖥️ 网页预览」指示点与右侧预览工作台，严禁向剧本扮演模式泄露网页预览功能
+  function syncArtifactsIndicator() {
+    const isDsUi = state.uiMode === 'deepseek';
     const artDot = document.getElementById('ds-artifacts-count-dot');
     if (isDsUi) {
       const runButtons = messagesContainer.querySelectorAll('[data-run-code]');
@@ -4478,7 +4585,119 @@
     } else if (artDot) {
       artDot.classList.add('hidden');
     }
+  }
 
+  function trimPreviousLastAssistantDecorations() {
+    if (!messagesContainer) return;
+    const starterGrid = messagesContainer.querySelector('.starter-prompts-grid');
+    if (starterGrid) starterGrid.remove();
+    const assistantRows = messagesContainer.querySelectorAll('.msg-row.assistant');
+    for (const r of assistantRows) {
+      r.querySelector('.follow-ups-row')?.remove();
+      r.querySelector('.regen-btn')?.remove();
+    }
+  }
+
+  function renderMessages() {
+    codeSnippetStore.clear();
+    const p = state.activePersona;
+    const isDsUi = state.uiMode === 'deepseek';
+    const isPhoneAgentUi = state.uiMode === 'phone-agent';
+    const chatStageEl = document.querySelector('.chat-stage');
+    const paEmptyGuide = document.getElementById('pa-empty-guide');
+    const frag = document.createDocumentFragment();
+
+    if (isDsUi) {
+      if (paEmptyGuide) paEmptyGuide.classList.add('hidden');
+      const isEmpty = state.messages.length === 0;
+      if (chatStageEl) chatStageEl.classList.toggle('ds-empty-mode', isEmpty);
+      const greetTitleEl = document.getElementById('ds-greeting-title');
+      if (greetTitleEl) {
+        greetTitleEl.textContent = '今天有什么可以帮到你？';
+      }
+      syncComposerEmptyState();
+    } else if (isPhoneAgentUi) {
+      messagesContainer.replaceChildren();
+      if (chatStageEl) chatStageEl.classList.remove('ds-empty-mode');
+      if (window.PhoneAgent && typeof window.PhoneAgent.renderWorkspace === 'function') {
+        window.PhoneAgent.renderWorkspace();
+      } else if (paEmptyGuide) {
+        paEmptyGuide.classList.remove('hidden');
+      }
+      syncComposerEmptyState();
+      return;
+    } else {
+      if (paEmptyGuide) paEmptyGuide.classList.add('hidden');
+      if (chatStageEl) chatStageEl.classList.remove('ds-empty-mode');
+      if (p) {
+        const banner = document.createElement('div');
+        banner.className = 'persona-story-banner';
+        const hasUserTurn = state.messages.some((m) => m.role === 'user');
+        const promptsHtml =
+          !hasUserTurn && Array.isArray(p.starter_prompts) && p.starter_prompts.length > 0
+            ? `<div class="starter-prompts-grid">
+                ${p.starter_prompts
+                  .map((sp) => {
+                    const prettySp = escapeHtml(sp).replace(
+                      /\*([^*\n]+)\*/g,
+                      '<em class="rp-action">（$1）</em>'
+                    );
+                    return `<button type="button" class="starter-chip" data-raw-prompt="${escapeHtml(sp)}">${prettySp}</button>`;
+                  })
+                  .join('')}
+              </div>`
+            : '';
+
+        const userNickStr = state.user?.nickname || '你';
+        const cleanBackstory = String(p.backstory || p.tagline || '可在右侧设定书查看详细背景')
+          .replace(/\{\{user\}\}/gi, userNickStr)
+          .replace(/\{\{char\}\}/gi, (p.name || '').split('·')[0].trim());
+        const cleanNote = String(state.activeSession?.director_note || '')
+          .replace(/\{\{user\}\}/gi, userNickStr)
+          .trim();
+
+        const directorHtml = cleanNote
+          ? `<div style="margin-top:8px;font-size:12px;color:var(--brand-primary);font-weight:600;">当前幕次情境：${escapeHtml(
+              cleanNote
+            )}</div>`
+          : '';
+
+        const curSc = getActiveScriptObj();
+        banner.innerHTML = `
+          <div class="banner-title"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-2px;margin-right:5px;" aria-hidden="true"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg><span>剧本《${escapeHtml(curSc.title)}》 · 序章背景</span></div>
+          <div>${escapeHtml(cleanBackstory)}</div>
+          ${directorHtml}
+          ${promptsHtml}
+        `;
+
+        banner.querySelectorAll('.starter-chip').forEach((chip) => {
+          chip.addEventListener('click', () => {
+            if (!state.isStreaming) {
+              const rawSp = chip.getAttribute('data-raw-prompt') || chip.textContent.replace(/^✦\s*/, '');
+              sendStreamMessage(rawSp, false);
+            }
+          });
+        });
+
+        frag.appendChild(banner);
+      }
+    }
+
+    let lastAssistantIdx = -1;
+    state.messages.forEach((m, idx) => {
+      if (m.role === 'assistant') lastAssistantIdx = idx;
+    });
+
+    state.messages.forEach((msg, idx) => {
+      if (msg.role === 'user') {
+        frag.appendChild(createUserMessageDom(msg, idx));
+      } else {
+        frag.appendChild(createAssistantMessageDom(msg, idx === lastAssistantIdx));
+      }
+    });
+
+    messagesContainer.replaceChildren(frag);
+    syncArtifactsIndicator();
     updateBondBadge();
     syncComposerEmptyState();
     scrollToBottom(true);
@@ -4510,8 +4729,19 @@
 
   async function sendStreamMessage(text, regenerate = false, editMessageId = 0, _retried404 = false) {
     if (state.isStreaming) return;
+    let trimmed = (text || '').trim();
+
+    // 仅在「手机辅助」工作台模式下由 Phone Agent 独立引擎全权接管，绝不创建或混用 DeepSeek 会话
+    if (!regenerate && !editMessageId && state.uiMode === 'phone-agent' && window.PhoneAgent && typeof window.PhoneAgent.executeTaskInChat === 'function') {
+      if (!trimmed) return;
+      chatInput.value = '';
+      syncComposerEmptyState();
+      await window.PhoneAgent.executeTaskInChat(trimmed);
+      return;
+    }
+
     if (!state.activeSessionId) {
-      if (state.uiMode === 'deepseek' || state.uiMode === 'phone-agent') {
+      if (state.uiMode === 'deepseek') {
         await startNativeDeepSeekSession('persona_deepseek_official');
       } else {
         const firstRp = state.personas.find((p) => p.id !== 'persona_deepseek_official');
@@ -4519,8 +4749,7 @@
       }
       if (!state.activeSessionId) return;
     }
-    const isDsUi = state.uiMode === 'deepseek' || state.uiMode === 'phone-agent';
-    let trimmed = (text || '').trim();
+    const isDsUi = state.uiMode === 'deepseek';
     if (!regenerate && !editMessageId && state.pendingAttachments.some((a) => a.parsing)) {
       showToast('文件正在读取解析中，请稍候片刻再发送');
       return;
@@ -4534,13 +4763,6 @@
     }
 
     if (!regenerate && !trimmed && stagedFiles.length === 0) return;
-
-    // 仅在「手机辅助」工作台模式下由 Phone Agent 原生/大模型双引擎接管；绝不误拦 DeepSeek 与剧场模式常规对话
-    if (!regenerate && !editMessageId && state.uiMode === 'phone-agent' && window.PhoneAgent && typeof window.PhoneAgent.executeTaskInChat === 'function') {
-      chatInput.value = '';
-      await window.PhoneAgent.executeTaskInChat(trimmed);
-      return;
-    }
 
     state.lastInteractionAt = Date.now();
     state.proactiveIdleCount = 0;
@@ -4558,6 +4780,7 @@
         state.messages[targetIdx].content = trimmed;
         state.messages.splice(targetIdx + 1);
       }
+      renderMessages();
     } else if (!regenerate) {
       if (!trimmed && stagedFiles.length > 0) {
         trimmed = `请帮我详细解析并总结上传的附件：${stagedFiles.map((a) => a.name).join('、')}`;
@@ -4565,18 +4788,30 @@
       chatInput.value = '';
       state.pendingAttachments = [];
       renderPendingAttachments();
-      state.messages.push({
+      const userMsgObj = {
         role: 'user',
         content: trimmed,
         meta: stagedFiles.length > 0 ? { attachments: stagedFiles, attachments_full: stagedFiles } : {}
-      });
+      };
+      state.messages.push(userMsgObj);
+      const chatStageEl = document.querySelector('.chat-stage');
+      if (chatStageEl) chatStageEl.classList.remove('ds-empty-mode');
+      document.getElementById('pa-empty-guide')?.classList.add('hidden');
+      trimPreviousLastAssistantDecorations();
+      messagesContainer.appendChild(createUserMessageDom(userMsgObj, state.messages.length - 1));
+      syncComposerEmptyState();
     } else if (
       state.messages.length > 0 &&
       state.messages[state.messages.length - 1].role === 'assistant'
     ) {
       state.messages.pop();
+      const lastDomRow = messagesContainer.querySelector('.msg-row.assistant:last-of-type');
+      if (lastDomRow) {
+        lastDomRow.remove();
+      } else {
+        renderMessages();
+      }
     }
-    renderMessages();
 
     const originSessionId = state.activeSessionId;
     const originIsDsUi = isDsUi;
@@ -4637,12 +4872,50 @@
         const sec = ((Date.now() - thinkStartedAt) / 1000).toFixed(1);
         thoughtLabelEl.textContent = `思考中... (${sec}s)`;
       }
-    }, 120);
+    }, 250);
 
     let accReasoning = '';
     let accContent = '';
     let liveSearchResults = [];
     let liveToolCalls = [];
+    let streamRenderRafId = 0;
+    let reasoningDirty = false;
+    let contentDirty = false;
+
+    const flushLiveStreamDom = () => {
+      streamRenderRafId = 0;
+      if (!isStillOriginSession()) return;
+      if (reasoningDirty) {
+        reasoningDirty = false;
+        thoughtDetails.classList.remove('hidden');
+        if (originIsDsUi) {
+          thoughtContentEl.innerHTML = formatDsReasoningHtml(accReasoning);
+        } else {
+          thoughtContentEl.textContent = accReasoning;
+        }
+      }
+      if (contentDirty) {
+        contentDirty = false;
+        thoughtContentEl.classList.remove('streaming-cursor');
+        if (accReasoning) {
+          const livePronoun = getPersonaPronoun(state.activePersona);
+          thoughtLabelEl.textContent = originIsDsUi
+            ? `已深度思考（用时 ${thinkDoneSec || 1} 秒）`
+            : `${livePronoun}的心声独白`;
+        }
+        proseEl.innerHTML = renderMessageMarkdown(accContent, liveSearchResults, {
+          isStreaming: true,
+          streamKeyPrefix: 'live_cb'
+        });
+      }
+      scheduleScrollToBottom(false);
+    };
+
+    const scheduleLiveStreamFlush = () => {
+      if (!streamRenderRafId) {
+        streamRenderRafId = requestAnimationFrame(flushLiveStreamDom);
+      }
+    };
 
     try {
       const response = await fetch('/api/chat/stream', {
@@ -4740,7 +5013,7 @@
                 </div>
               </details>
             `;
-            scrollToBottom();
+            scheduleScrollToBottom(false);
           } else if (eventName === 'tool_call') {
             liveRow.classList.remove('awaiting-first-token');
             liveToolCalls.push(payload);
@@ -4751,7 +5024,7 @@
               payload.summary || ''
             )}`;
             liveToolSlot.appendChild(badge);
-            scrollToBottom();
+            scheduleScrollToBottom(false);
           } else if (eventName === 'memory_extracted' && Array.isArray(payload.items)) {
             const firstItem = payload.items[0];
             showToast(
@@ -4790,31 +5063,23 @@
           } else if (eventName === 'reasoning') {
             liveRow.classList.remove('awaiting-first-token');
             accReasoning += payload.delta || '';
-            thoughtDetails.classList.remove('hidden');
-            if (originIsDsUi) {
-              thoughtContentEl.innerHTML = formatDsReasoningHtml(accReasoning);
-            } else {
-              thoughtContentEl.textContent = accReasoning;
-            }
-            scrollToBottom();
+            reasoningDirty = true;
+            scheduleLiveStreamFlush();
           } else if (eventName === 'content') {
             liveRow.classList.remove('awaiting-first-token');
             if (thinkDoneSec === null) {
               thinkDoneSec = Math.max(1, Math.round((Date.now() - thinkStartedAt) / 1000));
             }
-            thoughtContentEl.classList.remove('streaming-cursor');
-            if (accReasoning) {
-              const livePronoun = getPersonaPronoun(state.activePersona);
-              thoughtLabelEl.textContent = originIsDsUi
-                ? `已深度思考（用时 ${thinkDoneSec} 秒）`
-                : `${livePronoun}的心声独白`;
-            }
             accContent += payload.delta || '';
-            proseEl.innerHTML = renderMessageMarkdown(accContent, liveSearchResults);
-            scrollToBottom();
+            contentDirty = true;
+            scheduleLiveStreamFlush();
           } else if (eventName === 'done') {
+            if (streamRenderRafId) {
+              cancelAnimationFrame(streamRenderRafId);
+              streamRenderRafId = 0;
+            }
             receivedDoneEvent = true;
-            state.messages.push({
+            const finalAssistantMsg = {
               id: payload.message_id,
               role: 'assistant',
               reasoning: accReasoning,
@@ -4825,7 +5090,8 @@
                 search_results: liveSearchResults,
                 tool_calls: liveToolCalls
               }
-            });
+            };
+            state.messages.push(finalAssistantMsg);
             if (Array.isArray(payload.memories)) state.memories = payload.memories;
             if (payload.nurturing) state.nurturing = payload.nurturing;
             if (Array.isArray(payload.sessions)) {
@@ -4835,6 +5101,17 @@
             }
             if (payload.membership) state.membership = payload.membership;
             setStreamingUi(false);
+            trimPreviousLastAssistantDecorations();
+            const finalRow = createAssistantMessageDom(finalAssistantMsg, true);
+            if (liveRow.parentNode) {
+              liveRow.replaceWith(finalRow);
+            } else {
+              messagesContainer.appendChild(finalRow);
+            }
+            syncArtifactsIndicator();
+            updateBondBadge();
+            syncComposerEmptyState();
+            scheduleScrollToBottom(false);
             renderUserAndMembership();
             renderSessionList();
             renderNurturingAndDiary();
@@ -4846,7 +5123,6 @@
               messages: state.messages,
               forceBalanceRefresh: true
             });
-            renderMessages();
             // 角色回复自动真声配音（零配置开箱即集成）
             if (
               !originIsDsUi &&
@@ -4886,6 +5162,10 @@
         await loadSession(originSessionId).catch(() => {});
       }
     } catch (err) {
+      if (streamRenderRafId) {
+        cancelAnimationFrame(streamRenderRafId);
+        streamRenderRafId = 0;
+      }
       // 若已切换至其他会话，绝不触碰当前新会话的任何数据或界面
       if (!isStillOriginSession()) {
         return;
@@ -4903,7 +5183,7 @@
         const preservedText = substantivePartial
           ? `${balancedAcc}\n\n（已停止生成）`
           : '*（已停止生成，可点击下方按钮继续或重演）*';
-        state.messages.push({
+        const abortedMsg = {
           role: 'assistant',
           reasoning: accReasoning,
           content: preservedText,
@@ -4916,9 +5196,19 @@
             search_results: liveSearchResults,
             tool_calls: liveToolCalls
           }
-        });
+        };
+        state.messages.push(abortedMsg);
         setStreamingUi(false);
-        renderMessages();
+        trimPreviousLastAssistantDecorations();
+        const abortedRow = createAssistantMessageDom(abortedMsg, true);
+        if (liveRow.parentNode) {
+          liveRow.replaceWith(abortedRow);
+        } else {
+          messagesContainer.appendChild(abortedRow);
+        }
+        syncArtifactsIndicator();
+        updateBondBadge();
+        syncComposerEmptyState();
         showToast('已停止生成，已输出的内容已为您完整保留');
         // 延迟静默对齐服务端记录（防止旧快照覆盖刚保留的半段回复）
         const localCountAfterStop = state.messages.length;
@@ -4952,6 +5242,10 @@
         )}</p>`;
       }
     } finally {
+      if (streamRenderRafId) {
+        cancelAnimationFrame(streamRenderRafId);
+        streamRenderRafId = 0;
+      }
       clearInterval(thinkTimer);
       if (state.streamingAbort === abortController) {
         state.streamingAbort = null;
@@ -5421,8 +5715,8 @@
     const sessMode = data.session?.session_mode === 'deepseek_native' ? 'deepseek' : 'roleplay';
     if (sessMode === 'roleplay') {
       if (state.uiMode !== 'roleplay') applyUiModeVisuals('roleplay');
-    } else if (state.uiMode !== 'deepseek' && state.uiMode !== 'phone-agent') {
-      applyUiModeVisuals('deepseek');
+    } else {
+      if (state.uiMode !== 'deepseek') applyUiModeVisuals('deepseek');
     }
     if (sessMode === 'roleplay' && data.persona?.script_id) {
       state.activeScriptId = data.persona.script_id;
@@ -5431,17 +5725,22 @@
       } catch {}
     }
 
+    codeSnippetStore.clear();
     syncActiveScriptVisuals();
+    renderSessionList();
+    renderMessages();
+
+    await yieldToMain();
+    if (reqSeq !== loadSessionSeq) return;
+
     renderUserAndMembership();
     renderPersonaList();
-    renderSessionList();
     populatePersonaEditor();
     renderNurturingAndDiary();
     renderCompanionStage();
     renderLorebooks();
     renderTelemetryAndMemories();
     renderDeepSeekSuiteTelemetry();
-    renderMessages();
     if (state.uiMode === 'roleplay') {
       triggerCompanionCare('timer', true);
     }
@@ -6402,7 +6701,10 @@
       }
     }
 
-    // 5. 同步手机辅助状态与默认执行引擎
+    // 5. 按当前工作台模式隔离手机辅助设置项（在 DeepSeek/剧场模式下隐藏手机辅助专有项，防止串台）
+    const isPhoneAgentMode = state.uiMode === 'phone-agent';
+    document.getElementById('mfs-item-phoneagent')?.classList.toggle('hidden', !isPhoneAgentMode);
+    document.getElementById('mfs-item-phone-engine')?.classList.toggle('hidden', !isPhoneAgentMode);
     const paVal = document.getElementById('mfs-phoneagent-value');
     if (paVal) {
       const isNative = window.AndroidAppBridge && window.AndroidAppBridge.isNativeApk();
@@ -6440,7 +6742,7 @@
       if (window.PhoneAgent && typeof window.PhoneAgent.getInstalledVersionLabel === 'function') {
         verVal.textContent = window.PhoneAgent.getInstalledVersionLabel();
       } else {
-        const verStr = (window.PhoneAgent && window.PhoneAgent.currentVersion) || '1.9.1';
+        const verStr = (window.PhoneAgent && window.PhoneAgent.currentVersion) || '1.9.2';
         verVal.textContent = verStr.startsWith('v') ? verStr : `v${verStr}`;
       }
     }
@@ -6646,7 +6948,7 @@
 
     // 帮助与反馈（三档引擎与免 API 手机控制口令手册）
     document.getElementById('mfs-item-help')?.addEventListener('click', () => {
-      alert('【Phone Agent 手机辅助模式说明】\n支持「DeepSeek API 直连 / 云端托管 / 本地免 API」三档无缝切换：\n\n1. API 模式：在手机辅助面板输入自然语言复杂任务（如“帮我在设置里查看系统版本”），AI 自动读取屏幕节点逐步规划执行，重要操作弹出 dsh-Go 确认卡；\n2. 本地免 API 模式：无需密钥，支持常用口令直控：\n- 回桌面：输入“回桌面”或“桌面”\n- 返回：输入“返回”或“后退”\n- 滑动：输入“下滑”、“上滑”、“左滑”、“右滑”\n- 多任务：输入“最近任务”\n- 应用唤起：输入“打开 微信”、“打开 设置”等任意已安装应用\n- 点击与输入：输入“点击 [屏幕文字]”、“输入 [内容]”\n\n在其他任意应用中，轻触左侧悬浮胶囊「星语AI」也可展开控制台实时下达指令。');
+      alert('【Phone Agent 手机辅助模式说明】\n支持「DeepSeek API 直连 / 云端托管 / 本地免 API」三档无缝切换：\n\n1. API 模式：在手机辅助面板输入自然语言复杂任务（如“帮我在设置里查看系统版本”），AI 自动读取屏幕节点逐步规划执行，重要操作弹出 dsh-Go 确认卡；\n2. 本地免 API 离线指令库（无需密钥直接执行）：\n- 刷视频：自动刷视频、刷抖音、下一个视频、双击点赞、暂停视频、看评论、停止刷视频\n- 智能打字：打字 [内容]、输入并发送 [内容]、追加输入 [内容]、清空输入框、粘贴、搜索 [词]\n- 手势/系统：回桌面、返回、截屏、锁屏、控制中心、音量加/减、下滑3次、回到顶部\n- 应用直达：打开 微信/抖音/快手/小红书/B站/淘宝/支付宝/高德地图 等 35+ 应用\n- 组合宏：支持用“然后/接着/；”串联多步，如“打开抖音然后自动刷视频”\n\n点击桌面悬浮胶囊「星语 AI」可展开 4 分类多功能悬浮工作台。');
     });
 
     // 退出登录
@@ -6685,43 +6987,319 @@
       });
     }
 
-    // 2. 新对话按钮（截屏 2 右侧加号图标）
+    // 2. 新对话按钮（按模式严格分流：phone-agent 下仅清空辅助面板，绝不新建 DeepSeek 会话）
     document.getElementById('ds-topbar-new-btn')?.addEventListener('click', () => {
+      if (state.uiMode === 'phone-agent') {
+        window.PhoneAgent?.resetTaskWorkspace?.();
+        return;
+      }
       document.getElementById('ds-new-chat-btn')?.click();
     });
 
-    // 3. 全屏设置按钮（截屏 1 启动入口）
+    // 3. 全屏设置按钮（phone-agent 下直接弹出手机辅助专属控制台抽屉）
     document.getElementById('ds-topbar-mobile-settings-btn')?.addEventListener('click', () => {
+      if (state.uiMode === 'phone-agent') {
+        window.PhoneAgent?.openControlSheet?.();
+        return;
+      }
       openMobileFullscreenSettings();
     });
 
-    // 4. 输入舱更多工具加号按钮（展开快捷指令抽屉）
+    // 4. 输入舱更多工具加号按钮（仅在手机辅助模式 phone-agent 下可见，展开分类离线指令库抽屉）
     const plusBtn = document.getElementById('mobile-tools-plus-btn');
     const quickDrawer = document.getElementById('phone-cmd-quick-drawer');
     if (plusBtn && quickDrawer) {
       plusBtn.addEventListener('click', () => {
-        quickDrawer.classList.toggle('hidden');
+        if (state.uiMode !== 'phone-agent') {
+          quickDrawer.classList.add('hidden');
+          return;
+        }
+        const isHidden = quickDrawer.classList.toggle('hidden');
+        document.getElementById('pa-open-cmdlib-btn')?.classList.toggle('is-active', !isHidden);
       });
     }
 
-    // 5. 快捷指令胶囊点击：填入并执行
-    document.querySelectorAll('.phone-cmd-pill').forEach((pill) => {
-      pill.addEventListener('click', () => {
-        const cmd = pill.getAttribute('data-cmd');
-        if (cmd) {
-          const chatInput = document.getElementById('chat-input');
-          if (chatInput) {
-            chatInput.value = cmd;
-            document.getElementById('send-button')?.click();
+    // 5. 语音输入按钮（双引擎混合架构：浏览器原生 Web Speech 实时听写 + 麦克风录音转硅基流动 Qwen3-ASR-1.7B 高精度转写）
+    const voiceBtn = document.getElementById('voice-input-btn');
+    if (voiceBtn) {
+      let isVoiceRecording = false;
+      let activeMediaRecorder = null;
+      let activeAudioStream = null;
+      let recordedChunks = [];
+      let activeSpeechRec = null;
+      let baseInputBeforeVoice = '';
+      let liveSpeechFinalText = '';
+      let liveSpeechInterimText = '';
+      let pressStartTs = 0;
+
+      const cleanupAudioStream = () => {
+        if (activeAudioStream) {
+          try {
+            activeAudioStream.getTracks().forEach((track) => track.stop());
+          } catch {}
+          activeAudioStream = null;
+        }
+      };
+
+      const setVoiceBtnUi = (recording) => {
+        isVoiceRecording = recording;
+        voiceBtn.classList.toggle('recording', recording);
+        voiceBtn.setAttribute('aria-pressed', String(recording));
+        voiceBtn.title = recording ? '正在倾听…点击完成语音输入' : '语音输入（点击开始说话，再次点击完成）';
+      };
+
+      const applyRecognizedTextToInput = (newSegment) => {
+        const cleanSeg = String(newSegment || '').trim();
+        if (!cleanSeg && !baseInputBeforeVoice) return;
+        const sep = baseInputBeforeVoice && cleanSeg && !/\s$/.test(baseInputBeforeVoice) ? ' ' : '';
+        chatInput.value = `${baseInputBeforeVoice}${sep}${cleanSeg}`;
+        syncComposerEmptyState();
+      };
+
+      const blobToDataUrl = (blob) =>
+        new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(String(reader.result || ''));
+          reader.onerror = reject;
+          reader.readAsDataURL(blob);
+        });
+
+      const stopVoiceRecording = async () => {
+        if (!isVoiceRecording) return;
+        setVoiceBtnUi(false);
+
+        if (activeSpeechRec) {
+          try {
+            activeSpeechRec.stop();
+          } catch {}
+          activeSpeechRec = null;
+        }
+
+        if (activeMediaRecorder && activeMediaRecorder.state !== 'inactive') {
+          try {
+            activeMediaRecorder.stop();
+          } catch {
+            cleanupAudioStream();
+          }
+        } else {
+          cleanupAudioStream();
+          const finalWebSpeech = (liveSpeechFinalText + liveSpeechInterimText).trim();
+          if (finalWebSpeech) {
+            applyRecognizedTextToInput(finalWebSpeech);
+            chatInput.focus();
+            showToast('语音输入已完成');
           }
         }
-      });
-    });
+      };
 
-    // 6. 语音输入按钮
-    document.getElementById('voice-input-btn')?.addEventListener('click', () => {
-      showToast('按住可进行语音输入（正在监听系统麦克风…）');
-    });
+      const startVoiceRecording = async () => {
+        if (isVoiceRecording) {
+          await stopVoiceRecording();
+          return;
+        }
+
+        baseInputBeforeVoice = chatInput.value || '';
+        liveSpeechFinalText = '';
+        liveSpeechInterimText = '';
+        recordedChunks = [];
+
+        const SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition;
+        const canUseMediaRecorder = Boolean(
+          navigator.mediaDevices &&
+            typeof navigator.mediaDevices.getUserMedia === 'function' &&
+            typeof window.MediaRecorder !== 'undefined'
+        );
+
+        if (!SpeechRecognitionCtor && !canUseMediaRecorder) {
+          showToast('当前浏览器环境不支持麦克风语音识别，请使用 Chrome / Edge / 系统自带浏览器或开启 HTTPS 访问');
+          return;
+        }
+
+        let startedAnyEngine = false;
+
+        // 引擎 1：尝试启动浏览器原生实时语音听写（边说边出字，零延迟预览）
+        if (SpeechRecognitionCtor) {
+          try {
+            const rec = new SpeechRecognitionCtor();
+            rec.lang = 'zh-CN';
+            rec.continuous = true;
+            rec.interimResults = true;
+            rec.onresult = (event) => {
+              let finalStr = '';
+              let interimStr = '';
+              for (let i = 0; i < event.results.length; i++) {
+                const res = event.results[i];
+                const transcript = res[0]?.transcript || '';
+                if (res.isFinal) finalStr += transcript;
+                else interimStr += transcript;
+              }
+              liveSpeechFinalText = finalStr;
+              liveSpeechInterimText = interimStr;
+              applyRecognizedTextToInput(liveSpeechFinalText + liveSpeechInterimText);
+            };
+            rec.onerror = (errEv) => {
+              if (errEv?.error === 'not-allowed' || errEv?.error === 'service-not-allowed') {
+                if (!activeMediaRecorder) {
+                  setVoiceBtnUi(false);
+                  showToast('麦克风权限被拒绝，请在浏览器地址栏左侧或系统设置中允许麦克风访问');
+                }
+              }
+            };
+            rec.onend = () => {
+              // 若仅依赖 WebSpeech 且未启动 MediaRecorder，则在语音自然结束时同步收起状态
+              if (isVoiceRecording && (!activeMediaRecorder || activeMediaRecorder.state === 'inactive')) {
+                setVoiceBtnUi(false);
+                const combined = (liveSpeechFinalText + liveSpeechInterimText).trim();
+                if (combined) {
+                  applyRecognizedTextToInput(combined);
+                  chatInput.focus();
+                  showToast('语音听写完成');
+                }
+              }
+            };
+            rec.start();
+            activeSpeechRec = rec;
+            startedAnyEngine = true;
+          } catch {}
+        }
+
+        // 引擎 2：启动 MediaRecorder 录制高保真音频，结束时交由后端 Qwen3-ASR-1.7B 转写兜底/精修
+        if (canUseMediaRecorder) {
+          try {
+            const stream = await navigator.mediaDevices.getUserMedia({
+              audio: {
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true
+              }
+            });
+            activeAudioStream = stream;
+            const mimeCandidates = [
+              'audio/webm;codecs=opus',
+              'audio/webm',
+              'audio/mp4',
+              'audio/ogg;codecs=opus'
+            ];
+            let chosenMime = '';
+            for (const m of mimeCandidates) {
+              if (typeof MediaRecorder.isTypeSupported === 'function' && MediaRecorder.isTypeSupported(m)) {
+                chosenMime = m;
+                break;
+              }
+            }
+            const recorder = chosenMime
+              ? new MediaRecorder(stream, { mimeType: chosenMime })
+              : new MediaRecorder(stream);
+
+            recorder.ondataavailable = (ev) => {
+              if (ev.data && ev.data.size > 0) {
+                recordedChunks.push(ev.data);
+              }
+            };
+
+            recorder.onstop = async () => {
+              cleanupAudioStream();
+              const webSpeechText = (liveSpeechFinalText + liveSpeechInterimText).trim();
+              const audioBlob = new Blob(recordedChunks, {
+                type: recorder.mimeType || chosenMime || 'audio/webm'
+              });
+              recordedChunks = [];
+
+              if (audioBlob.size < 400) {
+                if (webSpeechText) {
+                  applyRecognizedTextToInput(webSpeechText);
+                  chatInput.focus();
+                } else {
+                  showToast('未检测到有效语音，请靠近麦克风再试一次');
+                }
+                return;
+              }
+
+              // 若 WebSpeech 已经实时识别出结果，先保留在输入框中；同时尝试调用后端硅基流动 ASR 获取更精准标点与结果
+              if (!webSpeechText) {
+                showToast('正在识别语音内容…', 1800);
+              }
+
+              try {
+                const dataUrl = await blobToDataUrl(audioBlob);
+                const res = await apiJson('/api/asr/transcribe', {
+                  method: 'POST',
+                  body: JSON.stringify({ audio_data_url: dataUrl })
+                });
+                const asrText = String(res?.text || '').trim();
+                if (res?.ok && asrText) {
+                  applyRecognizedTextToInput(asrText);
+                  chatInput.focus();
+                  showToast('语音识别完成');
+                  return;
+                }
+              } catch (asrErr) {
+                if (!webSpeechText) {
+                  showToast(
+                    asrErr?.message
+                      ? `语音转写提示：${asrErr.message}`
+                      : '语音转写服务暂不可用，请检查麦克风或网络设置'
+                  );
+                  return;
+                }
+              }
+
+              if (webSpeechText) {
+                applyRecognizedTextToInput(webSpeechText);
+                chatInput.focus();
+                showToast('语音输入已完成');
+              } else {
+                showToast('未能识别出清晰语音，请重试（或在设置中配置硅基流动密钥开启高精度语音转写）');
+              }
+            };
+
+            recorder.start();
+            activeMediaRecorder = recorder;
+            startedAnyEngine = true;
+          } catch (permErr) {
+            cleanupAudioStream();
+            if (!startedAnyEngine) {
+              setVoiceBtnUi(false);
+              const isDenied =
+                permErr?.name === 'NotAllowedError' || permErr?.name === 'PermissionDeniedError';
+              showToast(
+                isDenied
+                  ? '麦克风权限被拒绝，请在浏览器地址栏左侧或系统应用权限中允许使用麦克风'
+                  : `无法启动麦克风录音：${permErr?.message || '请检查麦克风设备'}`
+              );
+              return;
+            }
+          }
+        }
+
+        if (startedAnyEngine) {
+          setVoiceBtnUi(true);
+          showToast('正在倾听您说话…说完后再次点击麦克风按钮即可填入');
+        }
+      };
+
+      voiceBtn.addEventListener('pointerdown', () => {
+        pressStartTs = Date.now();
+      });
+
+      voiceBtn.addEventListener('pointerup', (e) => {
+        // 兼容用户长按说话习惯：若按住超过 450ms 后松开且当前正在录音，则松手即完成识别
+        if (isVoiceRecording && pressStartTs > 0 && Date.now() - pressStartTs > 450) {
+          e.preventDefault();
+          pressStartTs = 0;
+          stopVoiceRecording();
+        }
+      });
+
+      voiceBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        if (isVoiceRecording) {
+          stopVoiceRecording();
+        } else {
+          startVoiceRecording();
+        }
+      });
+    }
   }
 
   initMobileFullscreenSettings();
@@ -8490,14 +9068,23 @@
     updateCompanionConfig({ reminderEnabled: compAutoChk.checked });
   });
 
-  // 输入框打字时，陪伴立绘实时投来关注视线
+  // 输入框打字时，陪伴立绘实时投来关注视线（仅在剧本模式且陪伴立绘可见时触发，防冗余 DOM 写）
   let typingWatchTimer = null;
   chatInput.addEventListener('input', () => {
-    if (state.isStreaming) return;
-    compLiveStatus.textContent = '正专注看着你打字…';
+    if (
+      state.isStreaming ||
+      state.uiMode !== 'roleplay' ||
+      !companionStageEl ||
+      companionStageEl.classList.contains('hidden')
+    ) {
+      return;
+    }
+    if (compLiveStatus.textContent !== '正专注看着你打字…') {
+      compLiveStatus.textContent = '正专注看着你打字…';
+    }
     clearTimeout(typingWatchTimer);
     typingWatchTimer = setTimeout(() => {
-      if (!state.isStreaming) {
+      if (!state.isStreaming && compLiveStatus) {
         compLiveStatus.textContent = state.companion?.label || '正温柔守候在你身旁';
       }
     }, 2400);
@@ -8557,12 +9144,27 @@
       tabPa.setAttribute('aria-selected', String(isPhoneAgent));
     }
 
-    // 控制聊天窗口顶部的 dsh-Go 风格手机辅助专属横幅与标题栏对齐
+    // 控制聊天窗口顶部的单行紧凑控制栏、加号按钮与空态引导
+    const plusBtnEl = document.getElementById('mobile-tools-plus-btn');
+    if (plusBtnEl) {
+      plusBtnEl.classList.toggle('hidden', !isPhoneAgent);
+    }
+    if (!isPhoneAgent) {
+      document.getElementById('phone-cmd-quick-drawer')?.classList.add('hidden');
+      document.getElementById('pa-open-cmdlib-btn')?.classList.remove('is-active');
+    }
     if (paBanner) {
       paBanner.classList.toggle('hidden', !isPhoneAgent);
       if (isPhoneAgent && window.PhoneAgent) {
         window.PhoneAgent.syncStatus();
+      } else if (!isPhoneAgent) {
+        window.PhoneAgent?.closeControlSheet?.();
       }
+    }
+    const paEmptyGuide = document.getElementById('pa-empty-guide');
+    if (paEmptyGuide) {
+      const hasMsgs = state.messages.length > 0 || (messagesContainer && messagesContainer.children.length > 0);
+      paEmptyGuide.classList.toggle('hidden', !isPhoneAgent || hasMsgs);
     }
     const chatStageDom = document.querySelector('.chat-stage');
     if (chatStageDom) {
@@ -8640,8 +9242,16 @@
       return;
     }
     const isPhoneAgent = targetMode === 'phone-agent';
-    const isDs = targetMode === 'deepseek' || isPhoneAgent;
+    const isDs = targetMode === 'deepseek';
     applyUiModeVisuals(targetMode);
+
+    if (isPhoneAgent) {
+      if (window.PhoneAgent && typeof window.PhoneAgent.onEnterMode === 'function') {
+        window.PhoneAgent.onEnterMode();
+      }
+      showToast('已进入手机辅助独立工作台（与 DeepSeek 问答会话完全隔离）');
+      return;
+    }
 
     const matchingSessions = state.sessions.filter((s) =>
       isDs
@@ -8649,7 +9259,10 @@
         : s.session_mode !== 'deepseek_native'
     );
 
-    if (matchingSessions.length > 0) {
+    if (isDs && state.activeSession?.session_mode === 'deepseek_native') {
+      renderSessionList();
+      renderMessages();
+    } else if (matchingSessions.length > 0) {
       await loadSession(matchingSessions[0].id);
     } else if (isDs) {
       await startNativeDeepSeekSession('persona_deepseek_official');
@@ -8658,9 +9271,7 @@
       if (firstRp) await startSessionWithPersona(firstRp.id);
     }
 
-    if (isPhoneAgent) {
-      showToast('已进入 Phone Agent 手机辅助聊天面板（点击快捷指令或打字直接操控手机）');
-    } else if (isDs) {
+    if (isDs) {
       showToast('已切换至 DeepSeek 问答模式（独立记忆、深度思考与联网搜索已就绪）');
     } else {
       showToast('已回到星语恋庭沉浸扮演模式');
@@ -8684,6 +9295,10 @@
   });
 
   document.getElementById('ds-new-chat-btn').addEventListener('click', () => {
+    if (state.uiMode === 'phone-agent') {
+      window.PhoneAgent?.resetTaskWorkspace?.();
+      return;
+    }
     startNativeDeepSeekSession('persona_deepseek_official');
   });
 
@@ -10160,6 +10775,38 @@
 
     let accReasoning = '';
     let accContent = '';
+    let proactiveRafId = 0;
+    let proReasoningDirty = false;
+    let proContentDirty = false;
+
+    const flushProactiveDom = () => {
+      proactiveRafId = 0;
+      if (!isStillOriginSession()) return;
+      if (proReasoningDirty) {
+        proReasoningDirty = false;
+        thoughtDetails.classList.remove('hidden');
+        if (isDsUi) {
+          thoughtContentEl.innerHTML = formatDsReasoningHtml(accReasoning);
+        } else {
+          thoughtContentEl.textContent = accReasoning;
+        }
+      }
+      if (proContentDirty) {
+        proContentDirty = false;
+        thoughtContentEl.classList.remove('streaming-cursor');
+        proseEl.innerHTML = renderMessageMarkdown(accContent, [], {
+          isStreaming: true,
+          streamKeyPrefix: 'pro_live_cb'
+        });
+      }
+      scheduleScrollToBottom(false);
+    };
+
+    const scheduleProactiveFlush = () => {
+      if (!proactiveRafId) {
+        proactiveRafId = requestAnimationFrame(flushProactiveDom);
+      }
+    };
 
     try {
       const response = await fetch('/api/chat/proactive', {
@@ -10203,22 +10850,20 @@
         if (eventName === 'reasoning') {
           liveRow.classList.remove('awaiting-first-token');
           accReasoning += payload.delta || '';
-          thoughtDetails.classList.remove('hidden');
-          if (isDsUi) {
-            thoughtContentEl.innerHTML = formatDsReasoningHtml(accReasoning);
-          } else {
-            thoughtContentEl.textContent = accReasoning;
-          }
-          scrollToBottom();
+          proReasoningDirty = true;
+          scheduleProactiveFlush();
         } else if (eventName === 'content') {
           liveRow.classList.remove('awaiting-first-token');
-          thoughtContentEl.classList.remove('streaming-cursor');
           accContent += payload.delta || '';
-          proseEl.innerHTML = renderMessageMarkdown(accContent);
-          scrollToBottom();
+          proContentDirty = true;
+          scheduleProactiveFlush();
         } else if (eventName === 'done') {
+          if (proactiveRafId) {
+            cancelAnimationFrame(proactiveRafId);
+            proactiveRafId = 0;
+          }
           receivedDoneEvent = true;
-          state.messages.push({
+          const proMsg = {
             id: payload.message_id,
             role: 'assistant',
             reasoning: accReasoning,
@@ -10226,11 +10871,22 @@
             duration_ms: payload.duration_ms,
             recalled_count: payload.recalled_count,
             meta: payload.meta || { is_proactive: true }
-          });
+          };
+          state.messages.push(proMsg);
           if (Array.isArray(payload.sessions)) state.sessions = payload.sessions;
           setStreamingUi(false);
+          trimPreviousLastAssistantDecorations();
+          const finalProRow = createAssistantMessageDom(proMsg, true);
+          if (liveRow.parentNode) {
+            liveRow.replaceWith(finalProRow);
+          } else {
+            messagesContainer.appendChild(finalProRow);
+          }
+          syncArtifactsIndicator();
+          updateBondBadge();
+          syncComposerEmptyState();
+          scheduleScrollToBottom(false);
           renderSessionList();
-          renderMessages();
           if (triggerReason === 'idle') {
             showToast('看你安静了一会儿，TA 主动给你发来了一条新消息');
           } else if (triggerReason === 'return') {
@@ -10257,6 +10913,10 @@
     } catch {
       liveRow.remove();
     } finally {
+      if (proactiveRafId) {
+        cancelAnimationFrame(proactiveRafId);
+        proactiveRafId = 0;
+      }
       if (state.streamingAbort === abortController) {
         state.streamingAbort = null;
         state.streamingSessionId = null;
@@ -10320,7 +10980,10 @@
         renderSessionList();
       }
     });
-    dsSearchInput.addEventListener('input', () => renderSessionList());
+    dsSearchInput.addEventListener(
+      'input',
+      debounce(() => renderSessionList(), 120)
+    );
   }
 
   function hidePopoverSafe(id) {
@@ -10447,12 +11110,18 @@
     renderPersonaList();
     renderSessionList();
 
-    const isDs = state.uiMode === 'deepseek' || state.uiMode === 'phone-agent';
+    const isPhoneAgentBoot = state.uiMode === 'phone-agent';
+    const isDsBoot = state.uiMode === 'deepseek';
     const preferredSessions = state.sessions.filter((s) =>
-      isDs ? s.session_mode === 'deepseek_native' : s.session_mode !== 'deepseek_native'
+      isDsBoot ? s.session_mode === 'deepseek_native' : s.session_mode !== 'deepseek_native'
     );
 
-    if (isDs) {
+    if (isPhoneAgentBoot) {
+      applyUiModeVisuals('phone-agent');
+      if (window.PhoneAgent && typeof window.PhoneAgent.onEnterMode === 'function') {
+        window.PhoneAgent.onEnterMode();
+      }
+    } else if (isDsBoot) {
       const reusableBlank = preferredSessions.find(
         (s) => s.title === '新对话' && s.persona_id === 'persona_deepseek_official'
       );
@@ -10460,9 +11129,6 @@
         await loadSession(reusableBlank.id);
       } else {
         await startNativeDeepSeekSession('persona_deepseek_official');
-      }
-      if (state.uiMode === 'phone-agent') {
-        applyUiModeVisuals('phone-agent');
       }
     } else {
       // 优先进入当前所选剧本下的会话或首位主角（新默认直接进入《樱坂坡道上的风》）

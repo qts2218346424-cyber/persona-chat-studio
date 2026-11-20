@@ -49,8 +49,8 @@
   min-height: 52px;
   padding: 0 16px;
   background: light-dark(rgba(255, 255, 255, 0.95), rgba(18, 20, 26, 0.95));
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   border-bottom: 1px solid light-dark(rgba(0, 0, 0, 0.05), rgba(255, 255, 255, 0.06));
   z-index: 10;
 }
@@ -70,7 +70,7 @@
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: background-color 0.15s ease, transform 0.15s ease;
 }
 
 .mfs-back-btn:active {
@@ -310,8 +310,8 @@
     align-items: center !important;
     justify-content: space-between !important;
     background: light-dark(rgba(255, 255, 255, 0.96), rgba(18, 20, 26, 0.96)) !important;
-    backdrop-filter: blur(16px) !important;
-    -webkit-backdrop-filter: blur(16px) !important;
+    backdrop-filter: blur(8px) !important;
+    -webkit-backdrop-filter: blur(8px) !important;
     border-bottom: 1px solid light-dark(rgba(15, 23, 42, 0.06), rgba(255, 255, 255, 0.08)) !important;
     z-index: 90 !important;
   }
@@ -433,7 +433,7 @@
   .app-shell[data-ui-mode="phone-agent"] .composer-dock {
     flex: 0 0 auto !important;
     justify-content: flex-end !important;
-    padding: 6px 12px max(10px, env(safe-area-inset-bottom, 0px)) !important;
+    padding: 4px 10px max(6px, env(safe-area-inset-bottom, 0px)) !important;
   }
   .app-shell[data-ui-mode="phone-agent"] .ds-home-greeting {
     display: none !important;
@@ -449,10 +449,14 @@
   }
 
   .messages-viewport {
-    padding: 12px 14px 148px 14px !important;
+    padding: 10px 12px 96px 12px !important;
     width: 100% !important;
     max-width: 100% !important;
     box-sizing: border-box !important;
+  }
+
+  .app-shell[data-ui-mode="phone-agent"] .messages-viewport {
+    padding: 8px 12px 72px 12px !important;
   }
 
   .messages-container {
@@ -540,14 +544,14 @@
   .app-shell[data-ui-mode="roleplay"] .msg-row.assistant .msg-body {
     flex: 1 1 auto !important;
     min-width: 0 !important;
-    background: light-dark(rgba(255, 255, 255, 0.95), rgba(24, 20, 42, 0.94)) !important;
+    background: light-dark(rgba(255, 255, 255, 0.97), rgba(24, 20, 42, 0.96)) !important;
     color: light-dark(#1e293b, #f1f5f9) !important;
     border: 1px solid light-dark(rgba(15, 23, 42, 0.08), rgba(255, 255, 255, 0.14)) !important;
     border-radius: 6px 18px 18px 18px !important;
     padding: 13px 15px !important;
     box-shadow: light-dark(0 2px 12px rgba(15, 23, 42, 0.06), 0 4px 18px rgba(0, 0, 0, 0.35)) !important;
-    backdrop-filter: blur(16px) !important;
-    -webkit-backdrop-filter: blur(16px) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
     font-size: 15px !important;
     line-height: 1.68 !important;
   }
@@ -642,38 +646,40 @@
     opacity: 1 !important;
   }
 
-  /* 底部悬浮输入舱 */
+  /* 底部悬浮输入舱（移动端整体瘦身，释放更多阅读视口） */
   .composer-dock {
     position: fixed !important;
     bottom: 0 !important;
     left: 0 !important;
     right: 0 !important;
-    padding: 0 12px calc(env(safe-area-inset-bottom, 10px) + 6px) 12px !important;
+    padding: 4px 10px calc(env(safe-area-inset-bottom, 6px) + 4px) 10px !important;
     background: light-dark(
-      linear-gradient(180deg, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0.95) 25%, #ffffff 100%),
-      linear-gradient(180deg, rgba(18, 20, 26, 0) 0%, rgba(18, 20, 26, 0.95) 25%, #12141a 100%)
+      linear-gradient(180deg, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0.96) 28%, #ffffff 100%),
+      linear-gradient(180deg, rgba(18, 20, 26, 0) 0%, rgba(18, 20, 26, 0.96) 28%, #12141a 100%)
     ) !important;
-    backdrop-filter: blur(8px) !important;
-    -webkit-backdrop-filter: blur(8px) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
     z-index: 100 !important;
     border-top: none !important;
   }
 
   .composer-card {
-    border-radius: 22px !important;
-    padding: 10px 14px 8px 14px !important;
+    border-radius: 18px !important;
+    padding: 7px 11px 6px 11px !important;
     background: light-dark(#ffffff, #1a1d27) !important;
     border: 1px solid light-dark(rgba(0, 0, 0, 0.08), rgba(255, 255, 255, 0.12)) !important;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.07) !important;
+    box-shadow: 0 3px 16px rgba(0, 0, 0, 0.06) !important;
   }
 
   .composer-card textarea#chat-input {
     border: none !important;
     background: transparent !important;
-    font-size: 15px !important;
-    line-height: 1.5 !important;
-    padding: 2px 0 6px 0 !important;
-    min-height: 38px !important;
+    font-size: 14.5px !important;
+    line-height: 1.42 !important;
+    padding: 2px 0 3px 0 !important;
+    min-height: 24px !important;
+    min-block-size: 1.35lh !important;
+    max-block-size: 4.5lh !important;
     box-shadow: none !important;
     color: light-dark(#0f172a, #f8fafc) !important;
   }
@@ -686,22 +692,23 @@
     display: flex !important;
     align-items: center !important;
     justify-content: space-between !important;
-    padding-top: 6px !important;
+    padding-top: 4px !important;
     border-top: 1px solid light-dark(rgba(0, 0, 0, 0.04), rgba(255, 255, 255, 0.05)) !important;
   }
 
   .ds-pill-toggle {
     display: inline-flex !important;
     align-items: center !important;
-    gap: 5px !important;
-    padding: 5px 11px !important;
+    gap: 4px !important;
+    height: 28px !important;
+    padding: 0 9px !important;
     border-radius: 9999px !important;
-    font-size: 12px !important;
+    font-size: 11.5px !important;
     font-weight: 600 !important;
     border: 1px solid light-dark(rgba(0, 0, 0, 0.1), rgba(255, 255, 255, 0.15)) !important;
     background: light-dark(#f8fafc, rgba(255, 255, 255, 0.06)) !important;
     color: light-dark(#475569, #cbd5e1) !important;
-    transition: all 0.18s ease !important;
+    transition: background-color 0.18s ease, border-color 0.18s ease, color 0.18s ease !important;
   }
 
   .ds-pill-toggle.active,
@@ -711,47 +718,104 @@
     color: #1d4ed8 !important;
   }
 
+  /* 移动端隐藏底部免责声明行，进一步减少占位 */
   .composer-disclaimer {
-    display: block !important;
-    text-align: center !important;
-    font-size: 11px !important;
-    color: light-dark(#94a3b8, #64748b) !important;
-    margin-top: 5px !important;
-    letter-spacing: 0.02em !important;
+    display: none !important;
   }
 
-  /* 快捷手机指令面板 (点击 + 弹出) */
-  .phone-cmd-quick-drawer {
-    display: flex;
-    gap: 8px;
-    overflow-x: auto;
-    padding: 8px 2px;
-    margin-bottom: 6px;
-    -webkit-overflow-scrolling: touch;
+  /* phone-agent 模式专用超薄单行胶囊输入舱（总高度约 50px） */
+  .app-shell[data-ui-mode="phone-agent"] .composer-card {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: flex-end !important;
+    gap: 6px !important;
+    padding: 5px 7px 5px 12px !important;
+    border-radius: 22px !important;
   }
 
+  .app-shell[data-ui-mode="phone-agent"] .composer-card textarea#chat-input {
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+    min-height: 28px !important;
+    min-block-size: 1.35lh !important;
+    max-block-size: 4.2lh !important;
+    padding: 4px 0 !important;
+    line-height: 1.4 !important;
+  }
+
+  .app-shell[data-ui-mode="phone-agent"] .composer-toolbar {
+    flex: 0 0 auto !important;
+    width: auto !important;
+    padding-top: 0 !important;
+    border-top: none !important;
+  }
+
+  .app-shell[data-ui-mode="phone-agent"] .composer-actions {
+    gap: 4px !important;
+  }
+
+  /* 分类离线指令库抽屉与胶囊样式由 phone-agent.css 统一控制 */
   .phone-cmd-quick-drawer.hidden {
     display: none !important;
   }
 
-  .phone-cmd-pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    white-space: nowrap;
-    padding: 6px 12px;
-    border-radius: 12px;
-    font-size: 12px;
-    font-weight: 500;
-    border: 1px solid light-dark(rgba(15, 23, 42, 0.08), rgba(255, 255, 255, 0.14));
-    background: light-dark(#f8fafc, rgba(255, 255, 255, 0.08));
-    color: light-dark(#1e293b, #f1f5f9);
-    cursor: pointer;
-    flex-shrink: 0;
+  /* 手机端右侧养成 / 记忆 / 设定抽屉最高优先级保障（杜绝溢出屏幕右侧或被底部输入舱遮挡） */
+  .app-shell:not(.hidden) .inspector-panel#right-panel {
+    position: fixed !important;
+    top: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    left: auto !important;
+    width: min(88dvw, 352px) !important;
+    max-width: calc(100dvw - 24px) !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    z-index: 120 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+    contain: none !important;
   }
 
-  .phone-cmd-pill:active {
-    background: #4d6bfe;
-    color: #ffffff;
+  .app-shell:not(.hidden):not(.right-collapsed) .inspector-panel#right-panel {
+    transform: translate3d(0, 0, 0) !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    pointer-events: auto !important;
+  }
+
+  .app-shell.right-collapsed .inspector-panel#right-panel {
+    transform: translate3d(105%, 0, 0) !important;
+    pointer-events: none !important;
+  }
+}
+
+/* 剧本模式 (roleplay) 与 DeepSeek 模式 (deepseek) 下彻底隐藏输入栏 + 号按钮及手机指令快捷抽屉 */
+.app-shell:not([data-ui-mode="phone-agent"]) #mobile-tools-plus-btn,
+.app-shell:not([data-ui-mode="phone-agent"]) .ds-composer-plus-btn,
+.app-shell:not([data-ui-mode="phone-agent"]) #phone-cmd-quick-drawer {
+  display: none !important;
+}
+
+/* 语音输入按钮录制中呼吸高亮反馈 */
+#voice-input-btn.recording {
+  color: #ffffff !important;
+  background: #ef4444 !important;
+  border-color: #ef4444 !important;
+  box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.24) !important;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  #voice-input-btn.recording {
+    animation: voiceRecPulse 1.35s ease-in-out infinite;
+  }
+}
+
+@keyframes voiceRecPulse {
+  0%, 100% {
+    box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.28);
+  }
+  50% {
+    box-shadow: 0 0 0 7px rgba(239, 68, 68, 0.14);
   }
 }

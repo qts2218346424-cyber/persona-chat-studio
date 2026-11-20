@@ -112,7 +112,7 @@
       if (appShell.classList.contains('hidden')) return false;
       if (appShell.dataset.uiMode && appShell.dataset.uiMode !== 'roleplay') return false;
     }
-    const r = refreshCachedRect();
+    const r = cachedRect || refreshCachedRect();
     return Boolean(r && r.width >= 20 && r.height >= 20);
   }
 
@@ -397,7 +397,20 @@
       rafId = 0;
     }
     isRunning = false;
-    if (stageEl) stageEl.classList.add('holo-paused');
+    if (stageEl && !stageEl.classList.contains('holo-paused')) {
+      stageEl.classList.add('holo-paused');
+    }
+  }
+
+  let lifecycleSyncScheduled = false;
+  function scheduleSyncEngineLifecycle() {
+    if (lifecycleSyncScheduled) return;
+    lifecycleSyncScheduled = true;
+    setTimeout(() => {
+      lifecycleSyncScheduled = false;
+      refreshCachedRect();
+      syncEngineLifecycle();
+    }, 0);
   }
 
   function syncEngineLifecycle() {
@@ -407,7 +420,9 @@
       return;
     }
 
-    if (stageEl) stageEl.classList.remove('holo-paused');
+    if (stageEl && stageEl.classList.contains('holo-paused')) {
+      stageEl.classList.remove('holo-paused');
+    }
     syncCanvasResolution();
 
     const hasSpringMotion =
@@ -417,8 +432,11 @@
       Math.abs(springVelSquash) > 0.002;
 
     if (prefersReducedMotion.matches && !hasSpringMotion) {
-      stopEngine();
-      if (stageEl) stageEl.classList.remove('holo-paused');
+      if (rafId) {
+        cancelAnimationFrame(rafId);
+        rafId = 0;
+      }
+      isRunning = false;
       lastTime = performance.now();
       renderFrame(lastTime, true);
       return;
@@ -433,17 +451,13 @@
 
   if (typeof ResizeObserver !== 'undefined') {
     new ResizeObserver(() => {
-      refreshCachedRect();
-      syncCanvasResolution();
-      syncEngineLifecycle();
+      scheduleSyncEngineLifecycle();
     }).observe(pokeArea);
   }
   window.addEventListener(
     'resize',
     () => {
-      refreshCachedRect();
-      syncCanvasResolution();
-      syncEngineLifecycle();
+      scheduleSyncEngineLifecycle();
     },
     { passive: true }
   );
@@ -451,8 +465,11 @@
   // 1. 遵循 efficient-background-processing 优先使用 contentvisibilityautostatechange
   if (stageEl) {
     stageEl.addEventListener('contentvisibilityautostatechange', (e) => {
-      isContentSkipped = Boolean(e.skipped);
-      syncEngineLifecycle();
+      const nextSkipped = Boolean(e.skipped);
+      if (isContentSkipped !== nextSkipped) {
+        isContentSkipped = nextSkipped;
+        scheduleSyncEngineLifecycle();
+      }
     });
   }
 
@@ -463,7 +480,7 @@
         for (const entry of entries) {
           isIntersecting = entry.isIntersecting;
         }
-        syncEngineLifecycle();
+        scheduleSyncEngineLifecycle();
       },
       { rootMargin: '200px' }
     );
@@ -471,17 +488,35 @@
   }
 
   // 3. 页面切入后台自动暂停
-  document.addEventListener('visibilitychange', syncEngineLifecycle);
+  document.addEventListener('visibilitychange', scheduleSyncEngineLifecycle);
 
-  // 4. 监听舞台显隐与工作台模式切换（DeepSeek / 手机辅助模式下彻底休眠）
+  // 4. 监听舞台显隐与工作台模式切换（过滤掉 holo-paused 自身变化，彻底杜绝 MutationObserver 微任务死循环）
+  let lastStageHidden = stageEl ? stageEl.classList.contains('hidden') : true;
   if (stageEl) {
-    new MutationObserver(syncEngineLifecycle).observe(stageEl, {
+    new MutationObserver(() => {
+      const nowHidden = stageEl.classList.contains('hidden');
+      if (nowHidden !== lastStageHidden) {
+        lastStageHidden = nowHidden;
+        scheduleSyncEngineLifecycle();
+      }
+    }).observe(stageEl, {
       attributes: true,
-      attributeFilter: ['class', 'style']
+      attributeFilter: ['class']
     });
   }
+
+  let lastShellHidden = appShell ? appShell.classList.contains('hidden') : true;
+  let lastShellMode = appShell ? appShell.dataset.uiMode : '';
   if (appShell) {
-    new MutationObserver(syncEngineLifecycle).observe(appShell, {
+    new MutationObserver(() => {
+      const nowHidden = appShell.classList.contains('hidden');
+      const nowMode = appShell.dataset.uiMode || '';
+      if (nowHidden !== lastShellHidden || nowMode !== lastShellMode) {
+        lastShellHidden = nowHidden;
+        lastShellMode = nowMode;
+        scheduleSyncEngineLifecycle();
+      }
+    }).observe(appShell, {
       attributes: true,
       attributeFilter: ['class', 'data-ui-mode']
     });
@@ -489,8 +524,8 @@
 
   // 5. 监听系统减弱动效偏好切换
   if (typeof prefersReducedMotion.addEventListener === 'function') {
-    prefersReducedMotion.addEventListener('change', syncEngineLifecycle);
+    prefersReducedMotion.addEventListener('change', scheduleSyncEngineLifecycle);
   }
 
-  syncEngineLifecycle();
+  scheduleSyncEngineLifecycle();
 })();

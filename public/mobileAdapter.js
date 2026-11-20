@@ -202,22 +202,32 @@
   }
 
   function closeLeftDrawer() {
-    appShell.classList.add('left-collapsed');
+    if (!appShell.classList.contains('left-collapsed')) {
+      appShell.classList.add('left-collapsed');
+    }
     if (expandLeftBtn) {
-      expandLeftBtn.classList.remove('hidden');
-      expandLeftBtn.setAttribute('aria-expanded', 'false');
+      if (expandLeftBtn.classList.contains('hidden')) {
+        expandLeftBtn.classList.remove('hidden');
+      }
+      if (expandLeftBtn.getAttribute('aria-expanded') !== 'false') {
+        expandLeftBtn.setAttribute('aria-expanded', 'false');
+      }
     }
   }
 
   function closeRightDrawer() {
-    appShell.classList.add('right-collapsed');
+    if (!appShell.classList.contains('right-collapsed')) {
+      appShell.classList.add('right-collapsed');
+    }
   }
 
   function closeAllMobileDrawers() {
     if (!isMobile()) return;
     closeLeftDrawer();
     closeRightDrawer();
-    backdrop.classList.add('hidden');
+    if (!backdrop.classList.contains('hidden')) {
+      backdrop.classList.add('hidden');
+    }
   }
 
   window.__closeMobileDrawers = closeAllMobileDrawers;
@@ -226,7 +236,7 @@
   if (isMobile()) {
     closeLeftDrawer();
     closeRightDrawer();
-    if (companionStage) {
+    if (companionStage && !companionStage.classList.contains('hidden')) {
       companionStage.classList.add('hidden');
       document.getElementById('topbar-companion-btn')?.classList.remove('active');
     }
@@ -234,27 +244,37 @@
 
   let lastLeftOpen = !appShell.classList.contains('left-collapsed');
   let lastRightOpen = !appShell.classList.contains('right-collapsed');
+  let lastSyncedMode = appShell.dataset.uiMode || '';
   let internalSyncing = false;
 
   function syncDrawerStateAndBackdrop() {
     if (internalSyncing) return;
+    const curMode = appShell.dataset.uiMode || 'roleplay';
+    let leftOpen = !appShell.classList.contains('left-collapsed');
+    let rightOpen = !appShell.classList.contains('right-collapsed');
+
+    if (curMode === lastSyncedMode && leftOpen === lastLeftOpen && rightOpen === lastRightOpen) {
+      return;
+    }
+
     internalSyncing = true;
     try {
-      const curMode = appShell.dataset.uiMode || 'roleplay';
-      syncBrandAndTitleByMode(curMode);
-      try {
-        localStorage.setItem('ui_mode_v5', curMode);
-      } catch {}
-
-      if (!isMobile()) {
-        backdrop.classList.add('hidden');
-        lastLeftOpen = !appShell.classList.contains('left-collapsed');
-        lastRightOpen = !appShell.classList.contains('right-collapsed');
-        return;
+      if (curMode !== lastSyncedMode) {
+        lastSyncedMode = curMode;
+        syncBrandAndTitleByMode(curMode);
+        try {
+          localStorage.setItem('ui_mode_v5', curMode);
+        } catch {}
       }
 
-      let leftOpen = !appShell.classList.contains('left-collapsed');
-      let rightOpen = !appShell.classList.contains('right-collapsed');
+      if (!isMobile()) {
+        if (!backdrop.classList.contains('hidden')) {
+          backdrop.classList.add('hidden');
+        }
+        lastLeftOpen = leftOpen;
+        lastRightOpen = rightOpen;
+        return;
+      }
 
       // 手机端左右抽屉互斥：新打开一侧时自动收起另一侧
       if (leftOpen && rightOpen) {
@@ -268,12 +288,19 @@
       }
 
       if (expandLeftBtn) {
-        expandLeftBtn.classList.remove('hidden');
-        expandLeftBtn.setAttribute('aria-expanded', String(leftOpen));
+        if (expandLeftBtn.classList.contains('hidden')) {
+          expandLeftBtn.classList.remove('hidden');
+        }
+        const expStr = String(leftOpen);
+        if (expandLeftBtn.getAttribute('aria-expanded') !== expStr) {
+          expandLeftBtn.setAttribute('aria-expanded', expStr);
+        }
       }
 
       const anyOpen = leftOpen || rightOpen;
-      backdrop.classList.toggle('hidden', !anyOpen);
+      if (backdrop.classList.contains('hidden') === anyOpen) {
+        backdrop.classList.toggle('hidden', !anyOpen);
+      }
 
       lastLeftOpen = leftOpen;
       lastRightOpen = rightOpen;

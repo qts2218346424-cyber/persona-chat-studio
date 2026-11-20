@@ -11181,15 +11181,36 @@
   }
 
   async function bootCheck() {
-    // 1.5 秒极速防卡死安全锁：确保任何情况下首屏遮罩均平滑移出
-    const safetySplashTimer = setTimeout(dismissBootSplash, 1500);
+    // 0.8 秒极速防卡死安全锁：确保任何情况下首屏遮罩均平滑移出
+    const safetySplashTimer = setTimeout(() => {
+      dismissBootSplash();
+      if (appShell.classList.contains('hidden') && authGate.classList.contains('hidden')) {
+        showAuthScreen();
+      }
+    }, 800);
 
     const urlParams = new URLSearchParams(window.location.search);
     const needLoginMsg = urlParams.get('msg') === 'download_login_required' || urlParams.get('auth') === 'login';
+    const hasLocalToken = Boolean(window.__starAuthStore?.getToken());
+    const isStandaloneDemo = Boolean(window.__isStaticLiveDemo) || window.location.protocol === 'file:';
+
+    // 若本地无任何已保存的登录凭证且非独立离线模式，0ms 立即撤除推门遮罩并展示登录门扉，免除网络等待！
+    if (!hasLocalToken && !isStandaloneDemo) {
+      resetClientWorkspaceState();
+      showAuthScreen();
+      dismissBootSplash();
+    }
 
     try {
-      const me = await apiJson('/api/auth/me');
-      if (me.authenticated && me.user) {
+      const abortCtrl = new AbortController();
+      const timeoutId = setTimeout(() => abortCtrl.abort(), 4500);
+      let me;
+      try {
+        me = await apiJson('/api/auth/me', { signal: abortCtrl.signal });
+      } finally {
+        clearTimeout(timeoutId);
+      }
+      if (me && me.authenticated && me.user) {
         applyAuthLoginPayload(me, { persistDefault: false, rememberGuest: false });
         await enterWorkspace();
         dismissBootSplash();

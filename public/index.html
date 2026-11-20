@@ -19,15 +19,24 @@
   </script>
   <title>星语恋庭 · 互动剧本与沉浸角色扮演馆</title>
   <link rel="icon" type="image/svg+xml" href="./assets/deepseek-whale.svg" />
-  <link rel="preload" href="./styles.css?v=20261120_v192_perf" as="style" />
-  <link rel="preload" href="./clean-ui.css?v=20261120_v192_perf" as="style" />
-  <link rel="preload" href="./app.js?v=20261120_v192_perf" as="script" />
-  <link rel="stylesheet" href="./styles.css?v=20261120_v192_perf" />
-  <link rel="stylesheet" href="./companion3d.css?v=20261120_v192_perf" />
-  <link rel="stylesheet" href="./clean-ui.css?v=20261120_v192_perf" />
-  <link rel="stylesheet" href="./mobile-responsive.css?v=20261120_v192_perf" />
-  <link rel="stylesheet" href="./phone-agent.css?v=20261120_v192_perf" />
-  <link rel="stylesheet" href="./mobile-deepseek.css?v=20261120_v192_perf" />
+  <style>
+    .hidden, [hidden] { display: none !important; }
+    .boot-splash.hidden {
+      display: none !important;
+      opacity: 0 !important;
+      visibility: hidden !important;
+      pointer-events: none !important;
+    }
+  </style>
+  <link rel="preload" href="./styles.css?v=20261120_v193_instant_boot" as="style" />
+  <link rel="preload" href="./clean-ui.css?v=20261120_v193_instant_boot" as="style" />
+  <link rel="preload" href="./app.js?v=20261120_v193_instant_boot" as="script" />
+  <link rel="stylesheet" href="./styles.css?v=20261120_v193_instant_boot" />
+  <link rel="stylesheet" href="./companion3d.css?v=20261120_v193_instant_boot" />
+  <link rel="stylesheet" href="./clean-ui.css?v=20261120_v193_instant_boot" />
+  <link rel="stylesheet" href="./mobile-responsive.css?v=20261120_v193_instant_boot" />
+  <link rel="stylesheet" href="./phone-agent.css?v=20261120_v193_instant_boot" />
+  <link rel="stylesheet" href="./mobile-deepseek.css?v=20261120_v193_instant_boot" />
 </head>
 <body data-ui-mode="deepseek">
   <!-- 首屏零白屏过渡欢迎层（工作台或登录门扉就绪后立即平滑隐藏） -->
@@ -41,28 +50,46 @@
   </div>
 
   <script>
-    // 终极防卡死保底：无论任何极端异常或网络延迟，2秒内确保花房推门遮罩平滑淡出并展示登录门扉
+    // 终极防卡死保底：每次触发时实时查询 DOM（解决脚本位于 body 顶部时 auth-gate/app-shell 尚未解析为 null 的问题）
     (function() {
-      var splash = document.getElementById('boot-splash');
-      var authGate = document.getElementById('auth-gate');
-      var appShell = document.getElementById('app-shell');
       function forceDismiss() {
-        if (splash && !splash.classList.contains('hidden')) {
+        var splash = document.getElementById('boot-splash');
+        var authGate = document.getElementById('auth-gate');
+        var appShell = document.getElementById('app-shell');
+        if (!authGate && !appShell) return;
+        if (splash) {
           splash.classList.add('hidden');
+          splash.style.setProperty('display', 'none', 'important');
+          splash.style.setProperty('pointer-events', 'none', 'important');
         }
-        if (appShell && appShell.classList.contains('hidden')) {
-          appShell.style.display = 'none';
-        }
-        if (authGate && authGate.classList.contains('hidden')) {
-          if (appShell && appShell.classList.contains('hidden')) {
+        var shellActive = appShell && !appShell.classList.contains('hidden') && appShell.style.display !== 'none';
+        if (!shellActive && authGate) {
+          var hasTok = false;
+          try {
+            hasTok = Boolean(sessionStorage.getItem('star_tab_auth_token') || localStorage.getItem('star_default_auth_token'));
+          } catch (e) {}
+          if (hasTok && appShell) {
+            authGate.classList.add('hidden');
+            authGate.style.setProperty('display', 'none', 'important');
+            appShell.classList.remove('hidden');
+            appShell.style.removeProperty('display');
+          } else {
+            if (appShell) {
+              appShell.classList.add('hidden');
+              appShell.style.setProperty('display', 'none', 'important');
+            }
             authGate.classList.remove('hidden');
-            authGate.style.display = 'flex';
+            authGate.style.setProperty('display', 'flex', 'important');
           }
         }
       }
-      setTimeout(forceDismiss, 1800);
-      if (splash) {
-        splash.addEventListener('click', forceDismiss);
+      window.__forceDismissSplash = forceDismiss;
+      document.addEventListener('DOMContentLoaded', forceDismiss);
+      setTimeout(forceDismiss, 250);
+      setTimeout(forceDismiss, 800);
+      var sp = document.getElementById('boot-splash');
+      if (sp) {
+        sp.addEventListener('click', forceDismiss);
       }
       window.addEventListener('error', forceDismiss);
       window.addEventListener('unhandledrejection', forceDismiss);
@@ -267,6 +294,7 @@
   <div class="app-shell right-collapsed hidden" id="app-shell" data-ui-mode="deepseek" style="display: none !important;">
     <!-- 移动端抽屉半透明遮罩层（点击外侧自动收起侧栏/右侧抽屉） -->
     <div class="mobile-drawer-backdrop hidden" id="mobile-drawer-backdrop" aria-hidden="true"></div>
+    <script>try{if(window.__forceDismissSplash)window.__forceDismissSplash();}catch(e){}</script>
 
     <!-- 左侧导航栏 -->
     <aside class="sidebar" id="left-sidebar" aria-label="角色羁绊与对话导航">
@@ -3263,13 +3291,13 @@
   <!-- 全局 Top-Layer 顶层轻提示胶囊（popover="manual" 确保在任何模态 <dialog> 打开时依然 100% 可见，遵循 persistent-toast-notifications 规范） -->
   <div id="global-top-toast" popover="manual" class="global-top-toast" role="status" aria-live="polite"></div>
 
-  <script defer src="./standaloneAdapter.js?v=20261120_v192_perf"></script>
-  <script defer src="./mobileAdapter.js?v=20261120_v192_perf"></script>
-  <script defer src="./plugins/deepseekUsageMonitor.js?v=20261120_v192_perf"></script>
-  <script defer src="./app.js?v=20261120_v192_perf"></script>
-  <script defer src="./companion3d.js?v=20261120_v192_perf"></script>
-  <script defer src="./companionVoice.js?v=20261120_v192_perf"></script>
-  <script defer src="./phoneAgent.js?v=20261120_v192_perf"></script>
+  <script defer src="./standaloneAdapter.js?v=20261120_v193_instant_boot"></script>
+  <script defer src="./mobileAdapter.js?v=20261120_v193_instant_boot"></script>
+  <script defer src="./plugins/deepseekUsageMonitor.js?v=20261120_v193_instant_boot"></script>
+  <script defer src="./app.js?v=20261120_v193_instant_boot"></script>
+  <script defer src="./companion3d.js?v=20261120_v193_instant_boot"></script>
+  <script defer src="./companionVoice.js?v=20261120_v193_instant_boot"></script>
+  <script defer src="./phoneAgent.js?v=20261120_v193_instant_boot"></script>
   <script>
     if ('serviceWorker' in navigator && window.location.protocol.startsWith('http')) {
       window.addEventListener('load', () => {

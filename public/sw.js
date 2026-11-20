@@ -1,5 +1,5 @@
 // 星语恋庭 · PWA 极速离线与边缘加速 Service Worker
-const CACHE_VERSION = 'star-whisper-v20261120-perf-v4';
+const CACHE_VERSION = 'star-whisper-v20261120-instant-boot-v5';
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const ASSETS_CACHE = `${CACHE_VERSION}-assets`;
 const MAX_STATIC_CACHE_ENTRIES = 80;
@@ -16,32 +16,8 @@ async function putAndTrimStaticCache(req, resClone) {
   }
 }
 
-const PRECACHE_MANIFEST = [
-  './',
-  './styles.css',
-  './clean-ui.css',
-  './companion3d.css',
-  './mobile-responsive.css',
-  './phone-agent.css',
-  './mobile-deepseek.css',
-  './standaloneAdapter.js',
-  './mobileAdapter.js',
-  './plugins/deepseekUsageMonitor.js',
-  './companion3d.js',
-  './companionVoice.js',
-  './phoneAgent.js',
-  './assets/deepseek-whale.svg'
-];
-
-self.addEventListener('install', (event) => {
+self.addEventListener('install', () => {
   self.skipWaiting();
-  event.waitUntil(
-    caches.open(STATIC_CACHE).then((cache) => {
-      return cache.addAll(PRECACHE_MANIFEST).catch((err) => {
-        console.warn('[ServiceWorker] 预缓存部分资源失败，将在访问时动态补齐:', err);
-      });
-    })
-  );
 });
 
 self.addEventListener('activate', (event) => {
@@ -64,8 +40,12 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(req.url);
 
-  // 1. 动态接口与 APK 大文件下载绝对直连绕过
+  // 1. 动态接口、主页面 HTML 导航与 APK 大文件下载直连绕过（避免 SW 唤醒等待阻塞首屏推门渲染）
   if (
+    req.mode === 'navigate' ||
+    url.pathname === '/' ||
+    url.pathname.endsWith('.html') ||
+    url.pathname.endsWith('/sw.js') ||
     url.pathname.startsWith('/api/') ||
     url.pathname.startsWith('/downloads/') ||
     url.pathname.includes('/_star_api_fallback')
@@ -73,25 +53,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 2. 主页面 HTML 导航请求：网络优先，弱网/离线平滑降级到本地缓存
-  if (req.mode === 'navigate' || url.pathname === '/' || url.pathname.endsWith('.html')) {
-    event.respondWith(
-      fetch(req)
-        .then((networkRes) => {
-          if (networkRes && networkRes.status === 200) {
-            const clone = networkRes.clone();
-            caches.open(STATIC_CACHE).then((cache) => cache.put(req, clone));
-          }
-          return networkRes;
-        })
-        .catch(() => {
-          return caches.match(req).then((cached) => cached || caches.match('/'));
-        })
-    );
-    return;
-  }
-
-  // 3. 立绘图片、静态音频与展示截图（Cache-First 策略：极速秒开并节省移动流量）
+  // 2. 立绘图片、静态音频与展示截图（Cache-First 策略：极速秒开并节省移动流量）
   if (url.pathname.startsWith('/assets/')) {
     event.respondWith(
       caches.open(ASSETS_CACHE).then((cache) => {
@@ -105,41 +67,6 @@ self.addEventListener('fetch', (event) => {
           });
         });
       })
-    );
-    return;
-  }
-
-  // 4. JS 脚本与 CSS 样式表（带 ?v= 版本指纹的静态资产走 Cache-First 零等待秒开，无版本指纹走 Network-First）
-  if (url.pathname.endsWith('.js') || url.pathname.endsWith('.css')) {
-    const hasVersionFingerprint = Boolean(url.searchParams.get('v'));
-    if (hasVersionFingerprint) {
-      event.respondWith(
-        caches.open(STATIC_CACHE).then((cache) => {
-          return cache.match(req).then((cached) => {
-            if (cached) return cached;
-            return fetch(req).then((networkRes) => {
-              if (networkRes && networkRes.status === 200) {
-                putAndTrimStaticCache(req, networkRes.clone()).catch(() => {});
-              }
-              return networkRes;
-            });
-          });
-        })
-      );
-      return;
-    }
-
-    event.respondWith(
-      fetch(req)
-        .then((networkRes) => {
-          if (networkRes && networkRes.status === 200) {
-            putAndTrimStaticCache(req, networkRes.clone()).catch(() => {});
-          }
-          return networkRes;
-        })
-        .catch(() => {
-          return caches.match(req);
-        })
     );
     return;
   }

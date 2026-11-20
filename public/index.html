@@ -19,15 +19,15 @@
   </script>
   <title>星语恋庭 · 互动剧本与沉浸角色扮演馆</title>
   <link rel="icon" type="image/svg+xml" href="./assets/deepseek-whale.svg" />
-  <link rel="preload" href="./styles.css?v=20261120_v180_strict_auth_fix" as="style" />
-  <link rel="preload" href="./clean-ui.css?v=20261120_v180_strict_auth_fix" as="style" />
-  <link rel="preload" href="./app.js?v=20261120_v180_strict_auth_fix" as="script" />
-  <link rel="stylesheet" href="./styles.css?v=20261120_v180_strict_auth_fix" />
-  <link rel="stylesheet" href="./companion3d.css?v=20261120_v180_strict_auth_fix" />
-  <link rel="stylesheet" href="./clean-ui.css?v=20261120_v180_strict_auth_fix" />
-  <link rel="stylesheet" href="./mobile-responsive.css?v=20261120_v180_strict_auth_fix" />
-  <link rel="stylesheet" href="./phone-agent.css?v=20261120_v180_strict_auth_fix" />
-  <link rel="stylesheet" href="./mobile-deepseek.css?v=20261120_v180_strict_auth_fix" />
+  <link rel="preload" href="./styles.css?v=20261120_v183_mobile_auth_fix" as="style" />
+  <link rel="preload" href="./clean-ui.css?v=20261120_v183_mobile_auth_fix" as="style" />
+  <link rel="preload" href="./app.js?v=20261120_v183_mobile_auth_fix" as="script" />
+  <link rel="stylesheet" href="./styles.css?v=20261120_v183_mobile_auth_fix" />
+  <link rel="stylesheet" href="./companion3d.css?v=20261120_v183_mobile_auth_fix" />
+  <link rel="stylesheet" href="./clean-ui.css?v=20261120_v183_mobile_auth_fix" />
+  <link rel="stylesheet" href="./mobile-responsive.css?v=20261120_v183_mobile_auth_fix" />
+  <link rel="stylesheet" href="./phone-agent.css?v=20261120_v183_mobile_auth_fix" />
+  <link rel="stylesheet" href="./mobile-deepseek.css?v=20261120_v183_mobile_auth_fix" />
 </head>
 <body data-ui-mode="deepseek">
   <!-- 首屏零白屏过渡欢迎层（工作台或登录门扉就绪后立即平滑隐藏） -->
@@ -45,14 +45,18 @@
     (function() {
       var splash = document.getElementById('boot-splash');
       var authGate = document.getElementById('auth-gate');
+      var appShell = document.getElementById('app-shell');
       function forceDismiss() {
         if (splash && !splash.classList.contains('hidden')) {
           splash.classList.add('hidden');
         }
+        if (appShell && appShell.classList.contains('hidden')) {
+          appShell.style.display = 'none';
+        }
         if (authGate && authGate.classList.contains('hidden')) {
-          var appShell = document.getElementById('app-shell');
           if (appShell && appShell.classList.contains('hidden')) {
             authGate.classList.remove('hidden');
+            authGate.style.display = 'flex';
           }
         }
       }
@@ -260,7 +264,7 @@
   />
 
   <!-- ================= 主应用工作台 ================= -->
-  <div class="app-shell right-collapsed hidden" id="app-shell" data-ui-mode="deepseek">
+  <div class="app-shell right-collapsed hidden" id="app-shell" data-ui-mode="deepseek" style="display: none !important;">
     <!-- 移动端抽屉半透明遮罩层（点击外侧自动收起侧栏/右侧抽屉） -->
     <div class="mobile-drawer-backdrop hidden" id="mobile-drawer-backdrop" aria-hidden="true"></div>
 
@@ -2644,7 +2648,13 @@
             <p>内置离线极速资产 · 手机端 AI 辅助助理 (Phone Agent) · 个人密钥本地直连</p>
           </div>
         </div>
-        <button type="button" class="apk-modal-close-btn" id="apk-modal-close-btn" aria-label="关闭安卓随身版弹窗">✕</button>
+        <button
+          type="button"
+          class="apk-modal-close-btn"
+          id="apk-modal-close-btn"
+          onclick="try{document.getElementById('apk-download-modal')?.close();}catch(e){}; try{window.PhoneAgent?.closeModal?.();}catch(e){};"
+          aria-label="关闭安卓随身版弹窗"
+        >✕</button>
       </div>
 
       <div class="apk-modal-body">
@@ -2652,8 +2662,8 @@
         <div class="apk-hero-card" id="apk-web-download-card">
           <div class="apk-hero-top">
             <div class="apk-meta-pills">
-              <span class="apk-meta-pill">版本 v1.7.0 (支持悬浮打字与免API控制)</span>
-              <span class="apk-meta-pill">极速包体 8.38 MB</span>
+              <span class="apk-meta-pill">版本 v1.8.2 (支持免API控制与悬浮打字)</span>
+              <span class="apk-meta-pill">极速包体 8.42 MB</span>
               <span class="apk-meta-pill">官方纯净 · 签名校验</span>
               <span class="apk-meta-pill" id="pa-device-info-pill">支持 Android 7.0 ~ 15+</span>
             </div>
@@ -3026,13 +3036,13 @@
   <!-- 全局 Top-Layer 顶层轻提示胶囊（popover="manual" 确保在任何模态 <dialog> 打开时依然 100% 可见，遵循 persistent-toast-notifications 规范） -->
   <div id="global-top-toast" popover="manual" class="global-top-toast" role="status" aria-live="polite"></div>
 
-  <script defer src="./standaloneAdapter.js?v=20261120_v180_strict_auth_fix"></script>
-  <script defer src="./mobileAdapter.js?v=20261120_v180_strict_auth_fix"></script>
-  <script defer src="./plugins/deepseekUsageMonitor.js?v=20261120_v180_strict_auth_fix"></script>
-  <script defer src="./app.js?v=20261120_v180_strict_auth_fix"></script>
-  <script defer src="./companion3d.js?v=20261120_v180_strict_auth_fix"></script>
-  <script defer src="./companionVoice.js?v=20261120_v180_strict_auth_fix"></script>
-  <script defer src="./phoneAgent.js?v=20261120_v180_strict_auth_fix"></script>
+  <script defer src="./standaloneAdapter.js?v=20261120_v183_mobile_auth_fix"></script>
+  <script defer src="./mobileAdapter.js?v=20261120_v183_mobile_auth_fix"></script>
+  <script defer src="./plugins/deepseekUsageMonitor.js?v=20261120_v183_mobile_auth_fix"></script>
+  <script defer src="./app.js?v=20261120_v183_mobile_auth_fix"></script>
+  <script defer src="./companion3d.js?v=20261120_v183_mobile_auth_fix"></script>
+  <script defer src="./companionVoice.js?v=20261120_v183_mobile_auth_fix"></script>
+  <script defer src="./phoneAgent.js?v=20261120_v183_mobile_auth_fix"></script>
   <script>
     if ('serviceWorker' in navigator && window.location.protocol.startsWith('http')) {
       window.addEventListener('load', () => {

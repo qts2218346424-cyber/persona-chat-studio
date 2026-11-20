@@ -53,10 +53,21 @@ svg {
    2. 默认 DeepSeek 模式登录门扉（#auth-gate）视觉统一与手机安全滚动修复
    ========================================================================== */
 
-.auth-gate {
+.auth-gate,
+#auth-gate {
+  position: fixed !important;
+  inset: 0 !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  z-index: 100000 !important;
   min-height: 100dvh;
   height: 100dvh;
+  width: 100vw !important;
+  max-width: 100vw !important;
   align-items: safe center !important;
+  background: var(--bg-app) !important;
   padding:
     max(18px, env(safe-area-inset-top, 0px))
     max(14px, env(safe-area-inset-right, 0px))
@@ -363,17 +374,53 @@ body[data-ui-mode="deepseek"] .auth-gate .info-callout {
 }
 
 @media (max-width: 860px) {
-  /* 彻底覆盖桌面端三栏固定像素 Grid，聊天主舞台 100% 占满手机屏幕 */
-  .app-shell,
-  .app-shell.left-collapsed,
-  .app-shell.right-collapsed,
-  .app-shell.left-collapsed.right-collapsed,
-  .app-shell[data-ui-mode="deepseek"],
-  .app-shell[data-ui-mode="deepseek"].artifacts-wide,
-  .app-shell[data-ui-mode="deepseek"].artifacts-wide:not(.right-collapsed),
-  .app-shell[data-ui-mode="deepseek"].left-collapsed,
-  .app-shell[data-ui-mode="deepseek"].right-collapsed,
-  .app-shell[data-ui-mode="deepseek"].left-collapsed.right-collapsed {
+  /* 严防未登录时主工作台在手机端穿透泄漏：最高特异性物理封锁 */
+  #app-shell.hidden,
+  .app-shell.hidden,
+  div#app-shell.hidden,
+  .app-shell[data-ui-mode="deepseek"].hidden,
+  .app-shell[data-ui-mode="roleplay"].hidden,
+  body:has(#auth-gate:not(.hidden)) #app-shell,
+  body:has(#auth-gate:not(.hidden)) .app-shell {
+    display: none !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+    opacity: 0 !important;
+    height: 0 !important;
+    max-height: 0 !important;
+    overflow: hidden !important;
+    position: absolute !important;
+    z-index: -99999 !important;
+  }
+
+  /* 登录门扉显示时，全量物理封杀底层工作台所有固定定位部件与浮层 */
+  body:has(#auth-gate:not(.hidden)) .stage-topbar,
+  body:has(#auth-gate:not(.hidden)) .composer-dock,
+  body:has(#auth-gate:not(.hidden)) .sidebar,
+  body:has(#auth-gate:not(.hidden)) .inspector-panel,
+  body:has(#auth-gate:not(.hidden)) .mobile-drawer-backdrop,
+  body:has(#auth-gate:not(.hidden)) .chat-stage,
+  body:has(#auth-gate:not(.hidden)) #phone-cmd-quick-drawer,
+  body:has(#auth-gate:not(.hidden)) #mobile-fullscreen-settings,
+  body:has(#auth-gate:not(.hidden)) .pa-float-btn,
+  body:has(#auth-gate:not(.hidden)) .tour-popover,
+  body:has(#auth-gate:not(.hidden)) [popover] {
+    display: none !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+  }
+
+  /* 彻底覆盖桌面端三栏固定像素 Grid，聊天主舞台 100% 占满手机屏幕（仅在已登录且非 hidden 状态下生效） */
+  .app-shell:not(.hidden),
+  .app-shell.left-collapsed:not(.hidden),
+  .app-shell.right-collapsed:not(.hidden),
+  .app-shell.left-collapsed.right-collapsed:not(.hidden),
+  .app-shell[data-ui-mode="deepseek"]:not(.hidden),
+  .app-shell[data-ui-mode="deepseek"].artifacts-wide:not(.hidden),
+  .app-shell[data-ui-mode="deepseek"].artifacts-wide:not(.right-collapsed):not(.hidden),
+  .app-shell[data-ui-mode="deepseek"].left-collapsed:not(.hidden),
+  .app-shell[data-ui-mode="deepseek"].right-collapsed:not(.hidden),
+  .app-shell[data-ui-mode="deepseek"].left-collapsed.right-collapsed:not(.hidden) {
     display: grid !important;
     grid-template-columns: minmax(0, 1fr) !important;
     width: 100% !important;

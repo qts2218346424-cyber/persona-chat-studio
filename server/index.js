@@ -417,8 +417,8 @@ async function handleApi(req, res, pathname, parsedUrl) {
 
     return sendJson(res, 200, {
       ok: true,
-      latestVersion: '1.8.2',
-      versionCode: 112,
+      latestVersion: '1.8.3',
+      versionCode: 113,
       minSupportedVersion: '1.0.0',
       releaseDate: '2026-11-20',
       fileSize: (apkSizeBytes / (1024 * 1024)).toFixed(2) + ' MB',
@@ -427,11 +427,12 @@ async function handleApi(req, res, pathname, parsedUrl) {
       fallbackDownloadUrl: 'https://star.claudexxb.online/api/download/apk',
       githubReleasesUrl: 'https://github.com/ccch1mneyyy/dsh-Go/releases',
       changelog: [
+        '【重磅修复】彻底根除手机端未登录时画面与工作台穿透重叠、无法关闭的严重显示故障',
+        '全新加固全屏固定登录门扉，未登录状态下 100% 物理隔离底层聊天流、输入舱与侧栏',
         '1:1 复刻 DeepSeek 官方正版手机 App 全屏设置页面（分组圆角卡片、外观与字体个性化管理）',
         '1:1 沉浸式 DeepSeek 正版全屏聊天面板（淡蓝气泡、折叠思考栏、语音朗读与极简药丸输入舱）',
         '手机端 AI 辅助助理增强：支持悬浮窗实时打字命令与完全免 API 本地手势操控',
-        '主聊天流直接支持手机控制口令（输入“回桌面”、“打开微信”、“下滑”等原生极速执行）',
-        '版本拉取与更新检测优化，去除霸屏卡片干扰'
+        '主聊天流直接支持手机控制口令（输入“回桌面”、“打开微信”、“下滑”等原生极速执行）'
       ]
     });
   }

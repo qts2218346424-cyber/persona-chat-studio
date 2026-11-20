@@ -1029,8 +1029,25 @@
   function showAuthScreen() {
     dismissBootSplash();
     closeOnboardingTour(false);
+
+    // 强行物理关闭所有可能被激发的模态弹窗、侧栏抽屉与浮层，彻底杜绝任何穿透与重叠
+    try {
+      document.querySelectorAll('dialog[open]').forEach((dlg) => {
+        try { dlg.close(); } catch (e) { dlg.removeAttribute('open'); }
+      });
+      document.getElementById('mobile-drawer-backdrop')?.classList.add('hidden');
+      document.getElementById('phone-cmd-quick-drawer')?.classList.add('hidden');
+      document.getElementById('mobile-fullscreen-settings')?.classList.add('hidden');
+      document.querySelectorAll('[popover]').forEach((p) => {
+        try { if (typeof p.hidePopover === 'function') p.hidePopover(); } catch (e) {}
+      });
+    } catch (e) {}
+
     appShell.classList.add('hidden');
+    appShell.style.setProperty('display', 'none', 'important');
+
     authGate.classList.remove('hidden');
+    authGate.style.setProperty('display', 'flex', 'important');
     setAuthError('');
   }
   window.__showAuthScreen = showAuthScreen;
@@ -10294,7 +10311,9 @@
       sessionStorage.removeItem('manual_account_switch');
     } catch {}
     authGate.classList.add('hidden');
+    authGate.style.setProperty('display', 'none', 'important');
     appShell.classList.remove('hidden');
+    appShell.style.removeProperty('display');
     dismissBootSplash();
 
     const boot = await apiJson('/api/bootstrap');
@@ -10444,6 +10463,19 @@
       const btn = e.target.closest('button');
       if (!btn || btn.id === 'toggle-proactive-btn') return;
       hidePopoverSafe(popId);
+    });
+  });
+
+  // 全局模态弹窗点击背景遮罩自闭交互（解决移动端用户点遮罩无法关闭弹窗的问题）
+  document.querySelectorAll('dialog.modal-dialog').forEach((dlg) => {
+    dlg.addEventListener('click', (e) => {
+      if (e.target === dlg) {
+        if (typeof dlg.close === 'function') {
+          dlg.close();
+        } else {
+          dlg.removeAttribute('open');
+        }
+      }
     });
   });
 

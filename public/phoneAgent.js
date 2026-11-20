@@ -13,7 +13,7 @@
     isNative: false,
     pollTimer: null,
     isTaskRunning: false,
-    currentVersion: '1.8.2',
+    currentVersion: '1.8.3',
     currentVersionCode: 112,
     latestVersionData: null,
     hasNewUpdate: false,
@@ -230,6 +230,10 @@
     },
 
     openModal: function () {
+      var authGate = document.getElementById('auth-gate');
+      if (authGate && !authGate.classList.contains('hidden')) {
+        return;
+      }
       var modal = document.getElementById('apk-download-modal');
       if (modal) {
         this.syncStatus();
@@ -246,10 +250,9 @@
       var modal = document.getElementById('apk-download-modal');
       if (modal) {
         if (typeof modal.close === 'function') {
-          modal.close();
-        } else {
-          modal.removeAttribute('open');
+          try { modal.close(); } catch (e) {}
         }
+        modal.removeAttribute('open');
       }
     },
 

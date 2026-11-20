@@ -7,6 +7,24 @@
   overflow-y: auto !important;
   scrollbar-width: none;
   isolation: isolate;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 248px auto 520px;
+}
+
+@supports not (content-visibility: auto) {
+  .companion-stage {
+    contain: layout style paint;
+  }
+}
+
+.companion-stage.holo-paused .pedestal-ring-outer,
+.companion-stage.holo-paused .pedestal-ring-inner,
+.companion-stage.holo-paused .holo-mote,
+.companion-stage.holo-paused .holo-back-glow,
+.companion-stage.holo-paused .cp-p,
+.app-shell[data-ui-mode="deepseek"] .companion-stage *,
+.app-shell[data-ui-mode="phone-agent"] .companion-stage * {
+  animation-play-state: paused !important;
 }
 
 .companion-stage::-webkit-scrollbar {
@@ -51,9 +69,10 @@
   height: 1px !important;
   opacity: 0 !important;
   pointer-events: none !important;
+  animation: none !important;
 }
 
-/* 三维倾斜主舞台容器（随鼠标光标产生立体偏转） */
+/* 三维倾斜主舞台容器（随鼠标光标产生立体偏转，由 JS 阻尼循环直接驱动） */
 .holo-3d-rig {
   position: relative;
   width: 100%;
@@ -63,29 +82,31 @@
   display: flex;
   align-items: flex-end;
   justify-content: center;
-  transition: transform 0.12s ease-out;
 }
 
-/* 远景层 (Z = -36px)：柔和立体背光辉光球 */
+/* 远景层 (Z = -36px)：柔和立体背光辉光球（多段径向渐变替代模糊滤镜） */
 .holo-back-glow {
   position: absolute;
-  width: 190px;
-  height: 220px;
-  bottom: 42px;
+  width: 210px;
+  height: 240px;
+  bottom: 34px;
   border-radius: 50%;
   background: radial-gradient(
     circle,
-    var(--comp-aura, rgba(236, 94, 167, 0.34)) 0%,
-    rgba(167, 139, 250, 0.14) 52%,
-    transparent 74%
+    var(--comp-aura, rgba(236, 94, 167, 0.32)) 0%,
+    rgba(236, 94, 167, 0.2) 28%,
+    rgba(167, 139, 250, 0.1) 52%,
+    rgba(167, 139, 250, 0.03) 70%,
+    transparent 82%
   );
   transform: translateZ(-36px);
   pointer-events: none;
-  filter: blur(8px);
 }
 
-.companion-figure-card.speaking-glow .holo-back-glow {
-  animation: holoPulseGlow 1.3s ease-in-out infinite;
+@media (prefers-reduced-motion: no-preference) {
+  .companion-figure-card.speaking-glow .holo-back-glow {
+    animation: holoPulseGlow 1.3s ease-in-out infinite;
+  }
 }
 
 @keyframes holoPulseGlow {
@@ -148,7 +169,6 @@
   border: 2px dashed rgba(236, 94, 167, 0.62);
   box-shadow: 0 0 18px var(--comp-aura, rgba(236, 94, 167, 0.45)),
     inset 0 0 16px rgba(155, 107, 246, 0.3);
-  animation: spinRingClockwise 18s linear infinite;
 }
 
 .pedestal-ring-inner {
@@ -158,7 +178,16 @@
   border-radius: 50%;
   border: 1.5px solid rgba(155, 107, 246, 0.68);
   box-shadow: 0 0 12px rgba(155, 107, 246, 0.38);
-  animation: spinRingCounter 12s linear infinite;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .pedestal-ring-outer {
+    animation: spinRingClockwise 18s linear infinite;
+  }
+
+  .pedestal-ring-inner {
+    animation: spinRingCounter 12s linear infinite;
+  }
 }
 
 .pedestal-ring-inner::before,
@@ -198,10 +227,7 @@
   margin-bottom: 6px;
   transform: translateZ(22px);
   pointer-events: auto;
-  filter:
-    drop-shadow(0 -1px 1px rgba(255, 255, 255, 0.55))
-    drop-shadow(var(--shadow-dx, 8px) var(--shadow-dy, 14px) 18px rgba(64, 24, 86, 0.24));
-  transition: filter 0.15s ease;
+  filter: drop-shadow(0 12px 14px rgba(64, 24, 86, 0.2));
 }
 
 /* 后景升腾星尘层 (Z = -18px，位于角色身后，被角色自然遮挡以强化三维纵深) */
@@ -222,13 +248,17 @@
   background: radial-gradient(circle, #ffffff 0%, var(--comp-aura, #ec5ea7) 75%, transparent 100%);
   box-shadow: 0 0 8px var(--comp-aura, rgba(236, 94, 167, 0.8));
   opacity: 0;
-  animation: holoMoteRise var(--mote-dur, 4.6s) ease-in-out var(--mote-delay, 0s) infinite;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .holo-mote {
+    animation: holoMoteRise var(--mote-dur, 4.6s) ease-in-out var(--mote-delay, 0s) infinite;
+  }
 }
 
 .holo-mote.front-mote {
   width: 6px;
   height: 6px;
-  filter: blur(0.3px);
 }
 
 @keyframes holoMoteRise {
@@ -306,12 +336,4 @@
   border-right: 1.5px solid rgba(236, 94, 167, 0.42);
   border-bottom: 1.5px solid rgba(236, 94, 167, 0.42);
   transform: rotate(45deg);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .pedestal-ring-outer,
-  .pedestal-ring-inner,
-  .holo-mote {
-    animation: none !important;
-  }
 }

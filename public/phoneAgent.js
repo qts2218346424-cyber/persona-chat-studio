@@ -1,14 +1,15 @@
 /* ==========================================================================
-   Phone Agent 手机端 AI 辅助助理与 dsh-Go 规划循环模块 (v1.9.0)
+   Phone Agent 手机端 AI 辅助助理与 dsh-Go 规划循环模块 (v1.9.1)
    1. 对齐 myui 极简规范与零 Emoji 标准，支持 DeepSeek 直连 / 云端 API / 本地免 API 三档切换
    2. 实现真实 ReAct 多步屏幕节点感知与 dsh-Go 操作安全确认卡 (允许本次 / 本轮放行 / 取消)
-   3. 统一在设置页与更新卡呈现版本状态，不向主顶栏暴露多余版本号标签
+   3. 接入原生 PackageManager 实时版本读取、签名票据直下、SHA-256 校验与系统安装器拉起
    ========================================================================== */
 
 (() => {
-  const CURRENT_APK_VERSION = '1.9.0';
-  const CURRENT_APK_CODE = 120;
-  const GITHUB_RELEASES_URL = 'https://github.com/ccch1mneyyy/dsh-Go/releases';
+  const CURRENT_APK_VERSION = '1.9.1';
+  const CURRENT_APK_CODE = 121;
+  const PUBLIC_WEB_ORIGIN = 'https://star.claudexxb.online';
+  const GITHUB_RELEASES_URL = 'https://github.com/qts2218346424-cyber/persona-chat-studio/releases';
 
   const STORAGE_KEYS = {
     execMode: 'pa_exec_mode_v1',
@@ -22,6 +23,10 @@
   let installedAppsCache = null;
   let activeAbortController = null;
   let emergencyStopRequested = false;
+  let latestUpdateInfo = null;
+  let pendingNativeCheckResolve = null;
+  let nativeCheckTimeoutId = null;
+  let isDownloadingUpdate = false;
 
   const $ = (id) => document.getElementById(id);
 
@@ -36,6 +41,37 @@
     } catch {
       return false;
     }
+  }
+
+  function getInstalledVersionInfo() {
+    const fallback = { versionName: CURRENT_APK_VERSION, versionCode: CURRENT_APK_CODE };
+    if (!isNativeApk()) return fallback;
+    const b = getBridge();
+    try {
+      if (typeof b.getInstalledVersionInfo === 'function') {
+        const parsed = JSON.parse(b.getInstalledVersionInfo());
+        if (parsed && parsed.versionName) {
+          return {
+            versionName: String(parsed.versionName).replace(/^v/i, ''),
+            versionCode: Number(parsed.versionCode) || 0,
+            certSha256: String(parsed.certSha256 || '')
+          };
+        }
+      }
+      if (typeof b.getAppVersion === 'function') {
+        const rawVer = String(b.getAppVersion() || '').trim();
+        if (rawVer) {
+          return { versionName: rawVer.replace(/^v/i, ''), versionCode: 0 };
+        }
+      }
+    } catch {}
+    return fallback;
+  }
+
+  function getInstalledVersionLabel() {
+    const info = getInstalledVersionInfo();
+    const ver = String(info.versionName || CURRENT_APK_VERSION).replace(/^v/i, '');
+    return info.versionCode > 0 ? `v${ver} (${info.versionCode})` : `v${ver}`;
   }
 
   function escapeHtml(str) {
@@ -212,12 +248,13 @@
 
     if (native) {
       const b = getBridge();
-      let ver = CURRENT_APK_VERSION;
-      try {
-        if (typeof b.getAppVersion === 'function') ver = b.getAppVersion() || ver;
-      } catch {}
+      const verInfo = getInstalledVersionInfo();
       const verBadge = $('anv-current-version');
-      if (verBadge) verBadge.textContent = `v${String(ver).replace(/^v/i, '')} (已就绪)`;
+      if (verBadge) {
+        verBadge.textContent = verInfo.versionCode > 0
+          ? `v${verInfo.versionName} (Build ${verInfo.versionCode} 已就绪)`
+          : `v${verInfo.versionName} (已就绪)`;
+      }
 
       let a11yOk = false;
       let floatOn = false;
@@ -1178,48 +1215,403 @@
     cardCtx.stopBtn?.classList.add('hidden');
   }
 
+  function formatBytesMb(bytes) {
+    const n = Number(bytes) || 0;
+    if (n <= 0) return '0 MB';
+    return `${(n / (1024 * 1024)).toFixed(2)} MB`;
+  }
+
+  function formatSpeed(bps) {
+    const n = Number(bps) || 0;
+    if (n <= 0) return '-- KB/s';
+    if (n >= 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(2)} MB/s`;
+    return `${Math.round(n / 1024)} KB/s`;
+  }
+
+  function setUpdateRedDot(hasUpdate) {
+    const dot = $('mfs-update-dot');
+    if (dot) dot.classList.toggle('hidden', !hasUpdate);
+  }
+
+  function openExternalDownloadUrl(rawUrl) {
+    const target = String(rawUrl || `${PUBLIC_WEB_ORIGIN}/api/download/apk`).trim();
+    const b = getBridge();
+    if (isNativeApk() && b && typeof b.openExternalUrl === 'function') {
+      b.openExternalUrl(target);
+      return;
+    }
+    window.open(target, '_blank', 'noopener');
+  }
+
+  function updateNativeModalProgress(prog) {
+    if (!prog || typeof prog !== 'object') return;
+    const stage = String(prog.stage || '');
+    const wrap = $('upd-progress-wrap');
+    const bar = $('upd-progress-bar');
+    const statusEl = $('upd-progress-status');
+    const pctEl = $('upd-progress-pct');
+    const bytesEl = $('upd-progress-bytes');
+    const speedEl = $('upd-progress-speed');
+    const errBox = $('upd-error-box');
+    const primaryBtn = $('upd-primary-btn');
+    const cancelBtn = $('upd-cancel-btn');
+
+    if (wrap) wrap.classList.remove('hidden');
+    if (errBox && stage !== 'error') errBox.classList.add('hidden');
+
+    const pct = Math.max(0, Math.min(100, Number(prog.percent) || 0));
+    if (bar) bar.value = pct;
+    if (pctEl) pctEl.textContent = `${pct}%`;
+    if (statusEl && prog.message) statusEl.textContent = prog.message;
+    if (bytesEl) {
+      const dlStr = formatBytesMb(prog.downloadedBytes);
+      const totStr = prog.totalBytes > 0 ? formatBytesMb(prog.totalBytes) : '-- MB';
+      bytesEl.textContent = `${dlStr} / ${totStr}`;
+    }
+    if (speedEl) {
+      speedEl.textContent = stage === 'downloading' ? formatSpeed(prog.speedBps) : '';
+    }
+
+    if (stage === 'downloading') {
+      isDownloadingUpdate = true;
+      if (primaryBtn) {
+        primaryBtn.disabled = true;
+        primaryBtn.textContent = `正在下载 (${pct}%)`;
+      }
+      if (cancelBtn) cancelBtn.textContent = '取消下载';
+      return;
+    }
+
+    isDownloadingUpdate = false;
+    if (cancelBtn) cancelBtn.textContent = '关闭';
+
+    if (stage === 'ready' || stage === 'installing') {
+      if (primaryBtn) {
+        primaryBtn.disabled = false;
+        primaryBtn.textContent = '再次拉起安装';
+        primaryBtn.onclick = () => {
+          const b = getBridge();
+          if (b && typeof b.installDownloadedApk === 'function') {
+            const st = b.installDownloadedApk();
+            if (st === 'NEED_INSTALL_PERMISSION') {
+              showToast('请在系统设置中允许安装未知应用后返回');
+            }
+          }
+        };
+      }
+    } else if (stage === 'need_permission') {
+      if (errBox) {
+        errBox.textContent = prog.message || '请在系统设置开启「允许安装未知应用」后返回点击「继续安装」';
+        errBox.classList.remove('hidden');
+      }
+      if (primaryBtn) {
+        primaryBtn.disabled = false;
+        primaryBtn.textContent = '继续安装';
+        primaryBtn.onclick = () => {
+          const b = getBridge();
+          if (b && typeof b.installDownloadedApk === 'function') {
+            b.installDownloadedApk();
+          }
+        };
+      }
+    } else if (stage === 'cancelled') {
+      if (wrap) wrap.classList.add('hidden');
+      if (primaryBtn) {
+        primaryBtn.disabled = false;
+        primaryBtn.textContent = '立即下载并安装';
+        primaryBtn.onclick = () => triggerDownloadFromInfo(latestUpdateInfo);
+      }
+    } else if (stage === 'error') {
+      if (errBox) {
+        errBox.textContent = prog.message || '更新下载失败，请重试或改用浏览器备用下载';
+        errBox.classList.remove('hidden');
+      }
+      if (primaryBtn) {
+        primaryBtn.disabled = false;
+        primaryBtn.textContent = '重试下载';
+        primaryBtn.onclick = () => triggerDownloadFromInfo(latestUpdateInfo);
+      }
+    }
+  }
+
+  window.__onNativeUpdateCheckResult = (result) => {
+    if (nativeCheckTimeoutId) {
+      clearTimeout(nativeCheckTimeoutId);
+      nativeCheckTimeoutId = null;
+    }
+    if (pendingNativeCheckResolve) {
+      const resFn = pendingNativeCheckResolve;
+      pendingNativeCheckResolve = null;
+      resFn(result);
+    }
+  };
+
+  window.__onNativeUpdateProgress = (prog) => {
+    updateNativeModalProgress(prog);
+  };
+
+  function triggerDownloadFromInfo(info) {
+    if (!info) {
+      openExternalDownloadUrl(`${PUBLIC_WEB_ORIGIN}/api/download/apk`);
+      return;
+    }
+    const b = getBridge();
+    if (isNativeApk() && b && typeof b.startNativeApkUpdate === 'function' && info.nativeUpdateUrl) {
+      updateNativeModalProgress({
+        stage: 'downloading',
+        percent: 0,
+        downloadedBytes: 0,
+        totalBytes: info.fileSizeBytes || 0,
+        speedBps: 0,
+        message: '正在连接更新服务器...'
+      });
+      b.startNativeApkUpdate(
+        String(info.nativeUpdateUrl),
+        String(info.sha256 || ''),
+        Number(info.fileSizeBytes) || 0
+      );
+      return;
+    }
+    // 网页端或旧桥接：跳转到鉴权直链或官网主页
+    const dlUrl = info.fallbackDownloadUrl || info.downloadUrl || `${PUBLIC_WEB_ORIGIN}/api/download/apk`;
+    openExternalDownloadUrl(dlUrl);
+  }
+
+  function renderUpdateDialogChecking() {
+    const dlg = $('app-update-dialog');
+    if (!dlg) return;
+    const local = getInstalledVersionInfo();
+    const iconWrap = $('upd-icon-wrap');
+    if (iconWrap) iconWrap.className = 'upd-icon-wrap';
+    if ($('upd-title')) $('upd-title').textContent = '检查应用更新';
+    if ($('upd-subtitle')) $('upd-subtitle').textContent = '正在直连云端版本服务器核验...';
+    if ($('upd-local-ver')) {
+      $('upd-local-ver').textContent = local.versionCode > 0 ? `v${local.versionName} (Build ${local.versionCode})` : `v${local.versionName}`;
+    }
+    if ($('upd-remote-ver')) $('upd-remote-ver').textContent = '检测中...';
+    $('upd-meta-strip')?.classList.add('hidden');
+    $('upd-changelog-wrap')?.classList.add('hidden');
+    $('upd-progress-wrap')?.classList.add('hidden');
+    $('upd-error-box')?.classList.add('hidden');
+
+    const primaryBtn = $('upd-primary-btn');
+    if (primaryBtn) {
+      primaryBtn.disabled = true;
+      primaryBtn.textContent = '检测中...';
+      primaryBtn.onclick = null;
+    }
+    const secBtn = $('upd-secondary-btn');
+    if (secBtn) {
+      secBtn.classList.add('hidden');
+    }
+    if (!dlg.open) dlg.showModal();
+  }
+
+  function renderUpdateDialogResult(info, localInfo) {
+    const iconWrap = $('upd-icon-wrap');
+    const titleEl = $('upd-title');
+    const subEl = $('upd-subtitle');
+    const localVerEl = $('upd-local-ver');
+    const remoteVerEl = $('upd-remote-ver');
+    const metaStrip = $('upd-meta-strip');
+    const sizeTag = $('upd-size-tag');
+    const shaTag = $('upd-sha-tag');
+    const clWrap = $('upd-changelog-wrap');
+    const clList = $('upd-changelog-list');
+    const errBox = $('upd-error-box');
+    const primaryBtn = $('upd-primary-btn');
+    const secBtn = $('upd-secondary-btn');
+
+    if (localVerEl) {
+      localVerEl.textContent = localInfo.versionCode > 0
+        ? `v${localInfo.versionName} (Build ${localInfo.versionCode})`
+        : `v${localInfo.versionName}`;
+    }
+
+    if (!info || info.ok === false) {
+      if (iconWrap) iconWrap.className = 'upd-icon-wrap is-error';
+      if (titleEl) titleEl.textContent = '检查更新失败';
+      if (subEl) subEl.textContent = '未能取得最新云端版本信息';
+      if (remoteVerEl) remoteVerEl.textContent = '获取失败';
+      if (errBox) {
+        errBox.textContent = info?.error || '网络连接异常，请检查网络设置后重试';
+        errBox.classList.remove('hidden');
+      }
+      if (primaryBtn) {
+        primaryBtn.disabled = false;
+        primaryBtn.textContent = '重试检查';
+        primaryBtn.onclick = () => checkUpdate(false);
+      }
+      if (secBtn) {
+        secBtn.classList.remove('hidden');
+        secBtn.textContent = '前往官网手动下载';
+        secBtn.onclick = () => openExternalDownloadUrl(PUBLIC_WEB_ORIGIN);
+      }
+      return;
+    }
+
+    latestUpdateInfo = info;
+    const remoteVer = String(info.latestVersion || localInfo.versionName).replace(/^v/i, '');
+    const remoteCode = Number(info.versionCode) || 0;
+    const hasUpdate = typeof info.hasUpdate === 'boolean'
+      ? info.hasUpdate
+      : ((remoteCode > 0 && localInfo.versionCode > 0 && remoteCode > localInfo.versionCode) || isNewerVersion(remoteVer, localInfo.versionName));
+
+    if (remoteVerEl) {
+      remoteVerEl.textContent = remoteCode > 0 ? `v${remoteVer} (Build ${remoteCode})` : `v${remoteVer}`;
+    }
+
+    if (metaStrip) {
+      metaStrip.classList.remove('hidden');
+      if (sizeTag) sizeTag.textContent = `安装包 ${info.fileSize || formatBytesMb(info.fileSizeBytes) || '--'}`;
+      if (shaTag) shaTag.textContent = info.sha256 ? `SHA-256 ${String(info.sha256).slice(0, 12)}...` : '签名校验就绪';
+    }
+
+    const notes = Array.isArray(info.changelog) ? info.changelog : [];
+    if (clWrap && clList && notes.length > 0) {
+      clList.innerHTML = notes.map((line) => `<li>${escapeHtml(line)}</li>`).join('');
+      clWrap.classList.remove('hidden');
+    }
+
+    const native = isNativeApk();
+    const canNativeAutoUpdate = native && typeof getBridge()?.startNativeApkUpdate === 'function' && Boolean(info.nativeUpdateUrl);
+    const nowStr = new Date().toTimeString().slice(0, 8);
+
+    if (hasUpdate) {
+      if (iconWrap) iconWrap.className = 'upd-icon-wrap';
+      if (titleEl) titleEl.textContent = `发现新版本 v${remoteVer}`;
+      if (subEl) subEl.textContent = `发布日期 ${info.releaseDate || '最新'} · 建议立即升级`;
+      if (primaryBtn) {
+        primaryBtn.disabled = false;
+        if (canNativeAutoUpdate) {
+          primaryBtn.textContent = info.alreadyDownloaded ? '立即安装已下载包' : '立即下载并安装';
+          primaryBtn.onclick = () => triggerDownloadFromInfo(info);
+        } else {
+          primaryBtn.textContent = '前往下载最新版 APK';
+          primaryBtn.onclick = () => openExternalDownloadUrl(info.fallbackDownloadUrl || info.downloadUrl || PUBLIC_WEB_ORIGIN);
+        }
+      }
+      if (secBtn) {
+        secBtn.classList.remove('hidden');
+        secBtn.textContent = '浏览器备用下载';
+        secBtn.onclick = () => openExternalDownloadUrl(info.fallbackDownloadUrl || `${PUBLIC_WEB_ORIGIN}/api/download/apk`);
+      }
+    } else {
+      if (iconWrap) iconWrap.className = 'upd-icon-wrap is-latest';
+      if (titleEl) titleEl.textContent = '当前已是最新版本';
+      if (subEl) subEl.textContent = `已与云端同步 (核验时间 ${nowStr})`;
+      if (primaryBtn) {
+        primaryBtn.disabled = false;
+        primaryBtn.textContent = '重新检测';
+        primaryBtn.onclick = () => checkUpdate(false);
+      }
+      if (secBtn) {
+        secBtn.classList.remove('hidden');
+        secBtn.textContent = '强制重下当前包';
+        secBtn.onclick = () => triggerDownloadFromInfo(info);
+      }
+    }
+  }
+
+  function fetchNativeCheckWithFallback(localInfo) {
+    return new Promise((resolve) => {
+      const b = getBridge();
+      if (isNativeApk() && b && typeof b.checkAppUpdateNative === 'function') {
+        if (nativeCheckTimeoutId) clearTimeout(nativeCheckTimeoutId);
+        pendingNativeCheckResolve = resolve;
+        nativeCheckTimeoutId = setTimeout(async () => {
+          pendingNativeCheckResolve = null;
+          nativeCheckTimeoutId = null;
+          // 超时自动回退 JS 直连云端版本接口（带 CORS 头）
+          const fb = await fetchWebAppVersionDirect(localInfo);
+          resolve(fb);
+        }, 15000);
+        try {
+          b.checkAppUpdateNative();
+        } catch {
+          clearTimeout(nativeCheckTimeoutId);
+          pendingNativeCheckResolve = null;
+          fetchWebAppVersionDirect(localInfo).then(resolve);
+        }
+      } else {
+        fetchWebAppVersionDirect(localInfo).then(resolve);
+      }
+    });
+  }
+
+  async function fetchWebAppVersionDirect(localInfo) {
+    const q = `t=${Date.now()}&curCode=${localInfo.versionCode || 0}&curVer=${encodeURIComponent(localInfo.versionName || '')}`;
+    const urls = isNativeApk()
+      ? [`${PUBLIC_WEB_ORIGIN}/api/app-version?${q}`, `/api/app-version?${q}`]
+      : [`/api/app-version?${q}`, `${PUBLIC_WEB_ORIGIN}/api/app-version?${q}`];
+
+    let lastErr = '无法连接更新服务器';
+    for (const u of urls) {
+      try {
+        const res = await fetch(u, { cache: 'no-store' });
+        if (!res.ok) {
+          lastErr = `更新服务返回 HTTP ${res.status}`;
+          continue;
+        }
+        const info = await res.json();
+        if (info && info.latestVersion) {
+          const remoteVer = String(info.latestVersion).replace(/^v/i, '');
+          const remoteCode = Number(info.versionCode) || 0;
+          const hasUpdate = (remoteCode > 0 && localInfo.versionCode > 0 && remoteCode > localInfo.versionCode) || isNewerVersion(remoteVer, localInfo.versionName);
+          return { ...info, ok: true, hasUpdate };
+        }
+      } catch (err) {
+        lastErr = err?.message || '网络请求异常';
+      }
+    }
+    return { ok: false, error: lastErr };
+  }
+
   async function checkUpdate(silent = false) {
+    const localInfo = getInstalledVersionInfo();
+    if (!silent && !isDownloadingUpdate) {
+      renderUpdateDialogChecking();
+    }
+
+    const info = await fetchNativeCheckWithFallback(localInfo);
     const titleEl = $('anv-status-title');
     const subEl = $('anv-status-sub');
     const boxEl = $('anv-update-status-box');
-    const isNative = isNativeApk();
-    let localVer = CURRENT_APK_VERSION;
-    if (isNative && typeof getBridge().getAppVersion === 'function') {
-      try {
-        localVer = getBridge().getAppVersion() || CURRENT_APK_VERSION;
-      } catch {}
-    }
 
-    try {
-      const res = await fetch(`/api/app-version?t=${Date.now()}`, { credentials: 'same-origin' });
-      const info = await res.json();
-      if (!info || !info.latestVersion) throw new Error('版本信息解析异常');
+    if (info && info.ok !== false && info.latestVersion) {
+      const remoteVer = String(info.latestVersion).replace(/^v/i, '');
+      const remoteCode = Number(info.versionCode) || 0;
+      const hasUpdate = typeof info.hasUpdate === 'boolean'
+        ? info.hasUpdate
+        : ((remoteCode > 0 && localInfo.versionCode > 0 && remoteCode > localInfo.versionCode) || isNewerVersion(remoteVer, localInfo.versionName));
 
-      const hasNew = isNewerVersion(info.latestVersion, localVer);
-      if (hasNew) {
-        if (titleEl) titleEl.textContent = `发现新版本 v${info.latestVersion} (${info.fileSize || '安装包'})`;
+      latestUpdateInfo = { ...info, hasUpdate };
+      setUpdateRedDot(hasUpdate);
+
+      if (hasUpdate) {
+        if (titleEl) titleEl.textContent = `发现新版本 v${remoteVer} (${info.fileSize || '安装包'})`;
         if (subEl) {
           const notes = Array.isArray(info.changelog) ? info.changelog[0] : '';
           subEl.textContent = notes || '建议立即升级以获取最新版界面与手机辅助功能。';
         }
         if (boxEl) boxEl.classList.add('has-update');
-        if (!silent) {
-          const go = confirm(`检测到新版本 v${info.latestVersion}！\n${(info.changelog || []).slice(0, 3).join('\n')}\n\n是否立即下载更新安装包？`);
-          if (go) {
-            window.open(info.downloadUrl || '/api/download/apk', '_blank');
-          }
+        if (silent) {
+          showToast(`发现新版本 v${remoteVer}，前往「设置 → 检查更新」可一键升级`);
         }
       } else {
-        if (titleEl) titleEl.textContent = `当前已是最新版本 (v${String(localVer).replace(/^v/i, '')})`;
-        if (subEl) subEl.textContent = `已与云端发布版 v${info.latestVersion} 保持同步`;
+        if (titleEl) titleEl.textContent = `当前已是最新版本 (v${localInfo.versionName})`;
+        if (subEl) subEl.textContent = `已与云端发布版 v${remoteVer} 保持同步`;
         if (boxEl) boxEl.classList.remove('has-update');
-        if (!silent) showToast(`当前已是最新版本 v${String(localVer).replace(/^v/i, '')}`);
       }
-      return info;
-    } catch (err) {
-      if (!silent) showToast(`检查更新失败：${err?.message || '请稍后再试'}`);
-      return null;
+    } else if (!silent) {
+      if (titleEl) titleEl.textContent = '检查更新失败';
+      if (subEl) subEl.textContent = info?.error || '请检查网络连接后重试';
     }
+
+    if (!silent && !isDownloadingUpdate) {
+      renderUpdateDialogResult(info, localInfo);
+    }
+    return info;
   }
 
   function openModal() {
@@ -1235,6 +1627,21 @@
   }
 
   function bindUiEvents() {
+    // 0. 新版更新弹窗关闭/取消按钮 (#app-update-dialog)
+    const closeUpdateDialog = () => {
+      if (isDownloadingUpdate) {
+        const b = getBridge();
+        if (isNativeApk() && b && typeof b.cancelNativeApkUpdate === 'function') {
+          b.cancelNativeApkUpdate();
+        }
+        isDownloadingUpdate = false;
+      }
+      const dlg = $('app-update-dialog');
+      if (dlg && dlg.open) dlg.close();
+    };
+    $('upd-close-btn')?.addEventListener('click', closeUpdateDialog);
+    $('upd-cancel-btn')?.addEventListener('click', closeUpdateDialog);
+
     // 1. 引擎分段切换 (#pa-mode-api-direct / #pa-mode-api-cloud / #pa-mode-local)
     document.querySelectorAll('#phone-agent-banner .pa-seg-btn').forEach((btn) => {
       btn.addEventListener('click', () => {
@@ -1407,6 +1814,18 @@
 
   function init() {
     bindUiEvents();
+    const updDlg = $('app-update-dialog');
+    if (updDlg) {
+      updDlg.addEventListener('cancel', () => {
+        if (isDownloadingUpdate) {
+          const b = getBridge();
+          if (isNativeApk() && b && typeof b.cancelNativeApkUpdate === 'function') {
+            b.cancelNativeApkUpdate();
+          }
+          isDownloadingUpdate = false;
+        }
+      });
+    }
     syncStatus();
     // 原生 APK 启动时静默检查一次更新（仅同步最新标记，不打断操作）
     if (isNativeApk()) {
@@ -1427,6 +1846,8 @@
     get isNative() {
       return isNativeApk();
     },
+    getInstalledVersionInfo,
+    getInstalledVersionLabel,
     getExecMode,
     setExecMode,
     setDirectApiKey,

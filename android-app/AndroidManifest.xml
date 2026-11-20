@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.deepseek.starwhisper.studio"
-    android:versionCode="120"
-    android:versionName="1.9.0">
+    android:versionCode="121"
+    android:versionName="1.9.1">
 
     <uses-sdk
         android:minSdkVersion="24"
@@ -11,6 +11,7 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <queries>
         <intent>
@@ -57,6 +58,13 @@
         <service
             android:name=".FloatAgentService"
             android:exported="false" />
+
+        <!-- 专用只读 APK 更新包 ContentProvider（仅限私有更新包文件共享给系统安装器） -->
+        <provider
+            android:name=".ApkUpdateProvider"
+            android:authorities="com.deepseek.starwhisper.studio.updateprovider"
+            android:exported="false"
+            android:grantUriPermissions="true" />
 
     </application>
 </manifest>

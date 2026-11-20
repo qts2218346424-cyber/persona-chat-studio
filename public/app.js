@@ -6434,12 +6434,15 @@
       ttsVal.textContent = localStorage.getItem('auto_tts_reply') !== '0' ? '已开启' : '已关闭';
     }
 
-    // 7. 同步版本号（严格以 PhoneAgent/原生端版本为准，不在主界面透出）
+    // 7. 同步版本号（原生环境优先由 PackageManager 实时读取，不在主界面透出）
     const verVal = document.getElementById('mfs-version-value');
     if (verVal) {
-      const verStr =
-        (window.PhoneAgent && window.PhoneAgent.currentVersion) || '1.9.0';
-      verVal.textContent = verStr.startsWith('v') ? verStr : `v${verStr}`;
+      if (window.PhoneAgent && typeof window.PhoneAgent.getInstalledVersionLabel === 'function') {
+        verVal.textContent = window.PhoneAgent.getInstalledVersionLabel();
+      } else {
+        const verStr = (window.PhoneAgent && window.PhoneAgent.currentVersion) || '1.9.1';
+        verVal.textContent = verStr.startsWith('v') ? verStr : `v${verStr}`;
+      }
     }
   }
 

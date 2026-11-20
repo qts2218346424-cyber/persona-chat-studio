@@ -2,6 +2,8 @@
  * 2.5D 破框立体陪伴渲染引擎（Live2D 风格骨骼微切片变形 + 3D 全息透视视差 + 阻尼弹簧触碰物理）
  */
 (() => {
+  const stageEl = document.getElementById('companion-stage');
+  const appShell = document.getElementById('app-shell');
   const pokeArea = document.getElementById('companion-poke-area');
   const sourceImg = document.getElementById('companion-img');
   if (!pokeArea || !sourceImg) return;
@@ -32,6 +34,7 @@
   const canvas = document.getElementById('companion-live-canvas');
   const backMotes = document.getElementById('holo-back-motes');
   const frontLayer = document.getElementById('holo-front-layer');
+  const pedestalShadowEl = rig.querySelector('.pedestal-shadow');
   const ctx = canvas.getContext('2d');
 
   // 生成后景 (Z=-18px) 与前景 (Z=+48px) 双层升腾光粒，通过与人物的前后遮挡关系强化立体空间纵深
@@ -53,11 +56,30 @@
     ms.layer.appendChild(m);
   }
 
+  // 调度、可见性与矩形缓存状态（彻底避免隐身态后台空跑 rAF 与指针回流）
+  let rafId = 0;
+  let isRunning = false;
+  let isContentSkipped = false;
+  let isIntersecting = true;
+  let cachedRect = null;
+  let lastTiltStr = '';
+  let lastShadowStr = '';
+  let viewportCenterX = Math.max(260, window.innerWidth * 0.45);
+  let viewportCenterY = Math.max(260, window.innerHeight * 0.45);
+
+  function refreshCachedRect() {
+    const r = pokeArea.getBoundingClientRect();
+    cachedRect = r.width >= 20 && r.height >= 20 ? r : null;
+    viewportCenterX = Math.max(260, window.innerWidth * 0.45);
+    viewportCenterY = Math.max(260, window.innerHeight * 0.45);
+    return cachedRect;
+  }
+
   // 自适应容器尺寸与高分屏 DPR 同步，确保任意屏幕尺寸下清晰锐利且不挤压气泡
   function syncCanvasResolution() {
     const rect = canvas.getBoundingClientRect();
     if (rect.width < 20 || rect.height < 20) return;
-    const dpr = Math.min(2.2, Math.max(1.5, window.devicePixelRatio || 2));
+    const dpr = Math.min(2, Math.max(1, window.devicePixelRatio || 1));
     const targetW = Math.round(rect.width * dpr);
     const targetH = Math.round(rect.height * dpr);
     if (Math.abs(canvas.width - targetW) > 2 || Math.abs(canvas.height - targetH) > 2) {
@@ -65,10 +87,6 @@
       canvas.height = targetH;
     }
   }
-  if (typeof ResizeObserver !== 'undefined') {
-    new ResizeObserver(syncCanvasResolution).observe(pokeArea);
-  }
-  window.addEventListener('resize', syncCanvasResolution, { passive: true });
 
   // 状态与物理变量
   let offscreenSource = null;
@@ -86,6 +104,17 @@
   let springVelSquash = 0;
 
   const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+
+  function isStageVisible() {
+    if (document.hidden || isContentSkipped || !isIntersecting) return false;
+    if (stageEl && stageEl.classList.contains('hidden')) return false;
+    if (appShell) {
+      if (appShell.classList.contains('hidden')) return false;
+      if (appShell.dataset.uiMode && appShell.dataset.uiMode !== 'roleplay') return false;
+    }
+    const r = refreshCachedRect();
+    return Boolean(r && r.width >= 20 && r.height >= 20);
+  }
 
   function normalizeCutoutSrc(rawSrc) {
     if (!rawSrc) return './assets/companions/cool_silver_cutout.png';
@@ -152,6 +181,12 @@
     img.onload = () => {
       const isCustom = targetSrc.startsWith('data:image/');
       offscreenSource = buildProcessedCanvas(img, isCustom);
+      if (isStageVisible()) {
+        syncCanvasResolution();
+        if (!isRunning) {
+          renderFrame(performance.now(), true);
+        }
+      }
     };
     img.src = targetSrc;
   }
@@ -163,16 +198,15 @@
   observer.observe(sourceImg, { attributes: true, attributeFilter: ['src'] });
   loadCharacterTexture(sourceImg.getAttribute('src') || sourceImg.src);
 
-  // 全局光标视线追踪
+  // 全局光标视线追踪（纯缓存矩形运算，零同步回流读取）
   window.addEventListener(
     'pointermove',
     (e) => {
-      const rect = pokeArea.getBoundingClientRect();
-      if (rect.width === 0) return;
-      const cx = rect.left + rect.width * 0.5;
-      const cy = rect.top + rect.height * 0.36;
-      const dx = (e.clientX - cx) / Math.max(260, window.innerWidth * 0.45);
-      const dy = (e.clientY - cy) / Math.max(260, window.innerHeight * 0.45);
+      if (!isRunning || !cachedRect || cachedRect.width === 0) return;
+      const cx = cachedRect.left + cachedRect.width * 0.5;
+      const cy = cachedRect.top + cachedRect.height * 0.36;
+      const dx = (e.clientX - cx) / viewportCenterX;
+      const dy = (e.clientY - cy) / viewportCenterY;
       pointerTargetX = Math.max(-1, Math.min(1, dx));
       pointerTargetY = Math.max(-1, Math.min(1, dy));
     },
@@ -194,7 +228,7 @@
     springVelX += (Math.random() > 0.5 ? 1 : -1) * 18;
     springVelSquash = -0.085;
 
-    const rect = pokeArea.getBoundingClientRect();
+    const rect = refreshCachedRect() || pokeArea.getBoundingClientRect();
     const localX = e.clientX - rect.left;
     const localY = e.clientY - rect.top;
     const symbols = ['💗', '✦', '💕', '✧'];
@@ -209,14 +243,20 @@
       frontLayer.appendChild(sp);
       setTimeout(() => sp.remove(), 980);
     }
+
+    if (prefersReducedMotion.matches && isStageVisible()) {
+      renderFrame(performance.now(), true);
+    }
   });
 
-  // 60FPS Live2D 风格水平微切片骨骼变形渲染循环
-  const SLICES = 44;
+  // 60FPS Live2D 风格水平微切片骨骼变形渲染循环（28 切片兼顾丝滑变形与 GPU 吞吐）
+  const SLICES = 28;
   let lastTime = performance.now();
 
-  function renderFrame(now) {
-    const dt = Math.min(0.05, (now - lastTime) / 1000);
+  function renderFrame(now, singleShot = false) {
+    if (!singleShot && !isRunning) return;
+
+    const dt = Math.min(0.05, Math.max(0.001, (now - lastTime) / 1000));
     lastTime = now;
 
     const t = now * 0.001;
@@ -238,13 +278,31 @@
     springVelSquash += (-190 * springSquash - 12 * springVelSquash) * dt;
     springSquash += springVelSquash * dt;
 
-    // 驱动三维舞台整体立体透视侧转与反向景深阴影
+    // 驱动三维舞台整体立体透视侧转与底座合成层影移（仅当变化时写入）
     if (!prefersReducedMotion.matches) {
       const tiltY = smoothX * 9.5 + springDispX * 0.35;
       const tiltX = -smoothY * 5.2;
-      rig.style.transform = `rotateY(${tiltY.toFixed(2)}deg) rotateX(${tiltX.toFixed(2)}deg)`;
-      canvas.style.setProperty('--shadow-dx', `${(-smoothX * 11 + 5).toFixed(1)}px`);
-      canvas.style.setProperty('--shadow-dy', `${(12 - smoothY * 4).toFixed(1)}px`);
+      const tiltStr = `rotateY(${tiltY.toFixed(2)}deg) rotateX(${tiltX.toFixed(2)}deg)`;
+      if (tiltStr !== lastTiltStr) {
+        rig.style.transform = tiltStr;
+        lastTiltStr = tiltStr;
+      }
+      if (pedestalShadowEl) {
+        const sdx = (-smoothX * 8).toFixed(1);
+        const sdy = (-smoothY * 4).toFixed(1);
+        const shadowStr = `translate3d(${sdx}px, ${sdy}px, -14px)`;
+        if (shadowStr !== lastShadowStr) {
+          pedestalShadowEl.style.transform = shadowStr;
+          lastShadowStr = shadowStr;
+        }
+      }
+    } else if (lastTiltStr !== '') {
+      rig.style.transform = '';
+      lastTiltStr = '';
+      if (pedestalShadowEl && lastShadowStr !== '') {
+        pedestalShadowEl.style.transform = '';
+        lastShadowStr = '';
+      }
     }
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -328,8 +386,111 @@
       }
     }
 
-    requestAnimationFrame(renderFrame);
+    if (!singleShot && isRunning) {
+      rafId = requestAnimationFrame(renderFrame);
+    }
   }
 
-  requestAnimationFrame(renderFrame);
+  function stopEngine() {
+    if (rafId) {
+      cancelAnimationFrame(rafId);
+      rafId = 0;
+    }
+    isRunning = false;
+    if (stageEl) stageEl.classList.add('holo-paused');
+  }
+
+  function syncEngineLifecycle() {
+    const visible = isStageVisible();
+    if (!visible) {
+      stopEngine();
+      return;
+    }
+
+    if (stageEl) stageEl.classList.remove('holo-paused');
+    syncCanvasResolution();
+
+    const hasSpringMotion =
+      Math.abs(springDispX) > 0.05 ||
+      Math.abs(springVelX) > 0.05 ||
+      Math.abs(springSquash) > 0.002 ||
+      Math.abs(springVelSquash) > 0.002;
+
+    if (prefersReducedMotion.matches && !hasSpringMotion) {
+      stopEngine();
+      if (stageEl) stageEl.classList.remove('holo-paused');
+      lastTime = performance.now();
+      renderFrame(lastTime, true);
+      return;
+    }
+
+    if (!isRunning) {
+      isRunning = true;
+      lastTime = performance.now();
+      rafId = requestAnimationFrame(renderFrame);
+    }
+  }
+
+  if (typeof ResizeObserver !== 'undefined') {
+    new ResizeObserver(() => {
+      refreshCachedRect();
+      syncCanvasResolution();
+      syncEngineLifecycle();
+    }).observe(pokeArea);
+  }
+  window.addEventListener(
+    'resize',
+    () => {
+      refreshCachedRect();
+      syncCanvasResolution();
+      syncEngineLifecycle();
+    },
+    { passive: true }
+  );
+
+  // 1. 遵循 efficient-background-processing 优先使用 contentvisibilityautostatechange
+  if (stageEl) {
+    stageEl.addEventListener('contentvisibilityautostatechange', (e) => {
+      isContentSkipped = Boolean(e.skipped);
+      syncEngineLifecycle();
+    });
+  }
+
+  // 2. 不支持 content-visibility 的浏览器使用 IntersectionObserver 回退
+  if (!('contentVisibility' in document.documentElement.style) && typeof IntersectionObserver !== 'undefined') {
+    const visObserver = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          isIntersecting = entry.isIntersecting;
+        }
+        syncEngineLifecycle();
+      },
+      { rootMargin: '200px' }
+    );
+    visObserver.observe(stageEl || pokeArea);
+  }
+
+  // 3. 页面切入后台自动暂停
+  document.addEventListener('visibilitychange', syncEngineLifecycle);
+
+  // 4. 监听舞台显隐与工作台模式切换（DeepSeek / 手机辅助模式下彻底休眠）
+  if (stageEl) {
+    new MutationObserver(syncEngineLifecycle).observe(stageEl, {
+      attributes: true,
+      attributeFilter: ['class', 'style']
+    });
+  }
+  if (appShell) {
+    new MutationObserver(syncEngineLifecycle).observe(appShell, {
+      attributes: true,
+      attributeFilter: ['class', 'data-ui-mode']
+    });
+  }
+
+  // 5. 监听系统减弱动效偏好切换
+  if (typeof prefersReducedMotion.addEventListener === 'function') {
+    prefersReducedMotion.addEventListener('change', syncEngineLifecycle);
+  }
+
+  syncEngineLifecycle();
 })();

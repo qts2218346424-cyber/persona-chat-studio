@@ -15,6 +15,7 @@ import android.util.DisplayMetrics;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.Window;
+import android.webkit.DownloadListener;
 import android.webkit.JavascriptInterface;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
@@ -74,6 +75,18 @@ public class MainActivity extends Activity {
 
         webView.setWebViewClient(new LocalAssetWebViewClient());
         webView.setWebChromeClient(new FileUploadChromeClient());
+        webView.setDownloadListener(new DownloadListener() {
+            @Override
+            public void onDownloadStart(String url, String userAgent, String contentDisposition, String mimetype, long contentLength) {
+                try {
+                    Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    startActivity(intent);
+                } catch (Exception ignored) {
+                    Toast.makeText(MainActivity.this, "请从浏览器打开链接下载", Toast.LENGTH_SHORT).show();
+                }
+            }
+        });
 
         root.addView(webView, new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
@@ -231,8 +244,45 @@ public class MainActivity extends Activity {
         settings.setTextZoom(100);
     }
 
+    private void dispatchJsUpdateCheckResult(final String resultJson) {
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                if (webView == null) return;
+                String safe = resultJson != null ? resultJson : "{\"ok\":false,\"error\":\"返回空\"}";
+                safe = safe.replace("\u2028", "\\u2028").replace("\u2029", "\\u2029");
+                webView.evaluateJavascript("if(window.__onNativeUpdateCheckResult){window.__onNativeUpdateCheckResult(" + safe + ");}", null);
+            }
+        });
+    }
+
+    private void dispatchJsUpdateProgress(final String progressJson) {
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                if (webView == null) return;
+                String safe = progressJson != null ? progressJson : "{}";
+                safe = safe.replace("\u2028", "\\u2028").replace("\u2029", "\\u2029");
+                webView.evaluateJavascript("if(window.__onNativeUpdateProgress){window.__onNativeUpdateProgress(" + safe + ");}", null);
+            }
+        });
+    }
+
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        if (requestCode == AppUpdateManager.INSTALL_PERM_REQ_CODE) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && getPackageManager().canRequestPackageInstalls()) {
+                String res = AppUpdateManager.triggerInstall(MainActivity.this);
+                if ("STARTED".equals(res)) {
+                    dispatchJsUpdateProgress("{\"stage\":\"installing\",\"percent\":100,\"message\":\"已授予安装权限，正在启动系统安装器...\"}");
+                } else {
+                    dispatchJsUpdateProgress("{\"stage\":\"error\",\"percent\":100,\"message\":\"授权后启动安装器失败: " + res + "\"}");
+                }
+            } else {
+                dispatchJsUpdateProgress("{\"stage\":\"need_permission\",\"percent\":100,\"message\":\"尚未允许安装未知应用，请在系统设置开启后点击继续安装\"}");
+            }
+            return;
+        }
         if (requestCode == FILE_CHOOSER_REQ_CODE) {
             ValueCallback<Uri[]> cb = filePathCallback;
             filePathCallback = null;
@@ -313,7 +363,59 @@ public class MainActivity extends Activity {
     public final class NativeBridge {
         @JavascriptInterface
         public String getAppVersion() {
-            return "1.9.0";
+            return AppUpdateManager.getInstalledVersionName(MainActivity.this);
+        }
+
+        @JavascriptInterface
+        public String getInstalledVersionInfo() {
+            return AppUpdateManager.getInstalledVersionJson(MainActivity.this);
+        }
+
+        @JavascriptInterface
+        public void checkAppUpdateNative() {
+            AppUpdateManager.checkUpdateAsync(MainActivity.this, new AppUpdateManager.CheckCallback() {
+                @Override
+                public void onComplete(String resultJson) {
+                    dispatchJsUpdateCheckResult(resultJson);
+                }
+            });
+        }
+
+        @JavascriptInterface
+        public void startNativeApkUpdate(String url, String sha256, long expectedBytes) {
+            AppUpdateManager.startDownloadAsync(MainActivity.this, url, sha256, expectedBytes, new AppUpdateManager.ProgressCallback() {
+                @Override
+                public void onProgress(String progressJson) {
+                    dispatchJsUpdateProgress(progressJson);
+                }
+            });
+        }
+
+        @JavascriptInterface
+        public void cancelNativeApkUpdate() {
+            AppUpdateManager.cancelDownload();
+        }
+
+        @JavascriptInterface
+        public String installDownloadedApk() {
+            return AppUpdateManager.triggerInstall(MainActivity.this);
+        }
+
+        @JavascriptInterface
+        public void openExternalUrl(final String url) {
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    if (url == null || url.trim().isEmpty()) return;
+                    try {
+                        Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url.trim()));
+                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                        startActivity(intent);
+                    } catch (Exception e) {
+                        Toast.makeText(MainActivity.this, "打开外部链接失败: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                    }
+                }
+            });
         }
 
         @JavascriptInterface

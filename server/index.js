@@ -1,6 +1,7 @@
 const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
+const crypto = require('node:crypto');
 const zlib = require('node:zlib');
 const { URL } = require('node:url');
 
@@ -387,6 +388,93 @@ function extractAuthToken(req, parsedUrl = null) {
   return '';
 }
 
+const APP_LATEST_VERSION = '1.9.1';
+const APP_LATEST_VERSION_CODE = 121;
+const APP_OFFICIAL_CERT_SHA256 = '6fd05e32a3cabf327140129d866e55a342fe30daa3384c67aad4b3cbdd98a17b';
+const APP_UPDATE_TICKET_SECRET = crypto
+  .createHash('sha256')
+  .update((process.env.SESSION_SECRET || 'starwhisper_upd_v1') + ':' + APP_OFFICIAL_CERT_SHA256)
+  .digest('hex');
+
+let cachedApkMeta = {
+  apkPath: '',
+  mtimeMs: -1,
+  size: -1,
+  sha256: ''
+};
+
+function getApkFileMeta() {
+  const apkPath = path.join(__dirname, '../public/downloads/deepseek-studio.apk');
+  try {
+    if (!fs.existsSync(apkPath)) {
+      return { exists: false, apkPath, size: 0, mtimeMs: 0, sha256: '' };
+    }
+    const stat = fs.statSync(apkPath);
+    if (
+      cachedApkMeta.apkPath === apkPath &&
+      cachedApkMeta.mtimeMs === stat.mtimeMs &&
+      cachedApkMeta.size === stat.size &&
+      cachedApkMeta.sha256
+    ) {
+      return { exists: true, apkPath, size: stat.size, mtimeMs: stat.mtimeMs, sha256: cachedApkMeta.sha256 };
+    }
+    const hash = crypto.createHash('sha256');
+    const fd = fs.openSync(apkPath, 'r');
+    try {
+      const buf = Buffer.allocUnsafe(65536);
+      let bytesRead = 0;
+      while ((bytesRead = fs.readSync(fd, buf, 0, buf.length, null)) > 0) {
+        hash.update(bytesRead === buf.length ? buf : buf.subarray(0, bytesRead));
+      }
+    } finally {
+      fs.closeSync(fd);
+    }
+    const sha256 = hash.digest('hex').toLowerCase();
+    cachedApkMeta = { apkPath, mtimeMs: stat.mtimeMs, size: stat.size, sha256 };
+    return { exists: true, apkPath, size: stat.size, mtimeMs: stat.mtimeMs, sha256 };
+  } catch {
+    return { exists: false, apkPath, size: 0, mtimeMs: 0, sha256: '' };
+  }
+}
+
+function signApkUpdateTicket(verCode, ttlMs = 10 * 60 * 1000) {
+  const vc = Math.max(1, parseInt(verCode, 10) || 1);
+  const exp = Date.now() + ttlMs;
+  const data = `${vc}.${exp}`;
+  const sig = crypto.createHmac('sha256', APP_UPDATE_TICKET_SECRET).update(data).digest('hex');
+  return `${data}.${sig}`;
+}
+
+function verifyApkUpdateTicket(ticketStr) {
+  const raw = String(ticketStr || '').trim();
+  const parts = raw.split('.');
+  if (parts.length !== 3) return false;
+  const [vcStr, expStr, sigHex] = parts;
+  if (!/^\d+$/.test(vcStr) || !/^\d+$/.test(expStr) || !/^[0-9a-f]{64}$/i.test(sigHex)) {
+    return false;
+  }
+  const exp = Number(expStr);
+  if (!Number.isFinite(exp) || exp <= Date.now()) {
+    return false;
+  }
+  const expectedHex = crypto
+    .createHmac('sha256', APP_UPDATE_TICKET_SECRET)
+    .update(`${vcStr}.${expStr}`)
+    .digest('hex');
+  const a = Buffer.from(sigHex.toLowerCase(), 'hex');
+  const b = Buffer.from(expectedHex, 'hex');
+  if (a.length !== b.length) return false;
+  return crypto.timingSafeEqual(a, b);
+}
+
+const APP_VERSION_CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Range, X-Requested-With',
+  'Access-Control-Expose-Headers': 'Content-Length, Content-Range, Content-Disposition, X-APK-SHA256',
+  'Cache-Control': 'no-store, no-cache, must-revalidate'
+};
+
 async function handleApi(req, res, pathname, parsedUrl) {
   const method = req.method || 'GET';
   const currentToken = extractAuthToken(req, parsedUrl);
@@ -404,39 +492,137 @@ async function handleApi(req, res, pathname, parsedUrl) {
   }
 
   // ========= 0.1 客户端版本更新检查公开接口 =========
-  if (method === 'GET' && (pathname === '/api/app-version' || pathname === '/api/version')) {
-    const fs = require('fs');
-    const path = require('path');
-    const apkPath = path.join(__dirname, '../public/downloads/deepseek-studio.apk');
-    let apkSizeBytes = 8785578;
-    let apkMtime = Date.now();
-    try {
-      if (fs.existsSync(apkPath)) {
-        const stat = fs.statSync(apkPath);
-        apkSizeBytes = stat.size;
-        apkMtime = stat.mtimeMs;
-      }
-    } catch (e) {}
+  if (method === 'OPTIONS' && (pathname === '/api/app-version' || pathname === '/api/version' || pathname === '/api/app-update/download')) {
+    res.writeHead(204, {
+      ...APP_VERSION_CORS_HEADERS,
+      ...SECURITY_HEADERS
+    });
+    res.end();
+    return;
+  }
 
-    return sendJson(res, 200, {
+  if (method === 'GET' && (pathname === '/api/app-version' || pathname === '/api/version')) {
+    const apkMeta = getApkFileMeta();
+    const apkSizeBytes = apkMeta.exists ? apkMeta.size : 8859467;
+    const apkFileName = `DeepSeek_StarWhisper_v${APP_LATEST_VERSION}.apk`;
+
+    const client = String(parsedUrl.searchParams.get('client') || '').trim();
+    const curCode = Number(parsedUrl.searchParams.get('curCode') || '0');
+    const sig = String(parsedUrl.searchParams.get('sig') || '')
+      .replace(/:/g, '')
+      .trim()
+      .toLowerCase();
+
+    const payload = {
       ok: true,
-      latestVersion: '1.9.0',
-      versionCode: 120,
+      latestVersion: APP_LATEST_VERSION,
+      versionCode: APP_LATEST_VERSION_CODE,
       minSupportedVersion: '1.0.0',
       releaseDate: '2026-11-20',
       fileSize: (apkSizeBytes / (1024 * 1024)).toFixed(2) + ' MB',
       fileSizeBytes: apkSizeBytes,
+      sha256: apkMeta.sha256 || '',
+      apkFileName,
       downloadUrl: '/api/download/apk',
       fallbackDownloadUrl: 'https://star.claudexxb.online/api/download/apk',
-      githubReleasesUrl: 'https://github.com/ccch1mneyyy/dsh-Go/releases',
+      githubReleasesUrl: 'https://github.com/qts2218346424-cyber/persona-chat-studio/releases',
+      serverTime: Date.now(),
       changelog: [
-        '联合 myui 设计规范与 Figma 视觉体系全面重塑移动端 UI（52px 极简三段式单行顶栏，全面清零冗余图标与版本号显示）',
-        '彻底修复剧本沉浸模式下透明底板导致的对比度下降，阅读区域升级高对比磨砂承托卡片',
-        '全量清除界面与 Android 悬浮窗 Emoji，统一升级为清晰线性 SVG 图标与圆点状态指示灯',
-        '对齐 dsh-Go 架构重塑手机辅助模式：支持 DeepSeek API 个人直连 / 云端托管 / 本地免 API 三档切换与内联配置',
-        '打通服务端 /api/phone-agent/plan 多步视觉节点 ReAct 规划与 Android 11+ 全量已安装应用拉起授权，支持 dsh-Go 操作安全确认卡'
+        '重构可靠原生更新引擎：直接穿透离线缓存请求云端版本库，实时读取真实安装包版本号与 SHA-256 完整性校验',
+        '支持签名票据鉴权安全直下、应用内实时下载进度/速率展示，并在校验通过后自动拉起 Android 系统安装器覆盖升级',
+        '联合 myui 与 Figma 重塑移动端 52px 极简三段式单行顶栏、高对比剧场磨砂卡片与全量零 Emoji 线性图标体系',
+        '对齐 dsh-Go 架构实现 DeepSeek API 直连 / 云端 API / 本地免 API 三档切换、多步屏幕感知规划与安全确认卡'
       ]
+    };
+
+    if (
+      client === 'android_apk' &&
+      Number.isFinite(curCode) &&
+      curCode > 0 &&
+      sig === APP_OFFICIAL_CERT_SHA256
+    ) {
+      const ticket = signApkUpdateTicket(curCode, 10 * 60 * 1000);
+      payload.nativeUpdateUrl = `https://star.claudexxb.online/api/app-update/download?ticket=${encodeURIComponent(ticket)}`;
+    }
+
+    return sendJson(res, 200, payload, APP_VERSION_CORS_HEADERS);
+  }
+
+  // ========= 0.1b 原生客户端签名票据专用安全更新下载接口 (支持 HEAD / Range / 流式校验) =========
+  if ((method === 'GET' || method === 'HEAD') && pathname === '/api/app-update/download') {
+    const ticket = parsedUrl.searchParams.get('ticket') || '';
+    const ticketOk = verifyApkUpdateTicket(ticket);
+    if (!ticketOk && !currentUser) {
+      return sendJson(
+        res,
+        403,
+        { ok: false, error: '更新票据无效或已过期，请重新点击检查更新', code: 'UPDATE_TICKET_INVALID' },
+        APP_VERSION_CORS_HEADERS
+      );
+    }
+
+    const apkMeta = getApkFileMeta();
+    if (!apkMeta.exists) {
+      return sendJson(res, 404, { ok: false, error: '安装包暂未就绪，请稍后重试' }, APP_VERSION_CORS_HEADERS);
+    }
+
+    const totalSize = apkMeta.size;
+    const apkFileName = `DeepSeek_StarWhisper_v${APP_LATEST_VERSION}.apk`;
+    const commonHeaders = {
+      'Content-Type': 'application/vnd.android.package-archive',
+      'Content-Disposition': `attachment; filename="${apkFileName}"`,
+      'Accept-Ranges': 'bytes',
+      'X-APK-SHA256': apkMeta.sha256,
+      ...APP_VERSION_CORS_HEADERS,
+      ...SECURITY_HEADERS
+    };
+
+    if (method === 'HEAD') {
+      res.writeHead(200, {
+        ...commonHeaders,
+        'Content-Length': totalSize
+      });
+      res.end();
+      return;
+    }
+
+    const rangeHdr = String(req.headers.range || '').trim();
+    if (rangeHdr) {
+      const m = rangeHdr.match(/^bytes=(\d*)-(\d*)$/i);
+      if (m) {
+        let start = m[1] === '' ? 0 : parseInt(m[1], 10);
+        let end = m[2] === '' ? totalSize - 1 : parseInt(m[2], 10);
+        if (m[1] === '' && m[2] !== '') {
+          const suffixLen = parseInt(m[2], 10);
+          start = Math.max(0, totalSize - suffixLen);
+          end = totalSize - 1;
+        }
+        if (Number.isFinite(start) && Number.isFinite(end) && start >= 0 && start <= end && end < totalSize) {
+          const chunkLen = end - start + 1;
+          res.writeHead(206, {
+            ...commonHeaders,
+            'Content-Range': `bytes ${start}-${end}/${totalSize}`,
+            'Content-Length': chunkLen
+          });
+          fs.createReadStream(apkMeta.apkPath, { start, end }).pipe(res);
+          return;
+        }
+        res.writeHead(416, {
+          'Content-Range': `bytes */${totalSize}`,
+          ...APP_VERSION_CORS_HEADERS,
+          ...SECURITY_HEADERS
+        });
+        res.end();
+        return;
+      }
+    }
+
+    res.writeHead(200, {
+      ...commonHeaders,
+      'Content-Length': totalSize
     });
+    fs.createReadStream(apkMeta.apkPath).pipe(res);
+    return;
   }
 
   // ========= 0.2 受保护的 APK 官方客户端下载接口（严格鉴权，未注册/未登录拒绝下载） =========
@@ -458,20 +644,21 @@ async function handleApi(req, res, pathname, parsedUrl) {
       return;
     }
 
-    const apkPath = path.join(__dirname, '../public/downloads/deepseek-studio.apk');
-    if (!fs.existsSync(apkPath)) {
+    const apkMeta = getApkFileMeta();
+    if (!apkMeta.exists) {
       return sendJson(res, 404, { error: 'APK 安装包生成中，请稍后刷新重试' });
     }
 
-    const stat = fs.statSync(apkPath);
     res.writeHead(200, {
       'Content-Type': 'application/vnd.android.package-archive',
-      'Content-Length': stat.size,
-      'Content-Disposition': 'attachment; filename="DeepSeek_StarWhisper_v1.8.0.apk"',
+      'Content-Length': apkMeta.size,
+      'Content-Disposition': `attachment; filename="DeepSeek_StarWhisper_v${APP_LATEST_VERSION}.apk"`,
+      'Accept-Ranges': 'bytes',
+      'X-APK-SHA256': apkMeta.sha256,
       'Cache-Control': 'no-cache, no-store, must-revalidate',
       ...SECURITY_HEADERS
     });
-    fs.createReadStream(apkPath).pipe(res);
+    fs.createReadStream(apkMeta.apkPath).pipe(res);
     return;
   }
 

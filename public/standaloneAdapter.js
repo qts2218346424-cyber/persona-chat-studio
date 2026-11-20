@@ -2508,6 +2508,20 @@
       return originalFetch(input, init);
     }
 
+    if (pathname === '/api/app-version' || pathname === '/api/version') {
+      const mergedHeaders = new Headers(init?.headers || {});
+      if (standaloneActive) {
+        const q = urlStr.includes('?') ? urlStr.slice(urlStr.indexOf('?')) : '';
+        return originalFetch(`https://star.claudexxb.online${pathname}${q}`, {
+          method: (init.method || 'GET').toUpperCase(),
+          headers: mergedHeaders,
+          cache: 'no-store',
+          signal: init.signal
+        });
+      }
+      return originalFetch(input, { ...init, headers: mergedHeaders, cache: 'no-store' });
+    }
+
     if (!standaloneActive) {
       const mergedHeaders = new Headers(init?.headers || {});
       const tok = window.__starAuthStore?.getToken();

@@ -824,3 +824,257 @@
   font-size: 11.5px;
   color: light-dark(#64748b, #94a3b8);
 }
+
+/* 6. myui 检查更新红点提示与可靠性自更新模态框 */
+.mfs-update-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #ef4444;
+  display: inline-block;
+  margin-right: 6px;
+  flex-shrink: 0;
+}
+
+.mfs-update-dot.hidden {
+  display: none !important;
+}
+
+.app-update-modal {
+  width: min(460px, 92vw);
+  border: 1px solid light-dark(rgba(15, 23, 42, 0.1), rgba(255, 255, 255, 0.14));
+  border-radius: 20px;
+  background: light-dark(#ffffff, #161822);
+  color: light-dark(#0f172a, #f8fafc);
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.24);
+  padding: 0;
+  overflow: hidden;
+}
+
+.upd-modal-inner {
+  display: flex;
+  flex-direction: column;
+}
+
+.upd-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 18px;
+  border-bottom: 1px solid light-dark(rgba(15, 23, 42, 0.06), rgba(255, 255, 255, 0.08));
+}
+
+.upd-title-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.upd-icon-wrap {
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: light-dark(#eff6ff, rgba(77, 107, 254, 0.2));
+  color: #4d6bfe;
+  flex-shrink: 0;
+}
+
+.upd-icon-wrap.is-latest {
+  background: light-dark(#ecfdf5, rgba(16, 185, 129, 0.2));
+  color: #10b981;
+}
+
+.upd-icon-wrap.is-error {
+  background: light-dark(#fef2f2, rgba(239, 68, 68, 0.18));
+  color: #ef4444;
+}
+
+.upd-title-group h3 {
+  margin: 0;
+  font-size: 15.5px;
+  font-weight: 700;
+}
+
+.upd-title-group p {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: light-dark(#64748b, #94a3b8);
+}
+
+.upd-body {
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 62vh;
+  overflow-y: auto;
+}
+
+.upd-ver-compare {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: light-dark(#f8fafc, rgba(255, 255, 255, 0.04));
+  border: 1px solid light-dark(rgba(15, 23, 42, 0.06), rgba(255, 255, 255, 0.08));
+}
+
+.upd-ver-box {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.upd-ver-box.is-remote {
+  text-align: right;
+}
+
+.upd-ver-label {
+  font-size: 11px;
+  color: light-dark(#64748b, #94a3b8);
+}
+
+.upd-ver-num {
+  font-size: 14px;
+  font-weight: 700;
+  color: light-dark(#1e293b, #f1f5f9);
+}
+
+.upd-ver-box.is-remote .upd-ver-num {
+  color: #4d6bfe;
+}
+
+.upd-ver-arrow {
+  color: light-dark(#94a3b8, #64748b);
+  display: inline-flex;
+  align-items: center;
+}
+
+.upd-meta-strip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.upd-meta-tag {
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: light-dark(#eff6ff, rgba(77, 107, 254, 0.16));
+  color: light-dark(#3b5998, #93c5fd);
+}
+
+.upd-changelog-wrap {
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: light-dark(#f8fafc, rgba(255, 255, 255, 0.03));
+  border: 1px solid light-dark(rgba(15, 23, 42, 0.06), rgba(255, 255, 255, 0.07));
+}
+
+.upd-section-label {
+  font-size: 12px;
+  font-weight: 700;
+  margin-bottom: 6px;
+  color: light-dark(#334155, #e2e8f0);
+}
+
+.upd-changelog-list {
+  margin: 0;
+  padding-left: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: light-dark(#475569, #cbd5e1);
+}
+
+.upd-progress-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: light-dark(#f0f6ff, rgba(77, 107, 254, 0.1));
+  border: 1px solid light-dark(rgba(77, 107, 254, 0.2), rgba(77, 107, 254, 0.3));
+}
+
+.upd-progress-top,
+.upd-progress-sub {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  gap: 8px;
+}
+
+.upd-progress-top {
+  font-weight: 600;
+  color: #4d6bfe;
+}
+
+.upd-progress-sub {
+  font-size: 11px;
+  color: light-dark(#64748b, #94a3b8);
+}
+
+#upd-progress-bar {
+  width: 100%;
+  height: 7px;
+  border-radius: 999px;
+  overflow: hidden;
+  appearance: none;
+  border: none;
+  background: light-dark(#dbeafe, rgba(255, 255, 255, 0.12));
+}
+
+#upd-progress-bar::-webkit-progress-bar {
+  background: light-dark(#dbeafe, rgba(255, 255, 255, 0.12));
+  border-radius: 999px;
+}
+
+#upd-progress-bar::-webkit-progress-value {
+  background: #4d6bfe;
+  border-radius: 999px;
+  transition: width 0.14s ease;
+}
+
+.upd-error-box {
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: light-dark(#fef2f2, rgba(239, 68, 68, 0.14));
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  color: #ef4444;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.upd-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px 18px 16px;
+  border-top: 1px solid light-dark(rgba(15, 23, 42, 0.06), rgba(255, 255, 255, 0.08));
+}
+
+.upd-footer-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.upd-footer .hidden,
+.upd-body .hidden {
+  display: none !important;
+}

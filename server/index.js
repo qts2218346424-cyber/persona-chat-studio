@@ -417,8 +417,8 @@ async function handleApi(req, res, pathname, parsedUrl) {
 
     return sendJson(res, 200, {
       ok: true,
-      latestVersion: '1.8.0',
-      versionCode: 110,
+      latestVersion: '1.8.2',
+      versionCode: 112,
       minSupportedVersion: '1.0.0',
       releaseDate: '2026-11-20',
       fileSize: (apkSizeBytes / (1024 * 1024)).toFixed(2) + ' MB',
@@ -427,13 +427,11 @@ async function handleApi(req, res, pathname, parsedUrl) {
       fallbackDownloadUrl: 'https://star.claudexxb.online/api/download/apk',
       githubReleasesUrl: 'https://github.com/ccch1mneyyy/dsh-Go/releases',
       changelog: [
-        '严格安全认证：开启全站严格注册登录防护，未注册用户无法访问与下载',
-        '管理员后台全权限中心：支持查看所有用户、重置密码、一键封禁/解封、修改角色与删除违规账号',
-        '手机端 1:1 DeepSeek 正版全屏设置页面：卡片式结构与返回导航，极简易用',
-        '手机端 1:1 DeepSeek 沉浸全屏聊天流：消除边缘黑边与多余留白，官方淡蓝灰气泡',
-        '正版悬浮输入舱：大圆角悬浮卡片、深度思考与联网搜索切换药丸、安全区贴合防遮挡',
-        '官方思考折叠块：已思考 (用时 X 秒) 折叠框与极简操作栏',
-        '全局悬浮打字面板与免 API 离线规则手机控制'
+        '1:1 复刻 DeepSeek 官方正版手机 App 全屏设置页面（分组圆角卡片、外观与字体个性化管理）',
+        '1:1 沉浸式 DeepSeek 正版全屏聊天面板（淡蓝气泡、折叠思考栏、语音朗读与极简药丸输入舱）',
+        '手机端 AI 辅助助理增强：支持悬浮窗实时打字命令与完全免 API 本地手势操控',
+        '主聊天流直接支持手机控制口令（输入“回桌面”、“打开微信”、“下滑”等原生极速执行）',
+        '版本拉取与更新检测优化，去除霸屏卡片干扰'
       ]
     });
   }

@@ -446,8 +446,19 @@ body[data-ui-mode="deepseek"] .auth-gate .info-callout {
     height: 100dvh !important;
     z-index: 95 !important;
     background: var(--bg-app) !important;
+    transform: translate3d(105%, 0, 0) !important;
+    pointer-events: none !important;
+    box-shadow: none !important;
     transition: transform 0.26s cubic-bezier(0.22, 1, 0.36, 1) !important;
     will-change: transform;
+  }
+
+  /* 登录遮罩或工作台隐藏时物理级封杀抽屉 */
+  .app-shell.hidden .inspector-panel,
+  body:has(#auth-gate:not(.hidden)) .inspector-panel {
+    display: none !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
   }
 
   .app-shell.right-collapsed .inspector-panel,
@@ -457,8 +468,8 @@ body[data-ui-mode="deepseek"] .auth-gate .info-callout {
     box-shadow: none !important;
   }
 
-  .app-shell:not(.right-collapsed) .inspector-panel,
-  .app-shell[data-ui-mode="deepseek"]:not(.right-collapsed) .inspector-panel {
+  /* 仅当处于已登录工作台、显式非收起态且非 hidden 时才允许滑出 */
+  .app-shell:not(.hidden):not(.right-collapsed) .inspector-panel {
     transform: translate3d(0, 0, 0) !important;
     pointer-events: auto !important;
     box-shadow: -16px 0 42px rgba(15, 23, 42, 0.22) !important;

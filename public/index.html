@@ -526,7 +526,7 @@
           <!-- Android 原生随身版 (APK) 下载与 Phone Agent 控制入口 -->
           <button
             type="button"
-            class="soft-tool-btn apk-topbar-pill-btn"
+            class="soft-tool-btn apk-topbar-pill-btn hidden"
             id="topbar-apk-download-btn"
             title="下载 Android 原生随身版 (APK) · 含 Phone Agent 手机端 AI 辅助助理"
             aria-label="下载安卓版"
@@ -538,6 +538,30 @@
               </svg>
             </span>
             <span class="apk-pill-label">安卓随身版</span>
+            <span class="apk-pill-tag">v1.8.2</span>
+          </button>
+
+          <!-- 移动端原生级快捷按钮（1:1 复刻正版 DeepSeek 手机 App 截图 2、3） -->
+          <button type="button" class="icon-btn ds-topbar-mute-icon" id="ds-topbar-mute-btn" title="朗读声音切换" aria-label="朗读声音切换">
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+              <line x1="23" y1="9" x2="17" y2="15"></line>
+              <line x1="17" y1="9" x2="23" y2="15"></line>
+            </svg>
+          </button>
+          <button type="button" class="icon-btn ds-topbar-new-icon" id="ds-topbar-new-btn" title="开启新对话" aria-label="开启新对话">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="12" cy="12" r="9"></circle>
+              <line x1="12" y1="8" x2="12" y2="16"></line>
+              <line x1="8" y1="12" x2="16" y2="12"></line>
+            </svg>
+          </button>
+          <button type="button" class="icon-btn ds-topbar-mobile-settings" id="ds-topbar-mobile-settings-btn" title="设置" aria-label="设置">
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="12" cy="12" r="3"></circle>
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+            </svg>
+          </button>
             <span class="apk-pill-tag">v1.7</span>
           </button>
 
@@ -813,10 +837,21 @@
             </div>
           </div>
 
+          <!-- 快捷手机控制指令抽屉（纯净免 API 模式与快捷手势） -->
+          <div class="phone-cmd-quick-drawer hidden" id="phone-cmd-quick-drawer" aria-label="快捷手机控制指令">
+            <button type="button" class="phone-cmd-pill" data-cmd="回桌面">🏠 回桌面</button>
+            <button type="button" class="phone-cmd-pill" data-cmd="返回">◀ 返回</button>
+            <button type="button" class="phone-cmd-pill" data-cmd="下滑">📜 向下滑动</button>
+            <button type="button" class="phone-cmd-pill" data-cmd="上滑">🔼 向上滑动</button>
+            <button type="button" class="phone-cmd-pill" data-cmd="打开微信">💬 微信</button>
+            <button type="button" class="phone-cmd-pill" data-cmd="打开设置">⚙️ 设置</button>
+            <button type="button" class="phone-cmd-pill" data-cmd="最近任务">📑 最近任务</button>
+          </div>
+
           <label for="chat-input" class="visually-hidden">输入对话消息内容</label>
           <textarea
             id="chat-input"
-            placeholder="输入你想探讨的问题，或发送消息开始对话…"
+            placeholder="发消息或按住说话"
             rows="2"
           ></textarea>
 
@@ -992,6 +1027,20 @@
                 </svg>
                 <span>设置</span>
               </button>
+              <button type="button" class="icon-btn ds-composer-plus-btn" id="mobile-tools-plus-btn" title="快捷工具与手机控制指令" aria-label="更多工具">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <circle cx="12" cy="12" r="9"></circle>
+                  <line x1="12" y1="8" x2="12" y2="16"></line>
+                  <line x1="8" y1="12" x2="16" y2="12"></line>
+                </svg>
+              </button>
+              <button type="button" class="icon-btn ds-composer-mic-btn" id="voice-input-btn" title="语音输入 / 按住说话" aria-label="语音输入">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path>
+                  <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                  <line x1="12" y1="19" x2="12" y2="22"></line>
+                </svg>
+              </button>
               <button type="button" class="stop-btn hidden" id="stop-stream-btn" title="停止生成">
                 <span class="stop-square"></span>
                 <span id="stop-btn-label">停止</span>
@@ -999,7 +1048,8 @@
               <button type="submit" class="send-btn" id="send-button" aria-label="发送消息" title="发送消息 (Enter)">
                 <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3">
                   <line x1="12" y1="19" x2="12" y2="5"></line>
-                  <polyline points="6 11 12 5 18 11"></polyline>
+                  <line x1="6" y1="11" x2="12" y2="5"></line>
+                  <line x1="18" y1="11" x2="12" y2="5"></line>
                 </svg>
               </button>
             </div>
@@ -2834,7 +2884,32 @@
               <span class="mfs-label">外观</span>
             </div>
             <div class="mfs-item-right">
-              <span class="mfs-value" id="mfs-theme-value">跟随系统</span>
+              <span class="mfs-value" id="mfs-theme-value">系统</span>
+              <span class="mfs-arrow">›</span>
+            </div>
+          </div>
+
+          <div class="mfs-item" id="mfs-item-fontsize">
+            <div class="mfs-item-left">
+              <div class="mfs-icon-wrap">
+                <span style="font-size:16px;font-weight:700;">AA</span>
+              </div>
+              <span class="mfs-label">字体大小</span>
+            </div>
+            <div class="mfs-item-right">
+              <span class="mfs-value" id="mfs-fontsize-value">标准</span>
+              <span class="mfs-arrow">›</span>
+            </div>
+          </div>
+
+          <div class="mfs-item" id="mfs-item-persona">
+            <div class="mfs-item-left">
+              <div class="mfs-icon-wrap">
+                <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
+              </div>
+              <span class="mfs-label">个性化</span>
+            </div>
+            <div class="mfs-item-right">
               <span class="mfs-arrow">›</span>
             </div>
           </div>
@@ -2906,7 +2981,7 @@
               <span class="mfs-label">检查更新</span>
             </div>
             <div class="mfs-item-right">
-              <span class="mfs-value" id="mfs-version-value">1.7.2(109)</span>
+              <span class="mfs-value" id="mfs-version-value">2.8.0(297)</span>
               <span class="mfs-arrow">›</span>
             </div>
           </div>

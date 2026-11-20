@@ -13,8 +13,8 @@
     isNative: false,
     pollTimer: null,
     isTaskRunning: false,
-    currentVersion: '1.7.2',
-    currentVersionCode: 109,
+    currentVersion: '1.8.2',
+    currentVersionCode: 112,
     latestVersionData: null,
     hasNewUpdate: false,
 
@@ -197,8 +197,16 @@
             };
           }
           if (!silent) {
-            alert('🎉 发现最新版本 v' + data.latestVersion + ' (' + data.fileSize + ')！\n\n更新日志：\n' + (data.changelog ? data.changelog.join('\n') : '') + '\n\n点击弹窗中的“立即更新”即可高速拉取新包！');
-            self.openModal();
+            var updateConfirm = confirm(
+              '🎉 发现最新版本 v' + data.latestVersion + ' (' + (data.fileSize || '8.4 MB') + ')！\n\n' +
+              '更新亮点：\n' + (data.changelog ? (Array.isArray(data.changelog) ? data.changelog.join('\n') : data.changelog) : '1:1 DeepSeek 正版全屏设置、沉浸式全屏聊天与免 API 手机控制增强') + '\n\n' +
+              '是否立即拉取并下载最新版 APK 安装更新？'
+            );
+            if (updateConfirm) {
+              var token = localStorage.getItem('star_whisper_token') || localStorage.getItem('persona_studio_token') || '';
+              var dlUrl = data.downloadUrl || ('/api/download/apk' + (token ? '?token=' + encodeURIComponent(token) : ''));
+              window.location.href = dlUrl;
+            }
           }
         } else {
           if (statusIcon) statusIcon.textContent = '✓';

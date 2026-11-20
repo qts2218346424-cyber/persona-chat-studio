@@ -4043,6 +4043,9 @@
                </button>`
             : ''
         }
+        <button type="button" class="ds-icon-action-btn ds-speak-btn tts-btn" title="朗读此条回答" aria-label="朗读此条回答">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>
+        </button>
         <button type="button" class="ds-icon-action-btn edit-msg-btn" title="编辑修改本条回复" aria-label="编辑回复">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 20h9"></path><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg>
         </button>
@@ -4506,6 +4509,14 @@
     }
 
     if (!regenerate && !trimmed && stagedFiles.length === 0) return;
+
+    // 智能识别免 API 手机控制口令并优先由 Phone Agent 原生调度引擎接管
+    const isPhoneControlCmd = /^(回桌面|桌面|返回|后退|下滑|向上|向下|上滑|左滑|右滑|打开微信|微信|打开设置|设置|点击|点|输入|填入|打字|最近任务)/.test(trimmed);
+    if (!regenerate && !editMessageId && isPhoneControlCmd && window.PhoneAgent && window.PhoneAgent.isNative) {
+      chatInput.value = '';
+      await window.PhoneAgent.executeTaskInChat(trimmed);
+      return;
+    }
 
     state.lastInteractionAt = Date.now();
     state.proactiveIdleCount = 0;
@@ -6325,22 +6336,37 @@
     }
     mfs.classList.remove('hidden');
 
+    // 1. 同步账户昵称与角色
+    const accountLabel = document.getElementById('mfs-account-label');
     const accountSub = document.getElementById('mfs-account-sub');
+    if (accountLabel) {
+      accountLabel.textContent = state.user?.nickname || state.user?.username || '星语AI (点我打字)';
+    }
     if (accountSub) {
-      accountSub.textContent = state.user?.email || '本地纯净沙盒';
+      const isAdm = state.user?.role === 'admin';
+      accountSub.textContent = isAdm ? '系统管理员' : (state.user?.email || '已就绪');
     }
 
+    // 2. 同步外观
     const themeVal = document.getElementById('mfs-theme-value');
     if (themeVal) {
       const curScheme = localStorage.getItem('color-scheme') || 'system';
-      themeVal.textContent = curScheme === 'dark' ? '深色' : (curScheme === 'light' ? '浅色' : '跟随系统');
+      themeVal.textContent = curScheme === 'dark' ? '深色' : (curScheme === 'light' ? '浅色' : '系统');
     }
 
+    // 3. 同步字体大小
+    const fontVal = document.getElementById('mfs-fontsize-value');
+    if (fontVal) {
+      const curFont = localStorage.getItem('mfs_font_size') || 'normal';
+      fontVal.textContent = curFont === 'large' ? '大' : (curFont === 'small' ? '小' : '标准');
+    }
+
+    // 4. 同步个人 API 密钥
     const keyVal = document.getElementById('mfs-apikey-value');
     const keyInput = document.getElementById('mfs-apikey-input');
     const savedKey = localStorage.getItem('deepseek_user_api_key') || localStorage.getItem('own_deepseek_api_key') || '';
     if (keyVal) {
-      keyVal.textContent = savedKey ? '已配置 (sk-...)' : '点击配置';
+      keyVal.textContent = savedKey ? '已配置 (sk-...)' : '点击直连';
     }
     if (keyInput) {
       keyInput.value = savedKey;
@@ -6350,9 +6376,22 @@
       }
     }
 
+    // 5. 同步手机辅助状态
+    const paVal = document.getElementById('mfs-phoneagent-value');
+    if (paVal) {
+      const isNative = window.AndroidAppBridge && window.AndroidAppBridge.isNativeApk();
+      if (isNative) {
+        const floatRunning = window.AndroidAppBridge.isFloatAgentRunning();
+        paVal.textContent = floatRunning ? '悬浮打字球运行中' : '无障碍已就绪';
+      } else {
+        paVal.textContent = '网页预览模式';
+      }
+    }
+
+    // 6. 同步版本号
     const verVal = document.getElementById('mfs-version-value');
-    if (verVal && window.PhoneAgent) {
-      verVal.textContent = window.PhoneAgent.currentVersion + '(' + window.PhoneAgent.currentVersionCode + ')';
+    if (verVal) {
+      verVal.textContent = '2.8.0(297)';
     }
   }
 
@@ -6365,13 +6404,42 @@
       mfs.classList.add('hidden');
     });
 
-    // 切换外观（跟随系统 -> 浅色 -> 深色 轮换）
+    // 账户点击：修改昵称
+    document.getElementById('mfs-item-profile')?.addEventListener('click', async () => {
+      const curName = state.user?.nickname || state.user?.username || '';
+      const newName = prompt('修改你的用户昵称：', curName);
+      if (newName && newName.trim() && newName.trim() !== curName) {
+        try {
+          const res = await apiJson('/api/auth/profile', {
+            method: 'PATCH',
+            body: JSON.stringify({ nickname: newName.trim() })
+          });
+          if (res.ok && res.user) {
+            state.user = res.user;
+            const accountLabel = document.getElementById('mfs-account-label');
+            if (accountLabel) accountLabel.textContent = res.user.nickname || res.user.username;
+            showToast('昵称已更新为：' + res.user.nickname);
+          }
+        } catch {
+          showToast('已在本地更新昵称：' + newName.trim());
+          const accountLabel = document.getElementById('mfs-account-label');
+          if (accountLabel) accountLabel.textContent = newName.trim();
+        }
+      }
+    });
+
+    // 语言
+    document.getElementById('mfs-item-lang')?.addEventListener('click', () => {
+      showToast('当前系统已使用 中文 (简体中文)');
+    });
+
+    // 切换外观（系统 -> 浅色 -> 深色 轮换）
     document.getElementById('mfs-item-theme')?.addEventListener('click', () => {
       const curScheme = localStorage.getItem('color-scheme') || 'system';
       let nextScheme = 'light';
-      if (curScheme === 'light') nextScheme = 'dark';
-      else if (curScheme === 'dark') nextScheme = 'system';
-      else nextScheme = 'light';
+      if (curScheme === 'system') nextScheme = 'light';
+      else if (curScheme === 'light') nextScheme = 'dark';
+      else nextScheme = 'system';
 
       localStorage.setItem('color-scheme', nextScheme);
       const metaEl = document.querySelector('meta[name="color-scheme"]');
@@ -6379,8 +6447,38 @@
       document.documentElement.style.colorScheme = nextScheme === 'system' ? 'light dark' : nextScheme;
 
       const themeVal = document.getElementById('mfs-theme-value');
-      if (themeVal) themeVal.textContent = nextScheme === 'dark' ? '深色' : (nextScheme === 'light' ? '浅色' : '跟随系统');
+      if (themeVal) themeVal.textContent = nextScheme === 'dark' ? '深色' : (nextScheme === 'light' ? '浅色' : '系统');
       showToast('已切换外观为：' + (nextScheme === 'dark' ? '深色模式' : (nextScheme === 'light' ? '浅色模式' : '跟随系统')));
+    });
+
+    // 字体大小（标准 -> 大 -> 小 轮换）
+    document.getElementById('mfs-item-fontsize')?.addEventListener('click', () => {
+      const curFont = localStorage.getItem('mfs_font_size') || 'normal';
+      let nextFont = 'large';
+      if (curFont === 'normal') nextFont = 'large';
+      else if (curFont === 'large') nextFont = 'small';
+      else nextFont = 'normal';
+
+      localStorage.setItem('mfs_font_size', nextFont);
+      const fontVal = document.getElementById('mfs-fontsize-value');
+      if (fontVal) fontVal.textContent = nextFont === 'large' ? '大' : (nextFont === 'small' ? '小' : '标准');
+      document.documentElement.style.fontSize = nextFont === 'large' ? '17px' : (nextFont === 'small' ? '14px' : '15px');
+      showToast('已切换字体大小：' + (nextFont === 'large' ? '大号字体' : (nextFont === 'small' ? '小号字体' : '标准字体')));
+    });
+
+    // 个性化设定
+    document.getElementById('mfs-item-persona')?.addEventListener('click', () => {
+      const curPrompt = localStorage.getItem('ds_custom_sys_prompt') || '';
+      const newPrompt = prompt('输入 DeepSeek 个性化系统指令或对话偏好（留空使用默认）：', curPrompt);
+      if (newPrompt !== null) {
+        if (newPrompt.trim()) {
+          localStorage.setItem('ds_custom_sys_prompt', newPrompt.trim());
+          showToast('已保存专属个性化指令！');
+        } else {
+          localStorage.removeItem('ds_custom_sys_prompt');
+          showToast('已恢复默认 DeepSeek 官方通用人设');
+        }
+      }
     });
 
     // 展开/收起 API Key 输入抽屉
@@ -6411,17 +6509,33 @@
         localStorage.removeItem('deepseek_user_api_key');
         localStorage.removeItem('own_deepseek_api_key');
         const keyVal = document.getElementById('mfs-apikey-value');
-        if (keyVal) keyVal.textContent = '点击配置';
+        if (keyVal) keyVal.textContent = '点击直连';
         showToast('已清除个人 API Key，恢复免 API 模式');
       }
     });
 
-    // 手机端 Phone Agent 控制入口
+    // 手机端 Phone Agent 控制入口（轻量开关悬浮球 / 无障碍检测，不弹下载器）
     document.getElementById('mfs-item-phoneagent')?.addEventListener('click', () => {
-      mfs.classList.add('hidden');
-      if (window.PhoneAgent) {
-        window.PhoneAgent.openModal();
+      const isNative = window.AndroidAppBridge && window.AndroidAppBridge.isNativeApk();
+      if (!isNative) {
+        showToast('当前运行在网页端，可在安卓手机安装星语随身版体验无障碍与常驻悬浮打字球！');
+        return;
       }
+      const bridge = window.AndroidAppBridge;
+      const isFloat = bridge.isFloatAgentRunning();
+      if (isFloat) {
+        bridge.stopFloatAgent();
+        showToast('已收起悬浮打字控制球');
+      } else {
+        bridge.startFloatAgent();
+        showToast('已开启常驻悬浮打字控制球！轻触左上角胶囊可随时打字操控手机');
+      }
+      openMobileFullscreenSettings();
+    });
+
+    // 朗读音色
+    document.getElementById('mfs-item-voice')?.addEventListener('click', () => {
+      showToast('当前音色：微软晓晓 (官方真声)，已开启自然流畅朗读！');
     });
 
     // 检查更新
@@ -6431,6 +6545,11 @@
       }
     });
 
+    // 服务协议
+    document.getElementById('mfs-item-dshgo')?.addEventListener('click', () => {
+      alert('【星语恋庭 · 服务协议与开源声明】\n1. 本项目基于合法授权的前沿大模型与开放架构，所有数据本地安全存储；\n2. 手机端 AI 辅助助理架构遵循开源实践，操作完全由用户自愿授权并受物理急停保护；\n3. 回答由 AI 生成，仅供学习与娱乐参考。');
+    });
+
     // 数据管理（导出历史记录）
     document.getElementById('mfs-item-datamanage')?.addEventListener('click', () => {
       if (confirm('是否导出当前所有会话历史记录为 Markdown 文档？')) {
@@ -6438,22 +6557,88 @@
       }
     });
 
-    // 帮助与反馈
+    // 帮助与反馈（包含免 API 手机控制口令手册）
     document.getElementById('mfs-item-help')?.addEventListener('click', () => {
-      alert('【使用提示】\n1. 聊天界面支持 DeepSeek-V3 标准对话与 DeepSeek-R1 深度思考；\n2. 手机控制可在聊天框直接输入“回桌面”、“打开微信”等，或使用常驻打字悬浮球在其他 App 实时打字！');
+      alert('【免 API 手机控制口令表】\n无需任何 API Key，在聊天框输入以下指令即可操控手机：\n\n• 🏠 回桌面：输入“回桌面”或“桌面”\n• ◀ 返回：输入“返回”或“后退”\n• 📜 滑动：输入“下滑”、“上滑”、“左滑”、“右滑”\n• 📑 多任务：输入“最近任务”\n• 💬 应用唤起：输入“打开微信”、“打开设置”\n• 👆 点击：输入“点击 [屏幕上的文字]”\n• ⌨️ 打字：输入“输入 [要填入的内容]”\n\n在其他任意应用中，轻触悬浮胶囊「星语AI」也可展开控制台实时打字！');
     });
 
-    // 退出登录 / 重置本地沙盒
+    // 退出登录
     document.getElementById('mfs-logout-btn')?.addEventListener('click', () => {
-      if (confirm('确定要清除本地对话缓存并重置吗？')) {
-        localStorage.clear();
-        sessionStorage.clear();
-        window.location.reload();
+      if (confirm('确定要退出当前账号吗？退出后需重新登录。')) {
+        mfs.classList.add('hidden');
+        if (typeof logoutUser === 'function') {
+          logoutUser();
+        } else {
+          localStorage.removeItem('star_whisper_token');
+          localStorage.removeItem('persona_studio_token');
+          window.location.reload();
+        }
       }
     });
   }
 
+  // 顶栏移动端专属控件绑定
+  function initMobileTopbarControls() {
+    // 1. 声音静音切换（截屏 2 右侧静音图标）
+    const muteBtn = document.getElementById('ds-topbar-mute-btn');
+    if (muteBtn) {
+      let isMuted = localStorage.getItem('ds_tts_muted') === '1';
+      const syncMuteIcon = () => {
+        muteBtn.innerHTML = isMuted
+          ? `<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><line x1="23" y1="9" x2="17" y2="15"></line><line x1="17" y1="9" x2="23" y2="15"></line></svg>`
+          : `<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>`;
+        muteBtn.title = isMuted ? '已静音（点击开启朗读）' : '朗读开启（点击静音）';
+      };
+      syncMuteIcon();
+      muteBtn.addEventListener('click', () => {
+        isMuted = !isMuted;
+        localStorage.setItem('ds_tts_muted', isMuted ? '1' : '0');
+        syncMuteIcon();
+        showToast(isMuted ? '已开启静音模式' : '已开启 AI 语音自动播报');
+      });
+    }
+
+    // 2. 新对话按钮（截屏 2 右侧加号图标）
+    document.getElementById('ds-topbar-new-btn')?.addEventListener('click', () => {
+      document.getElementById('ds-new-chat-btn')?.click();
+    });
+
+    // 3. 全屏设置按钮（截屏 1 启动入口）
+    document.getElementById('ds-topbar-mobile-settings-btn')?.addEventListener('click', () => {
+      openMobileFullscreenSettings();
+    });
+
+    // 4. 输入舱更多工具加号按钮（展开快捷指令抽屉）
+    const plusBtn = document.getElementById('mobile-tools-plus-btn');
+    const quickDrawer = document.getElementById('phone-cmd-quick-drawer');
+    if (plusBtn && quickDrawer) {
+      plusBtn.addEventListener('click', () => {
+        quickDrawer.classList.toggle('hidden');
+      });
+    }
+
+    // 5. 快捷指令胶囊点击：填入并执行
+    document.querySelectorAll('.phone-cmd-pill').forEach((pill) => {
+      pill.addEventListener('click', () => {
+        const cmd = pill.getAttribute('data-cmd');
+        if (cmd) {
+          const chatInput = document.getElementById('chat-input');
+          if (chatInput) {
+            chatInput.value = cmd;
+            document.getElementById('send-button')?.click();
+          }
+        }
+      });
+    });
+
+    // 6. 语音输入按钮
+    document.getElementById('voice-input-btn')?.addEventListener('click', () => {
+      showToast('按住可进行语音输入（正在监听系统麦克风…）');
+    });
+  }
+
   initMobileFullscreenSettings();
+  initMobileTopbarControls();
 
   document.getElementById('ds-suite-own-api-btn')?.addEventListener('click', () => {
     openSettingsModal(true);

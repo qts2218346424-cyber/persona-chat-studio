@@ -1,70 +1,511 @@
 /* ==========================================================================
-   📱 星语随身版 (APK) 下载中心 & Phone Agent 手机端 AI 辅助助理样式
+   星语随身版 (APK) & dsh-Go 手机辅助代理 (Phone Agent) 样式层 (myui 规范)
    ========================================================================== */
 
-/* 1. 顶栏随身版入口按钮 */
+/* 1. 左侧工作台三模式分段导航栏 (统一线性图标 + 8px 栅格) */
+.workspace-mode-bar.dsh-segmented-bar {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 4px;
+  border-radius: 12px;
+  background: light-dark(#f1f5f9, rgba(255, 255, 255, 0.06));
+  border: 1px solid light-dark(rgba(15, 23, 42, 0.06), rgba(255, 255, 255, 0.08));
+}
+
+.workspace-mode-bar .ws-mode-btn {
+  flex: 1 1 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 6px 8px;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 9px;
+  border: none;
+  background: transparent;
+  color: light-dark(#64748b, #94a3b8);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.16s ease;
+}
+
+.workspace-mode-bar .ws-mode-btn.active {
+  background: light-dark(#ffffff, #292d3a);
+  color: #4d6bfe;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.08);
+}
+
+/* 2. 顶栏随身版入口 (桌面保留，手机端按 myui 规范收敛至侧栏/设置页) */
 .apk-topbar-pill-btn {
   display: inline-flex !important;
   align-items: center;
   gap: 6px;
-  background: light-dark(
-    linear-gradient(135deg, rgba(77, 107, 254, 0.12), rgba(124, 58, 237, 0.12)),
-    linear-gradient(135deg, rgba(77, 107, 254, 0.22), rgba(124, 58, 237, 0.22))
-  ) !important;
-  border: 1px solid light-dark(rgba(77, 107, 254, 0.35), rgba(77, 107, 254, 0.5)) !important;
+  background: light-dark(#eff6ff, rgba(77, 107, 254, 0.16)) !important;
+  border: 1px solid light-dark(rgba(77, 107, 254, 0.25), rgba(77, 107, 254, 0.4)) !important;
   color: light-dark(#3b5998, #93c5fd) !important;
   font-weight: 600;
   padding: 5px 12px;
   border-radius: 9999px;
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-  box-shadow: 0 1px 3px rgba(77, 107, 254, 0.08);
-}
-
-.apk-topbar-pill-btn:hover {
-  background: light-dark(
-    linear-gradient(135deg, rgba(77, 107, 254, 0.2), rgba(124, 58, 237, 0.2)),
-    linear-gradient(135deg, rgba(77, 107, 254, 0.32), rgba(124, 58, 237, 0.32))
-  ) !important;
-  border-color: #4d6bfe !important;
-  color: #4d6bfe !important;
-  transform: translateY(-1px);
+  transition: all 0.18s ease;
 }
 
 .apk-pill-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  line-height: 1;
-}
-
-.apk-pill-icon svg {
-  display: block;
 }
 
 .apk-pill-label {
-  font-size: 13px;
-  letter-spacing: -0.01em;
+  font-size: 12.5px;
 }
 
-.apk-pill-tag {
-  font-size: 10px;
+/* 3. dsh-Go 手机辅助顶部引擎控制台 (#phone-agent-banner) */
+.phone-agent-banner {
+  margin: 0 auto 14px;
+  width: min(100%, 780px);
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: light-dark(#f8fafc, #191c25);
+  border: 1px solid light-dark(rgba(15, 23, 42, 0.08), rgba(255, 255, 255, 0.09));
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.03);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.phone-agent-banner.hidden {
+  display: none !important;
+}
+
+.pa-engine-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pa-engine-segmented {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px;
+  border-radius: 10px;
+  background: light-dark(#eef2f7, rgba(255, 255, 255, 0.06));
+  border: 1px solid light-dark(rgba(15, 23, 42, 0.05), rgba(255, 255, 255, 0.06));
+}
+
+.pa-seg-btn {
+  flex: 1 1 0;
+  height: 30px;
+  padding: 0 8px;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  color: light-dark(#64748b, #94a3b8);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.16s ease;
+}
+
+.pa-seg-btn.active {
+  background: light-dark(#ffffff, #2a2f3d);
+  color: #4d6bfe;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+}
+
+.pa-cfg-toggle-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  border: 1px solid light-dark(rgba(15, 23, 42, 0.08), rgba(255, 255, 255, 0.1));
+  background: light-dark(#ffffff, #252936);
+  color: light-dark(#475569, #cbd5e1);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+}
+
+.pa-cfg-toggle-btn[aria-expanded="true"] {
+  border-color: #4d6bfe;
+  color: #4d6bfe;
+  background: light-dark(#eff6ff, rgba(77, 107, 254, 0.18));
+}
+
+/* 可折叠 API 与免确认配置抽屉 */
+.pa-config-drawer {
+  padding: 12px;
+  border-radius: 12px;
+  background: light-dark(#ffffff, #141720);
+  border: 1px solid light-dark(rgba(15, 23, 42, 0.08), rgba(255, 255, 255, 0.1));
+}
+
+.pa-config-drawer.hidden {
+  display: none !important;
+}
+
+.pa-cfg-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.pa-cfg-row-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+@media (max-width: 600px) {
+  .pa-cfg-row-2 {
+    grid-template-columns: 1fr;
+  }
+}
+
+.pa-cfg-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.pa-cfg-field label {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: light-dark(#475569, #94a3b8);
+}
+
+.pa-cfg-input {
+  width: 100%;
+  height: 36px;
+  padding: 0 10px;
+  border-radius: 9px;
+  border: 1px solid light-dark(rgba(15, 23, 42, 0.12), rgba(255, 255, 255, 0.14));
+  background: light-dark(#f8fafc, #1d212d);
+  color: light-dark(#1e293b, #f1f5f9);
+  font-size: 13px;
+  box-sizing: border-box;
+}
+
+.pa-cfg-input:focus {
+  outline: none;
+  border-color: #4d6bfe;
+}
+
+.pa-cfg-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.pa-cfg-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: light-dark(#334155, #cbd5e1);
+  cursor: pointer;
+}
+
+/* 第二行：可点击状态圆点胶囊 */
+.pa-status-actions-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.pa-status-chips {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.pa-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  background: light-dark(#f1f5f9, rgba(255, 255, 255, 0.08));
+  color: light-dark(#475569, #cbd5e1);
+  transition: all 0.15s ease;
+}
+
+.pa-chip .pa-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.pa-chip.active {
+  background: light-dark(#ecfdf5, rgba(16, 185, 129, 0.16));
+  border-color: light-dark(rgba(16, 185, 129, 0.28), rgba(16, 185, 129, 0.35));
+  color: light-dark(#047857, #34d399);
+}
+
+.pa-chip.active .pa-dot {
+  background: #10b981;
+}
+
+.pa-chip.pending {
+  background: light-dark(#fffbeb, rgba(245, 158, 11, 0.16));
+  border-color: light-dark(rgba(245, 158, 11, 0.3), rgba(245, 158, 11, 0.38));
+  color: light-dark(#b45309, #fbbf24);
+}
+
+.pa-chip.pending .pa-dot {
+  background: #f59e0b;
+}
+
+.pa-chip.disabled .pa-dot {
+  background: #94a3b8;
+}
+
+.pa-chip.mode-on {
+  background: light-dark(#eff6ff, rgba(77, 107, 254, 0.18));
+  border-color: light-dark(rgba(77, 107, 254, 0.3), rgba(77, 107, 254, 0.45));
+  color: #4d6bfe;
+}
+
+.pa-chip.mode-on .pa-dot {
+  background: #4d6bfe;
+}
+
+.pa-banner-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.pa-banner-btn {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 12px;
+  border-radius: 8px;
+  border: none;
   background: #4d6bfe;
   color: #ffffff;
-  padding: 1px 6px;
-  border-radius: 8px;
-  font-weight: 700;
-  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.15s ease;
 }
 
-/* 2. 弹窗容器与布局 */
+.pa-banner-btn:hover {
+  background: #3b58e8;
+}
+
+.pa-banner-btn.outline {
+  background: light-dark(#ffffff, transparent);
+  border: 1px solid light-dark(rgba(77, 107, 254, 0.35), rgba(77, 107, 254, 0.55));
+  color: light-dark(#4d6bfe, #93c5fd);
+}
+
+.pa-banner-btn.subtle {
+  background: light-dark(#f1f5f9, rgba(255, 255, 255, 0.08));
+  color: light-dark(#475569, #cbd5e1);
+}
+
+.pa-banner-btn.danger {
+  background: light-dark(#fef2f2, rgba(239, 68, 68, 0.18));
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.25);
+}
+
+/* 第三行：线性 SVG 快捷动作胶囊横滑条 */
+.pa-quick-chips-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow-x: auto;
+  white-space: nowrap;
+  padding-bottom: 2px;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.pa-quick-chips-row::-webkit-scrollbar {
+  display: none;
+}
+
+.pa-quick-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 5px 11px;
+  border-radius: 9999px;
+  background: light-dark(#ffffff, #222634);
+  border: 1px solid light-dark(rgba(15, 23, 42, 0.08), rgba(255, 255, 255, 0.12));
+  color: light-dark(#334155, #e2e8f0);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+}
+
+.pa-quick-chip:hover,
+.pa-quick-chip:active {
+  border-color: #4d6bfe;
+  color: #4d6bfe;
+  background: light-dark(#eff6ff, rgba(77, 107, 254, 0.16));
+}
+
+/* 4. 聊天流内 dsh-Go 规划卡片、步骤时间轴与安全确认卡 */
+.pa-agent-card {
+  width: 100%;
+  background: light-dark(#ffffff, #1a1d27);
+  border: 1px solid light-dark(rgba(15, 23, 42, 0.09), rgba(255, 255, 255, 0.1));
+  border-radius: 16px;
+  padding: 14px 16px;
+  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.04);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.pa-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.pa-card-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: light-dark(#0f172a, #f8fafc);
+}
+
+.pa-engine-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: light-dark(#eff6ff, rgba(77, 107, 254, 0.18));
+  color: #4d6bfe;
+}
+
+.pa-steps-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pa-step-item {
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: light-dark(#f8fafc, rgba(255, 255, 255, 0.04));
+  border: 1px solid light-dark(rgba(15, 23, 42, 0.06), rgba(255, 255, 255, 0.07));
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+}
+
+.pa-step-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-weight: 600;
+  color: light-dark(#1e293b, #f1f5f9);
+}
+
+.pa-step-thought {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: light-dark(#475569, #94a3b8);
+}
+
+.pa-step-result {
+  font-size: 12px;
+  color: light-dark(#047857, #34d399);
+}
+
+.pa-step-result.is-error {
+  color: #ef4444;
+}
+
+/* 安全确认框 (允许本次 / 本轮自动放行 / 取消) */
+.pa-confirm-card {
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: light-dark(#f8faff, rgba(77, 107, 254, 0.1));
+  border: 1px solid light-dark(rgba(77, 107, 254, 0.35), rgba(77, 107, 254, 0.45));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pa-confirm-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #4d6bfe;
+}
+
+.pa-action-box {
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: light-dark(#ffffff, #141720);
+  border: 1px solid light-dark(rgba(15, 23, 42, 0.07), rgba(255, 255, 255, 0.08));
+  font-size: 12.5px;
+  color: light-dark(#1e293b, #f1f5f9);
+}
+
+.pa-action-box code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: #4d6bfe;
+  font-size: 12px;
+}
+
+.pa-confirm-btns {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 2px;
+}
+
+.pa-inline-fix-box {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: light-dark(#fffbeb, rgba(245, 158, 11, 0.1));
+  border: 1px solid light-dark(rgba(245, 158, 11, 0.28), rgba(245, 158, 11, 0.35));
+  font-size: 12.5px;
+  color: light-dark(#92400e, #fcd34d);
+}
+
+/* 5. APK 下载中心 & 原生控制台弹窗样式 */
 .apk-spacious-modal {
-  width: min(820px, 94vw);
+  width: min(780px, 94vw);
   max-height: 88vh;
-  border: 1px solid light-dark(rgba(0, 0, 0, 0.1), rgba(255, 255, 255, 0.15));
+  border: 1px solid light-dark(rgba(15, 23, 42, 0.1), rgba(255, 255, 255, 0.14));
   border-radius: 20px;
   background: light-dark(#ffffff, #161822);
-  color: light-dark(#1f2937, #f3f4f6);
-  box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.35);
+  color: light-dark(#1e293b, #f1f5f9);
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.25);
   padding: 0;
   overflow: hidden;
 }
@@ -72,7 +513,6 @@
 .apk-modal-inner {
   display: flex;
   flex-direction: column;
-  height: 100%;
   max-height: 88vh;
 }
 
@@ -80,12 +520,8 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 18px 24px;
-  border-bottom: 1px solid light-dark(rgba(0, 0, 0, 0.06), rgba(255, 255, 255, 0.08));
-  background: light-dark(
-    linear-gradient(180deg, #f8faff 0%, #ffffff 100%),
-    linear-gradient(180deg, #1c1f2e 0%, #161822 100%)
-  );
+  padding: 16px 22px;
+  border-bottom: 1px solid light-dark(rgba(15, 23, 42, 0.06), rgba(255, 255, 255, 0.08));
 }
 
 .apk-modal-title-group {
@@ -95,26 +531,24 @@
 }
 
 .apk-modal-badge-icon {
-  width: 44px;
-  height: 44px;
+  width: 42px;
+  height: 42px;
   border-radius: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 24px;
-  background: light-dark(rgba(77, 107, 254, 0.1), rgba(77, 107, 254, 0.2));
-  border: 1px solid light-dark(rgba(77, 107, 254, 0.2), rgba(77, 107, 254, 0.35));
+  background: light-dark(#eff6ff, rgba(77, 107, 254, 0.2));
+  color: #4d6bfe;
 }
 
 .apk-modal-title-text h3 {
   margin: 0;
-  font-size: 18px;
+  font-size: 16.5px;
   font-weight: 700;
-  color: light-dark(#0f172a, #ffffff);
 }
 
 .apk-modal-title-text p {
-  margin: 2px 0 0 0;
+  margin: 2px 0 0;
   font-size: 12px;
   color: light-dark(#64748b, #94a3b8);
 }
@@ -122,48 +556,30 @@
 .apk-modal-close-btn {
   background: transparent;
   border: none;
-  font-size: 20px;
+  font-size: 18px;
   cursor: pointer;
   color: light-dark(#64748b, #94a3b8);
-  padding: 6px;
+  padding: 6px 8px;
   border-radius: 8px;
-  line-height: 1;
-}
-
-.apk-modal-close-btn:hover {
-  background: light-dark(rgba(0, 0, 0, 0.05), rgba(255, 255, 255, 0.1));
-  color: light-dark(#0f172a, #ffffff);
 }
 
 .apk-modal-body {
-  padding: 20px 24px;
+  padding: 18px 22px;
   overflow-y: auto;
-  overscroll-behavior: contain;
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 16px;
 }
 
-/* 3. 下载横幅核心主卡片 */
-.apk-hero-card {
+.apk-hero-card,
+.apk-native-version-card {
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  padding: 20px;
+  gap: 12px;
+  padding: 18px;
   border-radius: 16px;
-  background: light-dark(
-    linear-gradient(135deg, rgba(77, 107, 254, 0.06), rgba(124, 58, 237, 0.04)),
-    linear-gradient(135deg, rgba(77, 107, 254, 0.16), rgba(124, 58, 237, 0.1))
-  );
-  border: 1px solid light-dark(rgba(77, 107, 254, 0.25), rgba(77, 107, 254, 0.4));
-}
-
-.apk-hero-top {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 10px;
+  background: light-dark(#f8faff, rgba(77, 107, 254, 0.1));
+  border: 1px solid light-dark(rgba(77, 107, 254, 0.2), rgba(77, 107, 254, 0.35));
 }
 
 .apk-meta-pills {
@@ -173,20 +589,20 @@
 }
 
 .apk-meta-pill {
-  font-size: 11px;
-  padding: 3px 8px;
-  border-radius: 6px;
-  background: light-dark(rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 0.08));
-  border: 1px solid light-dark(rgba(0, 0, 0, 0.08), rgba(255, 255, 255, 0.12));
+  font-size: 11.5px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: light-dark(#ffffff, rgba(255, 255, 255, 0.08));
+  border: 1px solid light-dark(rgba(15, 23, 42, 0.08), rgba(255, 255, 255, 0.12));
   color: light-dark(#475569, #cbd5e1);
-  font-weight: 500;
 }
 
-.apk-download-btn-group {
+.apk-download-btn-group,
+.anv-actions-row {
   display: flex;
-  gap: 12px;
-  align-items: center;
+  gap: 10px;
   flex-wrap: wrap;
+  align-items: center;
 }
 
 .apk-cta-download-btn {
@@ -197,56 +613,43 @@
   color: #ffffff !important;
   text-decoration: none;
   font-weight: 600;
-  font-size: 15px;
-  padding: 10px 22px;
-  border-radius: 12px;
-  transition: all 0.2s ease;
-  box-shadow: 0 4px 14px rgba(77, 107, 254, 0.35);
-}
-
-.apk-cta-download-btn:hover {
-  background: #3b58eb;
-  transform: translateY(-1px);
-  box-shadow: 0 6px 20px rgba(77, 107, 254, 0.45);
+  font-size: 14px;
+  padding: 9px 18px;
+  border-radius: 10px;
+  border: none;
+  cursor: pointer;
 }
 
 .apk-secondary-btn {
-  background: light-dark(rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0.08));
-  border: 1px solid light-dark(rgba(0, 0, 0, 0.12), rgba(255, 255, 255, 0.2));
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: light-dark(#ffffff, rgba(255, 255, 255, 0.08));
+  border: 1px solid light-dark(rgba(15, 23, 42, 0.12), rgba(255, 255, 255, 0.16));
   color: light-dark(#334155, #e2e8f0);
   font-size: 13px;
-  padding: 9px 16px;
-  border-radius: 12px;
+  padding: 8px 14px;
+  border-radius: 10px;
   cursor: pointer;
-  transition: all 0.2s;
 }
 
-.apk-secondary-btn:hover {
-  background: light-dark(#f1f5f9, rgba(255, 255, 255, 0.14));
-}
-
-/* 4. 特性栅格 */
 .apk-feature-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
   gap: 12px;
 }
 
 .apk-feature-card {
   padding: 14px 16px;
   border-radius: 14px;
-  background: light-dark(#f8fafc, rgba(255, 255, 255, 0.03));
-  border: 1px solid light-dark(rgba(0, 0, 0, 0.06), rgba(255, 255, 255, 0.06));
+  background: light-dark(#f8fafc, rgba(255, 255, 255, 0.04));
+  border: 1px solid light-dark(rgba(15, 23, 42, 0.06), rgba(255, 255, 255, 0.08));
 }
 
 .apk-feature-card h4 {
-  margin: 0 0 4px 0;
-  font-size: 13px;
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: light-dark(#1e293b, #f1f5f9);
+  margin: 0 0 4px;
+  font-size: 13.5px;
+  font-weight: 700;
 }
 
 .apk-feature-card p {
@@ -256,15 +659,11 @@
   line-height: 1.5;
 }
 
-/* 5. Phone Agent 原生控制台卡片 (APK 内部实时激活) */
 .phone-agent-control-box {
-  padding: 18px 20px;
+  padding: 16px 18px;
   border-radius: 16px;
-  background: light-dark(
-    linear-gradient(135deg, rgba(16, 185, 129, 0.06), rgba(77, 107, 254, 0.04)),
-    linear-gradient(135deg, rgba(16, 185, 129, 0.12), rgba(77, 107, 254, 0.08))
-  );
-  border: 1px solid light-dark(rgba(16, 185, 129, 0.3), rgba(16, 185, 129, 0.4));
+  background: light-dark(#f8fafc, rgba(255, 255, 255, 0.04));
+  border: 1px solid light-dark(rgba(15, 23, 42, 0.08), rgba(255, 255, 255, 0.1));
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -274,22 +673,20 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .phone-agent-box-title h4 {
   margin: 0;
-  font-size: 15px;
+  font-size: 14.5px;
   font-weight: 700;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: light-dark(#065f46, #34d399);
 }
 
 .phone-agent-status-tag {
   font-size: 11px;
-  padding: 2px 8px;
-  border-radius: 8px;
+  padding: 3px 8px;
+  border-radius: 999px;
   font-weight: 600;
 }
 
@@ -299,297 +696,80 @@
 }
 
 .phone-agent-status-tag.pending {
-  background: #f59e0b;
-  color: #ffffff;
+  background: rgba(245, 158, 11, 0.15);
+  color: #d97706;
 }
 
 .phone-agent-status-tag.disabled {
-  background: #94a3b8;
-  color: #ffffff;
+  background: rgba(148, 163, 184, 0.18);
+  color: #64748b;
 }
 
-.phone-agent-toggles {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.phone-agent-action-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 14px;
-  border-radius: 10px;
-  font-size: 12px;
-  font-weight: 600;
-  border: 1px solid transparent;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.phone-agent-action-btn.primary {
-  background: #10b981;
-  color: #ffffff;
-}
-
-.phone-agent-action-btn.primary:hover {
-  background: #059669;
-}
-
-.phone-agent-action-btn.outline {
-  background: transparent;
-  border-color: light-dark(rgba(0, 0, 0, 0.2), rgba(255, 255, 255, 0.3));
-  color: inherit;
-}
-
-.phone-agent-action-btn.outline:hover {
-  background: light-dark(rgba(0, 0, 0, 0.05), rgba(255, 255, 255, 0.1));
-}
-
+.phone-agent-toggles,
 .phone-agent-task-input-row {
   display: flex;
   gap: 8px;
-  margin-top: 6px;
+  flex-wrap: wrap;
 }
 
 .phone-agent-task-input {
-  flex: 1;
-  padding: 9px 14px;
+  flex: 1 1 200px;
+  height: 38px;
+  padding: 0 12px;
   border-radius: 10px;
-  border: 1px solid light-dark(rgba(0, 0, 0, 0.15), rgba(255, 255, 255, 0.2));
-  background: light-dark(#ffffff, #1e2233);
+  border: 1px solid light-dark(rgba(15, 23, 42, 0.12), rgba(255, 255, 255, 0.14));
+  background: light-dark(#ffffff, #1d212d);
   color: inherit;
   font-size: 13px;
 }
 
-.phone-agent-task-input:focus {
-  outline: none;
-  border-color: #10b981;
-  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2);
+.phone-agent-action-btn {
+  padding: 8px 14px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+}
+
+.phone-agent-action-btn.primary {
+  background: #4d6bfe;
+  color: #ffffff;
+}
+
+.phone-agent-action-btn.outline {
+  background: transparent;
+  border: 1px solid #4d6bfe;
+  color: #4d6bfe;
 }
 
 .pa-quick-test-btn {
-  background: light-dark(rgba(77, 107, 254, 0.08), rgba(255, 255, 255, 0.08));
-  border: 1px solid light-dark(rgba(77, 107, 254, 0.2), rgba(255, 255, 255, 0.15));
+  padding: 5px 11px;
+  border-radius: 999px;
+  font-size: 12px;
+  border: 1px solid light-dark(rgba(15, 23, 42, 0.1), rgba(255, 255, 255, 0.14));
+  background: light-dark(#ffffff, #222634);
   color: inherit;
-  font-size: 11px;
-  padding: 5px 10px;
-  border-radius: 8px;
   cursor: pointer;
-  transition: all 0.2s;
-  font-weight: 500;
-}
-
-.pa-quick-test-btn:hover {
-  background: #4d6bfe;
-  color: #ffffff;
-  border-color: #4d6bfe;
 }
 
 .phone-agent-log-console {
-  background: light-dark(#0f172a, #0b0f19);
-  color: #a7f3d0;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 11px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11.5px;
+  line-height: 1.5;
   padding: 10px 12px;
   border-radius: 10px;
-  max-height: 120px;
+  background: light-dark(#0f172a, #0b0d14);
+  color: #cbd5e1;
+  max-height: 140px;
   overflow-y: auto;
   white-space: pre-wrap;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-/* 6. Android 13/14 受限制设置折叠指南 */
-.apk-install-guide {
-  padding: 12px 16px;
-  border-radius: 12px;
-  background: light-dark(#f1f5f9, rgba(255, 255, 255, 0.04));
-  border: 1px dashed light-dark(rgba(0, 0, 0, 0.15), rgba(255, 255, 255, 0.15));
-  font-size: 12px;
-  color: light-dark(#475569, #94a3b8);
-  line-height: 1.6;
-}
-
-.apk-install-guide summary {
-  cursor: pointer;
-  font-weight: 600;
-  color: light-dark(#1e293b, #e2e8f0);
-}
-
-.apk-install-guide ol {
-  margin: 8px 0 0 16px;
-  padding: 0;
-}
-
-/* 10. dsh-Go 纯净聊天模式专属顶部横幅与快捷指令栏 */
-.phone-agent-banner {
-  margin: 10px 14px 6px 14px;
-  padding: 12px 14px;
-  background: light-dark(rgba(77, 107, 254, 0.05), rgba(77, 107, 254, 0.12));
-  border: 1px solid light-dark(rgba(77, 107, 254, 0.22), rgba(77, 107, 254, 0.35));
-  border-radius: 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  animation: paBannerFadeIn 0.25s ease-out;
-}
-
-@keyframes paBannerFadeIn {
-  from { opacity: 0; transform: translateY(-6px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-.pa-banner-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.pa-status-chips {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.pa-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 11px;
-  font-weight: 600;
-  padding: 3px 8px;
-  border-radius: 8px;
-}
-
-.pa-chip .pa-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  display: inline-block;
-}
-
-.pa-chip.active {
-  background: rgba(16, 185, 129, 0.15);
-  color: #10b981;
-}
-.pa-chip.active .pa-dot {
-  background: #10b981;
-  box-shadow: 0 0 6px #10b981;
-}
-
-.pa-chip.pending {
-  background: rgba(245, 158, 11, 0.15);
-  color: #f59e0b;
-}
-.pa-chip.pending .pa-dot {
-  background: #f59e0b;
-}
-
-.pa-chip.disabled {
-  background: rgba(148, 163, 184, 0.18);
-  color: #94a3b8;
-}
-.pa-chip.disabled .pa-dot {
-  background: #94a3b8;
-}
-
-.pa-banner-actions {
-  display: flex;
-  gap: 6px;
-}
-
-.pa-banner-btn {
-  font-size: 11px;
-  font-weight: 600;
-  padding: 4px 10px;
-  border-radius: 8px;
-  border: none;
-  background: #4d6bfe;
-  color: #ffffff;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.pa-banner-btn.outline {
-  background: transparent;
-  border: 1px solid light-dark(rgba(77, 107, 254, 0.4), rgba(77, 107, 254, 0.6));
-  color: light-dark(#4d6bfe, #93c5fd);
-}
-
-.pa-banner-btn:hover {
-  transform: translateY(-1px);
-}
-
-.pa-quick-chips-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  overflow-x: auto;
-  white-space: nowrap;
-  padding-bottom: 2px;
-  -webkit-overflow-scrolling: touch;
-}
-
-.pa-quick-chips-row::-webkit-scrollbar {
-  height: 3px;
-}
-
-.pa-quick-chips-row::-webkit-scrollbar-thumb {
-  background: rgba(77, 107, 254, 0.3);
-  border-radius: 3px;
-}
-
-.pa-chips-label {
-  font-size: 11px;
-  color: light-dark(#64748b, #94a3b8);
-  font-weight: 600;
-}
-
-.pa-quick-chip {
-  display: inline-flex;
-  align-items: center;
-  font-size: 11px;
-  font-weight: 500;
-  padding: 4px 9px;
-  border-radius: 9999px;
-  background: light-dark(#ffffff, #1e2235);
-  border: 1px solid light-dark(rgba(0, 0, 0, 0.08), rgba(255, 255, 255, 0.12));
-  color: light-dark(#334155, #e2e8f0);
-  cursor: pointer;
-  transition: all 0.15s ease;
-  flex-shrink: 0;
-}
-
-.pa-quick-chip:hover {
-  border-color: #4d6bfe;
-  color: #4d6bfe;
-  background: light-dark(rgba(77, 107, 254, 0.08), rgba(77, 107, 254, 0.18));
-}
-
-/* 11. 原生 APK 环境下的版本状态与拉取最新版卡片 */
-.apk-native-version-card {
-  padding: 18px 20px;
-  border-radius: 16px;
-  background: light-dark(
-    linear-gradient(135deg, rgba(77, 107, 254, 0.08) 0%, rgba(16, 185, 129, 0.06) 100%),
-    linear-gradient(135deg, rgba(77, 107, 254, 0.16) 0%, rgba(16, 185, 129, 0.12) 100%)
-  );
-  border: 1px solid light-dark(rgba(77, 107, 254, 0.25), rgba(77, 107, 254, 0.4));
-  margin-bottom: 16px;
-}
-
-.anv-head {
-  margin-bottom: 12px;
 }
 
 .anv-title-row {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-bottom: 6px;
+  gap: 8px;
 }
 
 .anv-badge {
@@ -604,12 +784,11 @@
 .anv-version {
   font-size: 15px;
   font-weight: 700;
-  color: light-dark(#0f172a, #f8fafc);
 }
 
 .anv-desc {
   margin: 0;
-  font-size: 12px;
+  font-size: 12.5px;
   line-height: 1.5;
   color: light-dark(#475569, #cbd5e1);
 }
@@ -620,48 +799,28 @@
   gap: 12px;
   padding: 10px 14px;
   border-radius: 12px;
-  background: light-dark(rgba(255, 255, 255, 0.7), rgba(255, 255, 255, 0.06));
-  border: 1px solid light-dark(rgba(0, 0, 0, 0.05), rgba(255, 255, 255, 0.1));
-  margin-bottom: 14px;
+  background: light-dark(#ffffff, rgba(255, 255, 255, 0.06));
+  border: 1px solid light-dark(rgba(15, 23, 42, 0.06), rgba(255, 255, 255, 0.1));
 }
 
 .anv-status-icon {
-  font-size: 18px;
-  line-height: 1;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(16, 185, 129, 0.15);
+  color: #10b981;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
 }
 
 .anv-status-title {
   font-size: 13px;
   font-weight: 600;
-  color: light-dark(#1e293b, #f1f5f9);
 }
 
 .anv-status-sub {
-  font-size: 11px;
+  font-size: 11.5px;
   color: light-dark(#64748b, #94a3b8);
-  margin-top: 2px;
-}
-
-.anv-actions-row {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-/* 12. 顶栏更新小红点与呼吸灯动画 */
-.topbar-apk-badge-btn.has-update {
-  border-color: #f59e0b !important;
-  box-shadow: 0 0 10px rgba(245, 158, 11, 0.45) !important;
-  animation: pulseUpdate 2s infinite ease-in-out;
-}
-
-.topbar-apk-badge-btn.has-update .apk-pill-tag {
-  background: #f59e0b !important;
-  color: #000000 !important;
-  font-weight: 800;
-}
-
-@keyframes pulseUpdate {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.04); }
 }

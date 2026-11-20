@@ -3,16 +3,22 @@ package com.deepseek.starwhisper.studio;
 import android.accessibilityservice.AccessibilityService;
 import android.accessibilityservice.GestureDescription;
 import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.content.pm.ResolveInfo;
 import android.graphics.Path;
 import android.graphics.Rect;
 import android.os.Build;
 import android.os.Bundle;
+import android.util.DisplayMetrics;
 import android.util.Log;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -157,6 +163,131 @@ public class AgentAccessibilityService extends AccessibilityService {
     }
 
     /**
+     * 模拟单点长按操作 (用于唤起菜单或长按语音/收藏)
+     */
+    public boolean performLongClickCoordinate(int x, int y, int durationMs) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return false;
+        Path path = new Path();
+        path.moveTo(x, y);
+        GestureDescription.Builder builder = new GestureDescription.Builder();
+        int dur = Math.max(450, Math.min(durationMs, 2500));
+        builder.addStroke(new GestureDescription.StrokeDescription(path, 0, dur));
+        return dispatchGesture(builder.build(), null, null);
+    }
+
+    public String getScreenSizeJson() {
+        DisplayMetrics dm = getResources().getDisplayMetrics();
+        return "{\"width\":" + dm.widthPixels + ",\"height\":" + dm.heightPixels + "}";
+    }
+
+    public String listInstalledAppsJson() {
+        PackageManager pm = getPackageManager();
+        Intent mainIntent = new Intent(Intent.ACTION_MAIN, null);
+        mainIntent.addCategory(Intent.CATEGORY_LAUNCHER);
+        List<ResolveInfo> apps = pm.queryIntentActivities(mainIntent, 0);
+        StringBuilder sb = new StringBuilder("[");
+        boolean first = true;
+        int count = 0;
+        if (apps != null) {
+            for (ResolveInfo info : apps) {
+                if (count >= 100) break;
+                String label = info.loadLabel(pm) != null ? info.loadLabel(pm).toString() : "";
+                String pkg = info.activityInfo != null ? info.activityInfo.packageName : "";
+                if (!label.isEmpty() && !pkg.isEmpty()) {
+                    if (!first) sb.append(",");
+                    sb.append("{\"name\":\"").append(escapeJson(label))
+                      .append("\",\"package\":\"").append(escapeJson(pkg)).append("\"}");
+                    first = false;
+                    count++;
+                }
+            }
+        }
+        sb.append("]");
+        return sb.toString();
+    }
+
+    public boolean launchAppByName(String appName) {
+        if (appName == null || appName.trim().isEmpty()) return false;
+        String clean = appName.trim().toLowerCase(Locale.ROOT);
+        if ("设置".equals(clean) || "系统设置".equals(clean) || "settings".equals(clean)) {
+            try {
+                Intent i = new Intent(android.provider.Settings.ACTION_SETTINGS);
+                i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                startActivity(i);
+                return true;
+            } catch (Exception ignored) {}
+        }
+
+        Map<String, String> aliasPkg = new HashMap<>();
+        aliasPkg.put("微信", "com.tencent.mm");
+        aliasPkg.put("wechat", "com.tencent.mm");
+        aliasPkg.put("qq", "com.tencent.mobileqq");
+        aliasPkg.put("支付宝", "com.eg.android.AlipayGphone");
+        aliasPkg.put("alipay", "com.eg.android.AlipayGphone");
+        aliasPkg.put("淘宝", "com.taobao.taobao");
+        aliasPkg.put("京东", "com.jingdong.app.mall");
+        aliasPkg.put("美团", "com.sankuai.meituan");
+        aliasPkg.put("抖音", "com.ss.android.ugc.aweme");
+        aliasPkg.put("快手", "com.smile.gifmaker");
+        aliasPkg.put("小红书", "com.xingin.xhs");
+        aliasPkg.put("b站", "tv.danmaku.bili");
+        aliasPkg.put("哔哩哔哩", "tv.danmaku.bili");
+        aliasPkg.put("bilibili", "tv.danmaku.bili");
+        aliasPkg.put("高德", "com.autonavi.minimap");
+        aliasPkg.put("高德地图", "com.autonavi.minimap");
+        aliasPkg.put("百度地图", "com.baidu.BaiduMap");
+        aliasPkg.put("网易云音乐", "com.netease.cloudmusic");
+        aliasPkg.put("网易云", "com.netease.cloudmusic");
+        aliasPkg.put("qq音乐", "com.tencent.qqmusic");
+        aliasPkg.put("拼多多", "com.xunmeng.pinduoduo");
+        aliasPkg.put("deepseek", "com.deepseek.chat");
+
+        PackageManager pm = getPackageManager();
+        for (Map.Entry<String, String> entry : aliasPkg.entrySet()) {
+            if (clean.contains(entry.getKey())) {
+                try {
+                    Intent li = pm.getLaunchIntentForPackage(entry.getValue());
+                    if (li != null) {
+                        li.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                        startActivity(li);
+                        return true;
+                    }
+                } catch (Exception ignored) {}
+            }
+        }
+
+        // 动态匹配手机里所有已安装桌面应用名称
+        Intent mainIntent = new Intent(Intent.ACTION_MAIN, null);
+        mainIntent.addCategory(Intent.CATEGORY_LAUNCHER);
+        List<ResolveInfo> apps = pm.queryIntentActivities(mainIntent, 0);
+        String matchedPkg = null;
+        if (apps != null) {
+            for (ResolveInfo info : apps) {
+                String label = info.loadLabel(pm) != null ? info.loadLabel(pm).toString().toLowerCase(Locale.ROOT) : "";
+                String pkg = info.activityInfo != null ? info.activityInfo.packageName : "";
+                if (label.equals(clean)) {
+                    matchedPkg = pkg;
+                    break;
+                }
+                if (matchedPkg == null && (!label.isEmpty() && (label.contains(clean) || clean.contains(label)))) {
+                    matchedPkg = pkg;
+                }
+            }
+        }
+        if (matchedPkg != null) {
+            try {
+                Intent li = pm.getLaunchIntentForPackage(matchedPkg);
+                if (li != null) {
+                    li.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    startActivity(li);
+                    return true;
+                }
+            } catch (Exception ignored) {}
+        }
+        return false;
+    }
+
+    /**
      * 模拟线性滑动操作 (例如向下滚动、向上翻页)
      */
     public boolean performSwipe(int startX, int startY, int endX, int endY, int durationMs) {
@@ -203,94 +334,83 @@ public class AgentAccessibilityService extends AccessibilityService {
     }
 
     /**
-     * 免 API 本地规则执行引擎：无需配置 API Key 即可直接操控手机
-     * 支持全局系统键（回桌面/返回/最近任务/通知栏）、滑动手势、文字搜索点击、应用唤起与文字填入
+     * 免 API 本地规则执行引擎：无需配置 API Key 即可直接操控手机（零 Emoji 输出）
+     * 支持全局系统键、滑动手势、任意已安装应用唤起、文字搜索点击与输入框填入
      */
     public String executeLocalRule(String rawCmd) {
         if (rawCmd == null || rawCmd.trim().isEmpty()) {
             return "请输入命令";
         }
-        String cmd = rawCmd.trim().toLowerCase();
+        String trimmedRaw = rawCmd.trim();
+        String cmd = trimmedRaw.toLowerCase(Locale.ROOT);
         int width = getResources().getDisplayMetrics().widthPixels;
         int height = getResources().getDisplayMetrics().heightPixels;
 
         // 1. 系统全局键
         if (cmd.contains("桌面") || cmd.contains("主屏") || cmd.equals("home")) {
             boolean ok = performGlobalAction(GLOBAL_ACTION_HOME);
-            return ok ? "✅ 已返回桌面" : "❌ 返回桌面失败";
+            return ok ? "已返回手机桌面" : "返回桌面失败";
         }
         if (cmd.contains("返回") || cmd.contains("后退") || cmd.equals("back")) {
             boolean ok = performGlobalAction(GLOBAL_ACTION_BACK);
-            return ok ? "✅ 已执行返回键" : "❌ 返回键执行失败";
+            return ok ? "已执行系统返回键" : "返回键执行失败";
         }
         if (cmd.contains("任务") || cmd.contains("后台") || cmd.contains("最近") || cmd.equals("recents")) {
             boolean ok = performGlobalAction(GLOBAL_ACTION_RECENTS);
-            return ok ? "✅ 已呼出多任务后台" : "❌ 呼出后台失败";
+            return ok ? "已呼出多任务后台" : "呼出后台失败";
         }
         if (cmd.contains("通知") || cmd.equals("notifications")) {
             boolean ok = performGlobalAction(GLOBAL_ACTION_NOTIFICATIONS);
-            return ok ? "✅ 已下拉通知栏" : "❌ 下拉通知栏失败";
+            return ok ? "已下拉通知栏" : "下拉通知栏失败";
         }
 
         // 2. 模拟滑动手势
         if (cmd.contains("下滑") || cmd.contains("向下") || cmd.contains("下翻") || cmd.contains("翻下") || cmd.contains("看下面")) {
             boolean ok = performSwipe(width / 2, (int) (height * 0.72), width / 2, (int) (height * 0.28), 350);
-            return ok ? "✅ 已向下翻页" : "❌ 滑动失败";
+            return ok ? "已向下翻页浏览" : "向下滑动失败";
         }
         if (cmd.contains("上滑") || cmd.contains("向上") || cmd.contains("上翻") || cmd.contains("翻上") || cmd.contains("看上面")) {
             boolean ok = performSwipe(width / 2, (int) (height * 0.28), width / 2, (int) (height * 0.72), 350);
-            return ok ? "✅ 已向上翻页" : "❌ 滑动失败";
+            return ok ? "已向上翻页浏览" : "向上滑动失败";
         }
         if (cmd.contains("左滑") || cmd.contains("向左")) {
             boolean ok = performSwipe((int) (width * 0.8), height / 2, (int) (width * 0.2), height / 2, 350);
-            return ok ? "✅ 已向左滑动" : "❌ 滑动失败";
+            return ok ? "已向左滑动" : "向左滑动失败";
         }
         if (cmd.contains("右滑") || cmd.contains("向右")) {
             boolean ok = performSwipe((int) (width * 0.2), height / 2, (int) (width * 0.8), height / 2, 350);
-            return ok ? "✅ 已向右滑动" : "❌ 滑动失败";
+            return ok ? "已向右滑动" : "向右滑动失败";
         }
 
-        // 3. 打开应用
-        if (cmd.contains("微信")) {
-            try {
-                Intent launchIntent = getPackageManager().getLaunchIntentForPackage("com.tencent.mm");
-                if (launchIntent != null) {
-                    launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                    startActivity(launchIntent);
-                    return "✅ 已唤起微信";
-                }
-            } catch (Exception ignored) {}
-        }
-        if (cmd.contains("设置")) {
-            try {
-                Intent intent = new Intent(android.provider.Settings.ACTION_SETTINGS);
-                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                startActivity(intent);
-                return "✅ 已打开系统设置";
-            } catch (Exception ignored) {}
+        // 3. 动态打开任意已安装应用 ("打开 微信" / "启动 支付宝" / "打开设置")
+        if (cmd.startsWith("打开") || cmd.startsWith("启动") || cmd.startsWith("进入") || cmd.startsWith("运行") || cmd.equals("微信") || cmd.equals("设置")) {
+            String targetApp = trimmedRaw.replaceFirst("^(打开|启动|进入|运行)\\s*", "").trim();
+            if (!targetApp.isEmpty() && launchAppByName(targetApp)) {
+                return "已打开应用「" + targetApp + "」";
+            }
         }
 
         // 4. 文字输入匹配: "输入 xxx" / "填入 xxx"
         if (cmd.startsWith("输入") || cmd.startsWith("填入") || cmd.startsWith("打字")) {
-            String textToInput = rawCmd.replaceFirst("^(输入|填入|打字)\\s*", "").trim();
+            String textToInput = trimmedRaw.replaceFirst("^(输入|填入|打字)\\s*", "").trim();
             boolean ok = performInputText(null, textToInput);
-            return ok ? "✅ 已在输入框填入「" + textToInput + "」" : "⚠️ 当前屏幕未找到处于焦点或可编辑的输入框";
+            return ok ? "已在输入框填入「" + textToInput + "」" : "UNMATCHED:当前屏幕未找到处于焦点或可编辑的输入框";
         }
 
         // 5. 点击文字匹配: "点击 xxx" / "点 xxx" / "按下 xxx"
-        String targetText = rawCmd;
+        String targetText = trimmedRaw;
         if (targetText.startsWith("点击")) targetText = targetText.substring(2).trim();
         else if (targetText.startsWith("点")) targetText = targetText.substring(1).trim();
         else if (targetText.startsWith("按下")) targetText = targetText.substring(2).trim();
 
-        if (!targetText.isEmpty()) {
+        if (!targetText.isEmpty() && (trimmedRaw.startsWith("点击") || trimmedRaw.startsWith("点") || trimmedRaw.startsWith("按下"))) {
             boolean clickOk = clickNodeByText(targetText);
             if (clickOk) {
-                return "✅ 已成功定位并点击屏幕文字「" + targetText + "」";
+                return "已定位并点击「" + targetText + "」";
             }
         }
 
-        return "⚠️ 本地规则未匹配到动作。支持命令：回桌面、返回、下滑、上滑、打开微信、打开设置、点击[文字]、输入[文字]";
+        return "UNMATCHED:本地口令未匹配。支持：回桌面、返回、下滑、上滑、打开 [应用名]、点击 [文字]、输入 [内容]";
     }
 
     public boolean clickNodeByText(String targetText) {

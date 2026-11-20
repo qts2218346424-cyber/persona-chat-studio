@@ -168,7 +168,7 @@ body {
   position: absolute;
   border-radius: 50%;
   filter: blur(75px);
-  opacity: light-dark(0.35, 0.22);
+  opacity: light-dark(0.16, 0.14);
 }
 
 .orb-sakura {
@@ -922,6 +922,30 @@ body {
   padding: 14px 18px 11px;
   border-radius: 6px 20px 20px 20px;
   box-shadow: var(--shadow-soft);
+}
+
+/* 剧场扮演模式全屏背景下的高对比度磨砂承托卡片（遵循 myui 可读性与 1px 微边标准，杜绝透明底字迹模糊） */
+.app-shell[data-ui-mode="roleplay"] .chat-stage {
+  background: light-dark(rgba(255, 252, 254, 0.72), rgba(16, 13, 28, 0.78));
+}
+
+.app-shell[data-ui-mode="roleplay"] .msg-row.assistant .msg-body {
+  background: light-dark(rgba(255, 255, 255, 0.95), rgba(24, 20, 42, 0.94)) !important;
+  color: light-dark(#1e293b, #f1f5f9) !important;
+  border: 1px solid light-dark(rgba(15, 23, 42, 0.08), rgba(255, 255, 255, 0.12)) !important;
+  box-shadow: light-dark(0 2px 12px rgba(15, 23, 42, 0.06), 0 4px 18px rgba(0, 0, 0, 0.34)) !important;
+  backdrop-filter: blur(16px) !important;
+  -webkit-backdrop-filter: blur(16px) !important;
+}
+
+.app-shell[data-ui-mode="roleplay"] .msg-row.user .msg-body {
+  background: light-dark(#f8eaf6, #382552) !important;
+  color: light-dark(#1e1b2e, #f8fafc) !important;
+  border: 1px solid light-dark(rgba(214, 51, 132, 0.22), rgba(244, 114, 182, 0.32)) !important;
+}
+
+.app-shell[data-ui-mode="roleplay"] .assistant-prose em.rp-action {
+  color: light-dark(#475569, #cbd5e1) !important;
 }
 
 /* 角色心声独白手札折叠框 */
@@ -3158,19 +3182,26 @@ progress.nurture-progress::-moz-progress-bar {
 }
 
 .app-shell[data-ui-mode="deepseek"] .rp-only-block,
+.app-shell[data-ui-mode="phone-agent"] .rp-only-block,
 .app-shell[data-ui-mode="deepseek"] .rp-only-flex,
+.app-shell[data-ui-mode="phone-agent"] .rp-only-flex,
 .app-shell[data-ui-mode="deepseek"] .rp-only-inline,
-.app-shell[data-ui-mode="deepseek"] #companion-stage {
+.app-shell[data-ui-mode="phone-agent"] .rp-only-inline,
+.app-shell[data-ui-mode="deepseek"] #companion-stage ,
+.app-shell[data-ui-mode="phone-agent"] #companion-stage {
   display: none !important;
 }
 
-body[data-ui-mode="deepseek"] .ambient-aurora {
+body[data-ui-mode="deepseek"] .ambient-aurora ,
+body[data-ui-mode="phone-agent"] .ambient-aurora {
   display: none !important;
 }
 
 /* 2. 原生 DeepSeek 官方设计令牌覆盖（复刻 chat.deepseek.com & DeepSeek App） */
 body[data-ui-mode="deepseek"],
-.app-shell[data-ui-mode="deepseek"] {
+body[data-ui-mode="phone-agent"],
+.app-shell[data-ui-mode="deepseek"] ,
+.app-shell[data-ui-mode="phone-agent"] {
   --ds-blue: #4d6bfe;
   --ds-blue-hover: #3b58e8;
   --ds-blue-soft: light-dark(#eef3ff, rgba(77, 107, 254, 0.2));
@@ -3443,7 +3474,8 @@ body[data-ui-mode="deepseek"],
   transition: all 0.15s ease;
 }
 
-.app-shell[data-ui-mode="deepseek"] .mode-quick-jump-btn {
+.app-shell[data-ui-mode="deepseek"] .mode-quick-jump-btn ,
+.app-shell[data-ui-mode="phone-agent"] .mode-quick-jump-btn {
   border-color: #ec5ea7;
   background: rgba(236, 94, 167, 0.12);
   color: #ec5ea7;
@@ -3474,18 +3506,21 @@ body[data-ui-mode="deepseek"],
 }
 
 /* 6. 原生 DeepSeek 消息区排版与新对话居中欢迎屏幕 */
-.app-shell[data-ui-mode="deepseek"] .stage-topbar {
+.app-shell[data-ui-mode="deepseek"] .stage-topbar ,
+.app-shell[data-ui-mode="phone-agent"] .stage-topbar {
   background: var(--bg-app);
   backdrop-filter: none;
 }
 
-.app-shell[data-ui-mode="deepseek"] .messages-container {
+.app-shell[data-ui-mode="deepseek"] .messages-container ,
+.app-shell[data-ui-mode="phone-agent"] .messages-container {
   max-width: 820px;
   gap: 24px;
 }
 
 /* 原生 DeepSeek 助手回复：无繁琐气泡边框，纯正极简排版 */
-.app-shell[data-ui-mode="deepseek"] .msg-row.assistant .msg-body {
+.app-shell[data-ui-mode="deepseek"] .msg-row.assistant .msg-body ,
+.app-shell[data-ui-mode="phone-agent"] .msg-row.assistant .msg-body {
   background: transparent;
   backdrop-filter: none;
   border: none;
@@ -3493,7 +3528,8 @@ body[data-ui-mode="deepseek"],
   padding: 2px 4px 4px;
 }
 
-.app-shell[data-ui-mode="deepseek"] .msg-row.assistant .msg-avatar {
+.app-shell[data-ui-mode="deepseek"] .msg-row.assistant .msg-avatar ,
+.app-shell[data-ui-mode="phone-agent"] .msg-row.assistant .msg-avatar {
   background: #4d6bfe;
   color: #ffffff;
   border: none;
@@ -3503,7 +3539,8 @@ body[data-ui-mode="deepseek"],
   box-shadow: 0 2px 8px rgba(77, 107, 254, 0.25);
 }
 
-.app-shell[data-ui-mode="deepseek"] .msg-row.user .msg-body {
+.app-shell[data-ui-mode="deepseek"] .msg-row.user .msg-body ,
+.app-shell[data-ui-mode="phone-agent"] .msg-row.user .msg-body {
   background: var(--bg-user-bubble);
   border: 1px solid var(--border-subtle);
   border-radius: 18px;
@@ -3585,7 +3622,8 @@ body[data-ui-mode="deepseek"],
   border: 1px solid var(--border-subtle);
 }
 
-.app-shell[data-ui-mode="deepseek"] .thought-details {
+.app-shell[data-ui-mode="deepseek"] .thought-details ,
+.app-shell[data-ui-mode="phone-agent"] .thought-details {
   background: transparent;
   border: none;
   border-radius: 0;
@@ -3612,7 +3650,8 @@ body[data-ui-mode="deepseek"],
   display: none;
 }
 
-.app-shell[data-ui-mode="deepseek"] .thought-summary {
+.app-shell[data-ui-mode="deepseek"] .thought-summary ,
+.app-shell[data-ui-mode="phone-agent"] .thought-summary {
   background: var(--bg-surface);
   width: auto;
   padding: 5px 12px;
@@ -3620,13 +3659,15 @@ body[data-ui-mode="deepseek"],
 }
 
 .app-shell[data-ui-mode="deepseek"] .thought-summary:hover,
+.app-shell[data-ui-mode="phone-agent"] .thought-summary:hover,
 .ds-fold-summary:hover {
   background: var(--bg-surface-hover);
 }
 
 /* 遵循 accordion 规范：使用 ::before mask 箭头紧贴标签左侧并平滑旋转 */
 .ds-fold-summary::before,
-.app-shell[data-ui-mode="deepseek"] .thought-summary::before {
+.app-shell[data-ui-mode="deepseek"] .thought-summary::before ,
+.app-shell[data-ui-mode="phone-agent"] .thought-summary::before {
   content: "";
   inline-size: 0.95em;
   block-size: 0.95em;
@@ -3637,17 +3678,20 @@ body[data-ui-mode="deepseek"],
 }
 
 details[open] > .ds-fold-summary::before,
-.app-shell[data-ui-mode="deepseek"] details[open] > .thought-summary::before {
+.app-shell[data-ui-mode="deepseek"] details[open] > .thought-summary::before ,
+.app-shell[data-ui-mode="phone-agent"] details[open] > .thought-summary::before {
   rotate: 0deg;
 }
 
-.app-shell[data-ui-mode="deepseek"] .thought-chevron {
+.app-shell[data-ui-mode="deepseek"] .thought-chevron ,
+.app-shell[data-ui-mode="phone-agent"] .thought-chevron {
   display: none;
 }
 
 @media (prefers-reduced-motion: no-preference) {
   .ds-fold-summary::before,
-  .app-shell[data-ui-mode="deepseek"] .thought-summary::before {
+  .app-shell[data-ui-mode="deepseek"] .thought-summary::before ,
+  .app-shell[data-ui-mode="phone-agent"] .thought-summary::before {
     transition: rotate 0.2s ease;
   }
 }
@@ -3673,7 +3717,8 @@ details[open] > .ds-fold-summary::before,
   }
 }
 
-.app-shell[data-ui-mode="deepseek"] .thought-content {
+.app-shell[data-ui-mode="deepseek"] .thought-content ,
+.app-shell[data-ui-mode="phone-agent"] .thought-content {
   margin: 8px 0 2px 4px;
   padding: 2px 0 2px 13px;
   border-left: 2px solid var(--border-strong);
@@ -3846,7 +3891,8 @@ details[open] > .ds-fold-summary::before,
 }
 
 /* 9. 原生 DeepSeek 输入框胶囊、附件芯片（遵循 single-line-overflow）与前缀续写栏 */
-.app-shell[data-ui-mode="deepseek"] .composer-card {
+.app-shell[data-ui-mode="deepseek"] .composer-card ,
+.app-shell[data-ui-mode="phone-agent"] .composer-card {
   max-width: 820px;
   border-radius: 22px;
   background: var(--bg-composer);
@@ -3854,7 +3900,8 @@ details[open] > .ds-fold-summary::before,
   backdrop-filter: none;
 }
 
-.app-shell[data-ui-mode="deepseek"] .composer-card:focus-within {
+.app-shell[data-ui-mode="deepseek"] .composer-card:focus-within ,
+.app-shell[data-ui-mode="phone-agent"] .composer-card:focus-within {
   border-color: #4d6bfe;
   box-shadow: 0 4px 20px rgba(77, 107, 254, 0.14);
 }
@@ -4252,8 +4299,11 @@ details[open] > .ds-fold-summary::before,
 }
 
 html[data-ui-mode="deepseek"],
+html[data-ui-mode="phone-agent"],
 body[data-ui-mode="deepseek"],
-.app-shell[data-ui-mode="deepseek"] {
+body[data-ui-mode="phone-agent"],
+.app-shell[data-ui-mode="deepseek"] ,
+.app-shell[data-ui-mode="phone-agent"] {
   --ds-blue: #4d6bfe;
   --ds-blue-hover: #3b58e8;
 
@@ -4326,43 +4376,53 @@ body[data-ui-mode="deepseek"],
 }
 
 body[data-ui-mode="deepseek"] .ambient-aurora,
-.app-shell[data-ui-mode="deepseek"] .companion-stage {
+body[data-ui-mode="phone-agent"] .ambient-aurora,
+.app-shell[data-ui-mode="deepseek"] .companion-stage ,
+.app-shell[data-ui-mode="phone-agent"] .companion-stage {
   display: none !important;
 }
 
-.app-shell[data-ui-mode="deepseek"] {
+.app-shell[data-ui-mode="deepseek"] ,
+.app-shell[data-ui-mode="phone-agent"] {
   grid-template-columns: 260px minmax(0, 1fr) 340px !important;
   background: var(--bg-app) !important;
 }
 
-.app-shell[data-ui-mode="deepseek"].artifacts-wide:not(.right-collapsed) {
+.app-shell[data-ui-mode="deepseek"].artifacts-wide:not(.right-collapsed) ,
+.app-shell[data-ui-mode="phone-agent"].artifacts-wide:not(.right-collapsed) {
   grid-template-columns: 240px minmax(0, 1fr) minmax(380px, 46vw) !important;
 }
 
-.app-shell[data-ui-mode="deepseek"].artifacts-wide.left-collapsed:not(.right-collapsed) {
+.app-shell[data-ui-mode="deepseek"].artifacts-wide.left-collapsed:not(.right-collapsed) ,
+.app-shell[data-ui-mode="phone-agent"].artifacts-wide.left-collapsed:not(.right-collapsed) {
   grid-template-columns: 0px minmax(0, 1fr) minmax(400px, 48vw) !important;
 }
 
-.app-shell[data-ui-mode="deepseek"].right-collapsed {
+.app-shell[data-ui-mode="deepseek"].right-collapsed ,
+.app-shell[data-ui-mode="phone-agent"].right-collapsed {
   grid-template-columns: 260px minmax(0, 1fr) 0px !important;
 }
 
-.app-shell[data-ui-mode="deepseek"].left-collapsed {
+.app-shell[data-ui-mode="deepseek"].left-collapsed ,
+.app-shell[data-ui-mode="phone-agent"].left-collapsed {
   grid-template-columns: 0px minmax(0, 1fr) 340px !important;
 }
 
-.app-shell[data-ui-mode="deepseek"].left-collapsed.right-collapsed {
+.app-shell[data-ui-mode="deepseek"].left-collapsed.right-collapsed ,
+.app-shell[data-ui-mode="phone-agent"].left-collapsed.right-collapsed {
   grid-template-columns: 0px minmax(0, 1fr) 0px !important;
 }
 
 /* 左侧栏：自适应浅云灰 / 极客深黑侧栏，彻底覆盖恋庭粉色边框 */
-.app-shell[data-ui-mode="deepseek"] .sidebar {
+.app-shell[data-ui-mode="deepseek"] .sidebar ,
+.app-shell[data-ui-mode="phone-agent"] .sidebar {
   background: var(--bg-sidebar) !important;
   backdrop-filter: none !important;
   border-right: 1px solid var(--border-subtle) !important;
 }
 
-.app-shell[data-ui-mode="deepseek"] .sidebar-header {
+.app-shell[data-ui-mode="deepseek"] .sidebar-header ,
+.app-shell[data-ui-mode="phone-agent"] .sidebar-header {
   padding: 16px 14px 12px 18px !important;
 }
 
@@ -4388,25 +4448,29 @@ body[data-ui-mode="deepseek"] .ambient-aurora,
   gap: 2px;
 }
 
-.app-shell[data-ui-mode="deepseek"] .sidebar-head-icons .icon-btn {
+.app-shell[data-ui-mode="deepseek"] .sidebar-head-icons .icon-btn ,
+.app-shell[data-ui-mode="phone-agent"] .sidebar-head-icons .icon-btn {
   width: 30px;
   height: 30px;
   color: var(--text-secondary);
   border-radius: 8px;
 }
 
-.app-shell[data-ui-mode="deepseek"] .sidebar-head-icons .icon-btn:hover {
+.app-shell[data-ui-mode="deepseek"] .sidebar-head-icons .icon-btn:hover ,
+.app-shell[data-ui-mode="phone-agent"] .sidebar-head-icons .icon-btn:hover {
   background: var(--bg-surface-hover);
   color: var(--text-primary);
 }
 
 /* 开启新对话：自适应圆角胶囊按钮 */
-.app-shell[data-ui-mode="deepseek"] .ds-sidebar-zone {
+.app-shell[data-ui-mode="deepseek"] .ds-sidebar-zone ,
+.app-shell[data-ui-mode="phone-agent"] .ds-sidebar-zone {
   padding: 2px 14px 8px;
   gap: 8px;
 }
 
-.app-shell[data-ui-mode="deepseek"] .ds-new-chat-btn {
+.app-shell[data-ui-mode="deepseek"] .ds-new-chat-btn ,
+.app-shell[data-ui-mode="phone-agent"] .ds-new-chat-btn {
   height: 42px;
   padding: 0 16px;
   border-radius: 999px;
@@ -4419,7 +4483,8 @@ body[data-ui-mode="deepseek"] .ambient-aurora,
   transition: background 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
 }
 
-.app-shell[data-ui-mode="deepseek"] .ds-new-chat-btn:hover {
+.app-shell[data-ui-mode="deepseek"] .ds-new-chat-btn:hover ,
+.app-shell[data-ui-mode="phone-agent"] .ds-new-chat-btn:hover {
   background: var(--bg-surface-hover);
   color: var(--text-primary);
   border-color: var(--ds-blue-border);
@@ -4442,12 +4507,14 @@ body[data-ui-mode="deepseek"] .ambient-aurora,
 }
 
 /* 历史会话列表：五级时间线小字标题、纯文本条目与底部雾化渐隐 */
-.app-shell[data-ui-mode="deepseek"] .sidebar-sessions-wrap {
+.app-shell[data-ui-mode="deepseek"] .sidebar-sessions-wrap ,
+.app-shell[data-ui-mode="phone-agent"] .sidebar-sessions-wrap {
   position: relative;
   padding: 4px 10px 0;
 }
 
-.app-shell[data-ui-mode="deepseek"] .sidebar-sessions-wrap::after {
+.app-shell[data-ui-mode="deepseek"] .sidebar-sessions-wrap::after ,
+.app-shell[data-ui-mode="phone-agent"] .sidebar-sessions-wrap::after {
   content: "";
   position: absolute;
   left: 0;
@@ -4458,12 +4525,14 @@ body[data-ui-mode="deepseek"] .ambient-aurora,
   pointer-events: none;
 }
 
-.app-shell[data-ui-mode="deepseek"] .session-list {
+.app-shell[data-ui-mode="deepseek"] .session-list ,
+.app-shell[data-ui-mode="phone-agent"] .session-list {
   padding-bottom: 28px;
   gap: 2px;
 }
 
-.app-shell[data-ui-mode="deepseek"] .session-group-label {
+.app-shell[data-ui-mode="deepseek"] .session-group-label ,
+.app-shell[data-ui-mode="phone-agent"] .session-group-label {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -4473,7 +4542,8 @@ body[data-ui-mode="deepseek"] .ambient-aurora,
   padding: 12px 8px 5px;
 }
 
-.app-shell[data-ui-mode="deepseek"] .session-item {
+.app-shell[data-ui-mode="deepseek"] .session-item ,
+.app-shell[data-ui-mode="phone-agent"] .session-item {
   padding: 8px 10px !important;
   border-radius: 10px !important;
   color: var(--text-primary) !important;
@@ -4483,27 +4553,32 @@ body[data-ui-mode="deepseek"] .ambient-aurora,
   position: relative;
 }
 
-.app-shell[data-ui-mode="deepseek"] .session-item:hover {
+.app-shell[data-ui-mode="deepseek"] .session-item:hover ,
+.app-shell[data-ui-mode="phone-agent"] .session-item:hover {
   background: var(--bg-surface-hover) !important;
 }
 
-.app-shell[data-ui-mode="deepseek"] .session-item.active {
+.app-shell[data-ui-mode="deepseek"] .session-item.active ,
+.app-shell[data-ui-mode="phone-agent"] .session-item.active {
   background: light-dark(#e8ecf4, #2b2e37) !important;
   color: var(--text-primary) !important;
   font-weight: 500;
 }
 
-.app-shell[data-ui-mode="deepseek"] .session-title-text {
+.app-shell[data-ui-mode="deepseek"] .session-title-text ,
+.app-shell[data-ui-mode="phone-agent"] .session-title-text {
   font-size: 13.5px !important;
   color: inherit !important;
 }
 
-.app-shell[data-ui-mode="deepseek"] .session-item .session-del-btn {
+.app-shell[data-ui-mode="deepseek"] .session-item .session-del-btn ,
+.app-shell[data-ui-mode="phone-agent"] .session-item .session-del-btn {
   opacity: 0;
   transition: opacity 0.14s ease;
 }
 
-.app-shell[data-ui-mode="deepseek"] .session-item:hover .session-del-btn {
+.app-shell[data-ui-mode="deepseek"] .session-item:hover .session-del-btn ,
+.app-shell[data-ui-mode="phone-agent"] .session-item:hover .session-del-btn {
   opacity: 0.75;
 }
 
@@ -4633,11 +4708,13 @@ body[data-ui-mode="deepseek"] .ambient-aurora,
 }
 
 /* 右侧主舞台：空状态极简无边框 + 垂直水平正居中！ */
-.app-shell[data-ui-mode="deepseek"] .chat-stage {
+.app-shell[data-ui-mode="deepseek"] .chat-stage ,
+.app-shell[data-ui-mode="phone-agent"] .chat-stage {
   background: var(--bg-app) !important;
 }
 
-.app-shell[data-ui-mode="deepseek"] .stage-topbar {
+.app-shell[data-ui-mode="deepseek"] .stage-topbar ,
+.app-shell[data-ui-mode="phone-agent"] .stage-topbar {
   background: var(--bg-app) !important;
   backdrop-filter: none !important;
   border-bottom: 1px solid var(--border-subtle) !important;
@@ -4645,36 +4722,44 @@ body[data-ui-mode="deepseek"] .ambient-aurora,
 }
 
 /* 空对话欢迎态：顶栏完全融入主画布背景，输入框与欢迎语正居中！ */
-.app-shell[data-ui-mode="deepseek"] .chat-stage.ds-empty-mode .stage-topbar {
+.app-shell[data-ui-mode="deepseek"] .chat-stage.ds-empty-mode .stage-topbar ,
+.app-shell[data-ui-mode="phone-agent"] .chat-stage.ds-empty-mode .stage-topbar {
   border-bottom-color: transparent !important;
   background: var(--bg-app) !important;
 }
 
-.app-shell[data-ui-mode="deepseek"] .chat-stage.ds-empty-mode .ds-topbar-meta {
+.app-shell[data-ui-mode="deepseek"] .chat-stage.ds-empty-mode .ds-topbar-meta ,
+.app-shell[data-ui-mode="phone-agent"] .chat-stage.ds-empty-mode .ds-topbar-meta {
   visibility: hidden !important;
 }
 
-.app-shell[data-ui-mode="deepseek"] .chat-stage.ds-empty-mode .topbar-right {
+.app-shell[data-ui-mode="deepseek"] .chat-stage.ds-empty-mode .topbar-right ,
+.app-shell[data-ui-mode="phone-agent"] .chat-stage.ds-empty-mode .topbar-right {
   opacity: 0.45;
   transition: opacity 0.18s ease;
 }
 
 .app-shell[data-ui-mode="deepseek"] .chat-stage.ds-empty-mode .stage-topbar:hover .topbar-right,
-.app-shell[data-ui-mode="deepseek"] .chat-stage.ds-empty-mode .topbar-right:focus-within {
+.app-shell[data-ui-mode="phone-agent"] .chat-stage.ds-empty-mode .stage-topbar:hover .topbar-right,
+.app-shell[data-ui-mode="deepseek"] .chat-stage.ds-empty-mode .topbar-right:focus-within ,
+.app-shell[data-ui-mode="phone-agent"] .chat-stage.ds-empty-mode .topbar-right:focus-within {
   opacity: 1;
 }
 
-.app-shell[data-ui-mode="deepseek"] .messages-viewport {
+.app-shell[data-ui-mode="deepseek"] .messages-viewport ,
+.app-shell[data-ui-mode="phone-agent"] .messages-viewport {
   padding: 28px 28px 18px !important;
   background: var(--bg-app) !important;
 }
 
-.app-shell[data-ui-mode="deepseek"] .messages-container {
+.app-shell[data-ui-mode="deepseek"] .messages-container ,
+.app-shell[data-ui-mode="phone-agent"] .messages-container {
   max-width: 780px !important;
   gap: 24px !important;
 }
 
-.app-shell[data-ui-mode="deepseek"] .msg-row.assistant .msg-body {
+.app-shell[data-ui-mode="deepseek"] .msg-row.assistant .msg-body ,
+.app-shell[data-ui-mode="phone-agent"] .msg-row.assistant .msg-body {
   background: transparent !important;
   backdrop-filter: none !important;
   border: none !important;
@@ -4682,7 +4767,8 @@ body[data-ui-mode="deepseek"] .ambient-aurora,
   padding: 2px 4px 4px !important;
 }
 
-.app-shell[data-ui-mode="deepseek"] .msg-row.assistant .msg-avatar.ds-svg-avatar {
+.app-shell[data-ui-mode="deepseek"] .msg-row.assistant .msg-avatar.ds-svg-avatar ,
+.app-shell[data-ui-mode="phone-agent"] .msg-row.assistant .msg-avatar.ds-svg-avatar {
   background: light-dark(#ffffff, #2a2d35) !important;
   border: 1px solid var(--border-strong) !important;
   box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08) !important;
@@ -4695,8 +4781,11 @@ body[data-ui-mode="deepseek"] .ambient-aurora,
 }
 
 .app-shell[data-ui-mode="deepseek"] .topbar-right .proactive-trigger-btn,
+.app-shell[data-ui-mode="phone-agent"] .topbar-right .proactive-trigger-btn,
 .app-shell[data-ui-mode="deepseek"] .topbar-right .soft-tool-btn,
-.app-shell[data-ui-mode="deepseek"] .topbar-right .ds-inspector-btn {
+.app-shell[data-ui-mode="phone-agent"] .topbar-right .soft-tool-btn,
+.app-shell[data-ui-mode="deepseek"] .topbar-right .ds-inspector-btn ,
+.app-shell[data-ui-mode="phone-agent"] .topbar-right .ds-inspector-btn {
   background: transparent;
   border: 1px solid var(--border-strong);
   color: var(--text-secondary);
@@ -4704,7 +4793,8 @@ body[data-ui-mode="deepseek"] .ambient-aurora,
   font-weight: 500;
 }
 
-.app-shell[data-ui-mode="deepseek"] .topbar-right button:hover {
+.app-shell[data-ui-mode="deepseek"] .topbar-right button:hover ,
+.app-shell[data-ui-mode="phone-agent"] .topbar-right button:hover {
   background: var(--bg-surface);
   color: var(--text-primary);
   border-color: var(--border-strong);
@@ -4712,20 +4802,23 @@ body[data-ui-mode="deepseek"] .ambient-aurora,
 }
 
 /* 核心布局：空对话时 stage-body-split 零高度，composer-dock 占满并把欢迎语+输入框垂直水平居中 */
-.app-shell[data-ui-mode="deepseek"] .chat-stage.ds-empty-mode .stage-body-split {
+.app-shell[data-ui-mode="deepseek"] .chat-stage.ds-empty-mode .stage-body-split ,
+.app-shell[data-ui-mode="phone-agent"] .chat-stage.ds-empty-mode .stage-body-split {
   flex: 0 0 0px !important;
   height: 0 !important;
   min-height: 0 !important;
   overflow: hidden !important;
 }
 
-.app-shell[data-ui-mode="deepseek"] .composer-dock {
+.app-shell[data-ui-mode="deepseek"] .composer-dock ,
+.app-shell[data-ui-mode="phone-agent"] .composer-dock {
   position: relative;
   padding: 6px 24px 12px !important;
   background: var(--bg-app) !important;
 }
 
-.app-shell[data-ui-mode="deepseek"] .chat-stage.ds-empty-mode .composer-dock {
+.app-shell[data-ui-mode="deepseek"] .chat-stage.ds-empty-mode .composer-dock ,
+.app-shell[data-ui-mode="phone-agent"] .chat-stage.ds-empty-mode .composer-dock {
   flex: 1 !important;
   display: flex !important;
   flex-direction: column !important;
@@ -4735,11 +4828,14 @@ body[data-ui-mode="deepseek"] .ambient-aurora,
 }
 
 .app-shell[data-ui-mode="deepseek"] .chat-stage:not(.ds-empty-mode) .ds-home-greeting,
-.app-shell[data-ui-mode="deepseek"] .chat-stage:not(.ds-empty-mode) .ds-welcome-chips {
+.app-shell[data-ui-mode="phone-agent"] .chat-stage:not(.ds-empty-mode) .ds-home-greeting,
+.app-shell[data-ui-mode="deepseek"] .chat-stage:not(.ds-empty-mode) .ds-welcome-chips ,
+.app-shell[data-ui-mode="phone-agent"] .chat-stage:not(.ds-empty-mode) .ds-welcome-chips {
   display: none !important;
 }
 
-.app-shell[data-ui-mode="deepseek"] .chat-stage.ds-empty-mode .ds-disclaimer-note {
+.app-shell[data-ui-mode="deepseek"] .chat-stage.ds-empty-mode .ds-disclaimer-note ,
+.app-shell[data-ui-mode="phone-agent"] .chat-stage.ds-empty-mode .ds-disclaimer-note {
   display: none !important;
 }
 
@@ -4760,7 +4856,8 @@ body[data-ui-mode="deepseek"] .ambient-aurora,
 }
 
 /* 输入框卡片：自适应纯白圆角卡 / 深灰极客悬浮卡 */
-.app-shell[data-ui-mode="deepseek"] .composer-card {
+.app-shell[data-ui-mode="deepseek"] .composer-card ,
+.app-shell[data-ui-mode="phone-agent"] .composer-card {
   width: min(100%, 750px) !important;
   max-width: 100% !important;
   box-sizing: border-box !important;
@@ -4771,22 +4868,26 @@ body[data-ui-mode="deepseek"] .ambient-aurora,
   box-shadow: var(--shadow-soft) !important;
 }
 
-.app-shell[data-ui-mode="deepseek"] .composer-card:focus-within {
+.app-shell[data-ui-mode="deepseek"] .composer-card:focus-within ,
+.app-shell[data-ui-mode="phone-agent"] .composer-card:focus-within {
   border-color: var(--ds-blue-border) !important;
 }
 
-.app-shell[data-ui-mode="deepseek"] #chat-input {
+.app-shell[data-ui-mode="deepseek"] #chat-input ,
+.app-shell[data-ui-mode="phone-agent"] #chat-input {
   min-block-size: 3.1lh;
   font-size: 15px;
   color: var(--text-primary);
   padding: 0 2px 10px;
 }
 
-.app-shell[data-ui-mode="deepseek"] #chat-input::placeholder {
+.app-shell[data-ui-mode="deepseek"] #chat-input::placeholder ,
+.app-shell[data-ui-mode="phone-agent"] #chat-input::placeholder {
   color: var(--text-muted);
 }
 
-.app-shell[data-ui-mode="deepseek"] .ds-pill-toggle {
+.app-shell[data-ui-mode="deepseek"] .ds-pill-toggle ,
+.app-shell[data-ui-mode="phone-agent"] .ds-pill-toggle {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -4800,13 +4901,15 @@ body[data-ui-mode="deepseek"] .ambient-aurora,
   font-weight: 500;
 }
 
-.app-shell[data-ui-mode="deepseek"] .ds-pill-toggle:hover {
+.app-shell[data-ui-mode="deepseek"] .ds-pill-toggle:hover ,
+.app-shell[data-ui-mode="phone-agent"] .ds-pill-toggle:hover {
   background: var(--bg-surface-hover);
   border-color: var(--ds-blue-border);
   color: var(--text-primary);
 }
 
-.app-shell[data-ui-mode="deepseek"] .ds-pill-toggle.active {
+.app-shell[data-ui-mode="deepseek"] .ds-pill-toggle.active ,
+.app-shell[data-ui-mode="phone-agent"] .ds-pill-toggle.active {
   background: var(--ds-blue-soft);
   border-color: var(--ds-blue-border);
   color: var(--text-action);
@@ -4843,7 +4946,8 @@ body[data-ui-mode="deepseek"] .ambient-aurora,
   color: var(--text-primary);
 }
 
-.app-shell[data-ui-mode="deepseek"] .attach-icon-btn {
+.app-shell[data-ui-mode="deepseek"] .attach-icon-btn ,
+.app-shell[data-ui-mode="phone-agent"] .attach-icon-btn {
   width: 32px;
   height: 32px;
   border: none;
@@ -4851,12 +4955,14 @@ body[data-ui-mode="deepseek"] .ambient-aurora,
   color: var(--text-secondary);
 }
 
-.app-shell[data-ui-mode="deepseek"] .attach-icon-btn:hover {
+.app-shell[data-ui-mode="deepseek"] .attach-icon-btn:hover ,
+.app-shell[data-ui-mode="phone-agent"] .attach-icon-btn:hover {
   background: var(--bg-surface-hover);
   color: var(--text-primary);
 }
 
-.app-shell[data-ui-mode="deepseek"] .send-btn {
+.app-shell[data-ui-mode="deepseek"] .send-btn ,
+.app-shell[data-ui-mode="phone-agent"] .send-btn {
   width: 34px;
   height: 34px;
   border-radius: 50%;
@@ -4865,18 +4971,22 @@ body[data-ui-mode="deepseek"] .ambient-aurora,
   transition: background 0.15s ease, opacity 0.15s ease;
 }
 
-.app-shell[data-ui-mode="deepseek"] .composer-card.input-empty .send-btn {
+.app-shell[data-ui-mode="deepseek"] .composer-card.input-empty .send-btn ,
+.app-shell[data-ui-mode="phone-agent"] .composer-card.input-empty .send-btn {
   background: light-dark(#9eb3ff, rgba(77, 107, 254, 0.42));
 }
 
 /* 手机端 / Android APK 响应式抽屉侧边栏体验优化 */
 @media (max-width: 780px) {
   .app-shell[data-ui-mode="deepseek"],
-  .app-shell[data-ui-mode="deepseek"].artifacts-wide:not(.right-collapsed) {
+  .app-shell[data-ui-mode="phone-agent"],
+  .app-shell[data-ui-mode="deepseek"].artifacts-wide:not(.right-collapsed) ,
+  .app-shell[data-ui-mode="phone-agent"].artifacts-wide:not(.right-collapsed) {
     grid-template-columns: 0px minmax(0, 1fr) 0px !important;
   }
 
-  .app-shell[data-ui-mode="deepseek"]:not(.left-collapsed) .sidebar {
+  .app-shell[data-ui-mode="deepseek"]:not(.left-collapsed) .sidebar ,
+  .app-shell[data-ui-mode="phone-agent"]:not(.left-collapsed) .sidebar {
     position: fixed;
     top: 0;
     left: 0;
@@ -4890,7 +5000,8 @@ body[data-ui-mode="deepseek"] .ambient-aurora,
     font-size: 20px;
   }
 
-  .app-shell[data-ui-mode="deepseek"] .composer-card {
+  .app-shell[data-ui-mode="deepseek"] .composer-card ,
+  .app-shell[data-ui-mode="phone-agent"] .composer-card {
     width: 100% !important;
     border-radius: 20px !important;
     padding: 13px 14px 10px !important;

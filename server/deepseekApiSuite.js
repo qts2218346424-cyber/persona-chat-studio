@@ -2223,6 +2223,7 @@ async function runDeepSeekFimCompletion({
 module.exports = {
   resolveDeepSeekEndpoints,
   getEffectiveApiCredentials,
+  resolveSuiteOrBridgeCredentials,
   fetchDeepSeekBalance,
   fetchDeepSeekModels,
   isSafePublicUrl,

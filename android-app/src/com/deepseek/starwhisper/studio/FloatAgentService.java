@@ -41,6 +41,8 @@ public class FloatAgentService extends Service {
 
     private WindowManager windowManager;
     private FrameLayout floatRootView;
+    private LinearLayout statusPillView;
+    private View statusDotView;
     private TextView statusTextView;
     private LinearLayout expandPanel;
     private EditText cmdEditText;
@@ -72,7 +74,7 @@ public class FloatAgentService extends Service {
 
     public static void resetStopFlag() {
         sEmergencyStopRequested = false;
-        updateState("idle", "星语 AI (点我打字)");
+        updateState("idle", "星语 AI");
     }
 
     @Override
@@ -112,22 +114,34 @@ public class FloatAgentService extends Service {
 
         floatRootView = new FrameLayout(this);
 
-        // 1. 折叠态：状态微型胶囊
+        // 1. 折叠态：myui 深色磨砂悬浮胶囊 + 圆点状态灯 (零 Emoji)
+        statusPillView = new LinearLayout(this);
+        statusPillView.setOrientation(LinearLayout.HORIZONTAL);
+        statusPillView.setGravity(Gravity.CENTER_VERTICAL);
+        statusPillView.setPadding(24, 15, 26, 15);
+
+        statusDotView = new View(this);
+        LinearLayout.LayoutParams dotLp = new LinearLayout.LayoutParams(16, 16);
+        dotLp.rightMargin = 14;
+        statusDotView.setLayoutParams(dotLp);
+
         statusTextView = new TextView(this);
         statusTextView.setTextSize(12);
-        statusTextView.setTextColor(Color.WHITE);
-        statusTextView.setPadding(26, 16, 26, 16);
-        applyStatusStyle("idle", "星语 AI (点我打字)");
+        statusTextView.setTextColor(Color.parseColor("#F8FAFC"));
+
+        statusPillView.addView(statusDotView);
+        statusPillView.addView(statusTextView);
+        applyStatusStyle("idle", "星语 AI");
 
         // 2. 展开态：实时打字与快捷指令悬浮面板
         expandPanel = buildExpandPanel();
         expandPanel.setVisibility(View.GONE);
 
-        floatRootView.addView(statusTextView);
+        floatRootView.addView(statusPillView);
         floatRootView.addView(expandPanel);
 
         // 绑定悬浮胶囊的拖拽与点击手势
-        statusTextView.setOnTouchListener(new View.OnTouchListener() {
+        statusPillView.setOnTouchListener(new View.OnTouchListener() {
             private int initialX;
             private int initialY;
             private float initialTouchX;
@@ -199,13 +213,13 @@ public class FloatAgentService extends Service {
         headRow.setGravity(Gravity.CENTER_VERTICAL);
 
         TextView titleTv = new TextView(this);
-        titleTv.setText("🐋 星语手机控制台 (免API/智能)");
+        titleTv.setText("星语手机控制台 (AI / 本地)");
         titleTv.setTextColor(Color.parseColor("#93C5FD"));
         titleTv.setTextSize(13);
         titleTv.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f));
 
         TextView closeTv = new TextView(this);
-        closeTv.setText("✕ 收起");
+        closeTv.setText("收起");
         closeTv.setTextColor(Color.parseColor("#94A3B8"));
         closeTv.setTextSize(12);
         closeTv.setPadding(16, 8, 8, 8);
@@ -249,7 +263,7 @@ public class FloatAgentService extends Service {
         cmdEditText.setLayoutParams(editLp);
 
         TextView sendBtn = new TextView(this);
-        sendBtn.setText("▶ 执行");
+        sendBtn.setText("执行");
         sendBtn.setTextColor(Color.WHITE);
         sendBtn.setTextSize(13);
         sendBtn.setPadding(24, 16, 24, 16);
@@ -274,7 +288,7 @@ public class FloatAgentService extends Service {
         });
 
         TextView stopBtn = new TextView(this);
-        stopBtn.setText("🛑");
+        stopBtn.setText("急停");
         stopBtn.setTextColor(Color.WHITE);
         stopBtn.setTextSize(13);
         stopBtn.setPadding(18, 16, 18, 16);
@@ -293,7 +307,7 @@ public class FloatAgentService extends Service {
             @Override
             public void onClick(View v) {
                 requestStop();
-                Toast.makeText(FloatAgentService.this, "🛑 已触发安全急停！", Toast.LENGTH_SHORT).show();
+                Toast.makeText(FloatAgentService.this, "已触发安全急停，后续操作已终止", Toast.LENGTH_SHORT).show();
             }
         });
 
@@ -302,7 +316,7 @@ public class FloatAgentService extends Service {
         inputRow.addView(stopBtn);
         panel.addView(inputRow);
 
-        // 底部快捷手势/系统命令横滑栏
+        // 底部快捷手势/系统命令横滑栏（零 Emoji）
         HorizontalScrollView scroll = new HorizontalScrollView(this);
         scroll.setHorizontalScrollBarEnabled(false);
 
@@ -310,14 +324,14 @@ public class FloatAgentService extends Service {
         chipsRow.setOrientation(LinearLayout.HORIZONTAL);
         chipsRow.setGravity(Gravity.CENTER_VERTICAL);
 
-        addQuickChip(chipsRow, "🏠 回桌面", "回桌面");
-        addQuickChip(chipsRow, "◀ 返回", "返回");
-        addQuickChip(chipsRow, "📜 向下滑动", "下滑");
-        addQuickChip(chipsRow, "🔼 向上滑动", "上滑");
-        addQuickChip(chipsRow, "📑 最近任务", "最近任务");
-        addQuickChip(chipsRow, "💬 微信", "打开微信");
-        addQuickChip(chipsRow, "⚙️ 设置", "打开设置");
-        addQuickChip(chipsRow, "📱 回星语", "回星语");
+        addQuickChip(chipsRow, "回星语 AI 规划", "回星语");
+        addQuickChip(chipsRow, "回桌面", "回桌面");
+        addQuickChip(chipsRow, "返回", "返回");
+        addQuickChip(chipsRow, "下滑", "下滑");
+        addQuickChip(chipsRow, "上滑", "上滑");
+        addQuickChip(chipsRow, "最近任务", "最近任务");
+        addQuickChip(chipsRow, "打开微信", "打开微信");
+        addQuickChip(chipsRow, "系统设置", "打开设置");
 
         scroll.addView(chipsRow);
         panel.addView(scroll);
@@ -356,10 +370,10 @@ public class FloatAgentService extends Service {
     }
 
     private void handleBubbleClick() {
-        if ("thinking".equals(sCurrentStatus) || "executing".equals(sCurrentStatus)) {
+        if ("thinking".equals(sCurrentStatus) || "executing".equals(sCurrentStatus) || "acting".equals(sCurrentStatus)) {
             // 执行中轻触触发一键急停
             requestStop();
-            Toast.makeText(this, "🛑 已急停！自动化辅助已暂停", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "已触发急停，自动化辅助已暂停", Toast.LENGTH_SHORT).show();
         } else {
             // 空闲状态轻触展开打字面板
             expandPanel();
@@ -369,7 +383,7 @@ public class FloatAgentService extends Service {
     private void expandPanel() {
         if (isExpanded) return;
         isExpanded = true;
-        statusTextView.setVisibility(View.GONE);
+        if (statusPillView != null) statusPillView.setVisibility(View.GONE);
         expandPanel.setVisibility(View.VISIBLE);
 
         // 允许聚焦以呼出软键盘打字
@@ -406,7 +420,7 @@ public class FloatAgentService extends Service {
         }
 
         expandPanel.setVisibility(View.GONE);
-        statusTextView.setVisibility(View.VISIBLE);
+        if (statusPillView != null) statusPillView.setVisibility(View.VISIBLE);
 
         // 恢复不可聚焦状态，避免拦截底部应用触控
         layoutParams.flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS;
@@ -416,7 +430,7 @@ public class FloatAgentService extends Service {
     }
 
     private void executeCommandFromFloating(String cmd) {
-        if ("回星语".equals(cmd)) {
+        if ("回星语".equals(cmd) || "回星语 AI 规划".equals(cmd)) {
             collapsePanel();
             try {
                 Intent intent = new Intent(this, MainActivity.class);
@@ -428,7 +442,7 @@ public class FloatAgentService extends Service {
 
         AgentAccessibilityService a11y = AgentAccessibilityService.getInstance();
         if (a11y == null) {
-            Toast.makeText(this, "⚠️ 无障碍服务未开启，请在系统设置中找到「DeepSeek · 星语」开启", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "无障碍服务未开启，请在系统设置中找到「DeepSeek · 星语」开启", Toast.LENGTH_LONG).show();
             collapsePanel();
             try {
                 Intent intent = new Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS);
@@ -449,43 +463,63 @@ public class FloatAgentService extends Service {
                 AgentAccessibilityService service = AgentAccessibilityService.getInstance();
                 if (service != null) {
                     String result = service.executeLocalRule(finalCmd);
-                    Toast.makeText(FloatAgentService.this, result, Toast.LENGTH_SHORT).show();
-                    updateState("idle", "星语 AI (点我打字)");
+                    if (result != null && result.startsWith("UNMATCHED:")) {
+                        Toast.makeText(FloatAgentService.this, "复杂指令请点「回星语 AI 规划」用大模型自动识屏分解执行", Toast.LENGTH_LONG).show();
+                    } else {
+                        Toast.makeText(FloatAgentService.this, result, Toast.LENGTH_SHORT).show();
+                    }
+                    updateState("idle", "星语 AI");
                 }
             }
         }, 300);
     }
 
     private void applyStatusStyle(String state, String text) {
-        if (statusTextView == null) return;
-        GradientDrawable shape = new GradientDrawable();
-        shape.setCornerRadius(36);
-        shape.setStroke(2, Color.argb(180, 255, 255, 255));
+        if (statusTextView == null || statusPillView == null) return;
+        GradientDrawable pillBg = new GradientDrawable();
+        pillBg.setColor(Color.parseColor("#E60F172A"));
+        pillBg.setCornerRadius(40);
 
+        GradientDrawable dotShape = new GradientDrawable();
+        dotShape.setShape(GradientDrawable.OVAL);
+
+        String displayTxt = (text != null && !text.trim().isEmpty()) ? text.trim() : "星语 AI";
         switch (state) {
             case "thinking":
-                shape.setColor(Color.parseColor("#3B82F6"));
-                statusTextView.setText("💭 " + (text != null ? text : "AI 思考中 (点我急停)"));
+                pillBg.setStroke(2, Color.parseColor("#4D6BFE"));
+                dotShape.setColor(Color.parseColor("#60A5FA"));
+                statusTextView.setText(displayTxt);
                 break;
             case "executing":
-                shape.setColor(Color.parseColor("#F59E0B"));
-                statusTextView.setText("⚡ " + (text != null ? text : "正在操作 (点我急停)"));
+            case "acting":
+                pillBg.setStroke(2, Color.parseColor("#F59E0B"));
+                dotShape.setColor(Color.parseColor("#F59E0B"));
+                statusTextView.setText(displayTxt);
                 break;
             case "stopped":
-                shape.setColor(Color.parseColor("#EF4444"));
-                statusTextView.setText("🛑 " + (text != null ? text : "已急停"));
+                pillBg.setStroke(2, Color.parseColor("#EF4444"));
+                dotShape.setColor(Color.parseColor("#EF4444"));
+                statusTextView.setText(displayTxt);
                 break;
             case "idle":
             default:
-                shape.setColor(Color.parseColor("#4D6BFE"));
-                statusTextView.setText("🐋 " + (text != null ? text : "星语 AI (点我打字)"));
+                pillBg.setStroke(2, Color.parseColor("#334155"));
+                dotShape.setColor(Color.parseColor("#10B981"));
+                statusTextView.setText(displayTxt);
                 break;
         }
 
+        if (statusDotView != null) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN) {
+                statusDotView.setBackground(dotShape);
+            } else {
+                statusDotView.setBackgroundDrawable(dotShape);
+            }
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN) {
-            statusTextView.setBackground(shape);
+            statusPillView.setBackground(pillBg);
         } else {
-            statusTextView.setBackgroundDrawable(shape);
+            statusPillView.setBackgroundDrawable(pillBg);
         }
     }
 

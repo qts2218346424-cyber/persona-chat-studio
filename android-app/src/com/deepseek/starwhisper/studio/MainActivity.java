@@ -4,11 +4,14 @@ import android.app.Activity;
 import android.content.ActivityNotFoundException;
 import android.content.ClipData;
 import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.content.pm.ResolveInfo;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.provider.Settings;
+import android.util.DisplayMetrics;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.Window;
@@ -310,7 +313,7 @@ public class MainActivity extends Activity {
     public final class NativeBridge {
         @JavascriptInterface
         public String getAppVersion() {
-            return "1.5.0-phone-agent";
+            return "1.9.0";
         }
 
         @JavascriptInterface
@@ -438,6 +441,97 @@ public class MainActivity extends Activity {
         }
 
         @JavascriptInterface
+        public boolean dispatchLongClick(int x, int y, int durationMs) {
+            AgentAccessibilityService service = AgentAccessibilityService.getInstance();
+            if (service == null) return false;
+            return service.performLongClickCoordinate(x, y, durationMs);
+        }
+
+        @JavascriptInterface
+        public boolean clickByText(String targetText) {
+            AgentAccessibilityService service = AgentAccessibilityService.getInstance();
+            if (service == null || targetText == null) return false;
+            return service.clickNodeByText(targetText);
+        }
+
+        @JavascriptInterface
+        public String getScreenSize() {
+            AgentAccessibilityService service = AgentAccessibilityService.getInstance();
+            if (service != null) return service.getScreenSizeJson();
+            DisplayMetrics dm = MainActivity.this.getResources().getDisplayMetrics();
+            return "{\"width\":" + dm.widthPixels + ",\"height\":" + dm.heightPixels + "}";
+        }
+
+        @JavascriptInterface
+        public String listInstalledApps() {
+            AgentAccessibilityService service = AgentAccessibilityService.getInstance();
+            if (service != null) return service.listInstalledAppsJson();
+            PackageManager pm = MainActivity.this.getPackageManager();
+            Intent mainIntent = new Intent(Intent.ACTION_MAIN, null);
+            mainIntent.addCategory(Intent.CATEGORY_LAUNCHER);
+            List<ResolveInfo> apps = pm.queryIntentActivities(mainIntent, 0);
+            StringBuilder sb = new StringBuilder("[");
+            boolean first = true;
+            int count = 0;
+            if (apps != null) {
+                for (ResolveInfo info : apps) {
+                    if (count >= 100) break;
+                    String label = info.loadLabel(pm) != null ? info.loadLabel(pm).toString() : "";
+                    String pkg = info.activityInfo != null ? info.activityInfo.packageName : "";
+                    if (!label.isEmpty() && !pkg.isEmpty()) {
+                        if (!first) sb.append(",");
+                        sb.append("{\"name\":\"")
+                          .append(label.replace("\\", "\\\\").replace("\"", "\\\""))
+                          .append("\",\"package\":\"")
+                          .append(pkg.replace("\\", "\\\\").replace("\"", "\\\""))
+                          .append("\"}");
+                        first = false;
+                        count++;
+                    }
+                }
+            }
+            sb.append("]");
+            return sb.toString();
+        }
+
+        @JavascriptInterface
+        public boolean launchAppByName(String appName) {
+            AgentAccessibilityService service = AgentAccessibilityService.getInstance();
+            if (service != null) return service.launchAppByName(appName);
+            if (appName == null || appName.trim().isEmpty()) return false;
+            String clean = appName.trim().toLowerCase(Locale.ROOT);
+            if ("设置".equals(clean) || "系统设置".equals(clean)) {
+                try {
+                    Intent i = new Intent(Settings.ACTION_SETTINGS);
+                    i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    startActivity(i);
+                    return true;
+                } catch (Exception ignored) {}
+            }
+            PackageManager pm = MainActivity.this.getPackageManager();
+            Intent mainIntent = new Intent(Intent.ACTION_MAIN, null);
+            mainIntent.addCategory(Intent.CATEGORY_LAUNCHER);
+            List<ResolveInfo> apps = pm.queryIntentActivities(mainIntent, 0);
+            if (apps != null) {
+                for (ResolveInfo info : apps) {
+                    String label = info.loadLabel(pm) != null ? info.loadLabel(pm).toString().toLowerCase(Locale.ROOT) : "";
+                    String pkg = info.activityInfo != null ? info.activityInfo.packageName : "";
+                    if (!label.isEmpty() && (label.equals(clean) || label.contains(clean))) {
+                        try {
+                            Intent li = pm.getLaunchIntentForPackage(pkg);
+                            if (li != null) {
+                                li.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                                startActivity(li);
+                                return true;
+                            }
+                        } catch (Exception ignored) {}
+                    }
+                }
+            }
+            return false;
+        }
+
+        @JavascriptInterface
         public boolean dispatchSwipe(int x1, int y1, int x2, int y2, int duration) {
             AgentAccessibilityService service = AgentAccessibilityService.getInstance();
             if (service == null) return false;
@@ -462,7 +556,7 @@ public class MainActivity extends Activity {
         public String executeLocalRule(String command) {
             AgentAccessibilityService service = AgentAccessibilityService.getInstance();
             if (service == null) {
-                return "❌ 无障碍服务未就绪，请先在系统设置中开启无障碍服务";
+                return "无障碍服务未就绪，请先在系统设置中开启无障碍服务";
             }
             return service.executeLocalRule(command);
         }

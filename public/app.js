@@ -6,11 +6,11 @@
     const qMode = searchParams.get('mode');
     const isDemoUrl = searchParams.get('demo') === '1' || searchParams.get('demo') === 'true';
     const savedMode = localStorage.getItem('ui_mode_v5');
-    if (qMode === 'roleplay' || qMode === 'deepseek') {
+    if (qMode === 'roleplay' || qMode === 'deepseek' || qMode === 'phone-agent') {
       initialUiMode = qMode;
     } else if (isDemoUrl) {
       initialUiMode = 'roleplay';
-    } else if (savedMode === 'roleplay' || savedMode === 'deepseek') {
+    } else if (savedMode === 'roleplay' || savedMode === 'deepseek' || savedMode === 'phone-agent') {
       initialUiMode = savedMode;
     }
     if (localStorage.getItem('simple_v6_upgraded') !== '1') {
@@ -23,7 +23,7 @@
   } catch {}
 
   const state = {
-    uiMode: initialUiMode, // 'roleplay' | 'deepseek'
+    uiMode: initialUiMode, // 'roleplay' | 'deepseek' | 'phone-agent'
     scripts: [],
     activeScriptId: initialScriptId,
     squareItems: [],
@@ -642,7 +642,7 @@
   }
 
   function renderMessageMarkdown(rawText, searchResults = []) {
-    return state.uiMode === 'deepseek'
+    return (state.uiMode === 'deepseek' || state.uiMode === 'phone-agent')
       ? renderNativeDeepSeekMarkdown(rawText, searchResults)
       : renderRoleplayMarkdown(rawText);
   }
@@ -1088,7 +1088,7 @@
       });
       applyAuthLoginPayload(res, { persistDefault: true, rememberGuest: false });
       signupForm.reset();
-      document.getElementById('signup-avatar').value = '🎀';
+      document.getElementById('signup-avatar').value = '星';
       await enterWorkspace();
       showToast('新账号创建成功！现在就可以开始体验角色扮演与智能对话！');
     } catch (err) {
@@ -1742,7 +1742,7 @@
 
   // 左侧栏收起时的顶栏兜底快捷入口绑定
   document.getElementById('topbar-collapsed-new-chat-btn')?.addEventListener('click', () => {
-    if (state.uiMode === 'deepseek') {
+    if (state.uiMode === 'deepseek' || state.uiMode === 'phone-agent') {
       document.getElementById('ds-new-chat-btn')?.click();
     } else {
       document.getElementById('new-chat-btn')?.click();
@@ -1766,7 +1766,7 @@
   });
   document.getElementById('more-new-chat-btn')?.addEventListener('click', () => {
     hidePopoverSafe('topbar-more-popover');
-    if (state.uiMode === 'deepseek') {
+    if (state.uiMode === 'deepseek' || state.uiMode === 'phone-agent') {
       document.getElementById('ds-new-chat-btn')?.click();
     } else {
       document.getElementById('new-chat-btn')?.click();
@@ -1782,7 +1782,7 @@
   });
 
   function openRightTab(tabId, persist = true) {
-    const isDs = state.uiMode === 'deepseek';
+    const isDs = state.uiMode === 'deepseek' || state.uiMode === 'phone-agent';
     let safeTabId = tabId;
     if (isDs && safeTabId === 'nurture-tab') {
       safeTabId = 'memory-tab';
@@ -1978,7 +1978,11 @@
     const dsJsonOn = state.activeSession ? state.activeSession.ds_json_mode === 1 : false;
     const dsToolsOn = state.activeSession ? state.activeSession.ds_tools_enabled !== 0 : true;
 
-    if (dsTitleEl) dsTitleEl.textContent = state.activeSession?.title || '新对话';
+    if (dsTitleEl) {
+      dsTitleEl.textContent = state.uiMode === 'phone-agent'
+        ? '手机辅助'
+        : (state.activeSession?.title || '新对话');
+    }
     if (dsModelPill) {
       const isCustomThirdModel =
         p === 'own_deepseek' &&
@@ -2150,10 +2154,10 @@
             <div role="tabpanel" id="apanel-overview" aria-labelledby="atab-overview">
               <div class="wpanel-inner">
                 <div class="block-title-row" style="margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
-                  <h3 class="sub-sec-title" id="adm-users-heading">👥 全站注册用户与权限管理中心</h3>
+                  <h3 class="sub-sec-title" id="adm-users-heading">全站注册用户与权限管理中心</h3>
                   <div style="display: flex; gap: 8px; align-items: center;">
-                    <input type="search" id="adm-users-search-input" placeholder="🔍 搜索昵称或邮箱..." style="padding: 5px 12px; border-radius: 6px; border: 1px solid var(--border, #cbd5e1); font-size: 13px; min-width: 180px;" />
-                    <button type="button" class="mini-btn" id="adm-refresh-dash-btn">🔄 刷新列表</button>
+                    <input type="search" id="adm-users-search-input" placeholder="搜索昵称或邮箱..." style="padding: 5px 12px; border-radius: 6px; border: 1px solid var(--border, #cbd5e1); font-size: 13px; min-width: 180px;" />
+                    <button type="button" class="mini-btn" id="adm-refresh-dash-btn">刷新列表</button>
                   </div>
                 </div>
                 <div tabindex="0" role="region" aria-labelledby="adm-users-heading" class="responsive-table-wrap">
@@ -2511,23 +2515,23 @@
             const isProtected = u.id === 'user_admin' || isSelf;
             const isBanned = Boolean(u.is_banned);
             const statusHtml = isBanned
-              ? '<span class="status-pill status-banned" style="background:rgba(239,68,68,0.12);color:#ef4444;padding:2px 8px;border-radius:12px;font-size:12px;font-weight:600;">⛔ 已封禁</span>'
-              : '<span class="status-pill status-active" style="background:rgba(16,185,129,0.12);color:#10b981;padding:2px 8px;border-radius:12px;font-size:12px;font-weight:600;">🟢 正常</span>';
+              ? '<span class="status-pill status-banned" style="display:inline-flex;align-items:center;gap:5px;background:rgba(239,68,68,0.12);color:#ef4444;padding:2px 8px;border-radius:12px;font-size:12px;font-weight:600;"><span style="width:6px;height:6px;border-radius:50%;background:#ef4444;display:inline-block;"></span>已封禁</span>'
+              : '<span class="status-pill status-active" style="display:inline-flex;align-items:center;gap:5px;background:rgba(16,185,129,0.12);color:#10b981;padding:2px 8px;border-radius:12px;font-size:12px;font-weight:600;"><span style="width:6px;height:6px;border-radius:50%;background:#10b981;display:inline-block;"></span>正常</span>';
             const roleBadge = u.role === 'admin'
-              ? '<span style="color:#d97706;font-weight:600;">👑 管理员</span>'
-              : '<span style="color:var(--text-muted,#64748b);">👤 普通用户</span>';
+              ? '<span style="color:#d97706;font-weight:600;">管理员</span>'
+              : '<span style="color:var(--text-muted,#64748b);">普通用户</span>';
             const dateStr = u.created_at ? new Date(u.created_at).toLocaleDateString() : '-';
 
             let actionButtons = '';
             if (isProtected) {
-              actionButtons = `<span style="font-size:12px;color:var(--text-muted,#94a3b8);">${u.id === 'user_admin' ? '🛡️ 系统主站长(受保护)' : '⭐ 当前登录账号'}</span>`;
+              actionButtons = `<span style="font-size:12px;color:var(--text-muted,#94a3b8);">${u.id === 'user_admin' ? '系统主站长 (受保护)' : '当前登录账号'}</span>`;
             } else {
               actionButtons = `
                 <div style="display:flex;gap:6px;justify-content:center;flex-wrap:wrap;">
-                  <button type="button" class="mini-btn" data-action="reset-pwd" data-uid="${escapeHtml(u.id)}" data-name="${escapeHtml(u.nickname)}" title="为该用户重置新密码">🔑 改密</button>
-                  <button type="button" class="mini-btn" data-action="toggle-ban" data-uid="${escapeHtml(u.id)}" data-name="${escapeHtml(u.nickname)}" data-banned="${isBanned ? '1' : '0'}" style="${isBanned ? 'color:#10b981;font-weight:600;' : 'color:#ef4444;'}" title="${isBanned ? '解封此账号' : '立即封禁此账号并踢下线'}">${isBanned ? '🔓 解封' : '🚫 封禁'}</button>
+                  <button type="button" class="mini-btn" data-action="reset-pwd" data-uid="${escapeHtml(u.id)}" data-name="${escapeHtml(u.nickname)}" title="为该用户重置新密码">改密</button>
+                  <button type="button" class="mini-btn" data-action="toggle-ban" data-uid="${escapeHtml(u.id)}" data-name="${escapeHtml(u.nickname)}" data-banned="${isBanned ? '1' : '0'}" style="${isBanned ? 'color:#10b981;font-weight:600;' : 'color:#ef4444;'}" title="${isBanned ? '解封此账号' : '立即封禁此账号并踢下线'}">${isBanned ? '解封' : '封禁'}</button>
                   <button type="button" class="mini-btn" data-action="toggle-role" data-uid="${escapeHtml(u.id)}" data-role="${escapeHtml(u.role || 'user')}" title="变更账号角色">${u.role === 'admin' ? '降为用户' : '设为管理'}</button>
-                  <button type="button" class="mini-btn" data-action="delete-user" data-uid="${escapeHtml(u.id)}" data-name="${escapeHtml(u.nickname)}" style="color:#ef4444;" title="彻底删除此用户及全部数据">🗑️ 删除</button>
+                  <button type="button" class="mini-btn" data-action="delete-user" data-uid="${escapeHtml(u.id)}" data-name="${escapeHtml(u.nickname)}" style="color:#ef4444;" title="彻底删除此用户及全部数据">删除</button>
                 </div>
               `;
             }
@@ -2535,7 +2539,7 @@
             return `
               <tr style="${isBanned ? 'opacity:0.65;background:rgba(239,68,68,0.03);' : ''}">
                 <th scope="row">
-                  <div><strong>${escapeHtml(u.avatar || '🎀')} ${escapeHtml(u.nickname)}</strong></div>
+                  <div><strong>${escapeHtml(u.nickname)}</strong></div>
                   <div class="muted-count" style="font-size:12px;color:var(--text-muted,#64748b);">${escapeHtml(u.email)}</div>
                   <div style="font-size:11px;color:var(--text-muted,#94a3b8);margin-top:2px;">注册时间: ${dateStr}</div>
                 </th>
@@ -2889,7 +2893,7 @@
       state.scripts.find((s) => s.id === state.activeScriptId) ||
       state.scripts[0] || {
         id: 'script_clannad',
-        icon: '🌸',
+        icon: '剧',
         title: '樱坂坡道上的风',
         subtitle: '青春催泪群像剧',
         player_role: '樱坂高中同级生',
@@ -2910,7 +2914,7 @@
     if (iconEl) iconEl.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>';
     if (titleEl) titleEl.textContent = curScript.title || '选择剧本';
 
-    if (state.uiMode !== 'deepseek' && chatInput) {
+    if (state.uiMode === 'roleplay' && chatInput) {
       const pShort = (state.activePersona?.name || '').split(/[·\s]/)[0] || '角色';
       chatInput.placeholder = `输入台词或行动（可用 *星号* 写动作），与「${pShort}」推进《${curScript.title}》剧情…`;
     }
@@ -3149,7 +3153,7 @@
     closeSessionContextMenu();
     itemEl.classList.add('menu-open');
     const isPinned = sessionObj.pinned === 1;
-    const isDsSess = sessionObj.session_mode === 'deepseek_native' || state.uiMode === 'deepseek';
+    const isDsSess = sessionObj.session_mode === 'deepseek_native' || state.uiMode === 'deepseek' || state.uiMode === 'phone-agent';
     const menu = document.createElement('div');
     menu.className = 'ds-session-ctx-menu';
     menu.setAttribute('role', 'menu');
@@ -3272,7 +3276,7 @@
   function renderSessionList() {
     closeSessionContextMenu();
     sessionListEl.replaceChildren();
-    const isDsUi = state.uiMode === 'deepseek';
+    const isDsUi = state.uiMode === 'deepseek' || state.uiMode === 'phone-agent';
     const headingEl = document.getElementById('session-list-heading');
     if (headingEl) {
       headingEl.textContent = isDsUi ? '历史对话' : '本剧故事存档';
@@ -3551,7 +3555,7 @@
     );
     updateBondBadge();
 
-    document.getElementById('ip-avatar').value = p.avatar || '🌸';
+    document.getElementById('ip-avatar').value = p.avatar || '角';
     document.getElementById('ip-name').value = p.name || '';
     document.getElementById('ip-tagline').value = replaceClientMacros(p.tagline || '');
     document.getElementById('ip-personality').value = replaceClientMacros(p.personality || '');
@@ -3615,7 +3619,7 @@
     memoryCardsList.replaceChildren();
     syncSessionIsolationBadges();
 
-    const isDsUi = state.uiMode === 'deepseek';
+    const isDsUi = state.uiMode === 'deepseek' || state.uiMode === 'phone-agent';
     const catLabel = isDsUi
       ? {
           Pinned: '核心约束',
@@ -3794,7 +3798,7 @@
   // 原地精修台词编辑器（用户消息支持「发送并重新生成」分支重跑）
   function mountInlineEditor(containerEl, msg, onSaved, allowResubmit = false) {
     if (containerEl.querySelector('.inline-edit-box')) return;
-    const isDsUi = state.uiMode === 'deepseek';
+    const isDsUi = state.uiMode === 'deepseek' || state.uiMode === 'phone-agent';
     const box = document.createElement('div');
     box.className = 'inline-edit-box';
     box.innerHTML = `
@@ -3872,7 +3876,7 @@
   }
 
   function createAssistantMessageDom(msg, isLastAssistant) {
-    const isDsUi = state.uiMode === 'deepseek';
+    const isDsUi = state.uiMode === 'deepseek' || state.uiMode === 'phone-agent';
     const meta = parseMsgMeta(msg);
     const row = document.createElement('div');
     row.className = 'msg-row assistant';
@@ -4210,9 +4214,9 @@
       const fRow = document.createElement('div');
       fRow.className = 'follow-ups-row';
       for (const q of effectiveFollowUps) {
-        const branchMatch = String(q).match(/^(🎬|🔍|💭)\s*(.+)$/);
-        const iconGlyph = branchMatch ? branchMatch[1] : isDsUi ? '→' : '✨';
-        const cleanQuery = branchMatch ? branchMatch[2] : String(q);
+        const branchMatch = String(q).match(/^(?:🎬|🔍|💭)\s*(.+)$/);
+        const iconGlyph = '›';
+        const cleanQuery = branchMatch ? branchMatch[1] : String(q);
         const prettyChipHtml = escapeHtml(cleanQuery).replace(
           /\*([^*\n]+)\*/g,
           '<em class="rp-action">（$1）</em>'
@@ -4253,6 +4257,7 @@
     messagesContainer.innerHTML = '';
     const p = state.activePersona;
     const isDsUi = state.uiMode === 'deepseek';
+    const isPhoneAgentUi = state.uiMode === 'phone-agent';
     const chatStageEl = document.querySelector('.chat-stage');
 
     if (isDsUi) {
@@ -4262,6 +4267,9 @@
       if (greetTitleEl) {
         greetTitleEl.textContent = '今天有什么可以帮到你？';
       }
+      syncComposerEmptyState();
+    } else if (isPhoneAgentUi) {
+      if (chatStageEl) chatStageEl.classList.remove('ds-empty-mode');
       syncComposerEmptyState();
     } else {
       if (chatStageEl) chatStageEl.classList.remove('ds-empty-mode');
@@ -4278,7 +4286,7 @@
                     /\*([^*\n]+)\*/g,
                     '<em class="rp-action">（$1）</em>'
                   );
-                  return `<button type="button" class="starter-chip" data-raw-prompt="${escapeHtml(sp)}">✦ ${prettySp}</button>`;
+                  return `<button type="button" class="starter-chip" data-raw-prompt="${escapeHtml(sp)}">${prettySp}</button>`;
                 })
                 .join('')}
             </div>`
@@ -4481,7 +4489,7 @@
     syncComposerEmptyState();
     stopStreamBtn.classList.toggle('hidden', !streaming);
     const stopLbl = document.getElementById('stop-btn-label');
-    if (stopLbl) stopLbl.textContent = state.uiMode === 'deepseek' ? '停止生成' : '轻声止步';
+    if (stopLbl) stopLbl.textContent = (state.uiMode === 'deepseek' || state.uiMode === 'phone-agent') ? '停止生成' : '轻声止步';
 
     const figCard = document.getElementById('companion-poke-area');
     const statusEl = document.getElementById('comp-live-status');
@@ -4503,7 +4511,7 @@
   async function sendStreamMessage(text, regenerate = false, editMessageId = 0, _retried404 = false) {
     if (state.isStreaming) return;
     if (!state.activeSessionId) {
-      if (state.uiMode === 'deepseek') {
+      if (state.uiMode === 'deepseek' || state.uiMode === 'phone-agent') {
         await startNativeDeepSeekSession('persona_deepseek_official');
       } else {
         const firstRp = state.personas.find((p) => p.id !== 'persona_deepseek_official');
@@ -4511,7 +4519,7 @@
       }
       if (!state.activeSessionId) return;
     }
-    const isDsUi = state.uiMode === 'deepseek';
+    const isDsUi = state.uiMode === 'deepseek' || state.uiMode === 'phone-agent';
     let trimmed = (text || '').trim();
     if (!regenerate && !editMessageId && state.pendingAttachments.some((a) => a.parsing)) {
       showToast('文件正在读取解析中，请稍候片刻再发送');
@@ -4527,9 +4535,8 @@
 
     if (!regenerate && !trimmed && stagedFiles.length === 0) return;
 
-    // 智能识别免 API 手机控制口令并优先由 Phone Agent 原生调度引擎接管
-    const isPhoneControlCmd = /^(回桌面|桌面|返回|后退|下滑|向上|向下|上滑|左滑|右滑|打开微信|微信|打开设置|设置|点击|点|输入|填入|打字|最近任务)/.test(trimmed);
-    if (!regenerate && !editMessageId && isPhoneControlCmd && window.PhoneAgent && window.PhoneAgent.isNative) {
+    // 仅在「手机辅助」工作台模式下由 Phone Agent 原生/大模型双引擎接管；绝不误拦 DeepSeek 与剧场模式常规对话
+    if (!regenerate && !editMessageId && state.uiMode === 'phone-agent' && window.PhoneAgent && typeof window.PhoneAgent.executeTaskInChat === 'function') {
       chatInput.value = '';
       await window.PhoneAgent.executeTaskInChat(trimmed);
       return;
@@ -4960,8 +4967,8 @@
     const val = (chatInput.value || '').trim();
     if (!val) return;
 
-    // 📱 dsh-Go 纯净聊天模式分流：在手机辅助模式或识别为手机指令时直接由 Phone Agent 执行并回显
-    if (state.uiMode === 'phone-agent' || (window.PhoneAgent?.isNative && /^(回桌面|桌面|返回|后退|下滑|向上|向下|上滑|打开微信|微信|打开设置|设置|点击|点|输入|填入|最近任务)/.test(val))) {
+    // dsh-Go 手机辅助聊天模式分流：仅在当前处于手机辅助模式时交由 Phone Agent 调度，不干预 DeepSeek 与剧场对话
+    if (state.uiMode === 'phone-agent') {
       chatInput.value = '';
       chatInput.style.height = 'auto';
       if (window.PhoneAgent && typeof window.PhoneAgent.executeTaskInChat === 'function') {
@@ -5022,7 +5029,7 @@
         body: JSON.stringify({ filename: file.name, content, auto_create: false })
       });
       const p = res.parsed;
-      document.getElementById('cp-avatar').value = p.avatar || '🌸';
+      document.getElementById('cp-avatar').value = p.avatar || '角';
       document.getElementById('cp-name').value = p.name || '';
       document.getElementById('cp-tagline').value = p.tagline || '';
       document.getElementById('cp-personality').value = p.personality || '';
@@ -5054,7 +5061,7 @@
         body: JSON.stringify({ filename: file.name, content, auto_create: false })
       });
       const p = res.parsed;
-      document.getElementById('ip-avatar').value = p.avatar || '🌸';
+      document.getElementById('ip-avatar').value = p.avatar || '角';
       document.getElementById('ip-name').value = p.name || '';
       document.getElementById('ip-tagline').value = p.tagline || '';
       document.getElementById('ip-personality').value = p.personality || '';
@@ -5412,8 +5419,10 @@
     if (data.membership) state.membership = data.membership;
 
     const sessMode = data.session?.session_mode === 'deepseek_native' ? 'deepseek' : 'roleplay';
-    if (state.uiMode !== sessMode) {
-      applyUiModeVisuals(sessMode);
+    if (sessMode === 'roleplay') {
+      if (state.uiMode !== 'roleplay') applyUiModeVisuals('roleplay');
+    } else if (state.uiMode !== 'deepseek' && state.uiMode !== 'phone-agent') {
+      applyUiModeVisuals('deepseek');
     }
     if (sessMode === 'roleplay' && data.persona?.script_id) {
       state.activeScriptId = data.persona.script_id;
@@ -5555,20 +5564,20 @@
     if (state.isStreaming || creatingSessionLock) return;
     // 若当前已在空白新对话中且绑定角色一致，直接聚焦输入框避免连点产生多个空白会话
     if (
-      state.uiMode === 'deepseek' &&
+      (state.uiMode === 'deepseek' || state.uiMode === 'phone-agent') &&
       state.activeSession?.session_mode === 'deepseek_native' &&
       state.messages.length === 0 &&
       (state.activePersona?.id || 'persona_deepseek_official') === personaId
     ) {
       chatInput.focus();
-      showToast('当前已是全新空白对话，直接输入即可开聊');
+      showToast('当前已是全新空白对话，直接输入即可开始');
       return;
     }
     creatingSessionLock = true;
     const dsNewBtnEl = document.getElementById('ds-new-chat-btn');
     if (dsNewBtnEl) dsNewBtnEl.disabled = true;
     try {
-      if (state.uiMode !== 'deepseek') {
+      if (state.uiMode !== 'deepseek' && state.uiMode !== 'phone-agent') {
         applyUiModeVisuals('deepseek');
       }
       const res = await apiJson('/api/sessions', {
@@ -5605,7 +5614,7 @@
     });
     state.sessions = res.sessions;
     if (state.activeSessionId === sessionId) {
-      const isDsUi = state.uiMode === 'deepseek';
+      const isDsUi = state.uiMode === 'deepseek' || state.uiMode === 'phone-agent';
       const sameMode = state.sessions.filter((s) =>
         isDsUi ? s.session_mode === 'deepseek_native' : s.session_mode !== 'deepseek_native'
       );
@@ -5832,8 +5841,8 @@
     rad.addEventListener('change', () => {
       const avInp = document.getElementById('cp-avatar');
       if (!avInp) return;
-      if (rad.value === 'male' && avInp.value === '🌸') avInp.value = '✨';
-      else if (rad.value === 'female' && avInp.value === '✨') avInp.value = '🌸';
+      if (rad.value === 'male' && (avInp.value === '角' || avInp.value === '她')) avInp.value = '他';
+      else if (rad.value === 'female' && avInp.value === '他') avInp.value = '她';
     });
   });
 
@@ -5852,7 +5861,7 @@
     const editIdEl = document.getElementById('cp-editing-id');
     if (editIdEl) editIdEl.value = '';
     const avEl = document.getElementById('cp-avatar');
-    if (avEl) avEl.value = '🌸';
+    if (avEl) avEl.value = '她';
     const femRad = document.getElementById('cp-gender-female');
     if (femRad) femRad.checked = true;
     const titleEl = document.getElementById('persona-dialog-title');
@@ -5870,7 +5879,7 @@
     window.__closeMobileDrawers?.();
     const editIdEl = document.getElementById('cp-editing-id');
     if (editIdEl) editIdEl.value = p.id;
-    document.getElementById('cp-avatar').value = p.avatar || '🌸';
+    document.getElementById('cp-avatar').value = p.avatar || '角';
     document.getElementById('cp-name').value = p.name || '';
     const isMaleEdit = p.gender === 'male' || (!p.gender && getPersonaPronoun(p) === '他');
     const genderRadio = document.getElementById(isMaleEdit ? 'cp-gender-male' : 'cp-gender-female');
@@ -5948,7 +5957,7 @@
     const bodyPayload = {
       script_id: state.activeScriptId || 'script_classic',
       gender: pickedGender,
-      avatar: document.getElementById('cp-avatar').value.trim() || '🌸',
+      avatar: document.getElementById('cp-avatar').value.trim() || '角',
       name: document.getElementById('cp-name').value.trim(),
       tagline: document.getElementById('cp-tagline').value.trim(),
       personality: document.getElementById('cp-personality').value.trim(),
@@ -5988,7 +5997,7 @@
     state.personas.unshift(res.persona);
     personaDialog.close();
     e.target.reset();
-    document.getElementById('cp-avatar').value = '🌸';
+    document.getElementById('cp-avatar').value = '她';
     syncPersonaBackstoryCounter();
     await startSessionWithPersona(res.persona.id);
     showToast(`已创建角色「${res.persona.name}」，现在就开始聊天吧！`);
@@ -6393,7 +6402,7 @@
       }
     }
 
-    // 5. 同步手机辅助状态
+    // 5. 同步手机辅助状态与默认执行引擎
     const paVal = document.getElementById('mfs-phoneagent-value');
     if (paVal) {
       const isNative = window.AndroidAppBridge && window.AndroidAppBridge.isNativeApk();
@@ -6405,10 +6414,32 @@
       }
     }
 
-    // 6. 同步版本号
+    const engineVal = document.getElementById('mfs-phone-engine-value');
+    if (engineVal) {
+      const execMode =
+        (window.PhoneAgent && typeof window.PhoneAgent.getExecMode === 'function'
+          ? window.PhoneAgent.getExecMode()
+          : localStorage.getItem('pa_exec_mode_v1')) || 'api_direct';
+      engineVal.textContent =
+        execMode === 'api_cloud'
+          ? '云端托管 API'
+          : execMode === 'local'
+            ? '本地免 API'
+            : 'DeepSeek 直连 API';
+    }
+
+    // 6. 同步自动语音播报开关
+    const ttsVal = document.getElementById('mfs-tts-toggle-value');
+    if (ttsVal) {
+      ttsVal.textContent = localStorage.getItem('auto_tts_reply') !== '0' ? '已开启' : '已关闭';
+    }
+
+    // 7. 同步版本号（严格以 PhoneAgent/原生端版本为准，不在主界面透出）
     const verVal = document.getElementById('mfs-version-value');
     if (verVal) {
-      verVal.textContent = '2.8.0(297)';
+      const verStr =
+        (window.PhoneAgent && window.PhoneAgent.currentVersion) || '1.9.0';
+      verVal.textContent = verStr.startsWith('v') ? verStr : `v${verStr}`;
     }
   }
 
@@ -6521,21 +6552,24 @@
         const keyVal = document.getElementById('mfs-apikey-value');
         if (keyVal) keyVal.textContent = '已配置 (sk-...)';
         document.getElementById('mfs-apikey-drawer')?.classList.add('hidden');
-        showToast('🎉 DeepSeek 官方 API 密钥已保存至本地沙盒！');
+        if (window.PhoneAgent && typeof window.PhoneAgent.setDirectApiKey === 'function') {
+          window.PhoneAgent.setDirectApiKey(val);
+        }
+        showToast('DeepSeek 官方 API 密钥已保存至本地沙盒');
       } else {
         localStorage.removeItem('deepseek_user_api_key');
         localStorage.removeItem('own_deepseek_api_key');
         const keyVal = document.getElementById('mfs-apikey-value');
         if (keyVal) keyVal.textContent = '点击直连';
-        showToast('已清除个人 API Key，恢复免 API 模式');
+        showToast('已清除个人 API Key，可随时在手机辅助面板切回云端或本地模式');
       }
     });
 
-    // 手机端 Phone Agent 控制入口（轻量开关悬浮球 / 无障碍检测，不弹下载器）
+    // 手机端 Phone Agent 控制入口（轻量开关悬浮球 / 无障碍检测）
     document.getElementById('mfs-item-phoneagent')?.addEventListener('click', () => {
       const isNative = window.AndroidAppBridge && window.AndroidAppBridge.isNativeApk();
       if (!isNative) {
-        showToast('当前运行在网页端，可在安卓手机安装星语随身版体验无障碍与常驻悬浮打字球！');
+        showToast('当前运行在网页端，安装星语随身版 APK 即可开启无障碍与悬浮控制');
         return;
       }
       const bridge = window.AndroidAppBridge;
@@ -6545,14 +6579,47 @@
         showToast('已收起悬浮打字控制球');
       } else {
         bridge.startFloatAgent();
-        showToast('已开启常驻悬浮打字控制球！轻触左上角胶囊可随时打字操控手机');
+        showToast('已开启常驻悬浮打字控制球，轻触左侧胶囊即可实时操作');
       }
       openMobileFullscreenSettings();
     });
 
+    // 手机辅助默认执行引擎轮换（DeepSeek 直连 API <-> 云端托管 API <-> 本地免 API）
+    document.getElementById('mfs-item-phone-engine')?.addEventListener('click', () => {
+      const order = ['api_direct', 'api_cloud', 'local'];
+      const cur =
+        (window.PhoneAgent && typeof window.PhoneAgent.getExecMode === 'function'
+          ? window.PhoneAgent.getExecMode()
+          : localStorage.getItem('pa_exec_mode_v1')) || 'api_direct';
+      const next = order[(order.indexOf(cur) + 1) % order.length];
+      if (window.PhoneAgent && typeof window.PhoneAgent.setExecMode === 'function') {
+        window.PhoneAgent.setExecMode(next);
+      } else {
+        localStorage.setItem('pa_exec_mode_v1', next);
+      }
+      openMobileFullscreenSettings();
+      const labelMap = {
+        api_direct: 'DeepSeek 直连 API',
+        api_cloud: '云端托管 API',
+        local: '本地免 API 指令'
+      };
+      showToast(`手机辅助默认引擎已切换为：${labelMap[next]}`);
+    });
+
+    // 自动语音播报总开关
+    document.getElementById('mfs-item-tts-toggle')?.addEventListener('click', () => {
+      const curOn = localStorage.getItem('auto_tts_reply') !== '0';
+      const nextOn = !curOn;
+      localStorage.setItem('auto_tts_reply', nextOn ? '1' : '0');
+      const autoTtsChk = document.getElementById('st-auto-tts-chk');
+      if (autoTtsChk) autoTtsChk.checked = nextOn;
+      openMobileFullscreenSettings();
+      showToast(nextOn ? '已开启回复自动语音播报' : '已关闭回复自动语音播报');
+    });
+
     // 朗读音色
     document.getElementById('mfs-item-voice')?.addEventListener('click', () => {
-      showToast('当前音色：微软晓晓 (官方真声)，已开启自然流畅朗读！');
+      showToast('当前音色：微软晓晓 (官方真声)，已开启自然流畅朗读');
     });
 
     // 检查更新
@@ -6564,7 +6631,7 @@
 
     // 服务协议
     document.getElementById('mfs-item-dshgo')?.addEventListener('click', () => {
-      alert('【星语恋庭 · 服务协议与开源声明】\n1. 本项目基于合法授权的前沿大模型与开放架构，所有数据本地安全存储；\n2. 手机端 AI 辅助助理架构遵循开源实践，操作完全由用户自愿授权并受物理急停保护；\n3. 回答由 AI 生成，仅供学习与娱乐参考。');
+      alert('【星语恋庭 · 服务协议与 dsh-Go 开源参考声明】\n1. 本项目基于合法授权的前沿大模型与开放架构，所有数据本地安全存储；\n2. 手机端 AI 辅助助理参考 dsh-Go 极简聊天规划架构，操作均需用户授权并支持一键停止与免确认切换；\n3. 回答由 AI 生成，仅供学习与娱乐参考。');
     });
 
     // 数据管理（导出历史记录）
@@ -6574,9 +6641,9 @@
       }
     });
 
-    // 帮助与反馈（包含免 API 手机控制口令手册）
+    // 帮助与反馈（三档引擎与免 API 手机控制口令手册）
     document.getElementById('mfs-item-help')?.addEventListener('click', () => {
-      alert('【免 API 手机控制口令表】\n无需任何 API Key，在聊天框输入以下指令即可操控手机：\n\n• 🏠 回桌面：输入“回桌面”或“桌面”\n• ◀ 返回：输入“返回”或“后退”\n• 📜 滑动：输入“下滑”、“上滑”、“左滑”、“右滑”\n• 📑 多任务：输入“最近任务”\n• 💬 应用唤起：输入“打开微信”、“打开设置”\n• 👆 点击：输入“点击 [屏幕上的文字]”\n• ⌨️ 打字：输入“输入 [要填入的内容]”\n\n在其他任意应用中，轻触悬浮胶囊「星语AI」也可展开控制台实时打字！');
+      alert('【Phone Agent 手机辅助模式说明】\n支持「DeepSeek API 直连 / 云端托管 / 本地免 API」三档无缝切换：\n\n1. API 模式：在手机辅助面板输入自然语言复杂任务（如“帮我在设置里查看系统版本”），AI 自动读取屏幕节点逐步规划执行，重要操作弹出 dsh-Go 确认卡；\n2. 本地免 API 模式：无需密钥，支持常用口令直控：\n- 回桌面：输入“回桌面”或“桌面”\n- 返回：输入“返回”或“后退”\n- 滑动：输入“下滑”、“上滑”、“左滑”、“右滑”\n- 多任务：输入“最近任务”\n- 应用唤起：输入“打开 微信”、“打开 设置”等任意已安装应用\n- 点击与输入：输入“点击 [屏幕文字]”、“输入 [内容]”\n\n在其他任意应用中，轻触左侧悬浮胶囊「星语AI」也可展开控制台实时下达指令。');
     });
 
     // 退出登录
@@ -6873,7 +6940,7 @@
 
   document.getElementById('open-user-persona-btn').addEventListener('click', () => {
     if (!state.user) return;
-    document.getElementById('up-avatar').value = state.user.avatar || '🎀';
+    document.getElementById('up-avatar').value = state.user.avatar || '我';
     document.getElementById('up-nickname').value = state.user.nickname || '';
     document.getElementById('up-role').value = state.user.user_persona?.role || '';
     document.getElementById('up-appearance').value = state.user.user_persona?.appearance || '';
@@ -6905,7 +6972,7 @@
       const res = await apiJson('/api/auth/user-persona', {
         method: 'PUT',
         body: JSON.stringify({
-          avatar: document.getElementById('up-avatar').value.trim() || '🎀',
+          avatar: document.getElementById('up-avatar').value.trim() || '我',
           nickname: cleanNick,
           role: document.getElementById('up-role').value.trim(),
           appearance: document.getElementById('up-appearance').value.trim(),
@@ -7075,7 +7142,7 @@
       card.innerHTML = `
         <div class="ssc-top">
           <div class="ssc-title-group">
-            <span class="ssc-icon">${escapeHtml(sc.icon || '📖')}</span>
+            <span class="ssc-icon">${escapeHtml(sc.icon || '剧')}</span>
             <div>
               <div class="ssc-title">${escapeHtml(sc.title)}</div>
               <div class="ssc-sub">${escapeHtml(sc.subtitle || '')}</div>
@@ -7280,7 +7347,7 @@
     card.className = 'ws-persona-edit-card';
     card.innerHTML = `
       <div class="ws-pcard-head">
-        <input type="text" class="ws-pcard-avatar" value="${escapeHtml(pObj.avatar || '🌸')}" maxlength="4" aria-label="角色头像徽记" />
+        <input type="text" class="ws-pcard-avatar" value="${escapeHtml(pObj.avatar || '角')}" maxlength="4" aria-label="角色头像徽记" />
         <input type="text" class="ws-pcard-name" value="${escapeHtml(pObj.name || `登场角色 ${index + 1}`)}" placeholder="角色姓名 · 头衔" aria-label="角色姓名与头衔" />
         <input type="text" class="ws-pcard-tag" value="${escapeHtml(pObj.category_tag || '核心主线')}" placeholder="路线标签" aria-label="角色路线标签" />
         <button type="button" class="fim-clear-mini ws-remove-pcard-btn" title="移除该角色">移除</button>
@@ -7337,7 +7404,7 @@
     }
 
     const sc = data.script || {};
-    document.getElementById('ws-sc-icon').value = sc.icon || '🌸';
+    document.getElementById('ws-sc-icon').value = sc.icon || '剧';
     document.getElementById('ws-sc-title').value = sc.title || '未命名互动剧本';
     document.getElementById('ws-sc-subtitle').value = sc.subtitle || '玩家原创多幕互动剧';
     document.getElementById('ws-sc-role').value = sc.player_role || '卷入故事核心的同行者';
@@ -7377,7 +7444,7 @@
     pGrid.appendChild(
       renderWorkshopPersonaCardDom(
         {
-          avatar: '🌙',
+          avatar: '伴',
           name: `新角色 · 《${scTitle}》同行者`,
           category_tag: '新增支线',
           tagline: '与你在故事中并肩前行的关键人物',
@@ -7484,7 +7551,7 @@
       const pPers = el.querySelector('.ws-pcard-personality')?.value?.trim() || '';
       const rawBack = el.querySelector('.ws-pcard-backstory')?.value?.trim() || '';
       return {
-        avatar: el.querySelector('.ws-pcard-avatar')?.value?.trim() || '🌸',
+        avatar: el.querySelector('.ws-pcard-avatar')?.value?.trim() || '角',
         name: pName,
         category_tag: el.querySelector('.ws-pcard-tag')?.value?.trim() || '核心主线',
         tagline: el.querySelector('.ws-pcard-tagline')?.value?.trim() || '',
@@ -7506,7 +7573,7 @@
         method: 'POST',
         body: JSON.stringify({
           script: {
-            icon: document.getElementById('ws-sc-icon')?.value?.trim() || '📖',
+            icon: document.getElementById('ws-sc-icon')?.value?.trim() || '剧',
             title: scTitle,
             subtitle: document.getElementById('ws-sc-subtitle')?.value?.trim() || 'AI 精修原创互动剧',
             player_role: document.getElementById('ws-sc-role')?.value?.trim() || '剧中同行者',
@@ -7566,7 +7633,7 @@
         .join('');
     } else {
       targetSel.innerHTML = state.scripts
-        .map((sc) => `<option value="${escapeHtml(sc.id)}">${escapeHtml(sc.icon || '📖')} 《${escapeHtml(sc.title)}》</option>`)
+        .map((sc) => `<option value="${escapeHtml(sc.id)}">${escapeHtml(sc.icon || '剧')} 《${escapeHtml(sc.title)}》</option>`)
         .join('');
     }
   }
@@ -7651,7 +7718,7 @@
       const castHtml = (item.cast_preview || [])
         .map(
           (c) =>
-            `<span class="sq-cast-mini">${escapeHtml(c.avatar || '🌸')} ${escapeHtml(c.name)}${
+            `<span class="sq-cast-mini">${escapeHtml((c.name || c.avatar || '角').slice(0, 1))} ${escapeHtml(c.name)}${
               c.tag ? `<small style="color:var(--brand-primary);font-weight:500;">(${escapeHtml(c.tag)})</small>` : ''
             }</span>`
         )
@@ -7668,7 +7735,7 @@
         <div>
           <div class="sq-card-top">
             <div class="ssc-title-group">
-              <span class="ssc-icon">${escapeHtml(item.icon || (isScript ? '📖' : '🎭'))}</span>
+              <span class="ssc-icon">${escapeHtml((item.title || (isScript ? '剧' : '角')).slice(0, 1))}</span>
               <div>
                 <div class="ssc-title">${escapeHtml(item.title)}</div>
                 <div class="ssc-sub">${escapeHtml(item.subtitle || '')}</div>
@@ -7680,7 +7747,7 @@
           </div>
 
           <div class="sq-author-row" style="margin-top: 8px;">
-            <span class="sq-author-chip">${escapeHtml(item.author_avatar || '🎀')} 创作者：@${escapeHtml(item.author_name || '星语玩家')}</span>
+            <span class="sq-author-chip">创作者：@${escapeHtml(item.author_name || '星语玩家')}</span>
             <span class="sq-dl-count">${item.downloads_count || 0} 人已获取体验</span>
           </div>
 
@@ -7697,7 +7764,7 @@
           <div class="sq-card-footer">
             <div class="sq-stats-left">
               <button type="button" class="sq-like-btn ${item.liked_by_me ? 'liked' : ''}" aria-pressed="${Boolean(item.liked_by_me)}">
-                <span>${item.liked_by_me ? '❤️' : '🤍'}</span>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="${item.liked_by_me ? '#e2559d' : 'none'}" stroke="${item.liked_by_me ? '#e2559d' : 'currentColor'}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg>
                 <span class="sq-like-num">${item.likes_count || 0}</span>
               </button>
             </div>
@@ -7718,7 +7785,7 @@
           item.likes_count = res.likes_count;
           likeBtn.classList.toggle('liked', Boolean(res.liked));
           likeBtn.setAttribute('aria-pressed', String(Boolean(res.liked)));
-          likeBtn.innerHTML = `<span>${res.liked ? '❤️' : '🤍'}</span><span class="sq-like-num">${res.likes_count}</span>`;
+          likeBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="${res.liked ? '#e2559d' : 'none'}" stroke="${res.liked ? '#e2559d' : 'currentColor'}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg><span class="sq-like-num">${res.likes_count}</span>`;
         } catch (err) {
           showToast(err.message || '点赞失败');
         }
@@ -8147,7 +8214,7 @@
     // 标题栏
     ctx.font = 'bold 22px "Microsoft YaHei", sans-serif';
     ctx.fillStyle = '#362045';
-    ctx.fillText(`${p.avatar || '🌸'} ${p.name}`, 44, 64);
+    ctx.fillText(`${p.name}`, 44, 64);
 
     ctx.font = 'bold 14px "Microsoft YaHei", sans-serif';
     ctx.fillStyle = '#d63384';
@@ -8487,11 +8554,29 @@
       tabPa.setAttribute('aria-selected', String(isPhoneAgent));
     }
 
-    // 📱 控制聊天窗口顶部的 dsh-Go 风格手机辅助专属横幅
+    // 控制聊天窗口顶部的 dsh-Go 风格手机辅助专属横幅与标题栏对齐
     if (paBanner) {
       paBanner.classList.toggle('hidden', !isPhoneAgent);
       if (isPhoneAgent && window.PhoneAgent) {
         window.PhoneAgent.syncStatus();
+      }
+    }
+    const chatStageDom = document.querySelector('.chat-stage');
+    if (chatStageDom) {
+      if (isPhoneAgent) {
+        chatStageDom.classList.remove('ds-empty-mode');
+      } else if (state.uiMode === 'deepseek') {
+        chatStageDom.classList.toggle('ds-empty-mode', state.messages.length === 0);
+      } else {
+        chatStageDom.classList.remove('ds-empty-mode');
+      }
+    }
+    const dsTopTitleEl = document.getElementById('ds-topbar-title');
+    if (dsTopTitleEl) {
+      if (isPhoneAgent) {
+        dsTopTitleEl.textContent = '手机辅助';
+      } else if (state.uiMode === 'deepseek') {
+        dsTopTitleEl.textContent = state.activeSession?.title || '新对话';
       }
     }
 
@@ -8501,13 +8586,13 @@
     if (collapsedSwitchBtn) {
       collapsedSwitchBtn.textContent = isDs ? '切恋庭剧场' : '切 DeepSeek';
       collapsedSwitchBtn.title = isDs
-        ? '当前为 DeepSeek 问答模式，点击切换回星语恋庭剧本模式'
+        ? '当前处于工具/问答模式，点击切换回星语恋庭剧本模式'
         : '当前为星语恋庭剧本模式，点击切换到 DeepSeek 问答模式';
     }
 
     const pronoun = getPersonaPronoun(state.activePersona);
     chatInput.placeholder = isPhoneAgent
-      ? '下达手机控制指令（例如：回桌面、打开微信、向下翻页）或普通对话…'
+      ? '输入自然语言手机任务或本地口令（如：打开微信、回桌面、点击 设置）…'
       : (isDs
         ? '给 DeepSeek 发送消息（支持深度思考、联网搜索、代码生成与网页预览）…'
         : `和${pronoun}说点什么吧…（可用 *星号* 描写动作细节，Enter 发送）`);
@@ -9326,7 +9411,7 @@
     const brandName = isNative ? 'deepseek' : personaObj?.name || '星语恋庭';
     const brandIcon = isNative
       ? DS_WHALE_AVATAR_SVG
-      : `<span style="font-size:18px">${escapeHtml(personaObj?.avatar || '🌸')}</span>`;
+      : `<span style="font-size:16px;font-weight:700;">${escapeHtml((personaObj?.name || '星').slice(0, 1))}</span>`;
     const title = exportSnapshot.title || '对话与记忆精选';
     const recentTurns = msgList.slice(-8);
     const countSummaryText = hasMsgs
@@ -9476,11 +9561,17 @@
     ctx.lineWidth = 2;
     ctx.strokeRect(12, 12, width - 24, totalH - 24);
 
-    const isDsShare = state.uiMode === 'deepseek';
-    const shareBrandText = isDsShare
-      ? '🐋 deepseek'
-      : `${state.activePersona?.avatar || '🌸'} ${(state.activePersona?.name || '星语恋庭').split(/[·\s]/)[0]}`;
-    const shareFooterSource = isDsShare ? 'DeepSeek 问答模式' : '星语恋庭 · 剧本扮演模式';
+    const isDsShare = state.uiMode === 'deepseek' || state.uiMode === 'phone-agent';
+    const shareBrandText = state.uiMode === 'phone-agent'
+      ? '星语 · 手机辅助'
+      : isDsShare
+        ? 'deepseek'
+        : `${(state.activePersona?.name || '星语恋庭').split(/[·\s]/)[0]}`;
+    const shareFooterSource = state.uiMode === 'phone-agent'
+      ? 'Phone Agent 手机辅助'
+      : isDsShare
+        ? 'DeepSeek 问答模式'
+        : '星语恋庭 · 剧本扮演模式';
 
     ctx.font = 'bold 22px "Microsoft YaHei", sans-serif';
     ctx.fillStyle = isDsShare ? '#4d6bfe' : '#e2559d';
@@ -9649,7 +9740,7 @@
 
   // 全局生产力快捷键（Ctrl/Cmd + K 搜索历史对话，Alt + N 开启新对话）
   document.addEventListener('keydown', (e) => {
-    if (state.uiMode !== 'deepseek' || !state.user) return;
+    if ((state.uiMode !== 'deepseek' && state.uiMode !== 'phone-agent') || !state.user) return;
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
       e.preventDefault();
       if (appShell.classList.contains('left-collapsed')) {
@@ -9968,7 +10059,7 @@
       if (err?.name === 'AbortError') {
         showToast('已取消本次灵感补写');
       } else {
-        showToast(`🌸 ${err.message}`);
+        showToast(`${err.message}`);
       }
     } finally {
       clearInterval(fimTimer);
@@ -10007,7 +10098,7 @@
   // 🌟 多一点主动性核心引擎：仅在恋庭沉浸扮演模式下发起主动关怀（锁定发起会话 ID 严防串台）
   async function triggerProactiveMessage(triggerReason = 'manual') {
     if (state.isStreaming || !state.activeSessionId) return;
-    if (state.uiMode === 'deepseek' || state.activeSession?.session_mode === 'deepseek_native') return;
+    if (state.uiMode === 'deepseek' || state.uiMode === 'phone-agent' || state.activeSession?.session_mode === 'deepseek_native') return;
     const originSessionId = state.activeSessionId;
     const isStillOriginSession = () => state.activeSessionId === originSessionId;
     const isDsUi = false;
@@ -10283,6 +10374,7 @@
       !state.user ||
       !state.activeSessionId ||
       state.uiMode === 'deepseek' ||
+      state.uiMode === 'phone-agent' ||
       state.activeSession?.session_mode === 'deepseek_native' ||
       state.isStreaming ||
       state.tourActive ||
@@ -10352,7 +10444,7 @@
     renderPersonaList();
     renderSessionList();
 
-    const isDs = state.uiMode === 'deepseek';
+    const isDs = state.uiMode === 'deepseek' || state.uiMode === 'phone-agent';
     const preferredSessions = state.sessions.filter((s) =>
       isDs ? s.session_mode === 'deepseek_native' : s.session_mode !== 'deepseek_native'
     );
@@ -10365,6 +10457,9 @@
         await loadSession(reusableBlank.id);
       } else {
         await startNativeDeepSeekSession('persona_deepseek_official');
+      }
+      if (state.uiMode === 'phone-agent') {
+        applyUiModeVisuals('phone-agent');
       }
     } else {
       // 优先进入当前所选剧本下的会话或首位主角（新默认直接进入《樱坂坡道上的风》）

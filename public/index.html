@@ -19,15 +19,15 @@
   </script>
   <title>星语恋庭 · 互动剧本与沉浸角色扮演馆</title>
   <link rel="icon" type="image/svg+xml" href="./assets/deepseek-whale.svg" />
-  <link rel="preload" href="./styles.css?v=20261120_v183_mobile_auth_fix" as="style" />
-  <link rel="preload" href="./clean-ui.css?v=20261120_v183_mobile_auth_fix" as="style" />
-  <link rel="preload" href="./app.js?v=20261120_v183_mobile_auth_fix" as="script" />
-  <link rel="stylesheet" href="./styles.css?v=20261120_v183_mobile_auth_fix" />
-  <link rel="stylesheet" href="./companion3d.css?v=20261120_v183_mobile_auth_fix" />
-  <link rel="stylesheet" href="./clean-ui.css?v=20261120_v183_mobile_auth_fix" />
-  <link rel="stylesheet" href="./mobile-responsive.css?v=20261120_v183_mobile_auth_fix" />
-  <link rel="stylesheet" href="./phone-agent.css?v=20261120_v183_mobile_auth_fix" />
-  <link rel="stylesheet" href="./mobile-deepseek.css?v=20261120_v183_mobile_auth_fix" />
+  <link rel="preload" href="./styles.css?v=20261120_v190_myui_dshgo" as="style" />
+  <link rel="preload" href="./clean-ui.css?v=20261120_v190_myui_dshgo" as="style" />
+  <link rel="preload" href="./app.js?v=20261120_v190_myui_dshgo" as="script" />
+  <link rel="stylesheet" href="./styles.css?v=20261120_v190_myui_dshgo" />
+  <link rel="stylesheet" href="./companion3d.css?v=20261120_v190_myui_dshgo" />
+  <link rel="stylesheet" href="./clean-ui.css?v=20261120_v190_myui_dshgo" />
+  <link rel="stylesheet" href="./mobile-responsive.css?v=20261120_v190_myui_dshgo" />
+  <link rel="stylesheet" href="./phone-agent.css?v=20261120_v190_myui_dshgo" />
+  <link rel="stylesheet" href="./mobile-deepseek.css?v=20261120_v190_myui_dshgo" />
 </head>
 <body data-ui-mode="deepseek">
   <!-- 首屏零白屏过渡欢迎层（工作台或登录门扉就绪后立即平滑隐藏） -->
@@ -163,7 +163,7 @@
         <div class="inline-row">
           <div class="field-group avatar-field">
             <label for="signup-avatar">头像徽记 <span class="req-star" aria-hidden="true">*</span></label>
-            <input type="text" id="signup-avatar" name="avatar" value="🎀" maxlength="4" required />
+            <input type="text" id="signup-avatar" name="avatar" value="旅" maxlength="4" required />
           </div>
           <div class="field-group flex-1">
             <label for="signup-name">你的专属昵称（角色会这样称呼你） <span class="req-star" aria-hidden="true">*</span></label>
@@ -229,7 +229,7 @@
         </form>
 
         <div class="auth-strict-notice" style="margin-top: 18px; text-align: center; font-size: 13px; color: var(--text-muted, #64748b);">
-          <span>✦ 平台已开启严格注册认证防护 · 注册正式账号后畅享全量功能与客户端下载 ✦</span>
+          <span>平台已开启严格注册认证防护 · 注册正式账号后畅享全量功能与客户端下载</span>
         </div>
 
         <div class="guest-auth-actions" style="margin-top: 10px;">
@@ -301,16 +301,19 @@
         </div>
       </div>
 
-      <!-- 多模式分段切换导航栏 (参考 dsh-Go 设计，支持在「DeepSeek 原生助手」、「星语剧场」与「Phone Agent 手机辅助」间随时秒切) -->
+      <!-- 多模式分段切换导航栏 (参考 dsh-Go 设计，支持在「DeepSeek」、「星语剧场」与「手机辅助」间随时秒切) -->
       <div class="workspace-mode-bar dsh-segmented-bar" role="tablist" aria-label="切换对话工作台模式">
         <button type="button" class="ws-mode-btn active" id="ws-mode-deepseek" role="tab" aria-selected="true">
-          🐋 DeepSeek
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+          <span>DeepSeek</span>
         </button>
         <button type="button" class="ws-mode-btn" id="ws-mode-roleplay" role="tab" aria-selected="false">
-          🌸 星语剧场
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20.94c1.5 0 2.75 1.06 4 1.06 3 0 6-8 6-12.22A4.91 4.91 0 0 0 17 5c-2.22 0-4 1.44-5 2-1-.56-2.78-2-5-2a4.9 4.9 0 0 0-5 4.78C2 14 5 22 8 22c1.25 0 2.5-1.06 4-1.06Z"></path></svg>
+          <span>星语剧场</span>
         </button>
         <button type="button" class="ws-mode-btn" id="ws-mode-phone-agent" role="tab" aria-selected="false">
-          🤖 手机辅助
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect><line x1="12" y1="18" x2="12.01" y2="18"></line></svg>
+          <span>手机辅助</span>
         </button>
       </div>
 
@@ -447,7 +450,11 @@
       <header class="stage-topbar">
         <div class="topbar-left">
           <button type="button" class="soft-tool-btn sidebar-expand-btn hidden" id="expand-left-btn" title="展开左侧角色与对话栏" aria-label="展开左侧边栏">
-            <span aria-hidden="true">☰</span>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <line x1="4" y1="6" x2="20" y2="6"></line>
+              <line x1="4" y1="12" x2="16" y2="12"></line>
+              <line x1="4" y1="18" x2="20" y2="18"></line>
+            </svg>
             <span class="expand-btn-label">侧栏</span>
           </button>
 
@@ -527,13 +534,13 @@
             <span>养成</span>
           </button>
 
-          <!-- Android 原生随身版 (APK) 下载与 Phone Agent 控制入口 -->
+          <!-- Android 原生随身版 (APK) 下载与 Phone Agent 控制入口（主界面零版本号暴露） -->
           <button
             type="button"
             class="soft-tool-btn apk-topbar-pill-btn hidden"
             id="topbar-apk-download-btn"
-            title="下载 Android 原生随身版 (APK) · 含 Phone Agent 手机端 AI 辅助助理"
-            aria-label="下载安卓版"
+            title="安卓随身版与 Phone Agent 控制台"
+            aria-label="安卓随身版"
           >
             <span class="apk-pill-icon" aria-hidden="true">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -541,11 +548,10 @@
                 <line x1="12" y1="18" x2="12.01" y2="18"></line>
               </svg>
             </span>
-            <span class="apk-pill-label">安卓随身版</span>
-            <span class="apk-pill-tag">v1.8.2</span>
+            <span class="apk-pill-label">随身版</span>
           </button>
 
-          <!-- 移动端原生级快捷按钮（1:1 复刻正版 DeepSeek 手机 App 截图 2、3） -->
+          <!-- 移动端原生级快捷按钮（极简克制：DeepSeek/手机模式仅保留新对话+设置，绝不堆砌） -->
           <button type="button" class="icon-btn ds-topbar-mute-icon" id="ds-topbar-mute-btn" title="朗读声音切换" aria-label="朗读声音切换">
             <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
@@ -565,8 +571,6 @@
               <circle cx="12" cy="12" r="3"></circle>
               <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
             </svg>
-          </button>
-            <span class="apk-pill-tag">v1.7</span>
           </button>
 
           <!-- 次级功能收纳进清晰统一的更多菜单（零重复、按模式严格分离，且不包含模式切换） -->
@@ -663,31 +667,109 @@
       <div class="stage-body-split">
         <!-- 对话消息滚动流 -->
         <div class="messages-viewport" id="messages-viewport">
-          <!-- 手机端 AI 辅助助理专属状态条与快捷指令胶囊栏 (dsh-Go 纯净聊天风格) -->
+          <!-- 手机端 AI 辅助助理专属控制台与引擎切换栏 (1:1 对齐 dsh-Go 架构 + myui 规范) -->
           <div class="phone-agent-banner hidden" id="phone-agent-banner">
-            <div class="pa-banner-head">
-              <div class="pa-status-chips">
-                <span class="pa-chip pa-a11y-chip pending" id="pa-banner-a11y-chip">
-                  <span class="pa-dot"></span><span id="pa-banner-a11y-text">无障碍未授权</span>
-                </span>
-                <span class="pa-chip pa-float-chip disabled" id="pa-banner-float-chip">
-                  <span class="pa-dot"></span><span id="pa-banner-float-text">桌面悬浮球已停用</span>
-                </span>
+            <!-- 第一行：三档执行引擎分段切换 + 参数抽屉入口 -->
+            <div class="pa-engine-row">
+              <div class="pa-engine-segmented" role="tablist" aria-label="选择手机控制执行引擎">
+                <button type="button" class="pa-seg-btn active" id="pa-mode-api-direct" data-pa-mode="api_direct" role="tab" aria-selected="true">
+                  DeepSeek API
+                </button>
+                <button type="button" class="pa-seg-btn" id="pa-mode-api-cloud" data-pa-mode="api_cloud" role="tab" aria-selected="false">
+                  云端 API
+                </button>
+                <button type="button" class="pa-seg-btn" id="pa-mode-local" data-pa-mode="local" role="tab" aria-selected="false">
+                  本地免 API
+                </button>
               </div>
-              <div class="pa-banner-actions">
-                <button type="button" class="pa-banner-btn" id="pa-banner-open-a11y-btn">👉 开启无障碍</button>
-                <button type="button" class="pa-banner-btn outline" id="pa-banner-toggle-float-btn">启动打字悬浮球</button>
+              <button type="button" class="pa-cfg-toggle-btn" id="pa-cfg-toggle-btn" title="配置 API 密钥、模型与免确认策略" aria-expanded="false" aria-label="引擎设置">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <line x1="4" y1="21" x2="4" y2="14"></line><line x1="4" y1="10" x2="4" y2="3"></line>
+                  <line x1="12" y1="21" x2="12" y2="12"></line><line x1="12" y1="8" x2="12" y2="3"></line>
+                  <line x1="20" y1="21" x2="20" y2="16"></line><line x1="20" y1="12" x2="20" y2="3"></line>
+                  <line x1="1" y1="14" x2="7" y2="14"></line><line x1="9" y1="8" x2="15" y2="8"></line><line x1="17" y1="16" x2="23" y2="16"></line>
+                </svg>
+              </button>
+            </div>
+
+            <!-- 可折叠内联 API 与安全策略抽屉 -->
+            <div class="pa-config-drawer hidden" id="pa-inline-config-drawer">
+              <div class="pa-cfg-grid">
+                <div class="pa-cfg-field">
+                  <label for="pa-cfg-apikey">DeepSeek API Key（仅存本地沙盒）</label>
+                  <input type="password" id="pa-cfg-apikey" class="pa-cfg-input" placeholder="sk-... (直连模式必填，云端模式可留空)" autocomplete="off" />
+                </div>
+                <div class="pa-cfg-row-2">
+                  <div class="pa-cfg-field">
+                    <label for="pa-cfg-model">推理模型</label>
+                    <select id="pa-cfg-model" class="pa-cfg-input">
+                      <option value="deepseek-chat">deepseek-chat (极速规划)</option>
+                      <option value="deepseek-reasoner">deepseek-reasoner (深度推理)</option>
+                    </select>
+                  </div>
+                  <div class="pa-cfg-field">
+                    <label for="pa-cfg-baseurl">接口地址 (可选)</label>
+                    <input type="url" id="pa-cfg-baseurl" class="pa-cfg-input" placeholder="https://api.deepseek.com/v1/chat/completions" />
+                  </div>
+                </div>
+                <div class="pa-cfg-footer">
+                  <label class="pa-cfg-check">
+                    <input type="checkbox" id="pa-cfg-auto-approve" />
+                    <span>dsh-Go 免确认模式（AI 自动连续执行，无需逐步确认）</span>
+                  </label>
+                  <button type="button" class="pa-banner-btn" id="pa-cfg-save-btn">保存并应用</button>
+                </div>
               </div>
             </div>
+
+            <!-- 第二行：可点击原生权限状态胶囊 + 纯净线性 SVG 快捷动作胶囊 -->
+            <div class="pa-status-actions-row">
+              <div class="pa-status-chips">
+                <button type="button" class="pa-chip pa-a11y-chip pending" id="pa-banner-a11y-chip" title="点击前往开启或检查无障碍权限">
+                  <span class="pa-dot"></span><span id="pa-banner-a11y-text">无障碍未授权</span>
+                </button>
+                <button type="button" class="pa-chip pa-float-chip disabled" id="pa-banner-float-chip" title="点击启停桌面悬浮打字控制球">
+                  <span class="pa-dot"></span><span id="pa-banner-float-text">悬浮球</span>
+                </button>
+                <button type="button" class="pa-chip pa-mode-chip" id="pa-banner-confirm-chip" title="点击切换 dsh-Go 逐步确认 / 免确认自动执行">
+                  <span class="pa-dot"></span><span id="pa-banner-confirm-text">需确认</span>
+                </button>
+              </div>
+              <div class="pa-banner-actions">
+                <button type="button" class="pa-banner-btn" id="pa-banner-open-a11y-btn">无障碍</button>
+                <button type="button" class="pa-banner-btn outline" id="pa-banner-toggle-float-btn">悬浮球</button>
+              </div>
+            </div>
+
             <div class="pa-quick-chips-row">
-              <span class="pa-chips-label">快捷指令：</span>
-              <button type="button" class="pa-quick-chip" data-cmd="回桌面">🏠 回桌面</button>
-              <button type="button" class="pa-quick-chip" data-cmd="返回">◀ 返回</button>
-              <button type="button" class="pa-quick-chip" data-cmd="下滑">📜 向下滑动</button>
-              <button type="button" class="pa-quick-chip" data-cmd="上滑">🔼 向上滑动</button>
-              <button type="button" class="pa-quick-chip" data-cmd="打开微信">💬 打开微信</button>
-              <button type="button" class="pa-quick-chip" data-cmd="打开设置">⚙️ 系统设置</button>
-              <button type="button" class="pa-quick-chip" data-cmd="在屏幕上查找可点击按钮并尝试点按">🔍 智能识屏点按</button>
+              <button type="button" class="pa-quick-chip" data-cmd="回桌面">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+                <span>回桌面</span>
+              </button>
+              <button type="button" class="pa-quick-chip" data-cmd="返回">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"></polyline></svg>
+                <span>返回</span>
+              </button>
+              <button type="button" class="pa-quick-chip" data-cmd="下滑">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"></line><polyline points="19 12 12 19 5 12"></polyline></svg>
+                <span>下滑</span>
+              </button>
+              <button type="button" class="pa-quick-chip" data-cmd="上滑">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="19" x2="12" y2="5"></line><polyline points="5 12 12 5 19 12"></polyline></svg>
+                <span>上滑</span>
+              </button>
+              <button type="button" class="pa-quick-chip" data-cmd="打开微信">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                <span>微信</span>
+              </button>
+              <button type="button" class="pa-quick-chip" data-cmd="打开设置">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1.08-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1.08 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.26.604.852.997 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                <span>设置</span>
+              </button>
+              <button type="button" class="pa-quick-chip" id="pa-inspect-screen-btn" data-cmd="__inspect_screen__">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"></rect><circle cx="12" cy="12" r="3"></circle></svg>
+                <span>读取屏幕</span>
+              </button>
             </div>
           </div>
 
@@ -841,15 +923,36 @@
             </div>
           </div>
 
-          <!-- 快捷手机控制指令抽屉（纯净免 API 模式与快捷手势） -->
+          <!-- 快捷手机控制指令抽屉（纯净免 API 模式与快捷手势 · 零 Emoji SVG 版） -->
           <div class="phone-cmd-quick-drawer hidden" id="phone-cmd-quick-drawer" aria-label="快捷手机控制指令">
-            <button type="button" class="phone-cmd-pill" data-cmd="回桌面">🏠 回桌面</button>
-            <button type="button" class="phone-cmd-pill" data-cmd="返回">◀ 返回</button>
-            <button type="button" class="phone-cmd-pill" data-cmd="下滑">📜 向下滑动</button>
-            <button type="button" class="phone-cmd-pill" data-cmd="上滑">🔼 向上滑动</button>
-            <button type="button" class="phone-cmd-pill" data-cmd="打开微信">💬 微信</button>
-            <button type="button" class="phone-cmd-pill" data-cmd="打开设置">⚙️ 设置</button>
-            <button type="button" class="phone-cmd-pill" data-cmd="最近任务">📑 最近任务</button>
+            <button type="button" class="phone-cmd-pill" data-cmd="回桌面">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path></svg>
+              <span>回桌面</span>
+            </button>
+            <button type="button" class="phone-cmd-pill" data-cmd="返回">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"></polyline></svg>
+              <span>返回</span>
+            </button>
+            <button type="button" class="phone-cmd-pill" data-cmd="下滑">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"></line><polyline points="19 12 12 19 5 12"></polyline></svg>
+              <span>向下滑动</span>
+            </button>
+            <button type="button" class="phone-cmd-pill" data-cmd="上滑">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="19" x2="12" y2="5"></line><polyline points="5 12 12 5 19 12"></polyline></svg>
+              <span>向上滑动</span>
+            </button>
+            <button type="button" class="phone-cmd-pill" data-cmd="打开微信">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+              <span>打开微信</span>
+            </button>
+            <button type="button" class="phone-cmd-pill" data-cmd="打开设置">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"></path></svg>
+              <span>系统设置</span>
+            </button>
+            <button type="button" class="phone-cmd-pill" data-cmd="最近任务">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"></rect><rect x="14" y="3" width="7" height="7" rx="1"></rect><rect x="14" y="14" width="7" height="7" rx="1"></rect><rect x="3" y="14" width="7" height="7" rx="1"></rect></svg>
+              <span>最近任务</span>
+            </button>
           </div>
 
           <label for="chat-input" class="visually-hidden">输入对话消息内容</label>
@@ -1492,8 +1595,8 @@
         <input type="hidden" id="cp-editing-id" value="" />
         <div class="inline-row">
           <div class="field-group avatar-field">
-            <label for="cp-avatar">头像图标 <span class="req-star" aria-hidden="true">*</span></label>
-            <input id="cp-avatar" type="text" value="🌸" maxlength="4" required />
+            <label for="cp-avatar">头像徽记 <span class="req-star" aria-hidden="true">*</span></label>
+            <input id="cp-avatar" type="text" value="星" maxlength="4" required />
           </div>
           <div class="field-group flex-1">
             <label for="cp-name">角色姓名与身份 <span class="req-star" aria-hidden="true">*</span></label>
@@ -2036,7 +2139,7 @@
         <div class="inline-row">
           <div class="field-group avatar-field">
             <label for="up-avatar">我的头像 <span class="req-star" aria-hidden="true">*</span></label>
-            <input id="up-avatar" type="text" maxlength="4" value="🎀" required />
+            <input id="up-avatar" type="text" maxlength="4" value="旅" required />
           </div>
           <div class="field-group flex-1">
             <label for="up-nickname">我在故事里的名字（角色对你的称呼） <span class="req-star" aria-hidden="true">*</span></label>
@@ -2246,8 +2349,8 @@
                   </div>
                   <div class="inline-row">
                     <div class="field-group avatar-field">
-                      <label for="ws-sc-icon">图标</label>
-                      <input id="ws-sc-icon" type="text" maxlength="4" value="🌸" />
+                      <label for="ws-sc-icon">徽标</label>
+                      <input id="ws-sc-icon" type="text" maxlength="4" value="剧" />
                     </div>
                     <div class="field-group flex-1">
                       <label for="ws-sc-title">剧本标题</label>
@@ -2662,8 +2765,8 @@
         <div class="apk-hero-card" id="apk-web-download-card">
           <div class="apk-hero-top">
             <div class="apk-meta-pills">
-              <span class="apk-meta-pill">版本 v1.8.2 (支持免API控制与悬浮打字)</span>
-              <span class="apk-meta-pill">极速包体 8.42 MB</span>
+              <span class="apk-meta-pill">版本 v1.9.0 (支持 API 智能规划与本地直控)</span>
+              <span class="apk-meta-pill">极速包体 8.45 MB</span>
               <span class="apk-meta-pill">官方纯净 · 签名校验</span>
               <span class="apk-meta-pill" id="pa-device-info-pill">支持 Android 7.0 ~ 15+</span>
             </div>
@@ -2706,12 +2809,14 @@
           <div class="anv-head">
             <div class="anv-title-row">
               <span class="anv-badge">已安装原生随身版</span>
-              <span class="anv-version" id="anv-current-version">v1.7.0 (已就绪)</span>
+              <span class="anv-version" id="anv-current-version">v1.9.0 (已就绪)</span>
             </div>
-            <p class="anv-desc">您已在 Android 原生 APK 中运行。首页已为您切换为 dsh-Go 纯净聊天面板，可在聊天框直接下达手机控制指令或使用全局悬浮窗打字。</p>
+            <p class="anv-desc">您已在 Android 原生 APK 中运行。可在「手机辅助」工作台或桌面悬浮窗中使用 DeepSeek API 智能识屏操控或本地免 API 直控。</p>
           </div>
           <div class="anv-update-status-box" id="anv-update-status-box">
-            <div class="anv-status-icon" id="anv-status-icon">✓</div>
+            <div class="anv-status-icon" id="anv-status-icon">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"></polyline></svg>
+            </div>
             <div class="anv-status-info">
               <div class="anv-status-title" id="anv-status-title">当前已是最新版本</div>
               <div class="anv-status-sub" id="anv-status-sub">如云端发布新版本，此处将提示并支持一键拉取更新。</div>
@@ -2719,15 +2824,17 @@
           </div>
           <div class="anv-actions-row">
             <button type="button" class="apk-cta-download-btn" id="anv-check-update-btn">
-              🔍 立即检查云端最新版本
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
+              <span>立即检查云端最新版本</span>
             </button>
             <button type="button" class="apk-secondary-btn" id="anv-share-link-btn">
-              📤 复制下载链接分享给好友
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+              <span>复制下载链接分享给好友</span>
             </button>
           </div>
           <div class="anv-github-row" style="margin-top:12px;text-align:center;">
             <a href="https://github.com/ccch1mneyyy/dsh-Go" target="_blank" rel="noopener" class="anv-github-link" style="font-size:12px;color:var(--text-subtle);text-decoration:underline;">
-              🐙 参考开源项目 dsh-Go (GitHub 仓库与 Releases)
+              参考开源项目 dsh-Go (GitHub 仓库与 Releases)
             </a>
           </div>
         </div>
@@ -2737,8 +2844,8 @@
           <div class="phone-agent-box-title">
             <h4>手机端 AI 辅助助理 (Phone Agent) 控制台</h4>
             <div style="display:flex;gap:6px;">
-              <span class="phone-agent-status-tag pending" id="pa-a11y-status-tag">○ 检查无障碍...</span>
-              <span class="phone-agent-status-tag disabled" id="pa-float-status-tag">○ 悬浮球就绪</span>
+              <span class="phone-agent-status-tag pending" id="pa-a11y-status-tag">检查无障碍...</span>
+              <span class="phone-agent-status-tag disabled" id="pa-float-status-tag">悬浮球就绪</span>
             </div>
           </div>
           <p style="margin:0;font-size:12px;color:inherit;opacity:0.85;">
@@ -2761,28 +2868,28 @@
                 type="text"
                 class="phone-agent-task-input"
                 id="pa-task-input"
-                placeholder="例如：在屏幕上查找可点击按钮并尝试点按、返回手机桌面、向下滚动浏览..."
-                value="在屏幕上查找可点击的按钮并尝试点按"
+                placeholder="例如：打开微信看看未读消息、返回手机桌面、向下滚动浏览..."
+                value="回桌面"
               />
               <button type="button" class="phone-agent-action-btn primary" id="pa-run-task-btn">
-                ▶ 执行辅助
+                执行辅助
               </button>
             </div>
           </div>
 
-          <!-- 免 API 本地直控快捷按钮组（让用户无需配置 API Key 即可 100% 成功测试手机控制） -->
+          <!-- 免 API 本地直控快捷按钮组 -->
           <div style="margin-top:8px;">
             <div style="font-size:12px;font-weight:600;margin-bottom:6px;display:flex;align-items:center;gap:6px;">
-              <span>⚡ 免 API 本地控制测试（无需填 Key 直接验证控制）：</span>
+              <span>免 API 本地控制测试（无需填 Key 直接验证）：</span>
             </div>
             <div class="phone-agent-quick-test-row" style="display:flex;gap:6px;flex-wrap:wrap;">
-              <button type="button" class="pa-quick-test-btn" data-cmd="回桌面">🏠 回桌面</button>
-              <button type="button" class="pa-quick-test-btn" data-cmd="返回">◀ 返回</button>
-              <button type="button" class="pa-quick-test-btn" data-cmd="下滑">📜 向下滑动</button>
-              <button type="button" class="pa-quick-test-btn" data-cmd="上滑">🔼 向上滑动</button>
-              <button type="button" class="pa-quick-test-btn" data-cmd="最近任务">📑 最近任务</button>
-              <button type="button" class="pa-quick-test-btn" data-cmd="打开设置">⚙️ 打开设置</button>
-              <button type="button" class="pa-quick-test-btn" data-cmd="打开微信">💬 打开微信</button>
+              <button type="button" class="pa-quick-test-btn" data-cmd="回桌面">回桌面</button>
+              <button type="button" class="pa-quick-test-btn" data-cmd="返回">返回</button>
+              <button type="button" class="pa-quick-test-btn" data-cmd="下滑">向下滑动</button>
+              <button type="button" class="pa-quick-test-btn" data-cmd="上滑">向上滑动</button>
+              <button type="button" class="pa-quick-test-btn" data-cmd="最近任务">最近任务</button>
+              <button type="button" class="pa-quick-test-btn" data-cmd="打开设置">打开设置</button>
+              <button type="button" class="pa-quick-test-btn" data-cmd="打开微信">打开微信</button>
             </div>
           </div>
 
@@ -2950,10 +3057,23 @@
               <div class="mfs-icon-wrap">
                 <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect><line x1="12" y1="18" x2="12.01" y2="18"></line></svg>
               </div>
-              <span class="mfs-label">手机辅助与悬浮打字</span>
+              <span class="mfs-label">悬浮打字控制球</span>
             </div>
             <div class="mfs-item-right">
-              <span class="mfs-value" id="mfs-phoneagent-value">无障碍与悬浮球</span>
+              <span class="mfs-value" id="mfs-phoneagent-value">点击切换</span>
+              <span class="mfs-arrow">›</span>
+            </div>
+          </div>
+
+          <div class="mfs-item" id="mfs-item-phone-engine">
+            <div class="mfs-item-left">
+              <div class="mfs-icon-wrap">
+                <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+              </div>
+              <span class="mfs-label">手机辅助默认引擎</span>
+            </div>
+            <div class="mfs-item-right">
+              <span class="mfs-value" id="mfs-phone-engine-value">DeepSeek API</span>
               <span class="mfs-arrow">›</span>
             </div>
           </div>
@@ -2964,6 +3084,18 @@
       <div class="mfs-group">
         <div class="mfs-group-title">语音</div>
         <div class="mfs-card">
+          <div class="mfs-item" id="mfs-item-tts-toggle">
+            <div class="mfs-item-left">
+              <div class="mfs-icon-wrap">
+                <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path></svg>
+              </div>
+              <span class="mfs-label">自动语音播报</span>
+            </div>
+            <div class="mfs-item-right">
+              <span class="mfs-value" id="mfs-tts-toggle-value">已开启</span>
+              <span class="mfs-arrow">›</span>
+            </div>
+          </div>
           <div class="mfs-item" id="mfs-item-voice">
             <div class="mfs-item-left">
               <div class="mfs-icon-wrap">
@@ -2991,7 +3123,7 @@
               <span class="mfs-label">检查更新</span>
             </div>
             <div class="mfs-item-right">
-              <span class="mfs-value" id="mfs-version-value">2.8.0(297)</span>
+              <span class="mfs-value" id="mfs-version-value">v1.9.0</span>
               <span class="mfs-arrow">›</span>
             </div>
           </div>
@@ -3036,13 +3168,13 @@
   <!-- 全局 Top-Layer 顶层轻提示胶囊（popover="manual" 确保在任何模态 <dialog> 打开时依然 100% 可见，遵循 persistent-toast-notifications 规范） -->
   <div id="global-top-toast" popover="manual" class="global-top-toast" role="status" aria-live="polite"></div>
 
-  <script defer src="./standaloneAdapter.js?v=20261120_v183_mobile_auth_fix"></script>
-  <script defer src="./mobileAdapter.js?v=20261120_v183_mobile_auth_fix"></script>
-  <script defer src="./plugins/deepseekUsageMonitor.js?v=20261120_v183_mobile_auth_fix"></script>
-  <script defer src="./app.js?v=20261120_v183_mobile_auth_fix"></script>
-  <script defer src="./companion3d.js?v=20261120_v183_mobile_auth_fix"></script>
-  <script defer src="./companionVoice.js?v=20261120_v183_mobile_auth_fix"></script>
-  <script defer src="./phoneAgent.js?v=20261120_v183_mobile_auth_fix"></script>
+  <script defer src="./standaloneAdapter.js?v=20261120_v190_myui_dshgo"></script>
+  <script defer src="./mobileAdapter.js?v=20261120_v190_myui_dshgo"></script>
+  <script defer src="./plugins/deepseekUsageMonitor.js?v=20261120_v190_myui_dshgo"></script>
+  <script defer src="./app.js?v=20261120_v190_myui_dshgo"></script>
+  <script defer src="./companion3d.js?v=20261120_v190_myui_dshgo"></script>
+  <script defer src="./companionVoice.js?v=20261120_v190_myui_dshgo"></script>
+  <script defer src="./phoneAgent.js?v=20261120_v190_myui_dshgo"></script>
   <script>
     if ('serviceWorker' in navigator && window.location.protocol.startsWith('http')) {
       window.addEventListener('load', () => {

@@ -442,9 +442,12 @@ details.sidebar-fold:not([open]) .fold-caret {
 }
 
 .persona-story-banner {
-  background: light-dark(rgba(255, 255, 255, 0.65), rgba(34, 28, 56, 0.6)) !important;
-  border-color: light-dark(rgba(243, 220, 235, 0.65), rgba(51, 42, 82, 0.6)) !important;
-  box-shadow: none !important;
+  background: light-dark(rgba(255, 255, 255, 0.94), rgba(28, 22, 48, 0.92)) !important;
+  color: light-dark(#1e293b, #f1f5f9) !important;
+  border-color: light-dark(rgba(214, 51, 132, 0.16), rgba(244, 114, 182, 0.25)) !important;
+  box-shadow: light-dark(0 2px 12px rgba(15, 23, 42, 0.05), 0 4px 16px rgba(0, 0, 0, 0.3)) !important;
+  backdrop-filter: blur(16px) !important;
+  -webkit-backdrop-filter: blur(16px) !important;
   padding: 14px 18px !important;
 }
 
@@ -562,13 +565,16 @@ details.sidebar-fold:not([open]) .fold-caret {
 .app-shell.left-collapsed .composer-card,
 .app-shell.right-collapsed .composer-card,
 .app-shell[data-ui-mode="deepseek"].left-collapsed .composer-card,
-.app-shell[data-ui-mode="deepseek"].right-collapsed .composer-card {
+.app-shell[data-ui-mode="phone-agent"].left-collapsed .composer-card,
+.app-shell[data-ui-mode="deepseek"].right-collapsed .composer-card ,
+.app-shell[data-ui-mode="phone-agent"].right-collapsed .composer-card {
   width: 100% !important;
   max-width: min(1080px, 95%) !important;
 }
 
 .app-shell.left-collapsed.right-collapsed .composer-card,
-.app-shell[data-ui-mode="deepseek"].left-collapsed.right-collapsed .composer-card {
+.app-shell[data-ui-mode="deepseek"].left-collapsed.right-collapsed .composer-card ,
+.app-shell[data-ui-mode="phone-agent"].left-collapsed.right-collapsed .composer-card {
   width: 100% !important;
   max-width: min(1240px, 94%) !important;
 }
@@ -1882,7 +1888,8 @@ dialog::backdrop {
    ========================================================================== */
 .hidden,
 [data-ui-mode="roleplay"] .hidden,
-[data-ui-mode="deepseek"] .hidden {
+[data-ui-mode="deepseek"] .hidden ,
+[data-ui-mode="phone-agent"] .hidden {
   display: none !important;
 }
 
@@ -3215,7 +3222,8 @@ dialog::backdrop {
 }
 
 /* 14.7 消息底部官方线性图标栏 + < 1 / 2 > 多版本切换器 + 点赞点踩 */
-.app-shell[data-ui-mode="deepseek"] .msg-footer-bar {
+.app-shell[data-ui-mode="deepseek"] .msg-footer-bar ,
+.app-shell[data-ui-mode="phone-agent"] .msg-footer-bar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -3581,70 +3589,88 @@ dialog::backdrop {
   opacity: 0.88;
 }
 
-.app-shell[data-ui-mode="deepseek"] .thought-content {
+.app-shell[data-ui-mode="deepseek"] .thought-content ,
+.app-shell[data-ui-mode="phone-agent"] .thought-content {
   white-space: normal;
 }
 
-.app-shell[data-ui-mode="deepseek"] .thought-content .ds-thought-para {
+.app-shell[data-ui-mode="deepseek"] .thought-content .ds-thought-para ,
+.app-shell[data-ui-mode="phone-agent"] .thought-content .ds-thought-para {
   margin: 0 0 8px;
   font-size: 13.5px;
   line-height: 1.68;
   color: var(--text-muted);
 }
 
-.app-shell[data-ui-mode="deepseek"] .thought-content .ds-thought-para:last-child {
+.app-shell[data-ui-mode="deepseek"] .thought-content .ds-thought-para:last-child ,
+.app-shell[data-ui-mode="phone-agent"] .thought-content .ds-thought-para:last-child {
   margin-bottom: 0;
 }
 
-.app-shell[data-ui-mode="deepseek"] .assistant-prose {
+.app-shell[data-ui-mode="deepseek"] .assistant-prose ,
+.app-shell[data-ui-mode="phone-agent"] .assistant-prose {
   font-size: 15.5px;
   line-height: 1.76;
   letter-spacing: 0.005em;
   color: light-dark(#1f2329, #e5e7eb);
 }
 
-.app-shell[data-ui-mode="deepseek"] .assistant-prose p {
+.app-shell[data-ui-mode="deepseek"] .assistant-prose p ,
+.app-shell[data-ui-mode="phone-agent"] .assistant-prose p {
   margin: 0 0 12px;
 }
 
 .app-shell[data-ui-mode="deepseek"] .assistant-prose h1,
+.app-shell[data-ui-mode="phone-agent"] .assistant-prose h1,
 .app-shell[data-ui-mode="deepseek"] .assistant-prose h2,
+.app-shell[data-ui-mode="phone-agent"] .assistant-prose h2,
 .app-shell[data-ui-mode="deepseek"] .assistant-prose h3,
-.app-shell[data-ui-mode="deepseek"] .assistant-prose h4 {
+.app-shell[data-ui-mode="phone-agent"] .assistant-prose h3,
+.app-shell[data-ui-mode="deepseek"] .assistant-prose h4 ,
+.app-shell[data-ui-mode="phone-agent"] .assistant-prose h4 {
   font-weight: 600;
   color: light-dark(#111827, #f3f4f6);
   margin: 20px 0 10px;
 }
 
-.app-shell[data-ui-mode="deepseek"] .assistant-prose > :first-child {
+.app-shell[data-ui-mode="deepseek"] .assistant-prose > :first-child ,
+.app-shell[data-ui-mode="phone-agent"] .assistant-prose > :first-child {
   margin-top: 0;
 }
 
-.app-shell[data-ui-mode="deepseek"] .assistant-prose h2 {
+.app-shell[data-ui-mode="deepseek"] .assistant-prose h2 ,
+.app-shell[data-ui-mode="phone-agent"] .assistant-prose h2 {
   font-size: 18.5px;
 }
 
-.app-shell[data-ui-mode="deepseek"] .assistant-prose h3 {
+.app-shell[data-ui-mode="deepseek"] .assistant-prose h3 ,
+.app-shell[data-ui-mode="phone-agent"] .assistant-prose h3 {
   font-size: 16.5px;
 }
 
 .app-shell[data-ui-mode="deepseek"] .assistant-prose ul,
-.app-shell[data-ui-mode="deepseek"] .assistant-prose ol {
+.app-shell[data-ui-mode="phone-agent"] .assistant-prose ul,
+.app-shell[data-ui-mode="deepseek"] .assistant-prose ol ,
+.app-shell[data-ui-mode="phone-agent"] .assistant-prose ol {
   margin: 8px 0 14px;
   padding-left: 22px;
 }
 
-.app-shell[data-ui-mode="deepseek"] .assistant-prose li {
+.app-shell[data-ui-mode="deepseek"] .assistant-prose li ,
+.app-shell[data-ui-mode="phone-agent"] .assistant-prose li {
   margin-bottom: 6px;
   line-height: 1.74;
 }
 
 .app-shell[data-ui-mode="deepseek"] .assistant-prose li > ul,
-.app-shell[data-ui-mode="deepseek"] .assistant-prose li > ol {
+.app-shell[data-ui-mode="phone-agent"] .assistant-prose li > ul,
+.app-shell[data-ui-mode="deepseek"] .assistant-prose li > ol ,
+.app-shell[data-ui-mode="phone-agent"] .assistant-prose li > ol {
   margin: 6px 0 4px;
 }
 
-.app-shell[data-ui-mode="deepseek"] .assistant-prose :not(pre) > code {
+.app-shell[data-ui-mode="deepseek"] .assistant-prose :not(pre) > code ,
+.app-shell[data-ui-mode="phone-agent"] .assistant-prose :not(pre) > code {
   font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
   font-size: 0.875em;
   padding: 2px 6px;
@@ -3655,7 +3681,8 @@ dialog::backdrop {
   border: 1px solid light-dark(rgba(15, 23, 42, 0.06), rgba(255, 255, 255, 0.08));
 }
 
-.app-shell[data-ui-mode="deepseek"] .assistant-prose blockquote {
+.app-shell[data-ui-mode="deepseek"] .assistant-prose blockquote ,
+.app-shell[data-ui-mode="phone-agent"] .assistant-prose blockquote {
   margin: 12px 0;
   padding: 8px 14px;
   border-left: 3px solid light-dark(#cbd5e1, #475569);
@@ -3666,18 +3693,21 @@ dialog::backdrop {
   color: var(--text-secondary);
 }
 
-.app-shell[data-ui-mode="deepseek"] .msg-footer-bar {
+.app-shell[data-ui-mode="deepseek"] .msg-footer-bar ,
+.app-shell[data-ui-mode="phone-agent"] .msg-footer-bar {
   border-top: none !important;
   padding-top: 2px !important;
 }
 
-.app-shell[data-ui-mode="deepseek"] .ds-cache-hit-tag {
+.app-shell[data-ui-mode="deepseek"] .ds-cache-hit-tag ,
+.app-shell[data-ui-mode="phone-agent"] .ds-cache-hit-tag {
   font-size: 11.5px;
   color: var(--text-muted);
   opacity: 0.72;
 }
 
-.app-shell[data-ui-mode="deepseek"] .followup-arrow {
+.app-shell[data-ui-mode="deepseek"] .followup-arrow ,
+.app-shell[data-ui-mode="phone-agent"] .followup-arrow {
   color: #4d6bfe;
   font-weight: 600;
 }
@@ -4227,11 +4257,13 @@ dialog::backdrop {
     grid-template-columns: 0px minmax(0, 1fr) 0px !important;
   }
 
-  .app-shell[data-ui-mode="deepseek"].artifacts-wide:not(.right-collapsed):not(.left-collapsed) {
+  .app-shell[data-ui-mode="deepseek"].artifacts-wide:not(.right-collapsed):not(.left-collapsed) ,
+  .app-shell[data-ui-mode="phone-agent"].artifacts-wide:not(.right-collapsed):not(.left-collapsed) {
     grid-template-columns: 248px minmax(0, 1fr) minmax(380px, 46vw) !important;
   }
 
-  .app-shell[data-ui-mode="deepseek"].artifacts-wide.left-collapsed:not(.right-collapsed) {
+  .app-shell[data-ui-mode="deepseek"].artifacts-wide.left-collapsed:not(.right-collapsed) ,
+  .app-shell[data-ui-mode="phone-agent"].artifacts-wide.left-collapsed:not(.right-collapsed) {
     grid-template-columns: 0px minmax(0, 1fr) minmax(380px, 48vw) !important;
   }
 
@@ -5159,9 +5191,13 @@ dialog::backdrop {
 }
 
 .app-shell[data-ui-mode="deepseek"] .rp-only-block,
+.app-shell[data-ui-mode="phone-agent"] .rp-only-block,
 .app-shell[data-ui-mode="deepseek"] .rp-only-flex,
+.app-shell[data-ui-mode="phone-agent"] .rp-only-flex,
 .app-shell[data-ui-mode="deepseek"] .rp-only-inline,
-.app-shell[data-ui-mode="deepseek"] #companion-stage {
+.app-shell[data-ui-mode="phone-agent"] .rp-only-inline,
+.app-shell[data-ui-mode="deepseek"] #companion-stage ,
+.app-shell[data-ui-mode="phone-agent"] #companion-stage {
   display: none !important;
 }
 

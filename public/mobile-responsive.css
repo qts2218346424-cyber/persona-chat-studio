@@ -104,27 +104,37 @@ svg {
 }
 
 html[data-ui-mode="deepseek"] .ambient-aurora,
-body[data-ui-mode="deepseek"] .ambient-aurora {
+html[data-ui-mode="phone-agent"] .ambient-aurora,
+body[data-ui-mode="deepseek"] .ambient-aurora ,
+body[data-ui-mode="phone-agent"] .ambient-aurora {
   display: none !important;
 }
 
 html[data-ui-mode="deepseek"] .auth-rp-gem,
-body[data-ui-mode="deepseek"] .auth-rp-gem {
+html[data-ui-mode="phone-agent"] .auth-rp-gem,
+body[data-ui-mode="deepseek"] .auth-rp-gem ,
+body[data-ui-mode="phone-agent"] .auth-rp-gem {
   display: none !important;
 }
 
 html[data-ui-mode="deepseek"] .auth-ds-whale,
-body[data-ui-mode="deepseek"] .auth-ds-whale {
+html[data-ui-mode="phone-agent"] .auth-ds-whale,
+body[data-ui-mode="deepseek"] .auth-ds-whale ,
+body[data-ui-mode="phone-agent"] .auth-ds-whale {
   display: inline-flex !important;
 }
 
 html[data-ui-mode="deepseek"] .auth-gate,
-body[data-ui-mode="deepseek"] .auth-gate {
+html[data-ui-mode="phone-agent"] .auth-gate,
+body[data-ui-mode="deepseek"] .auth-gate ,
+body[data-ui-mode="phone-agent"] .auth-gate {
   background: var(--bg-app);
 }
 
 html[data-ui-mode="deepseek"] .auth-card,
-body[data-ui-mode="deepseek"] .auth-card {
+html[data-ui-mode="phone-agent"] .auth-card,
+body[data-ui-mode="deepseek"] .auth-card ,
+body[data-ui-mode="phone-agent"] .auth-card {
   background: var(--bg-composer) !important;
   border: 1px solid var(--border-strong) !important;
   box-shadow: var(--shadow-soft) !important;
@@ -132,7 +142,9 @@ body[data-ui-mode="deepseek"] .auth-card {
 }
 
 html[data-ui-mode="deepseek"] .auth-hero h1,
-body[data-ui-mode="deepseek"] .auth-hero h1 {
+html[data-ui-mode="phone-agent"] .auth-hero h1,
+body[data-ui-mode="deepseek"] .auth-hero h1 ,
+body[data-ui-mode="phone-agent"] .auth-hero h1 {
   background: none !important;
   -webkit-background-clip: border-box !important;
   background-clip: border-box !important;
@@ -144,33 +156,43 @@ body[data-ui-mode="deepseek"] .auth-hero h1 {
 }
 
 html[data-ui-mode="deepseek"] .auth-tab.active,
-body[data-ui-mode="deepseek"] .auth-tab.active {
+html[data-ui-mode="phone-agent"] .auth-tab.active,
+body[data-ui-mode="deepseek"] .auth-tab.active ,
+body[data-ui-mode="phone-agent"] .auth-tab.active {
   background: var(--bg-app) !important;
   color: var(--text-action) !important;
   box-shadow: 0 2px 8px rgba(77, 107, 254, 0.12) !important;
 }
 
 html[data-ui-mode="deepseek"] .auth-submit-btn,
-body[data-ui-mode="deepseek"] .auth-submit-btn {
+html[data-ui-mode="phone-agent"] .auth-submit-btn,
+body[data-ui-mode="deepseek"] .auth-submit-btn ,
+body[data-ui-mode="phone-agent"] .auth-submit-btn {
   background: #4d6bfe !important;
   color: #ffffff !important;
   box-shadow: 0 6px 18px rgba(77, 107, 254, 0.24) !important;
 }
 
 html[data-ui-mode="deepseek"] .auth-submit-btn:hover,
-body[data-ui-mode="deepseek"] .auth-submit-btn:hover {
+html[data-ui-mode="phone-agent"] .auth-submit-btn:hover,
+body[data-ui-mode="deepseek"] .auth-submit-btn:hover ,
+body[data-ui-mode="phone-agent"] .auth-submit-btn:hover {
   background: #3b58e8 !important;
 }
 
 html[data-ui-mode="deepseek"] .demo-login-btn,
-body[data-ui-mode="deepseek"] .demo-login-btn {
+html[data-ui-mode="phone-agent"] .demo-login-btn,
+body[data-ui-mode="deepseek"] .demo-login-btn ,
+body[data-ui-mode="phone-agent"] .demo-login-btn {
   border: 1.5px dashed var(--ds-blue-border) !important;
   background: var(--ds-blue-soft) !important;
   color: var(--text-action) !important;
 }
 
 html[data-ui-mode="deepseek"] .auth-gate .info-callout,
-body[data-ui-mode="deepseek"] .auth-gate .info-callout {
+html[data-ui-mode="phone-agent"] .auth-gate .info-callout,
+body[data-ui-mode="deepseek"] .auth-gate .info-callout ,
+body[data-ui-mode="phone-agent"] .auth-gate .info-callout {
   background: var(--ds-blue-soft) !important;
   border: 1px solid var(--ds-blue-border) !important;
   color: var(--text-primary) !important;
@@ -181,14 +203,16 @@ body[data-ui-mode="deepseek"] .auth-gate .info-callout {
   display: none !important;
 }
 
-.app-shell[data-ui-mode="deepseek"] .topbar-right .ds-switch-rp-pill {
+.app-shell[data-ui-mode="deepseek"] .topbar-right .ds-switch-rp-pill ,
+.app-shell[data-ui-mode="phone-agent"] .topbar-right .ds-switch-rp-pill {
   background: light-dark(#f5f3ff, rgba(139, 92, 246, 0.18)) !important;
   border: 1px solid light-dark(#ddd6fe, rgba(167, 139, 250, 0.36)) !important;
   color: light-dark(#6d28d9, #c4b5fd) !important;
   font-weight: 600 !important;
 }
 
-.app-shell[data-ui-mode="deepseek"] .topbar-right .ds-switch-rp-pill:hover {
+.app-shell[data-ui-mode="deepseek"] .topbar-right .ds-switch-rp-pill:hover ,
+.app-shell[data-ui-mode="phone-agent"] .topbar-right .ds-switch-rp-pill:hover {
   background: light-dark(#ede9fe, rgba(139, 92, 246, 0.28)) !important;
   border-color: light-dark(#c4b5fd, rgba(167, 139, 250, 0.5)) !important;
 }
@@ -238,14 +262,16 @@ body[data-ui-mode="deepseek"] .auth-gate .info-callout {
 
 /* 触屏无悬停设备显露关键控件（避免 DeepSeek 空状态顶栏按钮与会话删除键隐身） */
 @media (hover: none) {
-  .app-shell[data-ui-mode="deepseek"] .chat-stage.ds-empty-mode .topbar-right {
+  .app-shell[data-ui-mode="deepseek"] .chat-stage.ds-empty-mode .topbar-right ,
+  .app-shell[data-ui-mode="phone-agent"] .chat-stage.ds-empty-mode .topbar-right {
     opacity: 1 !important;
     visibility: visible !important;
     pointer-events: auto !important;
   }
 
   .session-item .session-del-btn,
-  .app-shell[data-ui-mode="deepseek"] .session-item .session-del-btn {
+  .app-shell[data-ui-mode="deepseek"] .session-item .session-del-btn ,
+  .app-shell[data-ui-mode="phone-agent"] .session-item .session-del-btn {
     opacity: 0.65 !important;
   }
 
@@ -260,6 +286,7 @@ body[data-ui-mode="deepseek"] .auth-gate .info-callout {
   textarea,
   select,
   .app-shell[data-ui-mode="deepseek"] #chat-input,
+  .app-shell[data-ui-mode="phone-agent"] #chat-input,
   #chat-input {
     font-size: max(16px, 1rem) !important;
   }
@@ -379,6 +406,7 @@ body[data-ui-mode="deepseek"] .auth-gate .info-callout {
   .app-shell.hidden,
   div#app-shell.hidden,
   .app-shell[data-ui-mode="deepseek"].hidden,
+  .app-shell[data-ui-mode="phone-agent"].hidden,
   .app-shell[data-ui-mode="roleplay"].hidden,
   body:has(#auth-gate:not(.hidden)) #app-shell,
   body:has(#auth-gate:not(.hidden)) .app-shell {
@@ -416,11 +444,17 @@ body[data-ui-mode="deepseek"] .auth-gate .info-callout {
   .app-shell.right-collapsed:not(.hidden),
   .app-shell.left-collapsed.right-collapsed:not(.hidden),
   .app-shell[data-ui-mode="deepseek"]:not(.hidden),
+  .app-shell[data-ui-mode="phone-agent"]:not(.hidden),
   .app-shell[data-ui-mode="deepseek"].artifacts-wide:not(.hidden),
+  .app-shell[data-ui-mode="phone-agent"].artifacts-wide:not(.hidden),
   .app-shell[data-ui-mode="deepseek"].artifacts-wide:not(.right-collapsed):not(.hidden),
+  .app-shell[data-ui-mode="phone-agent"].artifacts-wide:not(.right-collapsed):not(.hidden),
   .app-shell[data-ui-mode="deepseek"].left-collapsed:not(.hidden),
+  .app-shell[data-ui-mode="phone-agent"].left-collapsed:not(.hidden),
   .app-shell[data-ui-mode="deepseek"].right-collapsed:not(.hidden),
-  .app-shell[data-ui-mode="deepseek"].left-collapsed.right-collapsed:not(.hidden) {
+  .app-shell[data-ui-mode="phone-agent"].right-collapsed:not(.hidden),
+  .app-shell[data-ui-mode="deepseek"].left-collapsed.right-collapsed:not(.hidden) ,
+  .app-shell[data-ui-mode="phone-agent"].left-collapsed.right-collapsed:not(.hidden) {
     display: grid !important;
     grid-template-columns: minmax(0, 1fr) !important;
     width: 100% !important;
@@ -444,7 +478,9 @@ body[data-ui-mode="deepseek"] .auth-gate .info-callout {
   /* 左侧导航抽屉：固定覆层 + 60fps 硬件加速滑入滑出 + 安全区内边距 */
   .sidebar,
   .app-shell[data-ui-mode="deepseek"] .sidebar,
-  .app-shell[data-ui-mode="deepseek"]:not(.left-collapsed) .sidebar {
+  .app-shell[data-ui-mode="phone-agent"] .sidebar,
+  .app-shell[data-ui-mode="deepseek"]:not(.left-collapsed) .sidebar ,
+  .app-shell[data-ui-mode="phone-agent"]:not(.left-collapsed) .sidebar {
     position: fixed !important;
     top: 0 !important;
     bottom: 0 !important;
@@ -458,21 +494,24 @@ body[data-ui-mode="deepseek"] .auth-gate .info-callout {
   }
 
   .app-shell.left-collapsed .sidebar,
-  .app-shell[data-ui-mode="deepseek"].left-collapsed .sidebar {
+  .app-shell[data-ui-mode="deepseek"].left-collapsed .sidebar ,
+  .app-shell[data-ui-mode="phone-agent"].left-collapsed .sidebar {
     transform: translate3d(-105%, 0, 0) !important;
     pointer-events: none !important;
     box-shadow: none !important;
   }
 
   .app-shell:not(.left-collapsed) .sidebar,
-  .app-shell[data-ui-mode="deepseek"]:not(.left-collapsed) .sidebar {
+  .app-shell[data-ui-mode="deepseek"]:not(.left-collapsed) .sidebar ,
+  .app-shell[data-ui-mode="phone-agent"]:not(.left-collapsed) .sidebar {
     transform: translate3d(0, 0, 0) !important;
     pointer-events: auto !important;
     box-shadow: 16px 0 42px rgba(15, 23, 42, 0.22) !important;
   }
 
   .sidebar-header,
-  .app-shell[data-ui-mode="deepseek"] .sidebar-header {
+  .app-shell[data-ui-mode="deepseek"] .sidebar-header ,
+  .app-shell[data-ui-mode="phone-agent"] .sidebar-header {
     padding-top: max(14px, env(safe-area-inset-top, 0px)) !important;
   }
 
@@ -509,7 +548,8 @@ body[data-ui-mode="deepseek"] .auth-gate .info-callout {
   }
 
   .app-shell.right-collapsed .inspector-panel,
-  .app-shell[data-ui-mode="deepseek"].right-collapsed .inspector-panel {
+  .app-shell[data-ui-mode="deepseek"].right-collapsed .inspector-panel ,
+  .app-shell[data-ui-mode="phone-agent"].right-collapsed .inspector-panel {
     transform: translate3d(105%, 0, 0) !important;
     pointer-events: none !important;
     box-shadow: none !important;
@@ -531,17 +571,20 @@ body[data-ui-mode="deepseek"] .auth-gate .info-callout {
   }
 
   /* DeepSeek 空状态顶栏在窄屏下保持完全可见，左侧展示轻量品牌字标 */
-  .app-shell[data-ui-mode="deepseek"] .chat-stage.ds-empty-mode .topbar-right {
+  .app-shell[data-ui-mode="deepseek"] .chat-stage.ds-empty-mode .topbar-right ,
+  .app-shell[data-ui-mode="phone-agent"] .chat-stage.ds-empty-mode .topbar-right {
     opacity: 1 !important;
     visibility: visible !important;
     pointer-events: auto !important;
   }
 
-  .app-shell[data-ui-mode="deepseek"] .chat-stage.ds-empty-mode .ds-topbar-meta {
+  .app-shell[data-ui-mode="deepseek"] .chat-stage.ds-empty-mode .ds-topbar-meta ,
+  .app-shell[data-ui-mode="phone-agent"] .chat-stage.ds-empty-mode .ds-topbar-meta {
     display: none !important;
   }
 
-  .app-shell[data-ui-mode="deepseek"] .chat-stage.ds-empty-mode .ds-mobile-empty-brand {
+  .app-shell[data-ui-mode="deepseek"] .chat-stage.ds-empty-mode .ds-mobile-empty-brand ,
+  .app-shell[data-ui-mode="phone-agent"] .chat-stage.ds-empty-mode .ds-mobile-empty-brand {
     display: inline-block !important;
     font-size: 18px;
     font-weight: 800;
@@ -585,7 +628,8 @@ body[data-ui-mode="deepseek"] .auth-gate .info-callout {
   .persona-chip-tagline,
   #topbar-script-switch-btn,
   #topbar-voice-call-btn,
-  .app-shell[data-ui-mode="deepseek"] #toggle-right-btn {
+  .app-shell[data-ui-mode="deepseek"] #toggle-right-btn ,
+  .app-shell[data-ui-mode="phone-agent"] #toggle-right-btn {
     display: none !important;
   }
 
@@ -625,7 +669,8 @@ body[data-ui-mode="deepseek"] .auth-gate .info-callout {
 @media (max-width: 640px) {
   /* 5.1 顶栏单行清爽排布，右侧留足安全内边距（彻底解决 390px 下 ⋯ 贴边仅 3px 问题） */
   .stage-topbar,
-  .app-shell[data-ui-mode="deepseek"] .stage-topbar {
+  .app-shell[data-ui-mode="deepseek"] .stage-topbar ,
+  .app-shell[data-ui-mode="phone-agent"] .stage-topbar {
     padding:
       max(8px, env(safe-area-inset-top, 0px))
       max(12px, env(safe-area-inset-right, 12px))
@@ -674,6 +719,7 @@ body[data-ui-mode="deepseek"] .auth-gate .info-callout {
   #topbar-voice-call-btn,
   #topbar-switch-ds-btn,
   .app-shell[data-ui-mode="deepseek"] #toggle-right-btn,
+  .app-shell[data-ui-mode="phone-agent"] #toggle-right-btn,
   .app-shell[data-ui-mode="roleplay"] #open-theater-btn,
   .app-shell[data-ui-mode="roleplay"] #rp-toggle-prefix-btn,
   .app-shell[data-ui-mode="roleplay"] #attach-file-btn {
@@ -759,12 +805,14 @@ body[data-ui-mode="deepseek"] .auth-gate .info-callout {
 
   /* 5.3 聊天视窗与消息气泡释放黄金阅读宽度 */
   .messages-viewport,
-  .app-shell[data-ui-mode="deepseek"] .messages-viewport {
+  .app-shell[data-ui-mode="deepseek"] .messages-viewport ,
+  .app-shell[data-ui-mode="phone-agent"] .messages-viewport {
     padding: 14px 12px 10px !important;
   }
 
   .messages-container,
-  .app-shell[data-ui-mode="deepseek"] .messages-container {
+  .app-shell[data-ui-mode="deepseek"] .messages-container ,
+  .app-shell[data-ui-mode="phone-agent"] .messages-container {
     gap: 18px !important;
     padding-bottom: 12px !important;
   }
@@ -780,7 +828,8 @@ body[data-ui-mode="deepseek"] .auth-gate .info-callout {
   }
 
   .msg-avatar,
-  .app-shell[data-ui-mode="deepseek"] .msg-row.assistant .msg-avatar.ds-svg-avatar {
+  .app-shell[data-ui-mode="deepseek"] .msg-row.assistant .msg-avatar.ds-svg-avatar ,
+  .app-shell[data-ui-mode="phone-agent"] .msg-row.assistant .msg-avatar.ds-svg-avatar {
     width: 28px !important;
     height: 28px !important;
     font-size: 14px !important;
@@ -788,7 +837,8 @@ body[data-ui-mode="deepseek"] .auth-gate .info-callout {
   }
 
   .msg-row.user .msg-body,
-  .app-shell[data-ui-mode="deepseek"] .msg-row.user .msg-body {
+  .app-shell[data-ui-mode="deepseek"] .msg-row.user .msg-body ,
+  .app-shell[data-ui-mode="phone-agent"] .msg-row.user .msg-body {
     max-width: 88dvw !important;
     padding: 10px 14px !important;
     font-size: 15px !important;
@@ -799,7 +849,8 @@ body[data-ui-mode="deepseek"] .auth-gate .info-callout {
     border-radius: 6px 16px 16px 16px !important;
   }
 
-  .app-shell[data-ui-mode="deepseek"] .msg-row.assistant .msg-body {
+  .app-shell[data-ui-mode="deepseek"] .msg-row.assistant .msg-body ,
+  .app-shell[data-ui-mode="phone-agent"] .msg-row.assistant .msg-body {
     padding: 1px 2px 4px !important;
   }
 
@@ -833,7 +884,8 @@ body[data-ui-mode="deepseek"] .auth-gate .info-callout {
   }
 
   /* 5.4 DeepSeek 空状态居中欢迎区与底部输入舱安全区适配 */
-  .app-shell[data-ui-mode="deepseek"] .chat-stage.ds-empty-mode .composer-dock {
+  .app-shell[data-ui-mode="deepseek"] .chat-stage.ds-empty-mode .composer-dock ,
+  .app-shell[data-ui-mode="phone-agent"] .chat-stage.ds-empty-mode .composer-dock {
     padding:
       0
       12px
@@ -858,7 +910,8 @@ body[data-ui-mode="deepseek"] .auth-gate .info-callout {
   }
 
   .composer-dock,
-  .app-shell[data-ui-mode="deepseek"] .composer-dock {
+  .app-shell[data-ui-mode="deepseek"] .composer-dock ,
+  .app-shell[data-ui-mode="phone-agent"] .composer-dock {
     padding:
       6px
       10px
@@ -866,14 +919,16 @@ body[data-ui-mode="deepseek"] .auth-gate .info-callout {
   }
 
   .composer-card,
-  .app-shell[data-ui-mode="deepseek"] .composer-card {
+  .app-shell[data-ui-mode="deepseek"] .composer-card ,
+  .app-shell[data-ui-mode="phone-agent"] .composer-card {
     width: 100% !important;
     max-width: 100% !important;
     border-radius: 20px !important;
     padding: 11px 12px 9px !important;
   }
 
-  .app-shell[data-ui-mode="deepseek"] #chat-input {
+  .app-shell[data-ui-mode="deepseek"] #chat-input ,
+  .app-shell[data-ui-mode="phone-agent"] #chat-input {
     min-block-size: 2.4lh !important;
     padding: 0 2px 8px !important;
   }
@@ -898,7 +953,8 @@ body[data-ui-mode="deepseek"] .auth-gate .info-callout {
     display: none !important;
   }
 
-  .app-shell[data-ui-mode="deepseek"] .ds-pill-toggle {
+  .app-shell[data-ui-mode="deepseek"] .ds-pill-toggle ,
+  .app-shell[data-ui-mode="phone-agent"] .ds-pill-toggle {
     flex: 0 0 auto !important;
     height: 32px !important;
     padding: 0 10px !important;
@@ -907,7 +963,8 @@ body[data-ui-mode="deepseek"] .auth-gate .info-callout {
     white-space: nowrap;
   }
 
-  .app-shell[data-ui-mode="deepseek"] #attach-file-btn {
+  .app-shell[data-ui-mode="deepseek"] #attach-file-btn ,
+  .app-shell[data-ui-mode="phone-agent"] #attach-file-btn {
     display: inline-flex !important;
     align-items: center !important;
     justify-content: center !important;
@@ -1114,12 +1171,14 @@ body[data-ui-mode="deepseek"] .auth-gate .info-callout {
 
 /* 超小屏手机（如 320px ~ 360px 宽）输入栏胶囊极限防溢出加固 */
 @media (max-width: 365px) {
-  .app-shell[data-ui-mode="deepseek"] .ds-pill-toggle {
+  .app-shell[data-ui-mode="deepseek"] .ds-pill-toggle ,
+  .app-shell[data-ui-mode="phone-agent"] .ds-pill-toggle {
     padding: 0 8px !important;
     font-size: 11.5px !important;
   }
 
-  .app-shell[data-ui-mode="deepseek"] .ds-pill-toggle svg {
+  .app-shell[data-ui-mode="deepseek"] .ds-pill-toggle svg ,
+  .app-shell[data-ui-mode="phone-agent"] .ds-pill-toggle svg {
     width: 13px;
     height: 13px;
   }
@@ -1131,7 +1190,8 @@ body[data-ui-mode="deepseek"] .auth-gate .info-callout {
 
 /* 手机端弹出软键盘时的矮视口（横屏或键盘弹起）紧凑化保护 */
 @media (max-width: 860px) and (max-height: 540px) {
-  .app-shell[data-ui-mode="deepseek"] .chat-stage.ds-empty-mode .composer-dock {
+  .app-shell[data-ui-mode="deepseek"] .chat-stage.ds-empty-mode .composer-dock ,
+  .app-shell[data-ui-mode="phone-agent"] .chat-stage.ds-empty-mode .composer-dock {
     justify-content: flex-end !important;
     padding-bottom: max(8px, env(safe-area-inset-bottom, 0px)) !important;
   }
@@ -1155,7 +1215,8 @@ body[data-ui-mode="deepseek"] .auth-gate .info-callout {
    ========================================================================== */
 
 .stage-topbar .topbar-left,
-.app-shell[data-ui-mode="deepseek"] .stage-topbar .topbar-left {
+.app-shell[data-ui-mode="deepseek"] .stage-topbar .topbar-left ,
+.app-shell[data-ui-mode="phone-agent"] .stage-topbar .topbar-left {
   min-width: 0 !important;
   overflow: hidden !important;
 }
@@ -1211,6 +1272,7 @@ body[data-ui-mode="deepseek"] .auth-gate .info-callout {
 
 @media (max-width: 860px) {
   .app-shell[data-ui-mode="deepseek"] .composer-card,
+  .app-shell[data-ui-mode="phone-agent"] .composer-card,
   .composer-card {
     width: min(100%, 750px) !important;
     max-width: min(100%, 750px) !important;
@@ -1247,12 +1309,19 @@ body[data-ui-mode="deepseek"] .auth-gate .info-callout {
 
 /* 6.1 模式隔离铁律：DeepSeek 模式下彻底杜绝角色扮演浮层、立绘和养成面板的任何遮挡 */
 .app-shell[data-ui-mode="deepseek"] #companion-stage,
+.app-shell[data-ui-mode="phone-agent"] #companion-stage,
 .app-shell[data-ui-mode="deepseek"] .companion-stage,
+.app-shell[data-ui-mode="phone-agent"] .companion-stage,
 .app-shell[data-ui-mode="deepseek"] #topbar-companion-btn,
+.app-shell[data-ui-mode="phone-agent"] #topbar-companion-btn,
 .app-shell[data-ui-mode="deepseek"] #toggle-right-btn,
+.app-shell[data-ui-mode="phone-agent"] #toggle-right-btn,
 .app-shell[data-ui-mode="deepseek"] #topbar-persona-chip,
+.app-shell[data-ui-mode="phone-agent"] #topbar-persona-chip,
 .app-shell[data-ui-mode="deepseek"] .active-script-wrap,
-.app-shell[data-ui-mode="deepseek"] #tour-anchor-vip {
+.app-shell[data-ui-mode="phone-agent"] .active-script-wrap,
+.app-shell[data-ui-mode="deepseek"] #tour-anchor-vip ,
+.app-shell[data-ui-mode="phone-agent"] #tour-anchor-vip {
   display: none !important;
   visibility: hidden !important;
   pointer-events: none !important;

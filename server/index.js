@@ -88,12 +88,15 @@ const {
   warmupTtsEngine
 } = require('./ttsService');
 const {
+  resolveDeepSeekEndpoints,
   getEffectiveApiCredentials,
+  resolveSuiteOrBridgeCredentials,
   fetchDeepSeekBalance,
   fetchDeepSeekModels,
   streamDeepSeekNativeSuite,
   runDeepSeekFimCompletion
 } = require('./deepseekApiSuite');
+const { loadBridgeRuntime } = require('./antigravityBridge');
 const {
   buildProactiveTriggerInstruction,
   generateDemoProactiveTurn,
@@ -417,8 +420,8 @@ async function handleApi(req, res, pathname, parsedUrl) {
 
     return sendJson(res, 200, {
       ok: true,
-      latestVersion: '1.8.3',
-      versionCode: 113,
+      latestVersion: '1.9.0',
+      versionCode: 120,
       minSupportedVersion: '1.0.0',
       releaseDate: '2026-11-20',
       fileSize: (apkSizeBytes / (1024 * 1024)).toFixed(2) + ' MB',
@@ -427,12 +430,11 @@ async function handleApi(req, res, pathname, parsedUrl) {
       fallbackDownloadUrl: 'https://star.claudexxb.online/api/download/apk',
       githubReleasesUrl: 'https://github.com/ccch1mneyyy/dsh-Go/releases',
       changelog: [
-        '【重磅修复】彻底根除手机端未登录时画面与工作台穿透重叠、无法关闭的严重显示故障',
-        '全新加固全屏固定登录门扉，未登录状态下 100% 物理隔离底层聊天流、输入舱与侧栏',
-        '1:1 复刻 DeepSeek 官方正版手机 App 全屏设置页面（分组圆角卡片、外观与字体个性化管理）',
-        '1:1 沉浸式 DeepSeek 正版全屏聊天面板（淡蓝气泡、折叠思考栏、语音朗读与极简药丸输入舱）',
-        '手机端 AI 辅助助理增强：支持悬浮窗实时打字命令与完全免 API 本地手势操控',
-        '主聊天流直接支持手机控制口令（输入“回桌面”、“打开微信”、“下滑”等原生极速执行）'
+        '联合 myui 设计规范与 Figma 视觉体系全面重塑移动端 UI（52px 极简三段式单行顶栏，全面清零冗余图标与版本号显示）',
+        '彻底修复剧本沉浸模式下透明底板导致的对比度下降，阅读区域升级高对比磨砂承托卡片',
+        '全量清除界面与 Android 悬浮窗 Emoji，统一升级为清晰线性 SVG 图标与圆点状态指示灯',
+        '对齐 dsh-Go 架构重塑手机辅助模式：支持 DeepSeek API 个人直连 / 云端托管 / 本地免 API 三档切换与内联配置',
+        '打通服务端 /api/phone-agent/plan 多步视觉节点 ReAct 规划与 Android 11+ 全量已安装应用拉起授权，支持 dsh-Go 操作安全确认卡'
       ]
     });
   }
@@ -545,6 +547,260 @@ async function handleApi(req, res, pathname, parsedUrl) {
   }
 
   const userId = currentUser.id;
+
+  // ========= Phone Agent 手机辅助 dsh-Go 多步规划接口 =========
+  if (method === 'POST' && pathname === '/api/phone-agent/plan') {
+    const body = await readJsonBody(req);
+    const task = String(body.task || '').trim().slice(0, 1000);
+    if (!task) {
+      return sendJson(res, 400, { ok: false, error: '请提供需要规划的手机操作任务' });
+    }
+
+    const screenSize =
+      body.screenSize && Number(body.screenSize.width) > 0 && Number(body.screenSize.height) > 0
+        ? { width: Number(body.screenSize.width), height: Number(body.screenSize.height) }
+        : { width: 1080, height: 2400 };
+    const screenNodes = Array.isArray(body.screenNodes) ? body.screenNodes.slice(0, 120) : [];
+    const historySteps = Array.isArray(body.history) ? body.history.slice(-10) : [];
+    const installedApps = Array.isArray(body.installedApps) ? body.installedApps.slice(0, 80) : [];
+
+    const sysPrompt = [
+      '你是星语手机辅助代理（Phone Agent · 参考 dsh-Go 规划架构）。',
+      '你的职责是根据用户的目标任务、当前手机屏幕无障碍控件节点树以及历史执行步骤，规划“下一步唯一且精确”的操作。',
+      `当前设备屏幕分辨率为 ${screenSize.width}x${screenSize.height}。`,
+      '你只能输出一个严格合法的 JSON 对象（不要用 Markdown 代码块包裹，也不要附加前后任何解释文字），格式如下：',
+      '{"thought":"简短中文判断依据（35字以内）","action":"动作名","params":{},"summary":"对用户展示的本步中文说明（25字以内）","needConfirm":false}',
+      '可用 action 及对应 params 规范：',
+      '- launch_app: {"appName":"应用名称，优先参考已安装应用列表"}',
+      '- click_node: {"text":"控件精确可见文本或描述","viewId":"可选控件id"}',
+      '- click: {"x":像素X,"y":像素Y}',
+      '- long_click: {"x":像素X,"y":像素Y}',
+      '- swipe: {"x1":起点X,"y1":起点Y,"x2":终点X,"y2":终点Y,"duration":350}',
+      '- input: {"text":"要输入的文本","viewId":"可选目标输入框id"}',
+      '- home: {}',
+      '- back: {}',
+      '- recents: {}',
+      '- wait: {"ms":1000}',
+      '- done: {"message":"任务完成总结"}',
+      '- ask_user: {"message":"需要用户手动操作或澄清的问题"}',
+      '关键约束：',
+      '1. 优先使用 launch_app 打开第三方应用，优先级高于回桌面翻找图标；点选屏幕已有控件时优先用 click_node 或其 bounds 中心点 click。',
+      '2. 若控件列表中出现需要向下滚动才能看见的内容，请返回 swipe 向上滑动（例如 y1=1600 -> y2=600）。',
+      '3. 若即将触发支付、转账、确认下单、发红包、删除数据、卸载应用、发送消息/邮件/评论、修改系统密码或退出登录等高风险动作，必须将 needConfirm 设为 true。',
+      '4. 若处于网页预览或桌面端（无真实屏幕节点，screenNodes 为空且明确说明未在 APK 中运行），可直接给出逻辑演练步骤或 return action="done"。'
+    ].join('\n');
+
+    const compactNodes = screenNodes.map((n, idx) => ({
+      i: idx,
+      t: n.text || '',
+      d: n.desc || '',
+      id: n.viewId || n.id || '',
+      cls: String(n.className || n.cls || '').split('.').pop(),
+      clk: Boolean(n.clickable),
+      edt: Boolean(n.editable),
+      c: n.center || undefined,
+      b: n.bounds || ''
+    }));
+
+    const userMsg = JSON.stringify({
+      task,
+      stepIndex: historySteps.length + 1,
+      recentHistory: historySteps.map((h) => ({
+        step: h.step,
+        action: h.action,
+        summary: h.summary,
+        result: h.result
+      })),
+      installedAppsPreview: installedApps.map((a) => (typeof a === 'string' ? a : a.name)).slice(0, 40),
+      screenNodesCount: compactNodes.length,
+      screenNodes: compactNodes
+    });
+
+    const extractPlanJson = (raw) => {
+      const cleaned = String(raw || '')
+        .trim()
+        .replace(/^```(?:json)?\s*/i, '')
+        .replace(/\s*```$/i, '')
+        .trim();
+      try {
+        return JSON.parse(cleaned);
+      } catch {
+        const start = cleaned.indexOf('{');
+        const end = cleaned.lastIndexOf('}');
+        if (start >= 0 && end > start) {
+          return JSON.parse(cleaned.slice(start, end + 1));
+        }
+        throw new Error('大模型未返回有效的 JSON 操作指令');
+      }
+    };
+
+    const normalizePlan = (obj) => {
+      const allowed = new Set([
+        'launch_app',
+        'click_node',
+        'click',
+        'long_click',
+        'swipe',
+        'input',
+        'home',
+        'back',
+        'recents',
+        'wait',
+        'done',
+        'ask_user'
+      ]);
+      const action = allowed.has(obj?.action) ? obj.action : 'done';
+      const params = obj?.params && typeof obj.params === 'object' ? obj.params : {};
+      const highRiskKw = /(付款|支付|转账|结算|下单|提交订单|确认购买|发红包|删除|清空|卸载|注销|发送|发布|授权|登录)/;
+      const riskText = `${obj?.summary || ''} ${params?.text || ''} ${obj?.thought || ''}`;
+      return {
+        thought: String(obj?.thought || '已结合当前界面完成分析').slice(0, 160),
+        action,
+        params,
+        summary: String(obj?.summary || `执行 ${action}`).slice(0, 120),
+        needConfirm: Boolean(obj?.needConfirm) || (action !== 'done' && action !== 'wait' && action !== 'ask_user' && highRiskKw.test(riskText))
+      };
+    };
+
+    // 1. 解析凭据来源：若前端显式传递了个人直连 Key（解决 WebView CORS），严格验证并透传且绝不落盘
+    const candidates = [];
+    const customKeyRaw = String(body.customApiKey || '').trim();
+    if (customKeyRaw) {
+      try {
+        const validKey = validateOfficialDeepSeekApiKey(customKeyRaw);
+        const safeUrl = body.customBaseUrl
+          ? validateSafeUserApiBaseUrl(body.customBaseUrl)
+          : OFFICIAL_DEEPSEEK_CHAT_URL;
+        const endpoints = resolveDeepSeekEndpoints(safeUrl);
+        const customModel = normalizeModelForEndpoint(
+          sanitizeUserModelName(body.customModel || 'deepseek-chat'),
+          endpoints.chatUrl
+        );
+        candidates.push({
+          protocol: 'openai',
+          url: endpoints.chatUrl,
+          apiKey: validKey,
+          headers: { Authorization: `Bearer ${validKey}` },
+          model: customModel,
+          engineName: 'api_direct_proxy'
+        });
+      } catch (err) {
+        return sendJson(res, 400, { ok: false, error: err.message || '个人 API 参数校验失败' });
+      }
+    } else {
+      const execSettings = getExecutionSettingsForUser(userId);
+      const suiteCred = resolveSuiteOrBridgeCredentials(execSettings);
+      if (suiteCred && suiteCred.hasKey && suiteCred.endpoints?.chatUrl) {
+        let modelName = String(body.customModel || suiteCred.preferredModel || 'deepseek-chat').trim();
+        if (/reasoner/i.test(modelName) && suiteCred.endpoints.isOfficialDeepSeek) {
+          modelName = 'deepseek-chat';
+        }
+        candidates.push({
+          protocol: 'openai',
+          url: suiteCred.endpoints.chatUrl,
+          apiKey: suiteCred.apiKey,
+          headers: suiteCred.headers,
+          model: modelName,
+          engineName: suiteCred.isLocalBridge ? 'cloud_bridge' : 'cloud_managed'
+        });
+      }
+      // 追加 Antigravity 多协议端点作为云端可用备选
+      try {
+        const rt = loadBridgeRuntime();
+        if (rt?.options?.enabled && Array.isArray(rt.endpoints)) {
+          for (const ep of rt.endpoints) {
+            const preferAnth = ep.urls?.preferredProtocol === 'anthropic' && !ep.urls?.isOfficialDeepSeek && ep.urls?.anthropicMessagesUrl;
+            const epUrl = preferAnth ? ep.urls.anthropicMessagesUrl : ep.urls?.openaiChatUrl;
+            if (!epUrl || candidates.some((c) => c.url === epUrl)) continue;
+            candidates.push({
+              protocol: preferAnth ? 'anthropic' : 'openai',
+              url: epUrl,
+              apiKey: ep.apiKey,
+              headers: preferAnth
+                ? { 'x-api-key': ep.apiKey, 'anthropic-version': '2023-06-01' }
+                : { Authorization: `Bearer ${ep.apiKey}` },
+              model: ep.defaultModel || 'deepseek-flash',
+              engineName: ep.name || 'cloud_bridge'
+            });
+          }
+        }
+      } catch {}
+    }
+
+    if (candidates.length === 0) {
+      return sendJson(res, 400, {
+        ok: false,
+        code: 'NO_API_KEY',
+        error: '当前账号未配置可用云端 API 密钥。请在上方切换「DeepSeek API」填写您的个人密钥，或改用「本地免 API」直接下达系统口令。'
+      });
+    }
+
+    let lastErr = '';
+    for (const cand of candidates) {
+      try {
+        if (cand.protocol === 'anthropic') {
+          const resp = await fetch(cand.url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...cand.headers },
+            body: JSON.stringify({
+              model: cand.model,
+              max_tokens: 600,
+              temperature: 0.15,
+              system: sysPrompt,
+              messages: [{ role: 'user', content: userMsg }]
+            }),
+            signal: AbortSignal.timeout(25000)
+          });
+          if (!resp.ok) {
+            lastErr = `上游网关 (${resp.status})`;
+            continue;
+          }
+          const data = await resp.json();
+          const blocks = Array.isArray(data.content) ? data.content : [];
+          const rawText = blocks.filter((b) => b.type === 'text').map((b) => b.text).join('\n');
+          const parsed = normalizePlan(extractPlanJson(rawText));
+          return sendJson(res, 200, { ok: true, plan: parsed, model: cand.model, engine: cand.engineName });
+        }
+
+        const payload = {
+          model: cand.model,
+          messages: [
+            { role: 'system', content: sysPrompt },
+            { role: 'user', content: userMsg }
+          ],
+          temperature: 0.15,
+          max_tokens: 600,
+          stream: false
+        };
+        if (cand.url.includes('deepseek.com') || /deepseek/i.test(cand.model)) {
+          payload.response_format = { type: 'json_object' };
+        }
+        const resp = await fetch(cand.url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...cand.headers },
+          body: JSON.stringify(payload),
+          signal: AbortSignal.timeout(25000)
+        });
+        if (!resp.ok) {
+          const errTxt = await resp.text().catch(() => '');
+          lastErr = `模型网关返回 (${resp.status}): ${errTxt.slice(0, 120)}`;
+          continue;
+        }
+        const data = await resp.json();
+        const rawText = data?.choices?.[0]?.message?.content || '';
+        const parsed = normalizePlan(extractPlanJson(rawText));
+        return sendJson(res, 200, { ok: true, plan: parsed, model: cand.model, engine: cand.engineName });
+      } catch (err) {
+        lastErr = err?.message || '规划请求超时或解析异常';
+      }
+    }
+
+    return sendJson(res, 502, {
+      ok: false,
+      code: 'PLAN_FAILED',
+      error: lastErr || '手机辅助规划请求暂时不可用，请检查密钥与网络或改用本地免 API 模式'
+    });
+  }
 
   if (method === 'POST' && pathname === '/api/auth/onboarding') {
     const body = await readJsonBody(req);

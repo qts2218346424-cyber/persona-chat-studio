@@ -28,9 +28,9 @@
       pointer-events: none !important;
     }
   </style>
-  <link rel="preload" href="./dist/app.bundle.css?v=20261121_v207_bootsplash_auth_201" as="style" />
-  <link rel="preload" href="./dist/app.bundle.js?v=20261121_v207_bootsplash_auth_201" as="script" />
-  <link rel="stylesheet" href="./dist/app.bundle.css?v=20261121_v207_bootsplash_auth_201" />
+  <link rel="preload" href="./dist/app.bundle.css?v=20261121_v208_settings_ui_202" as="style" />
+  <link rel="preload" href="./dist/app.bundle.js?v=20261121_v208_settings_ui_202" as="script" />
+  <link rel="stylesheet" href="./dist/app.bundle.css?v=20261121_v208_settings_ui_202" />
 </head>
 <body data-ui-mode="deepseek">
   <!-- 首屏零白屏优雅过渡欢迎层（工作台或登录门扉就绪后平滑淡出退场） -->
@@ -1799,7 +1799,7 @@
                     <strong id="mode-card-free-title">⚡ 本地直连 / 默认引擎</strong>
                     <span class="conn-recommend-tag" id="mode-card-free-tag">开箱即用</span>
                   </div>
-                  <p id="mode-card-free-desc">优先直连本地 Antigravity 底座（Gemini 3.8 Flash 深度思考），免 Key 高速</p>
+                  <p id="mode-card-free-desc">优先直连电脑本地极速引擎（DeepSeek 深度思考），免 Key 高速稳定</p>
                 </button>
 
                 <button type="button" class="conn-choice-card" id="mode-card-own" data-conn-mode="own_deepseek">
@@ -2088,53 +2088,90 @@
           <div role="tabpanel" id="spanel-more" aria-labelledby="stab-more" hidden>
             <div class="settings-panel-inner">
               <div class="spacious-fieldset">
-                <div class="settings-section-label">当前对话记录备份与导入</div>
+                <div class="settings-section-label">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+                  <span>当前对话记录备份与导入</span>
+                </div>
                 <div class="settings-data-btns">
-                  <button type="button" class="secondary-btn spacious-action-btn" id="st-quick-export-md-btn">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="12" y1="18" x2="12" y2="12"></line><polyline points="9 15 12 18 15 15"></polyline></svg>
+                  <button type="button" class="spacious-action-btn" id="st-quick-export-md-btn">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="12" y1="18" x2="12" y2="12"></line><polyline points="9 15 12 18 15 15"></polyline></svg>
                     <span>导出当前对话记录 (.md)</span>
                   </button>
-                  <button type="button" class="secondary-btn spacious-action-btn" id="st-quick-import-md-btn">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="12" y1="12" x2="12" y2="18"></line><polyline points="9 15 12 12 15 15"></polyline></svg>
+                  <button type="button" class="spacious-action-btn" id="st-quick-import-md-btn">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="12" y1="12" x2="12" y2="18"></line><polyline points="9 15 12 12 15 15"></polyline></svg>
                     <span>导入外部对话 / 记忆文件</span>
                   </button>
                 </div>
               </div>
 
               <div class="spacious-fieldset rp-only-block">
-                <div class="settings-section-label">剧本创作工具与引导</div>
+                <div class="settings-section-label">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+                  <span>剧本创作工具与引导</span>
+                </div>
                 <div class="settings-data-btns">
-                  <button type="button" class="secondary-btn spacious-action-btn" id="st-quick-fim-btn">
+                  <button type="button" class="spacious-action-btn" id="st-quick-fim-btn">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
                     <span>卡文小助手：补写中间剧情</span>
                   </button>
-                  <button type="button" class="secondary-btn spacious-action-btn" id="st-quick-tour-btn">
+                  <button type="button" class="spacious-action-btn" id="st-quick-tour-btn">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"></polygon></svg>
                     <span>重温新手快速引导</span>
                   </button>
                 </div>
               </div>
 
               <div class="spacious-fieldset" id="advanced-tech-settings-fold">
-                <div class="settings-section-label">对话细节参数微调（一般保持默认即可）</div>
+                <div class="settings-section-label">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                  <span>对话细节参数微调（一般保持默认即可）</span>
+                </div>
                 <div class="spacious-number-grid">
                   <div class="spacious-field">
-                    <label for="st-window">记住最近几轮对话 (4~120)</label>
-                    <input id="st-window" type="number" min="4" max="120" value="40" />
+                    <label for="st-window">
+                      <span class="sp-field-title">上下文对话轮数</span>
+                      <span class="sp-field-badge">4 ~ 120 轮</span>
+                    </label>
+                    <div class="sp-input-control">
+                      <input id="st-window" type="number" min="4" max="120" value="40" />
+                    </div>
                   </div>
                   <div class="spacious-field">
-                    <label for="st-recall">每次翻看重点记忆条数 (2~40)</label>
-                    <input id="st-recall" type="number" min="2" max="40" value="16" />
+                    <label for="st-recall">
+                      <span class="sp-field-title">重点记忆召回</span>
+                      <span class="sp-field-badge">2 ~ 40 条</span>
+                    </label>
+                    <div class="sp-input-control">
+                      <input id="st-recall" type="number" min="2" max="40" value="16" />
+                    </div>
                   </div>
                   <div class="spacious-field">
-                    <label for="st-temp">回答灵活度 (0.1~2.0)</label>
-                    <input id="st-temp" type="number" step="any" min="0.1" max="2.0" value="0.7" />
+                    <label for="st-temp">
+                      <span class="sp-field-title">回答灵活度</span>
+                      <span class="sp-field-badge">0.1 ~ 2.0</span>
+                    </label>
+                    <div class="sp-input-control">
+                      <input id="st-temp" type="number" step="any" min="0.1" max="2.0" value="0.7" />
+                    </div>
                   </div>
                 </div>
-                <div class="rp-only-block" style="margin-top: 12px;">
-                  <button type="button" class="secondary-btn full-width" id="play-otome-demo-sample-btn">
-                    <span>试听角色语音朗读效果</span>
+                <div class="rp-only-block" style="margin-top: 14px;">
+                  <button type="button" class="voice-preview-card-btn" id="play-otome-demo-sample-btn">
+                    <span class="voice-preview-icon" aria-hidden="true">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18v-6a9 9 0 0 1 18 0v6"></path><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"></path></svg>
+                    </span>
+                    <span class="voice-preview-text">
+                      <strong>试听当前角色真声配音朗读</strong>
+                      <small>多情感高拟真角色真声演绎，感受现场陪伴质感</small>
+                    </span>
+                    <span class="voice-preview-wave" aria-hidden="true">
+                      <span></span><span></span><span></span><span></span>
+                    </span>
                   </button>
                 </div>
               </div>
+            </div>
+          </div>
             </div>
           </div>
         </div>
@@ -2792,7 +2829,7 @@
         <div class="apk-hero-card" id="apk-web-download-card">
           <div class="apk-hero-top">
             <div class="apk-meta-pills">
-              <span class="apk-meta-pill" id="apk-modal-version-pill">版本 v2.0.0 (支持本地 Antigravity 宿主直连、Gemini 深度思考、60fps 极速流式与双模式切换)</span>
+              <span class="apk-meta-pill" id="apk-modal-version-pill">版本 v2.0.0 (支持本地极速直连、DeepSeek 深度思考、60fps 极速流式与双模式切换)</span>
               <span class="apk-meta-pill">极速包体 9.47 MB</span>
               <span class="apk-meta-pill">官方纯净 · 签名校验</span>
               <span class="apk-meta-pill" id="pa-device-info-pill">支持 Android 7.0 ~ 15+</span>
@@ -3428,7 +3465,7 @@
   <!-- 全局 Top-Layer 顶层轻提示胶囊（popover="manual" 确保在任何模态 <dialog> 打开时依然 100% 可见，遵循 persistent-toast-notifications 规范） -->
   <div id="global-top-toast" popover="manual" class="global-top-toast" role="status" aria-live="polite"></div>
 
-  <script defer src="./dist/app.bundle.js?v=20261121_v207_bootsplash_auth_201"></script>
+  <script defer src="./dist/app.bundle.js?v=20261121_v208_settings_ui_202"></script>
   <script>
     if ('serviceWorker' in navigator && window.location.protocol.startsWith('http')) {
       window.addEventListener('load', () => {

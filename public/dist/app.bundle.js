@@ -3519,8 +3519,8 @@ appVersion: '2.0.0',
 tourIndex: 0,
 tourActive: false,
 llmMode: localStorage.getItem('user_llm_mode') || 'local_antigravity',
-localModel: localStorage.getItem('user_local_model') || 'gemini-3.8-flash-high',
-antigravityStatus: { available: false, models: [], default_model: 'gemini-3.8-flash-high' }
+localModel: localStorage.getItem('user_local_model') || 'DeepSeek-V4.1-Flash',
+antigravityStatus: { available: false, models: [], default_model: 'DeepSeek-V4.1-Flash' }
 };
 const SESSION_CACHE_MAX = 15;
 const BOOT_SNAPSHOT_KEY = 'star_boot_snapshot_v1';
@@ -5746,19 +5746,13 @@ if (labelLlmMode) {
 labelLlmMode.textContent = isLocal ? '⚡ 本地直连' : '☁️ 云端 API';
 }
 btnLlmMode.title = isLocal
-? `当前为【⚡ 本地直连模式（免 Key，使用电脑本地 Antigravity · ${state.localModel || 'gemini-3.8-flash-high'}）】\n点击切换为【☁️ 云端 API 模式】`
-: '当前为【☁️ 云端 API 模式】\n点击切换为【⚡ 本地直连模式（Antigravity）】';
+? '当前为【⚡ 本地极速直连模式（DeepSeek · 深度思考）】\n点击切换为【☁️ 云端 API 模式】'
+: '当前为【☁️ 云端 API 模式】\n点击切换为【⚡ 本地极速直连模式（DeepSeek）】';
 }
 if (dsModelPill) {
 if (isLocal) {
-const localTarget = state.activeSession?.local_model || state.localModel || 'gemini-3.8-flash-high';
-let prettyLocal = 'Gemini 3.8 Flash';
-if (/flash/i.test(localTarget)) prettyLocal = 'Gemini 3.8 Flash';
-else if (/sonnet/i.test(localTarget)) prettyLocal = 'Claude 3.7 Sonnet';
-else if (/opus/i.test(localTarget)) prettyLocal = 'Claude 3.7 Opus';
-else prettyLocal = localTarget.replace(/^gemini-/, 'Gemini ').replace(/-/g, ' ');
-dsModelPill.innerHTML = `<span class="ds-badge-dot"></span><span id="ds-model-pill-text">⚡ ${prettyLocal}${dsThinkOn ? ' · 深度思考' : ''}</span>`;
-dsModelPill.title = '当前为【⚡ 本地直连模式】点击可切换至【☁️ 云端 API 模式】';
+dsModelPill.innerHTML = `<span class="ds-badge-dot"></span><span id="ds-model-pill-text">⚡ DeepSeek-V4.1-Flash${dsThinkOn ? ' · 深度思考' : ''}</span>`;
+dsModelPill.title = '当前为【⚡ 本地极速直连模式（DeepSeek · 深度思考）】点击可切换至【☁️ 云端 API 模式】';
 } else {
 const p = state.settings?.provider || 'online';
 const hasOwnKey = Boolean(state.settings?.own_deepseek_api_key_masked);
@@ -5779,13 +5773,12 @@ try {
 localStorage.setItem('user_llm_mode', nextMode);
 } catch {}
 const isNextLocal = nextMode === 'local_antigravity';
-const targetModelName = state.localModel || 'gemini-3.8-flash-high';
 let switchNotice = '';
 if (isNextLocal) {
 if (state.antigravityStatus && state.antigravityStatus.available === false) {
 switchNotice = '⚠️ 已切换至【⚡ 本地直连模式】。当前本地服务繁忙或未就绪，建议稍后重试或切回「云端 API 模式」';
 } else {
-switchNotice = `已切换至：⚡ 本地直连模式 (Antigravity · ${targetModelName})`;
+switchNotice = '已切换至：⚡ 本地极速直连模式 (DeepSeek-V4.1-Flash)';
 }
 } else {
 const hasApiKey = Boolean(state.settings?.own_deepseek_api_key_masked || state.settings?.has_own_deepseek_key);
@@ -8737,7 +8730,7 @@ attachments: stagedFiles,
 assistant_prefix: assistantPrefix,
 include_follow_ups: isShowFollowUpsEnabled(),
 llm_mode: state.activeSession?.llm_mode || state.llmMode || 'local_antigravity',
-local_model: state.activeSession?.local_model || state.localModel || 'gemini-3.8-flash-high'
+local_model: state.activeSession?.local_model || state.localModel || 'DeepSeek-V4.1-Flash'
 }),
 signal: abortController.signal
 });
@@ -9750,7 +9743,7 @@ session_mode: 'deepseek_native',
 ds_thinking: true,
 ds_search: false,
 llm_mode: state.llmMode || 'local_antigravity',
-local_model: state.localModel || 'gemini-3.8-flash-high'
+local_model: state.localModel || 'DeepSeek-V4.1-Flash'
 })
 });
 state.sessions = res.sessions;

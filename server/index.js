@@ -1978,7 +1978,7 @@ async function handleApi(req, res, pathname, parsedUrl) {
     const initProactive = body.proactive_enabled === true ? 1 : 0;
 
     const llmMode = body.llm_mode === 'api' ? 'api' : 'local_antigravity';
-    const localModel = String(body.local_model || 'gemini-3.8-flash-high').trim();
+    const localModel = String(body.local_model || 'DeepSeek-V4.1-Flash').trim();
 
     db.prepare(`
       INSERT INTO sessions (
@@ -2921,7 +2921,7 @@ async function handleApi(req, res, pathname, parsedUrl) {
           ? (body.llm_mode === 'api' ? 'api' : 'local_antigravity')
           : session.llm_mode || 'local_antigravity';
       const nextLocalModel =
-        body.local_model !== undefined ? String(body.local_model).trim() : session.local_model || 'gemini-3.8-flash-high';
+        body.local_model !== undefined ? String(body.local_model).trim() : session.local_model || 'DeepSeek-V4.1-Flash';
 
       db.prepare(`
         UPDATE sessions
@@ -3609,7 +3609,7 @@ async function handleApi(req, res, pathname, parsedUrl) {
     // 1. 本地直连模式检测：若选择本地模式但宿主不可用或失效，明确提示服务繁忙
     if (requestedLlmMode === 'local_antigravity' && !isLocalAvailable) {
       return sendJson(res, 503, {
-        error: '当前本地服务繁忙或未响应，建议检查本机 Antigravity 底座状态，或切换为「☁️ 云端 API 模式」继续对话。',
+        error: '当前本地服务繁忙或未响应，建议稍后重试，或切换为「☁️ 云端 API 模式」继续对话。',
         code: 'LOCAL_SERVICE_BUSY'
       });
     }
@@ -3854,7 +3854,7 @@ async function handleApi(req, res, pathname, parsedUrl) {
       });
 
       if (usingLocalAntigravity) {
-        const localTargetModel = body.local_model || session.local_model || 'gemini-3.8-flash-high';
+        const localTargetModel = body.local_model || session.local_model || 'DeepSeek-V4.1-Flash';
         const enableThinking = isNativeMode
           ? (body.ds_thinking !== undefined ? Boolean(body.ds_thinking) : session.ds_thinking === 1)
           : true;

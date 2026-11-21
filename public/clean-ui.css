@@ -4953,18 +4953,86 @@ dialog::backdrop {
 .spacious-field {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: light-dark(rgba(248, 250, 252, 0.9), rgba(255, 255, 255, 0.03));
+  border: 1px solid light-dark(rgba(0, 0, 0, 0.06), rgba(255, 255, 255, 0.07));
+  transition: all 0.2s ease;
+}
+
+.spacious-field:focus-within {
+  border-color: light-dark(#4d6bfe, #60a5fa);
+  background: light-dark(#ffffff, rgba(77, 107, 254, 0.08));
+  box-shadow: 0 0 0 3px light-dark(rgba(77, 107, 254, 0.12), rgba(96, 165, 250, 0.2));
 }
 
 .spacious-field > label {
-  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: 12.5px;
   font-weight: 600;
+  color: var(--text-secondary);
+  line-height: 1.35;
+  margin: 0;
+}
+
+.sp-field-title {
   color: var(--text-primary);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.sp-field-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 6px;
+  color: light-dark(#4d6bfe, #93c5fd);
+  background: light-dark(rgba(77, 107, 254, 0.08), rgba(77, 107, 254, 0.2));
+  white-space: nowrap;
 }
 
 .spacious-field input {
-  min-height: 44px;
-  font-size: 14px;
+  width: 100%;
+  min-height: 38px;
+  height: 38px;
+  padding: 6px 12px;
+  font-size: 15px;
+  font-weight: 700;
+  font-family: inherit;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+  background: light-dark(#ffffff, rgba(20, 16, 36, 0.8));
+  border: 1.5px solid light-dark(rgba(0, 0, 0, 0.12), rgba(255, 255, 255, 0.14));
+  border-radius: 9px;
+  box-sizing: border-box;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.04);
+  transition: all 0.2s ease;
+  text-align: center;
+}
+
+.spacious-field input[type="text"],
+.spacious-field input[type="password"],
+.spacious-field input[type="url"] {
+  text-align: left;
+  font-weight: 500;
+  font-size: 13.5px;
+  padding: 8px 14px;
+  min-height: 42px;
+  height: 42px;
+}
+
+.spacious-field input:hover {
+  border-color: light-dark(rgba(77, 107, 254, 0.4), rgba(147, 197, 253, 0.4));
+}
+
+.spacious-field input:focus {
+  outline: none;
+  border-color: light-dark(#4d6bfe, #60a5fa);
+  box-shadow: 0 0 0 3px light-dark(rgba(77, 107, 254, 0.15), rgba(96, 165, 250, 0.25));
 }
 
 .key-input-action-row {
@@ -4975,9 +5043,26 @@ dialog::backdrop {
 }
 
 .verify-key-btn {
-  min-height: 44px;
-  padding: 0 14px !important;
-  white-space: nowrap;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  min-height: 42px !important;
+  padding: 0 16px !important;
+  border-radius: 9px !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  white-space: nowrap !important;
+  border: 1.5px solid light-dark(rgba(77, 107, 254, 0.25), rgba(139, 92, 246, 0.3)) !important;
+  background: light-dark(linear-gradient(135deg, #f8faff 0%, #eff6ff 100%), linear-gradient(135deg, rgba(77, 107, 254, 0.12) 0%, rgba(139, 92, 246, 0.1) 100%)) !important;
+  color: light-dark(#2563eb, #93c5fd) !important;
+  cursor: pointer;
+  transition: all 0.2s ease !important;
+}
+
+.verify-key-btn:hover {
+  border-color: light-dark(#4d6bfe, #818cf8) !important;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(77, 107, 254, 0.15);
 }
 
 .clean-sub-fold {
@@ -5002,11 +5087,20 @@ dialog::backdrop {
 
 /* 外观与风格宽敞卡片组 */
 .spacious-fieldset {
-  border: 1px solid var(--border-subtle);
-  border-radius: 14px;
-  padding: 16px 18px;
+  border: 1px solid light-dark(rgba(0, 0, 0, 0.08), rgba(255, 255, 255, 0.09));
+  border-radius: 16px;
+  padding: 18px 20px;
   margin: 0;
-  background: var(--bg-surface);
+  background: light-dark(rgba(255, 255, 255, 0.85), rgba(28, 22, 48, 0.72));
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: light-dark(0 2px 10px rgba(0, 0, 0, 0.02), 0 4px 16px rgba(0, 0, 0, 0.2));
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.spacious-fieldset:hover {
+  border-color: light-dark(rgba(77, 107, 254, 0.28), rgba(167, 139, 250, 0.32));
+  box-shadow: light-dark(0 4px 16px rgba(77, 107, 254, 0.06), 0 6px 20px rgba(0, 0, 0, 0.28));
 }
 
 .spacious-fieldset > legend {
@@ -5074,26 +5168,161 @@ dialog::backdrop {
 .settings-data-btns {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  gap: 12px;
 }
 
-@media (max-width: 500px) {
-  .settings-data-btns,
+@media (max-width: 620px) {
+  .settings-data-btns {
+    grid-template-columns: 1fr !important;
+  }
   .spacious-number-grid {
     grid-template-columns: 1fr !important;
   }
 }
 
 .spacious-action-btn {
-  min-height: 44px;
-  justify-content: center;
-  font-size: 13.5px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 8px !important;
+  min-height: 44px !important;
+  padding: 10px 16px !important;
+  border-radius: 12px !important;
+  border: 1.5px solid light-dark(rgba(0, 0, 0, 0.09), rgba(255, 255, 255, 0.12)) !important;
+  background: light-dark(#ffffff, rgba(255, 255, 255, 0.05)) !important;
+  color: var(--text-primary) !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  box-shadow: light-dark(0 1px 3px rgba(0, 0, 0, 0.03), 0 2px 6px rgba(0, 0, 0, 0.15)) !important;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  cursor: pointer;
+  text-decoration: none !important;
+}
+
+.spacious-action-btn:hover {
+  border-color: light-dark(#4d6bfe, #818cf8) !important;
+  color: light-dark(#3b59f6, #93c5fd) !important;
+  background: light-dark(rgba(77, 107, 254, 0.05), rgba(77, 107, 254, 0.14)) !important;
+  transform: translateY(-1px) !important;
+  box-shadow: 0 4px 14px rgba(77, 107, 254, 0.12) !important;
+}
+
+.spacious-action-btn:active {
+  transform: translateY(0) scale(0.98) !important;
+}
+
+.spacious-action-btn svg {
+  color: light-dark(#4d6bfe, #818cf8);
+  flex-shrink: 0;
+  transition: transform 0.2s ease;
+}
+
+.spacious-action-btn:hover svg {
+  transform: scale(1.12);
 }
 
 .spacious-number-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
+  gap: 12px;
+}
+
+/* 试听角色真声配音朗读卡片 */
+.voice-preview-card-btn {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  width: 100%;
+  padding: 12px 18px !important;
+  border-radius: 14px !important;
+  border: 1.5px solid light-dark(rgba(77, 107, 254, 0.25), rgba(139, 92, 246, 0.3)) !important;
+  background: light-dark(linear-gradient(135deg, #f8faff 0%, #f0f4ff 100%), linear-gradient(135deg, rgba(77, 107, 254, 0.12) 0%, rgba(139, 92, 246, 0.1) 100%)) !important;
+  color: light-dark(#2563eb, #93c5fd) !important;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(77, 107, 254, 0.08);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  text-align: left;
+}
+
+.voice-preview-card-btn:hover {
+  border-color: light-dark(#4d6bfe, #818cf8) !important;
+  box-shadow: 0 4px 16px rgba(77, 107, 254, 0.18) !important;
+  transform: translateY(-1px);
+}
+
+.voice-preview-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: light-dark(rgba(77, 107, 254, 0.1), rgba(77, 107, 254, 0.25));
+  margin-right: 12px;
+  flex-shrink: 0;
+}
+
+.voice-preview-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+}
+
+.voice-preview-text strong {
+  font-size: 14px;
+  font-weight: 700;
+  color: light-dark(#1e293b, #f1f5f9);
+}
+
+.voice-preview-text small {
+  font-size: 11.5px;
+  color: light-dark(#64748b, #94a3b8);
+}
+
+.voice-preview-wave {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 16px;
+  padding-left: 8px;
+  flex-shrink: 0;
+}
+
+.voice-preview-wave span {
+  display: inline-block;
+  width: 3px;
+  height: 100%;
+  border-radius: 999px;
+  background: light-dark(#4d6bfe, #818cf8);
+  animation: voiceWavePulse 1.2s ease-in-out infinite;
+}
+
+.voice-preview-wave span:nth-child(2) { animation-delay: 0.2s; height: 60%; }
+.voice-preview-wave span:nth-child(3) { animation-delay: 0.4s; height: 80%; }
+.voice-preview-wave span:nth-child(4) { animation-delay: 0.6s; height: 40%; }
+
+@keyframes voiceWavePulse {
+  0%, 100% { transform: scaleY(0.4); }
+  50% { transform: scaleY(1); }
+}
+
+#settings-dialog .modal-inner {
+  scrollbar-width: thin;
+  scrollbar-color: light-dark(rgba(0, 0, 0, 0.18), rgba(255, 255, 255, 0.18)) transparent;
+}
+
+#settings-dialog .modal-inner::-webkit-scrollbar {
+  width: 6px;
+}
+
+#settings-dialog .modal-inner::-webkit-scrollbar-thumb {
+  background: light-dark(rgba(0, 0, 0, 0.18), rgba(255, 255, 255, 0.18));
+  border-radius: 999px;
+}
+
+#settings-dialog .modal-inner::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 /* 左下角弹出菜单拉开行距呼吸感 */

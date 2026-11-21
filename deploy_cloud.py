@@ -22,13 +22,14 @@ def precompress_static_assets():
     if node_bin and os.path.isfile(build_script):
         print('  [构建引擎] 正在执行 CSS/JS 合并压缩与 .gz/.br 双重预压缩...')
         subprocess.run([node_bin, build_script], cwd=PROJECT_ROOT, check=True)
+        return
 
     public_dir = os.path.join(PROJECT_ROOT, 'public')
     exts = {'.js', '.css', '.html', '.svg', '.json'}
     count = 0
     for root, _, files in os.walk(public_dir):
         for f in files:
-            if f.endswith('.gz'):
+            if f.endswith('.gz') or f.endswith('.br'):
                 continue
             ext = os.path.splitext(f)[1].lower()
             if ext in exts:
@@ -36,9 +37,12 @@ def precompress_static_assets():
                 if os.path.getsize(fpath) < 512:
                     continue
                 gz_path = fpath + '.gz'
-                with open(fpath, 'rb') as f_in, gzip.open(gz_path, 'wb', compresslevel=9) as f_out:
-                    shutil.copyfileobj(f_in, f_out)
-                count += 1
+                try:
+                    with open(fpath, 'rb') as f_in, gzip.open(gz_path, 'wb', compresslevel=9) as f_out:
+                        shutil.copyfileobj(f_in, f_out)
+                    count += 1
+                except Exception:
+                    pass
     print(f'  [加速引擎] 已完成 {count} 个静态文件的极速 Gzip 预压缩 (.gz) 生成')
 
 

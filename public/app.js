@@ -1408,6 +1408,36 @@
   const signupSpinner = document.getElementById('signup-btn-spinner');
   const signupBtnText = document.getElementById('signup-btn-text');
   const quickExpBtn = document.getElementById('quick-exp-btn');
+  const fillAdminCredsBtn = document.getElementById('fill-admin-creds-btn');
+
+  if (fillAdminCredsBtn) {
+    fillAdminCredsBtn.addEventListener('click', () => {
+      switchAuthTab('signin');
+      const emailInput = document.getElementById('signin-email');
+      const pwdInput = document.getElementById('signin-password');
+      if (emailInput) {
+        emailInput.value = 'admin@star.love';
+        emailInput.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+      if (pwdInput) {
+        pwdInput.value = 'admin123456';
+        pwdInput.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+      setAuthError('');
+      showToast('已自动填入内置站长管理凭据！点击「登录进入恋庭」即可进入后台');
+      const submitBtn = document.getElementById('signin-submit-btn');
+      if (submitBtn) {
+        submitBtn.focus();
+        submitBtn.style.transition = 'box-shadow 0.25s ease, transform 0.25s ease';
+        submitBtn.style.boxShadow = '0 0 0 4px rgba(245, 158, 11, 0.45)';
+        submitBtn.style.transform = 'scale(1.02)';
+        setTimeout(() => {
+          submitBtn.style.boxShadow = '';
+          submitBtn.style.transform = '';
+        }, 1200);
+      }
+    });
+  }
 
   signinForm.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -1428,6 +1458,9 @@
       applyAuthLoginPayload(res, { persistDefault: true, rememberGuest: false });
       signinForm.reset();
       await enterWorkspace();
+      if (res.user?.is_admin || res.user?.role === 'admin') {
+        showToast('👑 欢迎归来，站长！管理后台与全局特权已就绪');
+      }
     } catch (err) {
       setAuthError(err.message || '登录失败，请检查账号密码');
     } finally {
@@ -2396,30 +2429,37 @@
   }
 
   function renderUserAndMembership() {
-    const isAdmin = Boolean(state.user?.is_admin);
+    const isAdmin = Boolean(state.user?.is_admin || state.user?.role === 'admin');
     window.__isAdminUser = isAdmin;
     window.dispatchEvent(new CustomEvent('user-role-changed'));
 
+    // 全触点全端管理员入口显隐同步（顶栏、更多菜单、移动端设置、桌面设置弹窗与侧栏）
     document.getElementById('open-admin-console-btn')?.classList.toggle('hidden', !isAdmin);
     document.getElementById('ds-menu-admin-btn')?.classList.toggle('hidden', !isAdmin);
+    document.getElementById('topbar-admin-btn')?.classList.toggle('hidden', !isAdmin);
+    document.getElementById('more-admin-console-btn')?.classList.toggle('hidden', !isAdmin);
+    document.getElementById('mfs-item-admin')?.classList.toggle('hidden', !isAdmin);
+    document.getElementById('settings-open-admin-btn')?.classList.toggle('hidden', !isAdmin);
+    document.getElementById('settings-admin-card')?.classList.toggle('hidden', !isAdmin);
+
     if (!isAdmin && adminConsoleDialog) {
       if (adminConsoleDialog.open) adminConsoleDialog.close();
       adminConsoleDialog.innerHTML = '';
     }
 
     if (state.user) {
-      const fullNick = state.user.nickname || '星语旅人';
-      if (navUserAvatar) navUserAvatar.innerHTML = renderSmartAvatarHtml(state.user.avatar, fullNick, 'size-md', true);
+      const fullNick = state.user.nickname || (isAdmin ? '恋庭主理人' : '星语旅人');
+      if (navUserAvatar) navUserAvatar.innerHTML = renderSmartAvatarHtml(state.user.avatar || (isAdmin ? '👑' : '我'), fullNick, 'size-md', true);
       if (navUserNickname) {
-        navUserNickname.textContent = fullNick;
-        navUserNickname.title = fullNick;
+        navUserNickname.textContent = isAdmin ? `${fullNick} 👑` : fullNick;
+        navUserNickname.title = isAdmin ? `${fullNick} (超级管理员)` : fullNick;
       }
       const dsAv = document.getElementById('ds-nav-avatar');
       const dsNick = document.getElementById('ds-nav-nickname');
-      if (dsAv) dsAv.innerHTML = renderSmartAvatarHtml(state.user.avatar, fullNick, 'size-md', true);
+      if (dsAv) dsAv.innerHTML = renderSmartAvatarHtml(state.user.avatar || (isAdmin ? '👑' : '我'), fullNick, 'size-md', true);
       if (dsNick) {
-        dsNick.textContent = fullNick;
-        dsNick.title = fullNick;
+        dsNick.textContent = isAdmin ? `${fullNick} 👑` : fullNick;
+        dsNick.title = isAdmin ? `${fullNick} (超级管理员)` : fullNick;
       }
       const rawRole = state.user.user_persona?.role || '';
       const curSc =
@@ -2428,7 +2468,7 @@
         !rawRole || rawRole === '命中注定的重逢旅人'
           ? curSc?.player_role || '剧中主角'
           : rawRole;
-      const roleStr = isAdmin ? '站长账户' : effectiveRole;
+      const roleStr = isAdmin ? '👑 站长管理' : effectiveRole;
       if (navUserRoleLabel) {
         navUserRoleLabel.textContent = `${roleStr} ▸`;
         navUserRoleLabel.title = roleStr;
@@ -3629,6 +3669,30 @@
   });
   document.getElementById('ds-menu-admin-btn')?.addEventListener('click', () => {
     hidePopoverSafe('ds-user-popover');
+    openAdminConsoleModal('atab-overview');
+  });
+  // 顶栏专属管理员胶囊按钮
+  document.getElementById('topbar-admin-btn')?.addEventListener('click', () => {
+    openAdminConsoleModal('atab-overview');
+  });
+  // 顶栏更多弹出层管理员项
+  document.getElementById('more-admin-console-btn')?.addEventListener('click', () => {
+    hidePopoverSafe('topbar-more-popover');
+    openAdminConsoleModal('atab-overview');
+  });
+  // 移动端全屏设置抽屉中管理员条目
+  document.getElementById('mfs-item-admin')?.addEventListener('click', () => {
+    document.getElementById('mobile-fullscreen-settings')?.classList.add('hidden');
+    openAdminConsoleModal('atab-overview');
+  });
+  // 桌面端设置弹窗头部管理后台按钮
+  document.getElementById('settings-open-admin-btn')?.addEventListener('click', () => {
+    if (settingsDialog?.open) settingsDialog.close();
+    openAdminConsoleModal('atab-overview');
+  });
+  // 桌面端设置弹窗内更多面板站长卡片按钮
+  document.getElementById('settings-admin-card-btn')?.addEventListener('click', () => {
+    if (settingsDialog?.open) settingsDialog.close();
     openAdminConsoleModal('atab-overview');
   });
 
@@ -8069,13 +8133,14 @@
     // 1. 同步账户昵称与角色
     const accountLabel = document.getElementById('mfs-account-label');
     const accountSub = document.getElementById('mfs-account-sub');
+    const isAdm = Boolean(state.user?.role === 'admin' || state.user?.is_admin);
     if (accountLabel) {
       accountLabel.textContent = state.user?.nickname || state.user?.username || '星语AI (点我打字)';
     }
     if (accountSub) {
-      const isAdm = state.user?.role === 'admin';
-      accountSub.textContent = isAdm ? '系统管理员' : (state.user?.email || '已就绪');
+      accountSub.textContent = isAdm ? '👑 站长超级管理员' : (state.user?.email || '已就绪');
     }
+    document.getElementById('mfs-item-admin')?.classList.toggle('hidden', !isAdm);
 
     // 2. 同步外观
     const themeVal = document.getElementById('mfs-theme-value');

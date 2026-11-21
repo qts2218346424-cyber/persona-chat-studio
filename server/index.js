@@ -541,8 +541,8 @@ function extractAuthToken(req, parsedUrl = null) {
   return '';
 }
 
-const APP_LATEST_VERSION = '2.0.2';
-const APP_LATEST_VERSION_CODE = 132;
+const APP_LATEST_VERSION = '2.0.3';
+const APP_LATEST_VERSION_CODE = 133;
 const APP_OFFICIAL_CERT_SHA256 = '6fd05e32a3cabf327140129d866e55a342fe30daa3384c67aad4b3cbdd98a17b';
 const APP_UPDATE_TICKET_SECRET = crypto
   .createHash('sha256')
@@ -833,10 +833,10 @@ async function handleApi(req, res, pathname, parsedUrl) {
       forceUpdate,
       diffGenerations,
       changelog: [
-        '【纯净剧场体验升级】彻底移除立绘功能，全面释放全宽阅读与沉浸写作视口，聚焦心声独白与语音朗读',
-        '【全新外观定制系统】新增多款质感主题与全局外观定制体系（appearanceSystem），细节视觉全面抛光',
-        '【剧情推进引擎优化】升级章节推进转换提示判定为分词重叠匹配，显著降低误触发率',
-        '【移动端体验增强】全面同步最新前端预压缩静态资产，提升随身版响应与加载速度'
+        '【移动端深度适配】重构移动端空对话与顶栏布局层级，彻底修复手机端顶栏汉堡按钮压扁与遮挡问题',
+        '【正版极简纯粹美学】全面移除多余灵感卡片，空对话页面复刻 DeepSeek 官方 App 般的纯粹极简体验',
+        '【输入舱丝滑横滑】输入区工具栏改为单行横向丝滑滑动，防止胶囊标签自动折行膨胀',
+        '【随身版客户端升级】Android 原生随身版同步升级至 v2.0.3 (Build 133)，内置最新离线静态资产与性能提升'
       ]
     };
 

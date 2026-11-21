@@ -692,6 +692,22 @@
             <span>养成</span>
           </button>
 
+          <!-- 站长管理后台快捷入口（仅管理员可见，全端高频直达） -->
+          <button
+            type="button"
+            class="soft-tool-btn admin-topbar-pill-btn hidden"
+            id="topbar-admin-btn"
+            title="站长管理后台 · 全局用户、模型网关、安全凭据与公告"
+            aria-label="站长管理后台"
+          >
+            <span class="admin-pill-icon" aria-hidden="true">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+              </svg>
+            </span>
+            <span class="admin-pill-label">站长后台</span>
+          </button>
+
           <!-- Android 随身版 App 醒目下载入口（原生 APK 内自动隐藏，网页端主界面零版本号暴露） -->
           <button
             type="button"
@@ -749,6 +765,13 @@
           </button>
 
           <div id="topbar-more-popover" popover="auto" class="anchored-popover topbar-more-panel">
+            <!-- 站长后台专属直达菜单（仅管理员可见） -->
+            <button type="button" class="popover-action-item hidden" id="more-admin-console-btn">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+              </svg>
+              <span style="font-weight: 600; color: #b45309;">👑 站长管理后台</span>
+            </button>
             <!-- 随身版快速下载与控制入口 -->
             <button type="button" class="popover-action-item" id="more-apk-download-btn">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -1820,6 +1843,9 @@
     <div class="modal-inner">
       <div class="modal-header settings-clean-header">
         <h2 id="settings-dialog-title">设置</h2>
+        <button type="button" class="admin-topbar-pill-btn hidden" id="settings-open-admin-btn" title="进入站长管理后台" style="margin-left: auto; margin-right: 8px;">
+          👑 站长管理后台
+        </button>
         <button type="button" class="icon-btn" id="close-settings-dialog" aria-label="关闭设置窗口"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
       </div>
 

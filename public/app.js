@@ -2520,15 +2520,19 @@
     }
   }
 
-  // ================= DeepSeek 本地直连 (Antigravity) 与 云端 API 双模式调度引擎 =================
+  // ================= DeepSeek 本地直连 与 云端/官方 API 调度引擎 =================
   function syncLlmModeUi() {
-    const activeLlmMode = state.activeSession?.llm_mode || state.llmMode || 'local_antigravity';
+    const activeLlmMode = state.llmMode || state.activeSession?.llm_mode || 'local_antigravity';
     const isLocal = activeLlmMode === 'local_antigravity';
     const btnLlmMode = document.getElementById('ds-toggle-llm-mode');
     const labelLlmMode = document.getElementById('ds-llm-mode-label');
     const modeIconSlot = document.getElementById('ds-mode-icon-slot');
     const dsModelPill = document.getElementById('ds-model-pill');
     const dsThinkOn = state.activeSession ? state.activeSession.ds_thinking !== 0 : true;
+
+    const p = state.settings?.provider || 'online';
+    const isDsOwn = p === 'own_deepseek';
+    const isCustomCloud = p === 'custom_cloud';
 
     if (btnLlmMode) {
       btnLlmMode.classList.toggle('active', isLocal);
@@ -2540,37 +2544,58 @@
           : `<svg class="ds-pill-icon ds-mode-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"></path></svg>`;
       }
       if (labelLlmMode) {
-        labelLlmMode.textContent = isLocal ? '本地直连' : '云端 API';
+        if (isLocal) {
+          labelLlmMode.textContent = '本地直连';
+        } else if (isCustomCloud) {
+          labelLlmMode.textContent = '云端 API';
+        } else if (isDsOwn) {
+          labelLlmMode.textContent = 'DeepSeek API';
+        } else {
+          labelLlmMode.textContent = '云端 API';
+        }
       }
       btnLlmMode.title = isLocal
-        ? '当前为【本地极速直连模式（DeepSeek · 深度思考）】\n点击切换为【云端 API 模式】'
-        : '当前为【云端 API 模式】\n点击切换为【本地极速直连模式（DeepSeek）】';
+        ? '当前为【本地极速直连模式（DeepSeek · 深度思考）】\n点击切换为【API 模式】'
+        : `当前为【${isDsOwn ? 'DeepSeek 官方 API' : isCustomCloud ? '云端自定义 API' : '云端 API'}】\n点击切换为【本地直连模式】`;
     }
 
     if (dsModelPill) {
       if (isLocal) {
         dsModelPill.innerHTML = `<span class="ds-badge-dot"></span><span id="ds-model-pill-text">DeepSeek-V4.1-Flash${dsThinkOn ? ' · 深度思考' : ''}</span>`;
-        dsModelPill.title = '当前为【本地极速直连模式（DeepSeek · 深度思考）】点击可切换至【云端 API 模式】';
+        dsModelPill.title = '当前为【本地极速直连模式（DeepSeek · 深度思考）】点击可切换至【API 模式】';
       } else {
-        const p = state.settings?.provider || 'online';
-        const hasOwnKey = Boolean(state.settings?.own_deepseek_api_key_masked);
-        const rawOwnModel = state.settings?.own_deepseek_model || '';
-        const shortModel = rawOwnModel.replace(/^.*\//, '') || 'DeepSeek-V4.1-Flash';
-        const isCustomThirdModel = p === 'own_deepseek' && hasOwnKey && !/deepseek|flash/i.test(rawOwnModel);
-        const basePillName = isCustomThirdModel ? shortModel : 'DeepSeek-V4.1-Flash';
+        let basePillName = 'DeepSeek-V4.1-Flash';
+        if (isCustomCloud) {
+          const rawCloudModel = state.settings?.custom_cloud_model || '';
+          basePillName = rawCloudModel.replace(/^.*\//, '') || '云端定制模型';
+        } else if (isDsOwn) {
+          basePillName = 'DeepSeek-V4.1-Flash';
+        }
         dsModelPill.innerHTML = `<span class="ds-badge-dot mode-api"></span><span id="ds-model-pill-text">${dsThinkOn ? `${basePillName} · 深度思考` : basePillName}</span>`;
-        dsModelPill.title = '当前为【云端 API 模式】点击可切换至【本地直连模式】';
+        dsModelPill.title = `当前为【${isDsOwn ? 'DeepSeek 官方直连' : isCustomCloud ? '自定义云端 API' : '云端模式'}】点击可切换至【本地直连】`;
       }
     }
   }
 
   async function toggleLlmMode() {
-    const currentMode = state.activeSession?.llm_mode || state.llmMode || 'local_antigravity';
+    const currentMode = state.llmMode || state.activeSession?.llm_mode || 'local_antigravity';
     const nextMode = currentMode === 'local_antigravity' ? 'api' : 'local_antigravity';
     state.llmMode = nextMode;
+    if (state.activeSession) {
+      state.activeSession.llm_mode = nextMode;
+    }
+    if (state.activeSessionId) {
+      const cached = getSessionCache(state.activeSessionId);
+      if (cached && cached.session) {
+        cached.session.llm_mode = nextMode;
+      }
+    }
     try {
       localStorage.setItem('user_llm_mode', nextMode);
     } catch {}
+
+    // 立即刷新前端状态指示与按钮外观，杜绝回弹
+    syncLlmModeUi();
 
     const isNextLocal = nextMode === 'local_antigravity';
 
@@ -5609,7 +5634,7 @@
 
     if (!regenerate && !trimmed && stagedFiles.length === 0) return;
 
-    const activeLlmMode = state.activeSession?.llm_mode || state.llmMode || 'local_antigravity';
+    const activeLlmMode = state.llmMode || state.activeSession?.llm_mode || 'local_antigravity';
     if (activeLlmMode === 'api') {
       const isOwnProvider = state.settings?.provider === 'own_deepseek';
       const hasKey = Boolean(state.settings?.own_deepseek_api_key_masked || state.settings?.has_own_deepseek_key);
@@ -5790,8 +5815,8 @@
           attachments: stagedFiles,
           assistant_prefix: assistantPrefix,
           include_follow_ups: isShowFollowUpsEnabled(),
-          llm_mode: state.activeSession?.llm_mode || state.llmMode || 'local_antigravity',
-          local_model: state.activeSession?.local_model || state.localModel || 'DeepSeek-V4.1-Flash'
+          llm_mode: activeLlmMode,
+          local_model: state.localModel || state.activeSession?.local_model || 'DeepSeek-V4.1-Flash'
         }),
         signal: abortController.signal
       });
@@ -6112,7 +6137,7 @@
         liveRow.classList.remove('awaiting-first-token');
         proseEl.classList.remove('streaming-cursor');
         const rawErrText = err?.message || '网络连接暂时中断，请稍后重试';
-        const isLocalBusy = /本地服务|本地 Antigravity|agy|服务繁忙/i.test(rawErrText);
+        const isLocalBusy = /本地服务|本地直连|极速直连|服务繁忙/i.test(rawErrText);
         const isKeyMissing = /API 密钥|API Key|OWN_KEY_MISSING|API_KEY_REQUIRED/i.test(rawErrText);
 
         let actionHtml = '';
@@ -6120,7 +6145,7 @@
           actionHtml = `
             <div class="ds-error-tip-card" style="margin-top: 10px; padding: 12px 14px; background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.3); border-radius: 10px;">
               <div style="font-weight: 600; color: #d97706; margin-bottom: 4px;">⚡ 本地服务繁忙提示</div>
-              <div style="font-size: 13px; color: var(--text-secondary); margin-bottom: 10px;">当前本地 Antigravity 底座服务繁忙或未响应。您可以稍后重试，或一键切换为云端 API 模式继续对话：</div>
+              <div style="font-size: 13px; color: var(--text-secondary); margin-bottom: 10px;">当前本地极速直连引擎服务繁忙或未响应。您可以稍后重试，或一键切换为云端 API 模式继续对话：</div>
               <button type="button" class="soft-tool-btn" style="padding: 5px 14px; font-size: 12.5px; cursor: pointer; border-radius: 6px; background: #3b82f6; color: #ffffff; border: none; font-weight: 600;" onclick="window.__dsToggleLlmMode()">☁️ 一键切换为云端 API 模式</button>
             </div>
           `;
@@ -6596,7 +6621,11 @@
     state.activeSessionId = sessionId;
     state.activeSession = data.session;
     state.activePersona = data.persona;
-    if (data.session?.llm_mode) {
+    const userPrefLlmMode = localStorage.getItem('user_llm_mode');
+    if (userPrefLlmMode) {
+      state.llmMode = userPrefLlmMode;
+      if (data.session) data.session.llm_mode = userPrefLlmMode;
+    } else if (data.session?.llm_mode) {
       state.llmMode = data.session.llm_mode;
     }
     if (data.session?.local_model) {
@@ -6840,6 +6869,8 @@
         body: JSON.stringify({
           persona_id: personaId,
           session_mode: 'roleplay',
+          llm_mode: state.llmMode || 'local_antigravity',
+          local_model: state.localModel || 'DeepSeek-V4.1-Flash',
           ...(customTitle ? { title: customTitle } : {})
         })
       });
@@ -7339,13 +7370,21 @@
   });
 
   function switchProviderPane(provider) {
-    const isOwn = provider === 'own_deepseek';
+    const isDsOwn = provider === 'own_deepseek';
+    const isCloud = provider === 'custom_cloud';
+    const isFree = !isDsOwn && !isCloud;
+
     document.getElementById('pane-demo')?.classList.toggle('hidden', provider !== 'demo');
     document.getElementById('pane-online')?.classList.toggle('hidden', provider !== 'online');
-    document.getElementById('mode-card-free')?.classList.toggle('active', !isOwn);
-    document.getElementById('mode-card-own')?.classList.toggle('active', isOwn);
-    document.getElementById('free-peace-card')?.classList.toggle('hidden', isOwn);
-    document.getElementById('member-own-api-box')?.classList.toggle('hidden', !isOwn);
+
+    document.getElementById('mode-card-free')?.classList.toggle('active', isFree);
+    document.getElementById('mode-card-own')?.classList.toggle('active', isDsOwn);
+    document.getElementById('mode-card-cloud')?.classList.toggle('active', isCloud);
+
+    document.getElementById('free-peace-card')?.classList.toggle('hidden', !isFree);
+    document.getElementById('member-own-api-box')?.classList.toggle('hidden', !isDsOwn);
+    document.getElementById('member-custom-cloud-box')?.classList.toggle('hidden', !isCloud);
+
     testResultBox?.classList.add('hidden');
   }
 
@@ -7362,9 +7401,17 @@
     }, 30);
   });
 
+  document.getElementById('mode-card-cloud')?.addEventListener('click', () => {
+    providerSelect.value = 'custom_cloud';
+    switchProviderPane('custom_cloud');
+    setTimeout(() => {
+      document.getElementById('st-custom-cloud-key')?.focus();
+    }, 30);
+  });
+
   providerSelect.addEventListener('change', (e) => switchProviderPane(e.target.value));
 
-  // 当用户在个人密钥框输入密钥时，自动为其切到「用我自己的密钥」档位
+  // 当用户在 DeepSeek 官方密钥框输入密钥时，自动为其切到「DeepSeek 官方 API」档位
   document.getElementById('st-own-ds-key')?.addEventListener('input', (e) => {
     if (isMemberOwnApiUnlocked() && e.target.value.trim().length >= 3) {
       providerSelect.value = 'own_deepseek';
@@ -7372,94 +7419,128 @@
     }
   });
 
+  // 当用户在云端 API 密钥框输入密钥时，自动为其切到「云端 API」档位
+  document.getElementById('st-custom-cloud-key')?.addEventListener('input', (e) => {
+    if (isMemberOwnApiUnlocked() && e.target.value.trim().length >= 3) {
+      providerSelect.value = 'custom_cloud';
+      switchProviderPane('custom_cloud');
+    }
+  });
+
+  // 云端 API 预设芯片点击事件：填入建议地址与模型，同时允许用户自由二次编辑
+  document.querySelectorAll('#cloud-api-preset-bar .api-preset-chip').forEach((chip) => {
+    chip.addEventListener('click', () => {
+      document.querySelectorAll('#cloud-api-preset-bar .api-preset-chip').forEach((c) => c.classList.remove('active'));
+      chip.classList.add('active');
+      const url = chip.dataset.cloudUrl;
+      const model = chip.dataset.cloudModel;
+      if (url) {
+        const urlInp = document.getElementById('st-custom-cloud-url');
+        if (urlInp) urlInp.value = url;
+      }
+      if (model) {
+        const modelInp = document.getElementById('st-custom-cloud-model');
+        if (modelInp) modelInp.value = model;
+      }
+    });
+  });
+
   function syncOwnApiPrivilegeUi() {
     const s = state.settings || {};
-    const hasSavedKey = Boolean(s.has_own_deepseek_key);
+    const hasSavedDsKey = Boolean(s.has_own_deepseek_key);
+    const hasSavedCloudKey = Boolean(s.has_custom_cloud_key);
 
     document.getElementById('own-api-unlocked-view')?.classList.remove('hidden');
 
     const optOwn = document.getElementById('st-opt-own-deepseek');
     if (optOwn) {
       optOwn.disabled = false;
-      optOwn.textContent = '个人 API 自由直连（DeepSeek 原生 & 角色扮演双模式通用）';
+      optOwn.textContent = 'DeepSeek 官方 API（默认官网与 V4.1 Flash，仅需填 Key）';
     }
 
-    const maskBadge = document.getElementById('own-api-mask-badge');
-    if (maskBadge) {
-      maskBadge.textContent = hasSavedKey
-        ? `已保存密钥 (${s.own_deepseek_key_masked || 'sk-••••'})`
-        : '可选配置';
+    const optCloud = document.getElementById('st-opt-custom-cloud');
+    if (optCloud) {
+      optCloud.disabled = false;
+      optCloud.textContent = '云端 API（自由指定接口地址与模型名称）';
     }
 
-    const clearWrap = document.getElementById('clear-own-ds-key-wrap');
-    const clearChk = document.getElementById('st-clear-own-ds-key');
-    if (clearWrap) clearWrap.classList.toggle('hidden', !hasSavedKey);
-    if (clearChk) clearChk.checked = false;
+    // 1. 回填 DeepSeek 官方卡片状态与输入框
+    const dsMaskBadge = document.getElementById('own-api-mask-badge');
+    if (dsMaskBadge) {
+      dsMaskBadge.textContent = hasSavedDsKey
+        ? `已配好 (${s.own_deepseek_key_masked || 'sk-••••'})`
+        : 'V4.1 Flash';
+    }
 
-    const keyInp = document.getElementById('st-own-ds-key');
-    if (keyInp) {
-      keyInp.value = '';
-      keyInp.type = 'password';
-      const eyeBtn = keyInp.parentElement?.querySelector('.pwd-eye-btn');
+    const clearDsWrap = document.getElementById('clear-own-ds-key-wrap');
+    const clearDsChk = document.getElementById('st-clear-own-ds-key');
+    if (clearDsWrap) clearDsWrap.classList.toggle('hidden', !hasSavedDsKey);
+    if (clearDsChk) clearDsChk.checked = false;
+
+    const dsKeyInp = document.getElementById('st-own-ds-key');
+    if (dsKeyInp) {
+      dsKeyInp.value = '';
+      dsKeyInp.type = 'password';
+      const eyeBtn = dsKeyInp.parentElement?.querySelector('.pwd-eye-btn');
       if (eyeBtn) {
         eyeBtn.textContent = '显示';
         eyeBtn.setAttribute('aria-pressed', 'false');
       }
-      keyInp.placeholder = hasSavedKey
-        ? `当前已保存 ${s.own_deepseek_key_masked}（不改请留空，粘贴新密钥则自动替换）`
-        : '把从 DeepSeek 官网复制来的 sk-... 密钥粘贴到这里，点保存就配好了';
+      dsKeyInp.placeholder = hasSavedDsKey
+        ? `已保存官方密钥 ${s.own_deepseek_key_masked}（留空保持不变，粘贴新 Key 覆盖）`
+        : '粘贴 sk-... 开头的 DeepSeek 官网密钥，点保存即可';
     }
 
-    const modelInp = document.getElementById('st-own-ds-model');
-    if (modelInp) {
-      modelInp.value = s.own_deepseek_model || 'deepseek-flash';
+    // 2. 回填云端 API 卡片状态与输入框（自由填写）
+    const cloudMaskBadge = document.getElementById('custom-cloud-mask-badge');
+    if (cloudMaskBadge) {
+      cloudMaskBadge.textContent = hasSavedCloudKey
+        ? `已配置 (${s.custom_cloud_key_masked || '••••'})`
+        : '自由定制';
     }
 
-    const urlInp = document.getElementById('st-own-api-url');
-    const urlFold = document.getElementById('own-api-custom-url-fold');
-    const defaultOfficialUrl = 'https://api.deepseek.com/v1/chat/completions';
-    const savedUrl = s.own_api_base_url || defaultOfficialUrl;
-    if (urlInp) {
-      urlInp.value = savedUrl;
+    const clearCloudWrap = document.getElementById('clear-custom-cloud-key-wrap');
+    const clearCloudChk = document.getElementById('st-clear-custom-cloud-key');
+    if (clearCloudWrap) clearCloudWrap.classList.toggle('hidden', !hasSavedCloudKey);
+    if (clearCloudChk) clearCloudChk.checked = false;
+
+    const cloudKeyInp = document.getElementById('st-custom-cloud-key');
+    if (cloudKeyInp) {
+      cloudKeyInp.value = '';
+      cloudKeyInp.type = 'password';
+      const eyeBtn = cloudKeyInp.parentElement?.querySelector('.pwd-eye-btn');
+      if (eyeBtn) {
+        eyeBtn.textContent = '显示';
+        eyeBtn.setAttribute('aria-pressed', 'false');
+      }
+      cloudKeyInp.placeholder = hasSavedCloudKey
+        ? `已保存云端密钥 ${s.custom_cloud_key_masked}（留空保持不变，粘贴新 Key 覆盖）`
+        : '粘贴第三方服务商提供的 API 密钥';
     }
 
-    // 站内已配好免填密钥时的温和提示（不暴露 .env 等程序员术语）
+    const cloudUrlInp = document.getElementById('st-custom-cloud-url');
+    if (cloudUrlInp) {
+      cloudUrlInp.value = s.custom_cloud_api_url || 'https://api.siliconflow.cn/v1/chat/completions';
+    }
+
+    const cloudModelInp = document.getElementById('st-custom-cloud-model');
+    if (cloudModelInp) {
+      cloudModelInp.value = s.custom_cloud_model || 'deepseek-ai/DeepSeek-V4.1-Flash';
+    }
+
+    // 站内已配好免填密钥时的温和提示
     const envBanner = document.getElementById('builtin-env-ready-banner');
     if (envBanner) {
       if (s.builtin_api_ready || s.builtin_tts_ready) {
-        envBanner.textContent = '本站已为您配好免填密钥的对话与语音服务，不填下面这项也能直接对话！';
+        envBanner.textContent = '本站已为您配好免填密钥的对话与语音服务，不填下面各项也能直接畅聊！';
         envBanner.classList.remove('hidden');
       } else {
         envBanner.classList.add('hidden');
       }
     }
 
-    const lowerSavedUrl = savedUrl.toLowerCase();
-    let matchedPreset = 'custom';
-    if (!s.own_api_base_url || lowerSavedUrl.includes('deepseek.com')) matchedPreset = 'deepseek';
-    else if (lowerSavedUrl.includes('siliconflow.cn')) matchedPreset = 'siliconflow';
-    else if (lowerSavedUrl.includes('aliyuncs.com')) matchedPreset = 'dashscope';
-    else if (lowerSavedUrl.includes('openrouter.ai')) matchedPreset = 'openrouter';
-    else if (lowerSavedUrl.includes('googleapis.com')) matchedPreset = 'gemini';
-
-    // 仅当用户自定义了非四大主流平台的中转站网址时才展开高级选项，保证小白界面干净清爽
-    if (urlFold) {
-      urlFold.open = matchedPreset === 'custom';
-    }
-
-    const tipEl = document.getElementById('preset-friendly-tip');
-    document.querySelectorAll('.api-preset-chip').forEach((chip) => {
-      const isMatch = chip.dataset.preset === matchedPreset;
-      chip.classList.toggle('active', isMatch);
-      if (isMatch && tipEl && chip.dataset.tip) {
-        tipEl.textContent = chip.dataset.tip;
-      }
-    });
-    if (matchedPreset === 'custom' && tipEl) {
-      tipEl.textContent = `当前使用自定义中转站网址（模型：${modelInp?.value || 'deepseek-flash'}）`;
-    }
     window.__preferCloudAsr =
-      lowerSavedUrl.includes('siliconflow.cn') ||
+      String(s.custom_cloud_api_url || '').toLowerCase().includes('siliconflow.cn') ||
       String(s.builtin_chat_label || '').includes('硅基流动');
   }
 
@@ -7478,39 +7559,54 @@
     const safeRec = Math.min(40, Math.max(2, parseInt(document.getElementById('st-recall')?.value || '16', 10) || 16));
     const safeTemp = Math.min(2.0, Math.max(0.1, parseFloat(document.getElementById('st-temp')?.value || '0.7') || 0.7));
 
+    let chosenProvider = providerSelect.value;
+    if (chosenProvider !== 'own_deepseek' && chosenProvider !== 'custom_cloud') {
+      chosenProvider = 'online';
+    }
+
     const payload = {
-      provider:
-        providerSelect.value === 'own_deepseek' && unlocked
-          ? 'own_deepseek'
-          : providerSelect.value === 'online'
-          ? 'online'
-          : 'demo',
+      provider: chosenProvider,
       sliding_window_turns: String(safeWin),
       max_recalled_memories: String(safeRec),
       temperature: String(Number(safeTemp.toFixed(2)))
     };
 
-    const clearOwn = Boolean(document.getElementById('st-clear-own-ds-key')?.checked);
-    if (clearOwn) {
+    // DeepSeek 官方配置独立处理（固定官网端点与 V4.1 Flash，仅存 API Key）
+    const clearDs = Boolean(document.getElementById('st-clear-own-ds-key')?.checked);
+    if (clearDs) {
       payload.clear_own_deepseek_key = true;
       if (payload.provider === 'own_deepseek') {
-        payload.provider = 'demo';
+        payload.provider = 'online';
       }
     } else if (unlocked) {
       const ownKeyVal = document.getElementById('st-own-ds-key')?.value.trim() || '';
       if (ownKeyVal) {
         payload.own_deepseek_api_key = ownKeyVal;
-        payload.provider = 'own_deepseek';
       }
-      const ownModelVal = document.getElementById('st-own-ds-model')?.value.trim();
-      if (ownModelVal !== undefined) {
-        payload.own_deepseek_model = ownModelVal || 'deepseek-flash';
-      }
-      const ownUrlVal =
-        normalizeSettingsUrlInput(document.getElementById('st-own-api-url')?.value) ||
-        'https://api.deepseek.com/v1/chat/completions';
-      payload.own_api_base_url = ownUrlVal;
     }
+
+    // 云端 API 自定义配置独立处理（自由指定接口地址与模型名称）
+    const clearCloud = Boolean(document.getElementById('st-clear-custom-cloud-key')?.checked);
+    if (clearCloud) {
+      payload.clear_custom_cloud_key = true;
+      if (payload.provider === 'custom_cloud') {
+        payload.provider = 'online';
+      }
+    } else if (unlocked) {
+      const cloudKeyVal = document.getElementById('st-custom-cloud-key')?.value.trim() || '';
+      if (cloudKeyVal) {
+        payload.custom_cloud_api_key = cloudKeyVal;
+      }
+      const cloudUrlVal = normalizeSettingsUrlInput(document.getElementById('st-custom-cloud-url')?.value);
+      if (cloudUrlVal) {
+        payload.custom_cloud_api_url = cloudUrlVal;
+      }
+      const cloudModelVal = document.getElementById('st-custom-cloud-model')?.value.trim();
+      if (cloudModelVal) {
+        payload.custom_cloud_model = cloudModelVal;
+      }
+    }
+
     return payload;
   }
 
@@ -7591,7 +7687,9 @@
 
     if (s.provider === 'own_deepseek' && unlocked) {
       providerSelect.value = 'own_deepseek';
-    } else if (s.provider === 'online' || s.provider === 'own_deepseek') {
+    } else if (s.provider === 'custom_cloud' && unlocked) {
+      providerSelect.value = 'custom_cloud';
+    } else if (s.provider === 'online' || s.provider === 'own_deepseek' || s.provider === 'custom_cloud') {
       providerSelect.value = 'online';
     } else {
       providerSelect.value = 'demo';
@@ -7621,7 +7719,9 @@
     const advFold = document.getElementById('advanced-tech-settings-fold');
     if (advFold) advFold.open = false;
 
-    if (focusOwnApi === true && unlocked) {
+    if (focusOwnApi === 'custom_cloud' && unlocked) {
+      providerSelect.value = 'custom_cloud';
+    } else if ((focusOwnApi === true || focusOwnApi === 'own_deepseek') && unlocked) {
       providerSelect.value = 'own_deepseek';
     }
     switchProviderPane(providerSelect.value);
@@ -8660,6 +8760,7 @@
     openSettingsModal(true);
   });
 
+  // DeepSeek 官方 API 连接与余额测试（锁定官网端点与最新 V4.1 Flash，用户仅需填 Key）
   document.getElementById('verify-own-ds-key-btn')?.addEventListener('click', async (e) => {
     const btn = e.currentTarget;
     const origText = btn.textContent;
@@ -8668,16 +8769,11 @@
     testResultBox?.classList.add('hidden');
     try {
       const draftKey = document.getElementById('st-own-ds-key')?.value.trim() || '';
-      const draftUrl =
-        document.getElementById('st-own-api-url')?.value.trim() ||
-        'https://api.deepseek.com/v1/chat/completions';
-      const draftModel = document.getElementById('st-own-ds-model')?.value.trim() || 'deepseek-flash';
       const res = await apiJson('/api/settings/verify-own-key', {
         method: 'POST',
         body: JSON.stringify({
-          own_deepseek_api_key: draftKey,
-          own_api_base_url: draftUrl,
-          own_deepseek_model: draftModel
+          provider: 'own_deepseek',
+          own_deepseek_api_key: draftKey
         })
       });
       if (testResultBox) {
@@ -8701,29 +8797,44 @@
     }
   });
 
-  // 绑定个人密钥平台一键按钮（点击自动填好平台网址与最新 V4.1 Flash 模型，小白只需粘贴密钥）
-  document.querySelectorAll('.api-preset-chip').forEach((chip) => {
-    chip.addEventListener('click', () => {
-      document.querySelectorAll('.api-preset-chip').forEach((c) => c.classList.toggle('active', c === chip));
-      const urlInp = document.getElementById('st-own-api-url');
-      const modelInp = document.getElementById('st-own-ds-model');
-      const keyInp = document.getElementById('st-own-ds-key');
-      const tipEl = document.getElementById('preset-friendly-tip');
-      if (urlInp) urlInp.value = chip.dataset.url || 'https://api.deepseek.com/v1/chat/completions';
-      if (modelInp) modelInp.value = chip.dataset.model || 'deepseek-flash';
-      if (tipEl && chip.dataset.tip) tipEl.textContent = chip.dataset.tip;
-      if (isMemberOwnApiUnlocked() && keyInp) {
-        keyInp.focus();
+  // 云端 API 连接测试（用户可自由指定接口地址与模型名称）
+  document.getElementById('verify-custom-cloud-key-btn')?.addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    const origText = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = '正在测试云端连接…';
+    testResultBox?.classList.add('hidden');
+    try {
+      const draftKey = document.getElementById('st-custom-cloud-key')?.value.trim() || '';
+      const draftUrl = document.getElementById('st-custom-cloud-url')?.value.trim() || 'https://api.siliconflow.cn/v1/chat/completions';
+      const draftModel = document.getElementById('st-custom-cloud-model')?.value.trim() || 'deepseek-ai/DeepSeek-V4.1-Flash';
+      const res = await apiJson('/api/settings/verify-own-key', {
+        method: 'POST',
+        body: JSON.stringify({
+          provider: 'custom_cloud',
+          custom_cloud_api_key: draftKey,
+          custom_cloud_api_url: draftUrl,
+          custom_cloud_model: draftModel
+        })
+      });
+      if (testResultBox) {
+        testResultBox.className = 'test-result-box ok';
+        testResultBox.textContent = res.message;
+        testResultBox.classList.remove('hidden');
       }
-    });
-  });
-
-  // 小白粘贴密钥后自动将上方连接方式切到「🔑 用我自己的密钥」，无需手动再改下拉框
-  document.getElementById('st-own-ds-key')?.addEventListener('input', (e) => {
-    const val = e.target.value.trim();
-    if (val && isMemberOwnApiUnlocked() && providerSelect.value !== 'own_deepseek') {
-      providerSelect.value = 'own_deepseek';
-      switchProviderPane('own_deepseek');
+      if (draftKey && providerSelect.value !== 'custom_cloud') {
+        providerSelect.value = 'custom_cloud';
+        switchProviderPane('custom_cloud');
+      }
+    } catch (err) {
+      if (testResultBox) {
+        testResultBox.className = 'test-result-box err';
+        testResultBox.textContent = `${err.message}`;
+        testResultBox.classList.remove('hidden');
+      }
+    } finally {
+      btn.disabled = false;
+      btn.textContent = origText;
     }
   });
 
@@ -10245,8 +10356,11 @@
     compAutoChk.checked = c.reminderEnabled !== false;
     compLiveStatus.textContent = c.label || '正温柔守候在你身旁';
 
+    const sparkSvg = '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 0L14.6 9.4L24 12L14.6 14.6L12 24L9.4 14.6L0 12L9.4 9.4Z"/></svg>';
+    const heartSvg = '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>';
+    const particleSvg = (c.particle === '♡') ? heartSvg : sparkSvg;
     document.querySelectorAll('#comp-particles .cp-p').forEach((pEl) => {
-      pEl.textContent = c.particle || '✦';
+      pEl.innerHTML = particleSvg;
     });
 
     window.__activeSessionId = state.activeSessionId;

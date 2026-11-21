@@ -3350,7 +3350,7 @@ async function handleApi(req, res, pathname, parsedUrl) {
     }
   }
 
-  // 验证个人填写的 API Key 与兼容网关连通性
+  // 验证个人填写的 API Key 与兼容网关连通性（明确解耦：DeepSeek 专属极简 vs 云端 API 自由定制）
   if (method === 'POST' && pathname === '/api/settings/verify-own-key') {
     if (!checkRateLimit(`verify-own-key:${userId}`, 12, 60000)) {
       return sendJson(res, 429, { ok: false, error: '验证请求过于频繁，请稍后再试' });
@@ -3358,31 +3358,61 @@ async function handleApi(req, res, pathname, parsedUrl) {
 
     const body = await readJsonBody(req, 16 * 1024);
     const savedOwn = getRawUserOwnDeepSeekConfig(userId);
-    const incomingRaw = String(body.own_deepseek_api_key || '').trim();
-    const candidateKey =
-      incomingRaw && !incomingRaw.includes('••••') ? incomingRaw : savedOwn.apiKey;
+    const isCloudMode = body.provider === 'custom_cloud' || Boolean(body.custom_cloud_api_key || body.custom_cloud_api_url || body.custom_cloud_model);
 
-    if (!candidateKey) {
-      return sendJson(res, 400, {
-        ok: false,
-        error: '请先把您的密钥粘贴到输入框里（一般是以 sk- 开头的一串字母数字）'
-      });
+    let candidateKey = '';
+    let targetBaseUrl = '';
+    let targetModel = '';
+
+    if (isCloudMode) {
+      // 云端 API：自由指定接口地址与模型名称
+      const incomingCloudKey = String(body.custom_cloud_api_key || body.own_deepseek_api_key || '').trim();
+      candidateKey =
+        incomingCloudKey && !incomingCloudKey.includes('••••')
+          ? incomingCloudKey
+          : (savedOwn.customCloud?.apiKey || savedOwn.apiKey);
+
+      if (!candidateKey) {
+        return sendJson(res, 400, {
+          ok: false,
+          error: '请先填入云端 API 密钥 (Key)'
+        });
+      }
+
+      const rawUrl = body.custom_cloud_api_url || body.own_api_base_url || savedOwn.customCloud?.baseUrl || 'https://api.siliconflow.cn/v1/chat/completions';
+      try {
+        targetBaseUrl = validateSafeUserApiBaseUrl(rawUrl);
+      } catch (err) {
+        return sendJson(res, 400, { ok: false, error: '云端 API 接口地址无效：' + err.message });
+      }
+
+      const rawModel = body.custom_cloud_model || body.own_deepseek_model || savedOwn.customCloud?.model || 'deepseek-ai/DeepSeek-V3';
+      targetModel = normalizeModelForEndpoint(sanitizeUserModelName(rawModel), targetBaseUrl);
+    } else {
+      // DeepSeek 官方 API：固定官网端点与最新 V4.1 Flash，用户仅需填入 Key
+      const incomingDsKey = String(body.own_deepseek_api_key || '').trim();
+      candidateKey =
+        incomingDsKey && !incomingDsKey.includes('••••')
+          ? incomingDsKey
+          : (savedOwn.deepseekOfficial?.apiKey || savedOwn.apiKey);
+
+      if (!candidateKey) {
+        return sendJson(res, 400, {
+          ok: false,
+          error: '请先把您的 DeepSeek 官方密钥粘贴到输入框里（一般是以 sk- 开头的一串字符）'
+        });
+      }
+
+      targetBaseUrl = OFFICIAL_DEEPSEEK_CHAT_URL;
+      targetModel = 'deepseek-v4.1-flash';
     }
 
     let validKey;
-    let targetBaseUrl = savedOwn.baseUrl || OFFICIAL_DEEPSEEK_CHAT_URL;
     try {
       validKey = validateOfficialDeepSeekApiKey(candidateKey);
-      if (body.own_api_base_url !== undefined) {
-        targetBaseUrl = validateSafeUserApiBaseUrl(body.own_api_base_url);
-      }
     } catch (err) {
       return sendJson(res, 400, { ok: false, error: err.message });
     }
-    const targetModel = normalizeModelForEndpoint(
-      sanitizeUserModelName(body.own_deepseek_model || savedOwn.model || 'deepseek-flash'),
-      targetBaseUrl
-    );
 
     const isOfficialDs = targetBaseUrl.includes('deepseek.com');
     try {
@@ -3401,10 +3431,10 @@ async function handleApi(req, res, pathname, parsedUrl) {
             is_available: Boolean(balData.is_available),
             balance_text: balText,
             message: firstInfo
-              ? `✅ 连接成功！您的 DeepSeek 官网密钥可以正常使用（已默认接入最新 DeepSeek V4.1 Flash，账户余额：${balText}）${
+              ? `✅ 连接成功！您的 DeepSeek 官网密钥可以正常使用（已锁定官方端点与 DeepSeek V4.1 Flash，账户余额：${balText}）${
                   balData.is_available ? '，点右下角「保存设置」就能开始聊天啦！' : ' —— 温馨提醒：当前账户余额为 0，去官网充一点点就能聊啦'
                 }`
-              : '✅ 连接成功！您的 DeepSeek 密钥已准备就绪，点右下角「保存设置」即可开始聊天！'
+              : '✅ 连接成功！您的 DeepSeek 官网密钥已验证就绪（已锁定官方端点与 DeepSeek V4.1 Flash），点右下角「保存设置」即可开始聊天！'
           });
         }
       }

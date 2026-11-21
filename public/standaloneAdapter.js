@@ -1487,70 +1487,116 @@
       } else if (bodyObj?.own_deepseek_api_key) {
         dbObj.settings.deepseek_api_key = String(bodyObj.own_deepseek_api_key).replace(/^Bearer\s+/i, '').trim();
       }
-      if (bodyObj?.own_deepseek_model) {
-        dbObj.settings.deepseek_model = String(bodyObj.own_deepseek_model).trim();
+      // 独立处理 DeepSeek 专属配置 vs 云端自定义 API 配置
+      if (bodyObj?.provider) {
+        dbObj.settings.provider = bodyObj.provider;
+      }
+      if (bodyObj?.clear_own_deepseek_key) {
+        dbObj.settings.own_deepseek_api_key = '';
+        dbObj.settings.deepseek_api_key = '';
+        dbObj.settings.has_own_deepseek_key = false;
+        dbObj.settings.own_deepseek_key_masked = '';
+      } else if (bodyObj?.own_deepseek_api_key) {
+        const cleanDsKey = String(bodyObj.own_deepseek_api_key).replace(/^Bearer\s+/i, '').trim();
+        dbObj.settings.own_deepseek_api_key = cleanDsKey;
+        dbObj.settings.deepseek_api_key = cleanDsKey;
+        dbObj.settings.has_own_deepseek_key = Boolean(cleanDsKey);
+        dbObj.settings.own_deepseek_key_masked = cleanDsKey
+          ? `${cleanDsKey.slice(0, 3)}••••••••${cleanDsKey.slice(-4)}`
+          : '';
+        // 官方固定配置
+        dbObj.settings.deepseek_base_url = 'https://api.deepseek.com/v1/chat/completions';
+        dbObj.settings.deepseek_model = 'deepseek-v4.1-flash';
+        dbObj.settings.own_api_base_url = dbObj.settings.deepseek_base_url;
         dbObj.settings.own_deepseek_model = dbObj.settings.deepseek_model;
       }
-      if (bodyObj?.own_api_base_url !== undefined) {
-        const cleanUrl = String(bodyObj.own_api_base_url || '').trim();
-        dbObj.settings.deepseek_base_url = cleanUrl || 'https://api.deepseek.com/v1/chat/completions';
-        dbObj.settings.own_api_base_url = dbObj.settings.deepseek_base_url;
+
+      if (bodyObj?.clear_custom_cloud_key) {
+        dbObj.settings.custom_cloud_api_key = '';
+        dbObj.settings.has_custom_cloud_key = false;
+        dbObj.settings.custom_cloud_key_masked = '';
+      } else if (bodyObj?.custom_cloud_api_key) {
+        const cleanCloudKey = String(bodyObj.custom_cloud_api_key).replace(/^Bearer\s+/i, '').trim();
+        dbObj.settings.custom_cloud_api_key = cleanCloudKey;
+        dbObj.settings.has_custom_cloud_key = Boolean(cleanCloudKey);
+        dbObj.settings.custom_cloud_key_masked = cleanCloudKey
+          ? `${cleanCloudKey.slice(0, 3)}••••••••${cleanCloudKey.slice(-4)}`
+          : '';
       }
-      Object.assign(dbObj.settings, bodyObj || {});
-      if (bodyObj?.own_deepseek_api_key) {
-        dbObj.settings.deepseek_api_key = String(bodyObj.own_deepseek_api_key).replace(/^Bearer\s+/i, '').trim();
+      if (bodyObj?.custom_cloud_api_url !== undefined) {
+        dbObj.settings.custom_cloud_api_url = String(bodyObj.custom_cloud_api_url || '').trim();
       }
-      const rawKey = (dbObj.settings.deepseek_api_key || '').trim();
+      if (bodyObj?.custom_cloud_model !== undefined) {
+        dbObj.settings.custom_cloud_model = String(bodyObj.custom_cloud_model || '').trim();
+      }
+
+      // 合并通用参数
+      for (const [k, v] of Object.entries(bodyObj || {})) {
+        if (!['own_deepseek_api_key', 'custom_cloud_api_key'].includes(k)) {
+          dbObj.settings[k] = v;
+        }
+      }
+
       dbObj.settings.free_experience_mode = true;
       dbObj.settings.vip_own_api_unlocked = true;
-      dbObj.settings.has_own_deepseek_key = Boolean(rawKey);
-      dbObj.settings.own_deepseek_key_masked = rawKey
-        ? `${rawKey.slice(0, 3)}••••••••${rawKey.slice(-4)}`
-        : '';
       saveLocalDb(dbObj);
       return jsonResponse({ settings: dbObj.settings });
     }
 
     if (pathname === '/api/settings/verify-own-key' && method === 'POST') {
-      const candidate = String(bodyObj?.own_deepseek_api_key || dbObj.settings.deepseek_api_key || '')
+      const isCloud = bodyObj?.provider === 'custom_cloud' || Boolean(bodyObj?.custom_cloud_api_key || bodyObj?.custom_cloud_api_url);
+      if (isCloud) {
+        const candidate = String(bodyObj?.custom_cloud_api_key || dbObj.settings.custom_cloud_api_key || '')
+          .replace(/^Bearer\s+/i, '')
+          .trim();
+        if (!candidate || candidate.length < 4) {
+          return jsonResponse({ ok: false, error: '请先输入您的云端 API Key' }, 400);
+        }
+        const rawBase = String(bodyObj?.custom_cloud_api_url || dbObj.settings.custom_cloud_api_url || 'https://api.siliconflow.cn/v1/chat/completions').trim();
+        const ep = resolveEndpoints(rawBase);
+        const targetModel = String(bodyObj?.custom_cloud_model || dbObj.settings.custom_cloud_model || 'deepseek-ai/DeepSeek-V3').trim();
+        try {
+          const probe = await originalFetch(ep.chatUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${candidate}` },
+            body: JSON.stringify({
+              model: targetModel,
+              messages: [{ role: 'user', content: '请回复OK' }],
+              max_tokens: 10,
+              stream: false
+            })
+          });
+          if (!probe.ok) throw new Error(`云端接口校验未通过 (${probe.status})`);
+          return jsonResponse({ ok: true, message: `✅ 云端 API 连通验证成功（模型：${targetModel}）！记得点保存设置生效。` });
+        } catch (e) {
+          return jsonResponse({ ok: false, error: e.message || '连接云端 API 失败，请核对地址与密钥' }, 400);
+        }
+      }
+
+      const candidate = String(bodyObj?.own_deepseek_api_key || dbObj.settings.deepseek_api_key || dbObj.settings.own_deepseek_api_key || '')
         .replace(/^Bearer\s+/i, '')
         .trim();
       if (!candidate || candidate.length < 8) {
-        return jsonResponse({ ok: false, error: '请先输入您的 API Key' }, 400);
+        return jsonResponse({ ok: false, error: '请先输入您的 DeepSeek 官方 API Key' }, 400);
       }
-      const rawBase = String(bodyObj?.own_api_base_url || dbObj.settings.deepseek_base_url || '').trim();
-      const ep = resolveEndpoints(rawBase || 'https://api.deepseek.com/v1/chat/completions');
-      const targetModel = String(bodyObj?.own_deepseek_model || dbObj.settings.deepseek_model || 'deepseek-chat').trim();
+      const ep = resolveEndpoints('https://api.deepseek.com/v1/chat/completions');
       try {
-        if (ep.chatUrl.includes('deepseek.com')) {
-          const r = await originalFetch(ep.balanceUrl, {
-            headers: { Authorization: `Bearer ${candidate}` }
-          });
-          if (r.ok) {
-            const d = await r.json();
-            const b0 = Array.isArray(d.balance_infos) && d.balance_infos[0];
-            return jsonResponse({
-              ok: true,
-              message: b0
-                ? `✅ 连接成功！您的 DeepSeek 官网密钥可用（已接入最新 DeepSeek V4.1 Flash，余额：¥${b0.total_balance}）`
-                : '✅ 连接成功！您的 DeepSeek 密钥已准备就绪！'
-            });
-          }
-        }
-        const probe = await originalFetch(ep.chatUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${candidate}` },
-          body: JSON.stringify({
-            model: targetModel,
-            messages: [{ role: 'user', content: '请回复OK' }],
-            max_tokens: 10,
-            stream: false
-          })
+        const r = await originalFetch(ep.balanceUrl, {
+          headers: { Authorization: `Bearer ${candidate}` }
         });
-        if (!probe.ok) throw new Error(`接口校验未通过 (${probe.status})`);
-        return jsonResponse({ ok: true, message: `✅ 个人 API 连通验证成功（模型：${targetModel}）！` });
+        if (r.ok) {
+          const d = await r.json();
+          const b0 = Array.isArray(d.balance_infos) && d.balance_infos[0];
+          return jsonResponse({
+            ok: true,
+            message: b0
+              ? `✅ 连接成功！您的 DeepSeek 官网密钥可用（已锁定官方端点与 DeepSeek V4.1 Flash，余额：¥${b0.total_balance}）`
+              : '✅ 连接成功！您的 DeepSeek 官网密钥已准备就绪（已锁定官方端点与 DeepSeek V4.1 Flash）！'
+          });
+        }
+        throw new Error(`官网密钥验证未通过 (${r.status})`);
       } catch (e) {
-        return jsonResponse({ ok: false, error: e.message || '连接 API 失败，请核对地址与密钥' }, 400);
+        return jsonResponse({ ok: false, error: e.message || '连接 DeepSeek 官网失败，请核对密钥' }, 400);
       }
     }
 

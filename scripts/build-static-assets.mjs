@@ -493,13 +493,33 @@ function precompressPublicAssets() {
 
     const gzPath = `${filePath}.gz`;
     const brPath = `${filePath}.br`;
-    fs.writeFileSync(gzPath, gzBuf);
-    fs.writeFileSync(brPath, brBuf);
+    try {
+      fs.writeFileSync(gzPath, gzBuf);
+    } catch (e) {
+      try {
+        const tmp = `${gzPath}.tmp`;
+        fs.writeFileSync(tmp, gzBuf);
+        fs.copyFileSync(tmp, gzPath);
+        fs.unlinkSync(tmp);
+      } catch {}
+    }
+    try {
+      fs.writeFileSync(brPath, brBuf);
+    } catch (e) {
+      try {
+        const tmp = `${brPath}.tmp`;
+        fs.writeFileSync(tmp, brBuf);
+        fs.copyFileSync(tmp, brPath);
+        fs.unlinkSync(tmp);
+      } catch {}
+    }
 
     // 保持预压缩产物时间不早于源文件，确保服务端与 Nginx 命中 mtime 校验
-    const targetTime = new Date(Math.max(Date.now(), stats.mtimeMs + 1000));
-    fs.utimesSync(gzPath, targetTime, targetTime);
-    fs.utimesSync(brPath, targetTime, targetTime);
+    try {
+      const targetTime = new Date(Math.max(Date.now(), stats.mtimeMs + 1000));
+      fs.utimesSync(gzPath, targetTime, targetTime);
+      fs.utimesSync(brPath, targetTime, targetTime);
+    } catch {}
 
     count += 1;
     totalRaw += rawBuf.length;

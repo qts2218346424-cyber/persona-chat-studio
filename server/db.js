@@ -3279,39 +3279,76 @@ function canUserBindOwnDeepSeekKey(userId) {
 
 /**
  * 仅限服务端内部读取该用户自己绑定的 API 配置（与站长 platform_config 100% 物理隔离，同时服务于 DeepSeek 与角色扮演双模式）
+ * 分别独立支持：
+ * 1. DeepSeek 官方专属 API：仅需 API Key，接口地址固定预设，模型固定为 deepseek-v4.1-flash
+ * 2. 自定义云端 API：用户可自由指定接口地址与任意模型名称
  */
 function getRawUserOwnDeepSeekConfig(userId) {
   const unlocked = canUserBindOwnDeepSeekKey(userId);
-  let apiKey = '';
-  let model = 'deepseek-flash';
-  let baseUrl = OFFICIAL_DEEPSEEK_CHAT_URL;
+  let dsApiKey = '';
+  let dsModel = 'deepseek-flash';
+  let dsBaseUrl = OFFICIAL_DEEPSEEK_CHAT_URL;
+
+  let cloudApiKey = '';
+  let cloudModel = 'deepseek-ai/DeepSeek-V3';
+  let cloudBaseUrl = 'https://api.siliconflow.cn/v1/chat/completions';
+
   if (userId) {
     const rows = db
       .prepare(
-        "SELECT key, value FROM user_settings WHERE user_id = ? AND key IN ('own_deepseek_api_key', 'own_deepseek_model', 'own_api_base_url')"
+        "SELECT key, value FROM user_settings WHERE user_id = ? AND key IN ('own_deepseek_api_key', 'own_deepseek_model', 'own_api_base_url', 'custom_cloud_api_key', 'custom_cloud_api_url', 'custom_cloud_model')"
       )
       .all(userId);
     for (const r of rows) {
-      if (r.key === 'own_deepseek_api_key') apiKey = String(r.value || '').trim();
+      if (r.key === 'own_deepseek_api_key') dsApiKey = String(r.value || '').trim();
       if (r.key === 'own_deepseek_model' && r.value) {
-        model = sanitizeUserModelName(r.value);
+        dsModel = sanitizeUserModelName(r.value);
       }
       if (r.key === 'own_api_base_url' && r.value) {
         try {
-          baseUrl = validateSafeUserApiBaseUrl(r.value);
+          dsBaseUrl = validateSafeUserApiBaseUrl(r.value);
         } catch {
-          baseUrl = OFFICIAL_DEEPSEEK_CHAT_URL;
+          dsBaseUrl = OFFICIAL_DEEPSEEK_CHAT_URL;
         }
+      }
+      if (r.key === 'custom_cloud_api_key') cloudApiKey = String(r.value || '').trim();
+      if (r.key === 'custom_cloud_api_url' && r.value) {
+        try {
+          cloudBaseUrl = validateSafeUserApiBaseUrl(r.value);
+        } catch {
+          cloudBaseUrl = 'https://api.siliconflow.cn/v1/chat/completions';
+        }
+      }
+      if (r.key === 'custom_cloud_model' && r.value) {
+        cloudModel = sanitizeUserModelName(r.value);
       }
     }
   }
-  model = normalizeModelForEndpoint(model, baseUrl);
+  dsModel = normalizeModelForEndpoint(dsModel, dsBaseUrl);
+  cloudModel = normalizeModelForEndpoint(cloudModel, cloudBaseUrl);
+
   return {
     unlocked,
-    hasKey: Boolean(apiKey),
-    apiKey,
-    model,
-    baseUrl
+    hasKey: Boolean(dsApiKey || cloudApiKey),
+    apiKey: dsApiKey || cloudApiKey,
+    model: dsModel,
+    baseUrl: dsBaseUrl,
+    // DeepSeek 官方专属通道：地址固定，模型固定为 deepseek-v4.1-flash，仅填 Key
+    deepseekOfficial: {
+      unlocked,
+      hasKey: Boolean(dsApiKey),
+      apiKey: dsApiKey,
+      model: 'deepseek-flash',
+      baseUrl: OFFICIAL_DEEPSEEK_CHAT_URL
+    },
+    // 自定义云端通用通道：地址可自由填、模型可自由填
+    customCloud: {
+      unlocked,
+      hasKey: Boolean(cloudApiKey),
+      apiKey: cloudApiKey,
+      model: cloudModel,
+      baseUrl: cloudBaseUrl
+    }
   };
 }
 
@@ -3324,9 +3361,14 @@ function getSafeClientSettings(userId) {
   let slidingWindow = '40';
   let maxRecall = '16';
   let proactiveIdle = '300';
-  let ownKey = '';
-  let ownModel = 'deepseek-flash';
-  let ownBaseUrl = OFFICIAL_DEEPSEEK_CHAT_URL;
+
+  let ownDsKey = '';
+  let ownDsModel = 'deepseek-v4.1-flash';
+  let ownDsBaseUrl = OFFICIAL_DEEPSEEK_CHAT_URL;
+
+  let customCloudKey = '';
+  let customCloudUrl = 'https://api.siliconflow.cn/v1/chat/completions';
+  let customCloudModel = 'deepseek-ai/DeepSeek-V3';
 
   const unlocked = canUserBindOwnDeepSeekKey(userId);
   const freeMode = isFreeExperienceMode();
@@ -3340,6 +3382,8 @@ function getSafeClientSettings(userId) {
     if (map.provider) explicitProviderSaved = true;
     if (map.provider === 'own_deepseek') {
       provider = 'own_deepseek';
+    } else if (map.provider === 'custom_cloud') {
+      provider = 'custom_cloud';
     } else if (
       map.provider === 'online' ||
       map.provider === 'deepseek' ||
@@ -3347,38 +3391,48 @@ function getSafeClientSettings(userId) {
     ) {
       provider = 'online';
     }
-    if (map.own_deepseek_api_key) ownKey = String(map.own_deepseek_api_key).trim();
-    if (map.own_deepseek_model) ownModel = sanitizeUserModelName(map.own_deepseek_model);
-    if (map.own_api_base_url) {
+
+    if (map.own_deepseek_api_key) ownDsKey = String(map.own_deepseek_api_key).trim();
+    if (map.custom_cloud_api_key) customCloudKey = String(map.custom_cloud_api_key).trim();
+    if (map.custom_cloud_api_url) {
       try {
-        ownBaseUrl = validateSafeUserApiBaseUrl(map.own_api_base_url);
+        customCloudUrl = validateSafeUserApiBaseUrl(map.custom_cloud_api_url);
       } catch {
-        ownBaseUrl = OFFICIAL_DEEPSEEK_CHAT_URL;
+        customCloudUrl = 'https://api.siliconflow.cn/v1/chat/completions';
       }
     }
+    if (map.custom_cloud_model) {
+      customCloudModel = sanitizeUserModelName(map.custom_cloud_model);
+    }
+
     if (map.temperature) temperature = map.temperature;
     if (map.sliding_window_turns) slidingWindow = map.sliding_window_turns;
     if (map.max_recalled_memories) maxRecall = map.max_recalled_memories;
     if (map.proactive_idle_sec) proactiveIdle = map.proactive_idle_sec;
   }
-  if (!ownKey && ownModel === 'deepseek-chat') {
-    ownModel = 'deepseek-flash';
-  }
-  ownModel = normalizeModelForEndpoint(ownModel, ownBaseUrl);
 
   // 若用户在 .env 或后台内置了 API Key，且尚未手动锁死 demo，自动默认激活在线通道开箱畅玩
-  if (!explicitProviderSaved && !ownKey && platformRaw._builtin_chat_ready) {
+  if (!explicitProviderSaved && !ownDsKey && !customCloudKey && platformRaw._builtin_chat_ready) {
     provider = 'online';
   }
 
   return {
-    provider, // 'demo' | 'online' | 'own_deepseek'
+    provider, // 'demo' | 'online' | 'own_deepseek' | 'custom_cloud'
     free_experience_mode: freeMode,
     vip_own_api_unlocked: unlocked,
-    has_own_deepseek_key: Boolean(ownKey),
-    own_deepseek_key_masked: ownKey ? maskSecret(ownKey) : '',
-    own_deepseek_model: ownModel,
-    own_api_base_url: ownBaseUrl,
+
+    // 1. DeepSeek 官方专属配置（仅填 API Key，地址与模型已默认预设）
+    has_own_deepseek_key: Boolean(ownDsKey),
+    own_deepseek_key_masked: ownDsKey ? maskSecret(ownDsKey) : '',
+    own_deepseek_model: ownDsModel,
+    own_api_base_url: ownDsBaseUrl,
+
+    // 2. 自定义云端 API 配置（可自由指定接口地址与模型名称）
+    has_custom_cloud_key: Boolean(customCloudKey),
+    custom_cloud_key_masked: customCloudKey ? maskSecret(customCloudKey) : '',
+    custom_cloud_api_url: customCloudUrl,
+    custom_cloud_model: customCloudModel,
+
     builtin_api_ready: Boolean(platformRaw._builtin_chat_ready),
     builtin_chat_label: platformRaw._builtin_chat_label || '',
     builtin_tts_ready: Boolean(platformRaw._builtin_tts_ready),
@@ -3405,43 +3459,60 @@ function updateSafeClientSettings(userId, patch = {}) {
     ON CONFLICT(user_id, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
   `);
 
-  // 1. 允许用户随时解绑清空或更新自己保存的个人 API Key
-  let ownKeyAfter = existingOwn.apiKey;
+  // 1. DeepSeek 官方专属 API 配置：仅需保存/清空 API Key（接口地址与模型名称全自动预设）
+  let dsKeyAfter = existingOwn.deepseekOfficial.apiKey;
   if (patch.clear_own_deepseek_key) {
     stmt.run(userId, 'own_deepseek_api_key', '', now);
-    ownKeyAfter = '';
+    dsKeyAfter = '';
   } else if (patch.own_deepseek_api_key !== undefined && patch.own_deepseek_api_key !== null) {
     const rawKeyInput = String(patch.own_deepseek_api_key).trim();
     if (rawKeyInput && !isMaskedPlaceholder(rawKeyInput)) {
       const validKey = validateOfficialDeepSeekApiKey(rawKeyInput);
       stmt.run(userId, 'own_deepseek_api_key', validKey, now);
-      ownKeyAfter = validKey;
+      dsKeyAfter = validKey;
     }
   }
 
-  // 2. 自定义 API 接口地址（留空自动恢复为 DeepSeek 官方端点）
-  let effectiveBaseUrl = existingOwn.baseUrl || OFFICIAL_DEEPSEEK_CHAT_URL;
-  if (patch.own_api_base_url !== undefined) {
-    effectiveBaseUrl = validateSafeUserApiBaseUrl(patch.own_api_base_url);
-    stmt.run(userId, 'own_api_base_url', effectiveBaseUrl, now);
+  // 2. 自定义云端 API 配置：自由指定接口地址、模型名称与专属密钥（与 DeepSeek 官方 100% 独立隔离）
+  let cloudKeyAfter = existingOwn.customCloud.apiKey;
+  if (patch.clear_custom_cloud_key) {
+    stmt.run(userId, 'custom_cloud_api_key', '', now);
+    cloudKeyAfter = '';
+  } else if (patch.custom_cloud_api_key !== undefined && patch.custom_cloud_api_key !== null) {
+    const rawCloudKey = String(patch.custom_cloud_api_key).trim();
+    if (rawCloudKey && !isMaskedPlaceholder(rawCloudKey)) {
+      stmt.run(userId, 'custom_cloud_api_key', rawCloudKey, now);
+      cloudKeyAfter = rawCloudKey;
+    }
   }
 
-  // 3. 个人 API 模型标识（自动适配各平台 DeepSeek V4.1 Flash 模型代号）
-  if (patch.own_deepseek_model !== undefined) {
-    const cleanModel = normalizeModelForEndpoint(patch.own_deepseek_model, effectiveBaseUrl);
-    stmt.run(userId, 'own_deepseek_model', cleanModel, now);
+  if (patch.custom_cloud_api_url !== undefined) {
+    const cleanCloudUrl = validateSafeUserApiBaseUrl(patch.custom_cloud_api_url || 'https://api.siliconflow.cn/v1/chat/completions');
+    stmt.run(userId, 'custom_cloud_api_url', cleanCloudUrl, now);
   }
 
-  // 4. 通道档位选择校验
+  if (patch.custom_cloud_model !== undefined) {
+    const cleanCloudModel = sanitizeUserModelName(patch.custom_cloud_model || 'deepseek-ai/DeepSeek-V3');
+    stmt.run(userId, 'custom_cloud_model', cleanCloudModel, now);
+  }
+
+  // 3. 通道档位选择校验（支持 own_deepseek、custom_cloud、online、demo）
   if (patch.provider !== undefined) {
     let cleanProv = 'demo';
     if (patch.provider === 'own_deepseek') {
-      if (!ownKeyAfter) {
-        const err = new Error('请先输入您的 API Key（例如 sk-...），再启用个人 API 直连');
+      if (!dsKeyAfter) {
+        const err = new Error('请先填入 DeepSeek 官方 API Key（以 sk- 开头），再启用官方专属直连');
         err.statusCode = 400;
         throw err;
       }
       cleanProv = 'own_deepseek';
+    } else if (patch.provider === 'custom_cloud') {
+      if (!cloudKeyAfter) {
+        const err = new Error('请先填入自定义云端 API Key，再启用云端自由定制通道');
+        err.statusCode = 400;
+        throw err;
+      }
+      cleanProv = 'custom_cloud';
     } else if (
       patch.provider === 'online' ||
       patch.provider === 'deepseek' ||
@@ -3450,9 +3521,12 @@ function updateSafeClientSettings(userId, patch = {}) {
       cleanProv = 'online';
     }
     stmt.run(userId, 'provider', cleanProv, now);
-  } else if (patch.clear_own_deepseek_key) {
+  } else {
+    // 兼容根据清空操作回退
     const cur = getSafeClientSettings(userId);
-    if (cur.provider === 'own_deepseek') {
+    if (patch.clear_own_deepseek_key && cur.provider === 'own_deepseek') {
+      stmt.run(userId, 'provider', 'demo', now);
+    } else if (patch.clear_custom_cloud_key && cur.provider === 'custom_cloud') {
       stmt.run(userId, 'provider', 'demo', now);
     }
   }
@@ -3479,53 +3553,26 @@ function updateSafeClientSettings(userId, patch = {}) {
 
 /**
  * 仅限服务端内部执行推理 / 语音合成时调用：
- * 1. 若用户选了个人 API 直连 (own_deepseek) 且已绑定密钥：同时在 DeepSeek 原生模式与角色扮演模式中直连该用户自己的 API
- * 2. 若用户选了平台在线通道 (online)：走站长托管网关配置
- * 3. 若用户处于内置体验档 (demo)：走本地桥接或高拟真剧情引擎
+ * 1. 若用户选了 DeepSeek 官方专属直连 (own_deepseek)：固定使用官方端点与 deepseek-flash 模型，仅填 Key
+ * 2. 若用户选了自定义云端 API (custom_cloud)：使用用户自由指定的接口地址与模型名称
+ * 3. 若用户选了平台在线通道 (online)：走站长托管网关配置
+ * 4. 若用户处于内置体验档 (demo)：走本地桥接或高拟真剧情引擎
  */
 function getExecutionSettingsForUser(userId, options = {}) {
   const userPrefs = getSafeClientSettings(userId);
   const platform = getRawPlatformConfigInternal();
   const ownCfg = getRawUserOwnDeepSeekConfig(userId);
 
+  // 通道 A：DeepSeek 官方专属 API
   if (userPrefs.provider === 'own_deepseek') {
-    if (ownCfg.unlocked && ownCfg.hasKey && options.forceDemoLlm !== true) {
-      const targetUrl = ownCfg.baseUrl || OFFICIAL_DEEPSEEK_CHAT_URL;
-      const lowerUrl = targetUrl.toLowerCase();
-      // 一钥多通自动桥接：若用户在网页填入的是硅基流动 / 阿里云百炼 / OpenAI 密钥，且平台未单独配置商业 TTS 密钥，自动用同一把密钥激活商业真声配音与 ASR！
-      const autoTtsBridge = {};
-      if (!platform.tts_api_key) {
-        if (lowerUrl.includes('siliconflow.cn')) {
-          // 硅基流动专注对话与 Qwen3-ASR 语音识别；配音保持独立高音质 edge_neural API，避免 0.5B 声码器电流底噪
-          autoTtsBridge._builtin_asr = {
-            enabled: true,
-            provider: 'siliconflow',
-            apiKey: ownCfg.apiKey,
-            endpoint: 'https://api.siliconflow.cn/v1/audio/transcriptions',
-            model: 'Qwen/Qwen3-ASR-1.7B'
-          };
-        } else if (lowerUrl.includes('aliyuncs.com')) {
-          autoTtsBridge.tts_provider = 'dashscope';
-          autoTtsBridge.tts_api_key = ownCfg.apiKey;
-          autoTtsBridge.tts_endpoint =
-            'https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation';
-          autoTtsBridge.tts_model = 'qwen3-tts-flash';
-        } else if (lowerUrl.includes('api.openai.com')) {
-          autoTtsBridge.tts_provider = 'openai_tts';
-          autoTtsBridge.tts_api_key = ownCfg.apiKey;
-          autoTtsBridge.tts_endpoint = 'https://api.openai.com/v1/audio/speech';
-          autoTtsBridge.tts_model = 'gpt-4o-mini-tts';
-        }
-      }
-
+    if (ownCfg.unlocked && ownCfg.deepseekOfficial.hasKey && options.forceDemoLlm !== true) {
       return {
         ...DEFAULT_SETTINGS,
         ...platform,
-        ...autoTtsBridge,
         provider: 'deepseek',
-        deepseek_base_url: targetUrl,
-        deepseek_model: ownCfg.model || 'deepseek-flash',
-        deepseek_api_key: ownCfg.apiKey,
+        deepseek_base_url: OFFICIAL_DEEPSEEK_CHAT_URL,
+        deepseek_model: 'deepseek-flash',
+        deepseek_api_key: ownCfg.deepseekOfficial.apiKey,
         custom_gateway_token: '',
         _using_member_own_key: true,
         temperature: userPrefs.temperature,
@@ -3538,9 +3585,65 @@ function getExecutionSettingsForUser(userId, options = {}) {
       ...DEFAULT_SETTINGS,
       ...platform,
       provider: 'demo',
-      deepseek_api_key: '',
-      custom_gateway_token: '',
-      _own_key_unavailable_reason: !ownCfg.unlocked ? 'VIP_EXPIRED' : 'KEY_MISSING',
+      temperature: userPrefs.temperature,
+      sliding_window_turns: userPrefs.sliding_window_turns,
+      max_recalled_memories: userPrefs.max_recalled_memories,
+      proactive_idle_sec: userPrefs.proactive_idle_sec
+    };
+  }
+
+  // 通道 B：自定义云端通用 API（自由指定接口地址与模型名称）
+  if (userPrefs.provider === 'custom_cloud') {
+    if (ownCfg.unlocked && ownCfg.customCloud.hasKey && options.forceDemoLlm !== true) {
+      const targetUrl = ownCfg.customCloud.baseUrl || 'https://api.siliconflow.cn/v1/chat/completions';
+      const targetModel = ownCfg.customCloud.model || 'deepseek-ai/DeepSeek-V3';
+      const lowerUrl = targetUrl.toLowerCase();
+
+      // 一钥多通自动桥接
+      const autoTtsBridge = {};
+      if (!platform.tts_api_key) {
+        if (lowerUrl.includes('siliconflow.cn')) {
+          autoTtsBridge._builtin_asr = {
+            enabled: true,
+            provider: 'siliconflow',
+            apiKey: ownCfg.customCloud.apiKey,
+            endpoint: 'https://api.siliconflow.cn/v1/audio/transcriptions',
+            model: 'Qwen/Qwen3-ASR-1.7B'
+          };
+        } else if (lowerUrl.includes('aliyuncs.com')) {
+          autoTtsBridge.tts_provider = 'dashscope';
+          autoTtsBridge.tts_api_key = ownCfg.customCloud.apiKey;
+          autoTtsBridge.tts_endpoint =
+            'https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation';
+          autoTtsBridge.tts_model = 'qwen3-tts-flash';
+        } else if (lowerUrl.includes('api.openai.com')) {
+          autoTtsBridge.tts_provider = 'openai_tts';
+          autoTtsBridge.tts_api_key = ownCfg.customCloud.apiKey;
+          autoTtsBridge.tts_endpoint = 'https://api.openai.com/v1/audio/speech';
+          autoTtsBridge.tts_model = 'gpt-4o-mini-tts';
+        }
+      }
+
+      return {
+        ...DEFAULT_SETTINGS,
+        ...platform,
+        ...autoTtsBridge,
+        provider: 'deepseek',
+        deepseek_base_url: targetUrl,
+        deepseek_model: targetModel,
+        deepseek_api_key: ownCfg.customCloud.apiKey,
+        custom_gateway_token: '',
+        _using_member_own_key: true,
+        temperature: userPrefs.temperature,
+        sliding_window_turns: userPrefs.sliding_window_turns,
+        max_recalled_memories: userPrefs.max_recalled_memories,
+        proactive_idle_sec: userPrefs.proactive_idle_sec
+      };
+    }
+    return {
+      ...DEFAULT_SETTINGS,
+      ...platform,
+      provider: 'demo',
       temperature: userPrefs.temperature,
       sliding_window_turns: userPrefs.sliding_window_turns,
       max_recalled_memories: userPrefs.max_recalled_memories,

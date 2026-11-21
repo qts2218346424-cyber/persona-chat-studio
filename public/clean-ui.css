@@ -4834,14 +4834,14 @@ dialog::backdrop {
   margin-bottom: 10px;
 }
 
-/* 连接方式二选一宽敞大卡片 */
+/* 连接方式宽敞大卡片（本地直连 / DeepSeek 官方 API / 云端自定义 API 三轨并立） */
 .conn-choice-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
 }
 
-@media (max-width: 520px) {
+@media (max-width: 768px) {
   .conn-choice-grid {
     grid-template-columns: 1fr;
   }

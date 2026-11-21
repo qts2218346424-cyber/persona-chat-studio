@@ -8219,6 +8219,31 @@
       ttsVal.textContent = localStorage.getItem('auto_tts_reply') !== '0' ? '已开启' : '已关闭';
     }
 
+    // 6.5 同步外观工坊状态摘要
+    const skinVal = document.getElementById('mfs-skin-value');
+    if (skinVal && window.AppearanceSystem?.getCurrentSkin) {
+      const curSkin = window.AppearanceSystem.getCurrentSkin();
+      const presetNames = {
+        default: '系统默认',
+        obsidian_gold: '曜石流金',
+        morning_mist: '晨雾丝绸',
+        cherry_blossom: '朝雾樱白',
+        crimson_scroll: '绯红古卷',
+        cyber_neon: '赛博霓虹',
+        e_ink: '极简墨水屏'
+      };
+      const bubbleNames = {
+        soft: '柔光圆润',
+        'im-bubble': '逐句分段',
+        glass: '玻璃拟态',
+        outline: '极简细框',
+        letter: '复古信纸'
+      };
+      const pName = presetNames[curSkin.preset] || '精选皮肤';
+      const bName = bubbleNames[curSkin.bubbleStyle] || '气泡';
+      skinVal.textContent = `${pName} · ${bName}`;
+    }
+
     // 7. 同步版本号（原生环境优先由 PackageManager 实时读取，不在主界面透出）
     const verVal = document.getElementById('mfs-version-value');
     if (verVal) {
@@ -8245,6 +8270,57 @@
       } catch {}
     }
     window.open(url, '_blank', 'noopener,noreferrer');
+  }
+
+  function openMobileSkinStudio() {
+    openMfsSubSheet({
+      title: '🎨 免费皮肤与外观工坊',
+      subtitle: '7套精选主题 · 壁纸取色 · 气泡风格 · 全部免费',
+      bodyHtml: `
+        <div class="mfs-skin-scroll-box" style="padding: 4px 0 24px 0;">
+          <div id="mfs-skin-mount-root"></div>
+        </div>
+      `,
+      onMount: ({ bodyEl }) => {
+        const mountTarget = bodyEl.querySelector('#mfs-skin-mount-root');
+        if (window.AppearanceSystem?.initSkinStudio && mountTarget) {
+          window.AppearanceSystem.initSkinStudio(mountTarget);
+        }
+      }
+    });
+  }
+
+  function openMobileAvatarStudio() {
+    if (!window.AppearanceSystem?.openAvatarStudio) {
+      showToast('头像工坊组件加载中，请稍候');
+      return;
+    }
+    window.AppearanceSystem.openAvatarStudio({
+      initialAvatar: state.user?.avatar || '我',
+      initialConfig: state.user?.avatar_config || null,
+      nickname: state.user?.nickname || '我',
+      onApply: async ({ avatar, avatar_config }) => {
+        try {
+          const resp = await fetch('/api/user/profile', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              nickname: state.user?.nickname || '我',
+              avatar,
+              avatar_config: JSON.stringify(avatar_config)
+            })
+          });
+          const data = await resp.json();
+          if (resp.ok && data?.user) {
+            state.user = data.user;
+            renderUserAndMembership();
+            showToast('头像装扮与捏脸已保存生效！');
+          }
+        } catch {
+          showToast('头像装扮已更新');
+        }
+      }
+    });
   }
 
   function closeMfsSubSheet() {
@@ -8436,20 +8512,40 @@
       });
     });
 
-    // 3. 外观模式
+    // 2.5 移动端专属皮肤与外观工坊
+    document.getElementById('mfs-item-skin-studio')?.addEventListener('click', () => {
+      openMobileSkinStudio();
+    });
+
+    // 2.6 移动端专属捏脸与头像工坊
+    document.getElementById('mfs-item-avatar-studio')?.addEventListener('click', () => {
+      openMobileAvatarStudio();
+    });
+
+    // 3. 浅色 / 深色外观
     document.getElementById('mfs-item-theme')?.addEventListener('click', () => {
       const curScheme = localStorage.getItem('color-scheme') || 'system';
       openMfsSubSheet({
         title: '外观主题',
         subtitle: '选择浅色、深色或跟随设备系统自动切换',
-        bodyHtml: renderMfsOptionListHtml(
-          [
-            { id: 'system', title: '跟随系统', desc: '自动匹配设备当前的浅色与深色外观' },
-            { id: 'light', title: '浅色模式', desc: '明亮通透画布，适合白天阅读与创作' },
-            { id: 'dark', title: '深色模式', desc: '低眩光柔和暗调，夜间阅读更护眼' }
-          ],
-          curScheme
-        ),
+        bodyHtml:
+          renderMfsOptionListHtml(
+            [
+              { id: 'system', title: '跟随系统', desc: '自动匹配设备当前的浅色与深色外观' },
+              { id: 'light', title: '浅色模式', desc: '明亮通透画布，适合白天阅读与创作' },
+              { id: 'dark', title: '深色模式', desc: '低眩光柔和暗调，夜间阅读更护眼' }
+            ],
+            curScheme
+          ) +
+          `
+          <div class="mfs-skin-promo-card" id="mfs-promo-open-skin" style="margin-top: 14px; padding: 12px 14px; border-radius: 12px; background: linear-gradient(135deg, rgba(236, 72, 153, 0.12), rgba(139, 92, 246, 0.12)); border: 1px solid rgba(236, 72, 153, 0.3); display: flex; align-items: center; justify-content: space-between; cursor: pointer;">
+            <div>
+              <strong style="color: var(--text-primary); font-size: 13.5px; display: block; margin-bottom: 2px;">🎨 打开完整皮肤与外观工坊</strong>
+              <span style="font-size: 11.5px; color: var(--text-secondary);">7 套主题皮肤 · 壁纸取色 · 逐句分段气泡 · 模糊度调节</span>
+            </div>
+            <span style="color: #ec4899; font-weight: 700; font-size: 18px; margin-left: 8px;">›</span>
+          </div>
+        `,
         onMount: ({ bodyEl, close }) => {
           const labelMap = { system: '系统', light: '浅色', dark: '深色' };
           bodyEl.querySelectorAll('.mfs-opt-item').forEach((btn) => {
@@ -8464,6 +8560,10 @@
               close();
               showToast('已切换外观为：' + (nextScheme === 'dark' ? '深色模式' : nextScheme === 'light' ? '浅色模式' : '跟随系统'));
             });
+          });
+          bodyEl.querySelector('#mfs-promo-open-skin')?.addEventListener('click', () => {
+            close();
+            openMobileSkinStudio();
           });
         }
       });

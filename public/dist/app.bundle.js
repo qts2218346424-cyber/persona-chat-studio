@@ -90,6 +90,18 @@ try {
 const navNick = document.getElementById('nav-user-nickname');
 if (navNick && u.nickname) navNick.textContent = u.nickname;
 } catch {}
+try {
+const authGateEl = document.getElementById('auth-gate');
+const appShellEl = document.getElementById('app-shell');
+if (authGateEl && !authGateEl.classList.contains('hidden') && appShellEl && appShellEl.classList.contains('hidden')) {
+if (window.__STAR_ENTER_WORKSPACE__) {
+window.__STAR_ENTER_WORKSPACE__();
+} else if (typeof window.location?.reload === 'function' && !sessionStorage.getItem('reloaded_for_native_auth')) {
+sessionStorage.setItem('reloaded_for_native_auth', '1');
+window.location.reload();
+}
+}
+} catch {}
 }
 } catch {}
 };
@@ -4420,13 +4432,31 @@ state.user?.nickname && !/^星[语屿]旅人/.test(state.user.nickname)
 const cName = (state.activePersona?.name || '').split(/[·\s]/)[0] || '对方';
 return s.replace(/\{\{\s*user\s*\}\}/gi, uNick).replace(/\{\{\s*char\s*\}\}/gi, cName);
 }
-function dismissBootSplash() {
+let isDismissingSplash = false;
+function dismissBootSplash(immediate = false) {
+if (window.__bootSafetyTimer) {
+clearTimeout(window.__bootSafetyTimer);
+window.__bootSafetyTimer = null;
+}
 const splash = document.getElementById('boot-splash');
-if (splash) {
+if (!splash || splash.classList.contains('hidden')) return;
+if (immediate) {
 splash.classList.add('hidden');
+splash.classList.remove('leaving');
 splash.style.display = 'none';
 splash.style.pointerEvents = 'none';
+return;
 }
+if (isDismissingSplash) return;
+isDismissingSplash = true;
+splash.classList.add('leaving');
+splash.style.pointerEvents = 'none';
+setTimeout(() => {
+splash.classList.add('hidden');
+splash.classList.remove('leaving');
+splash.style.display = 'none';
+isDismissingSplash = false;
+}, 360);
 }
 window.__dismissBootSplash = dismissBootSplash;
 window.__showAppToast = (msg, dur) => showToast(msg, dur);
@@ -4642,7 +4672,6 @@ btn.textContent = isPwd ? '隐藏' : '显示';
 });
 });
 function showAuthScreen() {
-dismissBootSplash();
 closeOnboardingTour(false);
 try {
 document.querySelectorAll('dialog[open]').forEach((dlg) => {
@@ -4656,15 +4685,26 @@ try { if (typeof p.hidePopover === 'function') p.hidePopover(); } catch (e) {}
 });
 } catch (e) {}
 appShell.classList.add('hidden');
-appShell.style.setProperty('display', 'none', 'important');
-authGate.classList.remove('hidden');
-authGate.style.setProperty('display', 'flex', 'important');
+appShell.style.removeProperty('display');
+authGate.classList.remove('hidden', 'auth-gate-opening');
+authGate.style.removeProperty('display');
 setAuthError('');
+dismissBootSplash();
 }
 window.__showAuthScreen = showAuthScreen;
+const signinBtn = document.getElementById('signin-submit-btn');
+const signinSpinner = document.getElementById('signin-btn-spinner');
+const signinBtnText = document.getElementById('signin-btn-text');
+const signupBtn = document.getElementById('signup-submit-btn');
+const signupSpinner = document.getElementById('signup-btn-spinner');
+const signupBtnText = document.getElementById('signup-btn-text');
+const quickExpBtn = document.getElementById('quick-exp-btn');
 signinForm.addEventListener('submit', async (e) => {
 e.preventDefault();
 setAuthError('');
+if (signinBtn) signinBtn.disabled = true;
+if (signinSpinner) signinSpinner.classList.remove('hidden');
+if (signinBtnText) signinBtnText.textContent = '正在推门进入…';
 try {
 resetClientWorkspaceState();
 const res = await apiJson('/api/auth/login', {
@@ -4679,12 +4719,19 @@ applyAuthLoginPayload(res, { persistDefault: true, rememberGuest: false });
 signinForm.reset();
 await enterWorkspace();
 } catch (err) {
-setAuthError(err.message);
+setAuthError(err.message || '登录失败，请检查账号密码');
+} finally {
+if (signinBtn) signinBtn.disabled = false;
+if (signinSpinner) signinSpinner.classList.add('hidden');
+if (signinBtnText) signinBtnText.textContent = '登录进入恋庭';
 }
 });
 signupForm.addEventListener('submit', async (e) => {
 e.preventDefault();
 setAuthError('');
+if (signupBtn) signupBtn.disabled = true;
+if (signupSpinner) signupSpinner.classList.remove('hidden');
+if (signupBtnText) signupBtnText.textContent = '正在创建并进入…';
 try {
 resetClientWorkspaceState();
 const res = await apiJson('/api/auth/register', {
@@ -4703,9 +4750,96 @@ document.getElementById('signup-avatar').value = '星';
 await enterWorkspace();
 showToast('新账号创建成功！现在就可以开始体验角色扮演与智能对话！');
 } catch (err) {
-setAuthError(err.message);
+setAuthError(err.message || '注册失败，请检查填写内容');
+} finally {
+if (signupBtn) signupBtn.disabled = false;
+if (signupSpinner) signupSpinner.classList.add('hidden');
+if (signupBtnText) signupBtnText.textContent = '创建专属账号（永久保存聊天与记忆）';
 }
 });
+if (quickExpBtn) {
+quickExpBtn.addEventListener('click', async () => {
+setAuthError('');
+const textEl = quickExpBtn.querySelector('.quick-exp-text strong');
+const origText = textEl ? textEl.textContent : '免密极速体验';
+quickExpBtn.disabled = true;
+if (textEl) textEl.textContent = '正在开启随身极速体验…';
+try {
+resetClientWorkspaceState();
+let authRes = null;
+const isStandalone = Boolean(window.__isStaticLiveDemo) || window.location.protocol === 'file:' || Boolean(window.AndroidAppBridge);
+if (isStandalone) {
+let nickname = '星语漫游者';
+if (window.AndroidAppBridge && typeof window.AndroidAppBridge.getAuthUserJson === 'function') {
+try {
+const prevUser = JSON.parse(window.AndroidAppBridge.getAuthUserJson() || '{}');
+if (prevUser?.nickname) nickname = prevUser.nickname;
+} catch {}
+}
+const guestUser = {
+id: 'user_exp_' + Math.random().toString(36).slice(2, 10),
+nickname: nickname,
+avatar: '星',
+email: 'experience@star.local',
+role: 'user',
+membership: {
+tier: 'standard',
+card_type: 'standard',
+tier_name: '🌟 星语旅人',
+is_vip: true,
+has_active_card: true,
+can_bind_own_api: true,
+can_use_online: true,
+free_experience_mode: true,
+billing_enabled: false,
+remaining_text: ''
+}
+};
+authRes = {
+authenticated: true,
+user: guestUser,
+token: 'star_exp_token_' + Date.now()
+};
+} else {
+try {
+authRes = await apiJson('/api/auth/demo-login', {
+method: 'POST',
+body: JSON.stringify({ guest_user_id: '' })
+});
+} catch (netErr) {
+authRes = {
+authenticated: true,
+user: {
+id: 'user_exp_' + Math.random().toString(36).slice(2, 10),
+nickname: '星语漫游者',
+avatar: '星',
+email: 'experience@star.local',
+role: 'user',
+membership: {
+tier: 'standard',
+tier_name: '🌟 体验旅人',
+is_vip: true,
+free_experience_mode: true
+}
+},
+token: 'star_exp_token_' + Date.now()
+};
+}
+}
+if (authRes && authRes.user) {
+clearBootSnapshot();
+applyAuthLoginPayload(authRes, { persistDefault: true, rememberGuest: true });
+await enterWorkspace();
+showToast('✨ 欢迎来到星语恋庭随身版！已为你开启免密体验');
+}
+} catch (err) {
+setAuthError(err.message || '免密体验启动失败，请稍后重试');
+} finally {
+quickExpBtn.disabled = false;
+if (textEl && origText) textEl.textContent = origText;
+}
+});
+}
 if (quickDemoLoginBtn) {
 quickDemoLoginBtn.addEventListener('click', async () => {
 setAuthError('系统已启用严格注册模式，请注册正式账号后登录进入');
@@ -5646,22 +5780,36 @@ localStorage.setItem('user_llm_mode', nextMode);
 } catch {}
 const isNextLocal = nextMode === 'local_antigravity';
 const targetModelName = state.localModel || 'gemini-3.8-flash-high';
-if (state.activeSessionId) {
-await patchActiveSessionFlag(
-{ llm_mode: nextMode },
-isNextLocal
-? `已切换至：⚡ 本地直连模式 (Antigravity · ${targetModelName})`
-: '已切换至：☁️ 云端 API 模式'
-);
+let switchNotice = '';
+if (isNextLocal) {
+if (state.antigravityStatus && state.antigravityStatus.available === false) {
+switchNotice = '⚠️ 已切换至【⚡ 本地直连模式】。当前本地服务繁忙或未就绪，建议稍后重试或切回「云端 API 模式」';
 } else {
-showToast(
-isNextLocal
-? `已切换至：⚡ 本地直连模式 (Antigravity · ${targetModelName})`
-: '已切换至：☁️ 云端 API 模式'
-);
+switchNotice = `已切换至：⚡ 本地直连模式 (Antigravity · ${targetModelName})`;
+}
+} else {
+const hasApiKey = Boolean(state.settings?.own_deepseek_api_key_masked || state.settings?.has_own_deepseek_key);
+const isOwnProvider = state.settings?.provider === 'own_deepseek';
+if (isOwnProvider && !hasApiKey) {
+switchNotice = '⚠️ 已切换至【☁️ 云端 API 模式】。您尚未配置 API 密钥，请在「设置」中填入密钥，或随时切回「本地直连模式」开箱即用';
+} else {
+switchNotice = '已切换至：☁️ 云端 API 模式';
+}
+}
+if (state.activeSessionId) {
+await patchActiveSessionFlag({ llm_mode: nextMode }, switchNotice);
+} else {
+showToast(switchNotice, 3600);
 }
 syncLlmModeUi();
 }
+window.__dsToggleLlmMode = () => {
+toggleLlmMode();
+};
+window.__dsOpenSettings = () => {
+const btn = document.getElementById('ds-topbar-settings-btn') || document.getElementById('settings-btn');
+if (btn) btn.click();
+};
 async function checkLocalAntigravityStatus() {
 try {
 const res = await fetch('/api/antigravity/status');
@@ -8426,6 +8574,20 @@ chatInput.focus();
 return;
 }
 if (!regenerate && !trimmed && stagedFiles.length === 0) return;
+const activeLlmMode = state.activeSession?.llm_mode || state.llmMode || 'local_antigravity';
+if (activeLlmMode === 'api') {
+const isOwnProvider = state.settings?.provider === 'own_deepseek';
+const hasKey = Boolean(state.settings?.own_deepseek_api_key_masked || state.settings?.has_own_deepseek_key);
+if (isOwnProvider && !hasKey) {
+showToast('⚠️ 您当前处于【云端 API 模式】，但尚未配置 API 密钥。已为您打开「设置」，填入密钥或切回「本地直连」即可开始对话', 5000);
+window.__dsOpenSettings();
+return;
+}
+} else if (activeLlmMode === 'local_antigravity') {
+if (state.antigravityStatus && state.antigravityStatus.available === false) {
+showToast('⚠️ 提示：当前本地服务繁忙或未就绪，建议点击左下角切换为「云端 API 模式」', 4000);
+}
+}
 state.lastInteractionAt = Date.now();
 state.proactiveIdleCount = 0;
 const prefixInputEl = document.getElementById('ds-prefix-input');
@@ -8605,6 +8767,12 @@ return;
 if (errObj.membership) {
 state.membership = errObj.membership;
 renderUserAndMembership();
+}
+if (errObj.code === 'API_KEY_REQUIRED' || errObj.code === 'OWN_KEY_MISSING') {
+showToast('⚠️ 未检测到有效 API 密钥，已为您呼出设置窗口', 3500);
+window.__dsOpenSettings();
+} else if (errObj.code === 'LOCAL_SERVICE_BUSY') {
+showToast('⚠️ 当前本地服务繁忙或未响应，建议点击左下角切换为「云端 API 模式」', 4000);
 }
 throw new Error(errObj.error || `流式请求失败 (${response.status})`);
 }
@@ -8876,9 +9044,31 @@ await loadSession(originSessionId).catch(() => {});
 } else {
 liveRow.classList.remove('awaiting-first-token');
 proseEl.classList.remove('streaming-cursor');
-proseEl.innerHTML = `<p style="color: var(--accent-danger)">响应异常：${escapeHtml(
-err?.message || '网络连接暂时中断，请稍后重试'
-)}</p>`;
+const rawErrText = err?.message || '网络连接暂时中断，请稍后重试';
+const isLocalBusy = /本地服务|本地 Antigravity|agy|服务繁忙/i.test(rawErrText);
+const isKeyMissing = /API 密钥|API Key|OWN_KEY_MISSING|API_KEY_REQUIRED/i.test(rawErrText);
+let actionHtml = '';
+if (isLocalBusy) {
+actionHtml = `
+            <div class="ds-error-tip-card" style="margin-top: 10px; padding: 12px 14px; background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.3); border-radius: 10px;">
+              <div style="font-weight: 600; color: #d97706; margin-bottom: 4px;">⚡ 本地服务繁忙提示</div>
+              <div style="font-size: 13px; color: var(--text-secondary); margin-bottom: 10px;">当前本地 Antigravity 底座服务繁忙或未响应。您可以稍后重试，或一键切换为云端 API 模式继续对话：</div>
+              <button type="button" class="soft-tool-btn" style="padding: 5px 14px; font-size: 12.5px; cursor: pointer; border-radius: 6px; background: #3b82f6; color: #ffffff; border: none; font-weight: 600;" onclick="window.__dsToggleLlmMode()">☁️ 一键切换为云端 API 模式</button>
+            </div>
+          `;
+} else if (isKeyMissing) {
+actionHtml = `
+            <div class="ds-error-tip-card" style="margin-top: 10px; padding: 12px 14px; background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.3); border-radius: 10px;">
+              <div style="font-weight: 600; color: #2563eb; margin-bottom: 4px;">🔑 API 密钥待配置</div>
+              <div style="font-size: 13px; color: var(--text-secondary); margin-bottom: 10px;">您当前处于云端 API 模式，尚未配置可用 API Key。请在「设置」中填入密钥，或直接切回本地直连模式开箱即用：</div>
+              <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                <button type="button" class="soft-tool-btn" style="padding: 5px 14px; font-size: 12.5px; cursor: pointer; border-radius: 6px; background: #3b82f6; color: #ffffff; border: none; font-weight: 600;" onclick="window.__dsOpenSettings()">⚙️ 前往配置密钥</button>
+                <button type="button" class="soft-tool-btn" style="padding: 5px 14px; font-size: 12.5px; cursor: pointer; border-radius: 6px; background: var(--bg-surface-hover); color: var(--text-primary); border: 1px solid var(--border-strong); font-weight: 600;" onclick="window.__dsToggleLlmMode()">⚡ 切回本地直连模式</button>
+              </div>
+            </div>
+          `;
+}
+proseEl.innerHTML = `<p style="color: var(--accent-danger); font-size: 14px; line-height: 1.6;">提示：${escapeHtml(rawErrText)}</p>${actionHtml}`;
 }
 } finally {
 if (streamRenderRafId) {
@@ -14618,8 +14808,17 @@ document.getElementById('auth-confirm-signout-btn')?.classList.add('hidden');
 try {
 sessionStorage.removeItem('manual_account_switch');
 } catch {}
+if (!authGate.classList.contains('hidden')) {
+authGate.classList.add('auth-gate-opening');
+setTimeout(() => {
 authGate.classList.add('hidden');
-authGate.style.setProperty('display', 'none', 'important');
+authGate.classList.remove('auth-gate-opening');
+authGate.style.removeProperty('display');
+}, 280);
+} else {
+authGate.classList.add('hidden');
+authGate.style.removeProperty('display');
+}
 appShell.classList.remove('hidden');
 appShell.style.removeProperty('display');
 dismissBootSplash();
@@ -14628,6 +14827,7 @@ if (!boot || !boot.user) return;
 state.user = boot.user;
 window.__STAR_CURRENT_USER__ = boot.user;
 window.__showAuthScreen = showAuthScreen;
+window.__STAR_ENTER_WORKSPACE__ = enterWorkspace;
 if (boot.user?.id) {
 window.__starAuthStore?.setActiveUserId(boot.user.id);
 }
@@ -14796,10 +14996,24 @@ dismissBootSplash();
 if (appShell.classList.contains('hidden') && authGate.classList.contains('hidden')) {
 showAuthScreen();
 }
-}, 800);
+}, 2800);
 const urlParams = new URLSearchParams(window.location.search);
 const needLoginMsg = urlParams.get('msg') === 'download_login_required' || urlParams.get('auth') === 'login';
-const hasLocalToken = Boolean(window.__starAuthStore?.getToken());
+let hasLocalToken = Boolean(window.__starAuthStore?.getToken());
+if (!hasLocalToken && window.AndroidAppBridge && typeof window.AndroidAppBridge.getAuthToken === 'function') {
+try {
+const nTok = window.AndroidAppBridge.getAuthToken();
+const nUserJson = window.AndroidAppBridge.getAuthUserJson();
+if (nTok && nUserJson) {
+const nUser = JSON.parse(nUserJson);
+if (nUser && (nUser.nickname || nUser.id)) {
+window.__starAuthStore?.setToken(nTok, true);
+if (nUser.id) window.__starAuthStore?.setActiveUserId(nUser.id);
+hasLocalToken = true;
+}
+}
+} catch {}
+}
 const isStandaloneDemo = Boolean(window.__isStaticLiveDemo) || window.location.protocol === 'file:';
 if (isStandaloneDemo) {
 try {
@@ -14836,8 +15050,11 @@ clearTimeout(safetySplashTimer);
 }
 } else {
 resetClientWorkspaceState();
+setTimeout(() => {
+if (!state.user && appShell.classList.contains('hidden')) {
 showAuthScreen();
-dismissBootSplash();
+}
+}, 650);
 }
 try {
 const abortCtrl = new AbortController();

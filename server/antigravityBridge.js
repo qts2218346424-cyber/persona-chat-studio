@@ -1079,7 +1079,7 @@ async function streamViaLocalAntigravityCli({
         signal?.removeEventListener('abort', onAbort);
         if (!resolved) {
           resolved = true;
-          reject(new Error(`本地 Antigravity 启动失败: ${err.message}`));
+          reject(new Error(`当前本地服务繁忙或未响应（宿主异常: ${err.message}），建议稍后重试或切换为「☁️ 云端 API 模式」。`));
         }
       });
 
@@ -1098,7 +1098,7 @@ async function streamViaLocalAntigravityCli({
         if (resolved) return;
         resolved = true;
         if (code !== 0 && !emittedAny) {
-          reject(new Error(`本地 Antigravity 运行退出 (${code}): ${stderrBuf.slice(0, 300) || '未知异常'}`));
+          reject(new Error(`当前本地服务繁忙或未响应（进程已退出: ${code}），建议稍后重试或切换为「☁️ 云端 API 模式」。`));
         } else {
           resolve({
             model: targetModel,

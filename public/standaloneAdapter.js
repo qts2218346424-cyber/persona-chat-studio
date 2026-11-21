@@ -105,6 +105,19 @@
           const navNick = document.getElementById('nav-user-nickname');
           if (navNick && u.nickname) navNick.textContent = u.nickname;
         } catch {}
+        // 若当前界面仍停留在登录门扉，原生凭据就绪后自动推门进入工作台
+        try {
+          const authGateEl = document.getElementById('auth-gate');
+          const appShellEl = document.getElementById('app-shell');
+          if (authGateEl && !authGateEl.classList.contains('hidden') && appShellEl && appShellEl.classList.contains('hidden')) {
+            if (window.__STAR_ENTER_WORKSPACE__) {
+              window.__STAR_ENTER_WORKSPACE__();
+            } else if (typeof window.location?.reload === 'function' && !sessionStorage.getItem('reloaded_for_native_auth')) {
+              sessionStorage.setItem('reloaded_for_native_auth', '1');
+              window.location.reload();
+            }
+          }
+        } catch {}
       }
     } catch {}
   };

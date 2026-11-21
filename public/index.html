@@ -28,65 +28,46 @@
       pointer-events: none !important;
     }
   </style>
-  <link rel="preload" href="./dist/app.bundle.css?v=20261121_v206_sticky_locate_198" as="style" />
-  <link rel="preload" href="./dist/app.bundle.js?v=20261121_v206_sticky_locate_198" as="script" />
-  <link rel="stylesheet" href="./dist/app.bundle.css?v=20261121_v206_sticky_locate_198" />
+  <link rel="preload" href="./dist/app.bundle.css?v=20261121_v207_bootsplash_auth_201" as="style" />
+  <link rel="preload" href="./dist/app.bundle.js?v=20261121_v207_bootsplash_auth_201" as="script" />
+  <link rel="stylesheet" href="./dist/app.bundle.css?v=20261121_v207_bootsplash_auth_201" />
 </head>
 <body data-ui-mode="deepseek">
-  <!-- 首屏零白屏过渡欢迎层（工作台或登录门扉就绪后立即平滑隐藏） -->
+  <!-- 首屏零白屏优雅过渡欢迎层（工作台或登录门扉就绪后平滑淡出退场） -->
   <div id="boot-splash" class="boot-splash" role="status" aria-live="polite">
     <div class="boot-splash-card">
-      <div class="boot-splash-gem" aria-hidden="true"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg></div>
-      <div class="boot-splash-title">星语恋庭</div>
-      <div class="boot-splash-sub">正在为你推开花房木门，准备专属角色与记忆空间…</div>
-      <progress class="boot-splash-progress" aria-label="正在进入星语恋庭"></progress>
+      <div class="boot-splash-logo-wrap" aria-hidden="true">
+        <svg width="44" height="44" viewBox="0 0 24 24" fill="none">
+          <path fill="#4D6BFE" fill-rule="evenodd" clip-rule="evenodd" d="M23.748 4.482c-.254-.124-.364.113-.512.234-.051.039-.094.09-.137.136-.372.397-.806.657-1.373.626-.829-.046-1.537.214-2.163.848-.133-.782-.575-1.248-1.247-1.548-.352-.156-.708-.311-.955-.65-.172-.241-.219-.51-.305-.774-.055-.16-.11-.323-.293-.35-.2-.031-.278.136-.356.276-.313.572-.434 1.202-.422 1.84.027 1.436.633 2.58 1.838 3.393.137.093.172.187.129.323-.082.28-.18.552-.266.833-.055.179-.137.217-.329.14a5.526 5.526 0 0 1-1.736-1.18c-.857-.828-1.631-1.742-2.597-2.458a11.365 11.365 0 0 0-.689-.471c-.985-.957.13-1.743.388-1.836.27-.098.093-.432-.779-.428-.872.004-1.67.295-2.687.684a3.055 3.055 0 0 1-.465.137 9.597 9.597 0 0 0-2.883-.102c-1.885.21-3.39 1.102-4.497 2.623C.082 8.606-.231 10.684.152 12.85c.403 2.284 1.569 4.175 3.36 5.653 1.858 1.533 3.997 2.284 6.438 2.14 1.482-.085 3.133-.284 4.994-1.86.47.234.962.327 1.78.397.63.059 1.236-.03 1.705-.128.735-.156.684-.837.419-.961-2.155-1.004-1.682-.595-2.113-.926 1.096-1.296 2.746-2.642 3.392-7.003.05-.347.007-.565 0-.845-.004-.17.035-.237.23-.256a4.173 4.173 0 0 0 1.545-.475c1.396-.763 1.96-2.015 2.093-3.517.02-.23-.004-.467-.247-.588zM11.581 18c-2.089-1.642-3.102-2.183-3.52-2.16-.392.024-.321.471-.235.763.09.288.207.486.371.739.114.167.192.416-.113.603-.673.416-1.842-.14-1.897-.167-1.361-.802-2.5-1.86-3.301-3.307-.774-1.393-1.224-2.887-1.298-4.482-.02-.386.093-.522.477-.592a4.696 4.696 0 0 1 1.529-.039c2.132.312 3.946 1.265 5.468 2.774.868.86 1.525 1.887 2.202 2.891.72 1.066 1.494 2.082 2.48 2.914.348.292.625.514.891.677-.802.09-2.14.11-3.054-.614zm1-6.44a.306.306 0 0 1 .415-.287.302.302 0 0 1 .2.288.306.306 0 0 1-.31.307.303.303 0 0 1-.304-.308zm3.11 1.596c-.2.081-.399.151-.59.16a1.245 1.245 0 0 1-.798-.254c-.274-.23-.47-.358-.552-.758a1.73 1.73 0 0 1 .129-.933c.27-.611.832-1.047 1.411-1.428.16-.106.321-.219.493-.309.223-.117.434-.055.536.18.114.262.149.544.157.828.019.805-.285 1.487-.876 2.026z"/>
+        </svg>
+      </div>
+      <div class="boot-splash-title">星语恋庭 · 随身版</div>
+      <div class="boot-splash-sub">正在唤醒沉浸角色扮演与专属长效记忆空间…</div>
+      <div class="boot-splash-progress-track">
+        <div class="boot-splash-progress-bar"></div>
+      </div>
+      <div class="boot-splash-badge">DeepSeek 驱动 · 随身智能体</div>
     </div>
   </div>
 
   <script>
-    // 终极防卡死保底：每次触发时实时查询 DOM（解决脚本位于 body 顶部时 auth-gate/app-shell 尚未解析为 null 的问题）
     (function() {
-      function forceDismiss() {
-        var splash = document.getElementById('boot-splash');
-        var authGate = document.getElementById('auth-gate');
-        var appShell = document.getElementById('app-shell');
-        if (!authGate && !appShell) return;
-        if (splash) {
-          splash.classList.add('hidden');
-          splash.style.setProperty('display', 'none', 'important');
-          splash.style.setProperty('pointer-events', 'none', 'important');
-        }
-        var shellActive = appShell && !appShell.classList.contains('hidden') && appShell.style.display !== 'none';
-        if (!shellActive && authGate) {
-          var hasTok = false;
-          try {
-            hasTok = Boolean(sessionStorage.getItem('star_tab_auth_token') || localStorage.getItem('star_default_auth_token'));
-          } catch (e) {}
-          if (hasTok && appShell) {
-            authGate.classList.add('hidden');
-            authGate.style.setProperty('display', 'none', 'important');
-            appShell.classList.remove('hidden');
-            appShell.style.removeProperty('display');
-          } else {
-            if (appShell) {
-              appShell.classList.add('hidden');
-              appShell.style.setProperty('display', 'none', 'important');
-            }
-            authGate.classList.remove('hidden');
-            authGate.style.setProperty('display', 'flex', 'important');
+      // 优雅防卡死兜底守护：仅在极度异常超时（3.2秒）未完成启动时触发保底淡出
+      var safetyTimer = setTimeout(function() {
+        if (window.__dismissBootSplash) {
+          window.__dismissBootSplash();
+        } else {
+          var sp = document.getElementById('boot-splash');
+          if (sp) {
+            sp.classList.add('leaving');
+            setTimeout(function() {
+              sp.classList.add('hidden');
+              sp.style.display = 'none';
+            }, 350);
           }
         }
-      }
-      window.__forceDismissSplash = forceDismiss;
-      document.addEventListener('DOMContentLoaded', forceDismiss);
-      setTimeout(forceDismiss, 250);
-      setTimeout(forceDismiss, 800);
-      var sp = document.getElementById('boot-splash');
-      if (sp) {
-        sp.addEventListener('click', forceDismiss);
-      }
-      window.addEventListener('error', forceDismiss);
-      window.addEventListener('unhandledrejection', forceDismiss);
+      }, 3200);
+      window.__bootSafetyTimer = safetyTimer;
     })();
   </script>
 
@@ -121,6 +102,21 @@
         </span>
         <h1 id="auth-brand-heading">星语恋庭</h1>
         <p id="auth-brand-subtitle">沉浸番剧剧情扮演 · 跨时空长效记忆星馆</p>
+      </div>
+
+      <!-- 手机随身版免密一键极速体验入口（无需繁琐输入，1秒推门探索） -->
+      <div class="auth-quick-exp-box" id="auth-quick-exp-box">
+        <button type="button" class="quick-exp-btn full-width" id="quick-exp-btn" title="无需输入账号密码，1秒立即进入星语空间体验">
+          <span class="quick-exp-icon" aria-hidden="true">✨</span>
+          <span class="quick-exp-text">
+            <strong>免密极速体验</strong>
+            <small>1秒开启专属角色与对话，随时可在设置转为正式账号</small>
+          </span>
+          <span class="quick-exp-arrow" aria-hidden="true">→</span>
+        </button>
+        <div class="quick-exp-divider">
+          <span>或使用正式账号登录 / 注册</span>
+        </div>
       </div>
 
       <div class="auth-tabs" role="tablist" aria-label="登录或注册切换">
@@ -174,8 +170,9 @@
           </div>
         </div>
 
-        <button type="submit" class="primary-btn full-width auth-submit-btn">
-          登录进入恋庭
+        <button type="submit" class="primary-btn full-width auth-submit-btn" id="signin-submit-btn">
+          <span class="auth-btn-spinner hidden" id="signin-btn-spinner" aria-hidden="true"></span>
+          <span class="auth-btn-text" id="signin-btn-text">登录进入恋庭</span>
         </button>
       </form>
 
@@ -244,13 +241,14 @@
             <strong>开箱即用</strong>：无需复杂配置，所有角色扮演、DeepSeek 问答、真声配音与长记忆功能均可直接使用；同时支持选填您自己的 DeepSeek API 密钥。
           </div>
 
-          <button type="submit" class="primary-btn full-width auth-submit-btn">
-            创建专属账号（永久保存聊天与记忆）
+          <button type="submit" class="primary-btn full-width auth-submit-btn" id="signup-submit-btn">
+            <span class="auth-btn-spinner hidden" id="signup-btn-spinner" aria-hidden="true"></span>
+            <span class="auth-btn-text" id="signup-btn-text">创建专属账号（永久保存聊天与记忆）</span>
           </button>
         </form>
 
         <div class="auth-strict-notice" style="margin-top: 18px; text-align: center; font-size: 13px; color: var(--text-muted, #64748b);">
-          <span>平台已开启严格注册认证防护 · 注册正式账号后畅享全量功能与客户端下载</span>
+          <span>手机随身版支持离线使用与云端同步 · 正式账号可跨端同步全部记忆与人设</span>
         </div>
 
         <div class="guest-auth-actions" style="margin-top: 10px;">
@@ -285,10 +283,9 @@
   />
 
   <!-- ================= 主应用工作台 ================= -->
-  <div class="app-shell right-collapsed hidden" id="app-shell" data-ui-mode="deepseek" style="display: none !important;">
+  <div class="app-shell right-collapsed hidden" id="app-shell" data-ui-mode="deepseek">
     <!-- 移动端抽屉半透明遮罩层（点击外侧自动收起侧栏/右侧抽屉） -->
     <div class="mobile-drawer-backdrop hidden" id="mobile-drawer-backdrop" aria-hidden="true"></div>
-    <script>try{if(window.__forceDismissSplash)window.__forceDismissSplash();}catch(e){}</script>
 
     <!-- 左侧导航栏 -->
     <aside class="sidebar" id="left-sidebar" aria-label="角色羁绊与对话导航">
@@ -3431,7 +3428,7 @@
   <!-- 全局 Top-Layer 顶层轻提示胶囊（popover="manual" 确保在任何模态 <dialog> 打开时依然 100% 可见，遵循 persistent-toast-notifications 规范） -->
   <div id="global-top-toast" popover="manual" class="global-top-toast" role="status" aria-live="polite"></div>
 
-  <script defer src="./dist/app.bundle.js?v=20261121_v206_sticky_locate_198"></script>
+  <script defer src="./dist/app.bundle.js?v=20261121_v207_bootsplash_auth_201"></script>
   <script>
     if ('serviceWorker' in navigator && window.location.protocol.startsWith('http')) {
       window.addEventListener('load', () => {

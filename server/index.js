@@ -504,8 +504,8 @@ function extractAuthToken(req, parsedUrl = null) {
   return '';
 }
 
-const APP_LATEST_VERSION = '2.0.0';
-const APP_LATEST_VERSION_CODE = 130;
+const APP_LATEST_VERSION = '2.0.1';
+const APP_LATEST_VERSION_CODE = 131;
 const APP_OFFICIAL_CERT_SHA256 = '6fd05e32a3cabf327140129d866e55a342fe30daa3384c67aad4b3cbdd98a17b';
 const APP_UPDATE_TICKET_SECRET = crypto
   .createHash('sha256')
@@ -654,10 +654,10 @@ async function handleApi(req, res, pathname, parsedUrl) {
       forceUpdate,
       diffGenerations,
       changelog: [
-        '手机端登录持久化深度加固：账户信息与真实昵称实现 Android 原生落盘，解决登录后退回默认名字问题',
-        '手机辅助执行需确认步骤悬浮窗强提醒：悬浮窗即刻弹出横幅与呼吸灯，支持在其他应用中一键允许或取消',
-        '悬浮窗面板新增「停止」按钮：清晰区分常规停止与红色最高优先级安全急停',
-        '开屏阶梯式更新与系统公告：落后 3 代强制更新保障核心安全，站长可在线发布全站公告'
+        '【开屏启动彻底修复】手机版开屏启动体验全面重构：杜绝闪退/黑白屏闪烁，新增灵鲸星徽呼吸微光与柔和淡出退场动效',
+        '【开屏登录深度完善】增设「✨ 免密极速体验」绿色入口，1秒推门进入随身版探索；优化软键盘防挤压滚动适配与登录 Loading 状态',
+        '【原生凭证毫秒级恢复】账户信息与真实昵称同步落地至 Android 原生 SharedPreferences，首屏秒开快照，杜绝退回默认昵称',
+        '手机辅助高风险确认悬浮窗强提醒与常规停止按钮支持'
       ]
     };
 
@@ -839,10 +839,19 @@ async function handleApi(req, res, pathname, parsedUrl) {
   }
 
   if (method === 'POST' && pathname === '/api/auth/demo-login') {
-    return sendJson(res, 401, {
-      error: '系统已启用严格注册模式：免注册体验通道已关闭，请先注册正式账号登录后再使用',
-      code: 'AUTH_REQUIRED'
-    });
+    try {
+      const body = await readJsonBody(req).catch(() => ({}));
+      const guestId = body?.guest_user_id || '';
+      const { user, token, is_new_guest } = loginDemoAccount(guestId);
+      return sendJson(
+        res,
+        200,
+        { authenticated: true, user, token, is_new_guest },
+        { 'Set-Cookie': buildAuthCookie(token) }
+      );
+    } catch (err) {
+      return sendJson(res, 500, { error: err.message || '免密体验登录失败，请稍后重试' });
+    }
   }
 
   if (method === 'POST' && pathname === '/api/auth/logout') {
@@ -3596,13 +3605,33 @@ async function handleApi(req, res, pathname, parsedUrl) {
     const requestedLlmMode = body.llm_mode || session.llm_mode || 'local_antigravity';
     const localCliPath = getLocalAntigravityCliPath();
     const isLocalAvailable = Boolean(localCliPath);
+
+    // 1. 本地直连模式检测：若选择本地模式但宿主不可用或失效，明确提示服务繁忙
+    if (requestedLlmMode === 'local_antigravity' && !isLocalAvailable) {
+      return sendJson(res, 503, {
+        error: '当前本地服务繁忙或未响应，建议检查本机 Antigravity 底座状态，或切换为「☁️ 云端 API 模式」继续对话。',
+        code: 'LOCAL_SERVICE_BUSY'
+      });
+    }
+
     const usingLocalAntigravity = requestedLlmMode === 'local_antigravity' && isLocalAvailable;
 
-    if (!usingLocalAntigravity && settings._own_key_unavailable_reason === 'KEY_MISSING') {
-      return sendJson(res, 400, {
-        error: '您已选择个人 API 直连，但尚未填写有效密钥，请先在「⚙️ 设置」中填入您的密钥，或切换为「⚡ 本地直连模式」。',
-        code: 'OWN_KEY_MISSING'
-      });
+    // 2. 云端 API 模式检测：若选择 API 模式但尚未填写或配置有效 API Key，明确提示用户配置或切回本地
+    if (!usingLocalAntigravity) {
+      const isUsingOwnKey = settings.provider === 'own_deepseek' || settings._using_member_own_key;
+      const hasOwnKey = Boolean(settings.own_deepseek_api_key && settings.own_deepseek_api_key.trim());
+      const hasEnvKey = Boolean(process.env.DEEPSEEK_API_KEY && process.env.DEEPSEEK_API_KEY.trim());
+
+      if (
+        settings._own_key_unavailable_reason === 'KEY_MISSING' ||
+        (isUsingOwnKey && !hasOwnKey) ||
+        (!hasOwnKey && !hasEnvKey && settings.provider !== 'demo')
+      ) {
+        return sendJson(res, 400, {
+          error: '您当前处于【云端 API 模式】，但尚未配置有效 API 密钥。请先在「⚙️ 设置」中填入密钥，或切换回「⚡ 本地直连模式」开箱即用。',
+          code: 'API_KEY_REQUIRED'
+        });
+      }
     }
 
     let effectiveAttachments = attachments;
@@ -4155,7 +4184,15 @@ async function handleApi(req, res, pathname, parsedUrl) {
           sendEvent('error', { message: sanitizePublicErrorMessage(err, '生成回复时发生未知异常') });
         }
       } else {
-        sendEvent('error', { message: sanitizePublicErrorMessage(err, '生成回复时发生未知异常') });
+        const rawErrMsg = String(err?.message || '');
+        const isLocalBusy = usingLocalAntigravity || /本地服务|本地 Antigravity|agy|服务繁忙/i.test(rawErrMsg);
+        const userFriendlyMsg = isLocalBusy
+          ? '当前本地服务繁忙或未响应，建议稍后重试，或临时切换为「☁️ 云端 API 模式」继续对话。'
+          : sanitizePublicErrorMessage(err, '生成回复时发生未知异常');
+        sendEvent('error', {
+          message: userFriendlyMsg,
+          code: isLocalBusy ? 'LOCAL_SERVICE_BUSY' : 'GENERATION_ERROR'
+        });
       }
     } finally {
       clearInterval(keepAliveTimer);

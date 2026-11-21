@@ -12877,6 +12877,17 @@
     hidePopoverSafe('ds-user-popover');
     openSettingsModal();
   });
+  document.getElementById('ds-menu-skin-studio-btn')?.addEventListener('click', () => {
+    hidePopoverSafe('ds-user-popover');
+    openMobileSkinStudio();
+  });
+  document.getElementById('ds-menu-avatar-studio-btn')?.addEventListener('click', () => {
+    hidePopoverSafe('ds-user-popover');
+    openMobileAvatarStudio();
+  });
+  document.getElementById('sidebar-skin-studio-btn')?.addEventListener('click', () => {
+    openMobileSkinStudio();
+  });
 
   // 静默陪伴自动搭话心跳检查（默认严格关闭，仅在用户显式开启 pref_auto_proactive 且会话允许时生效）
   setInterval(() => {

@@ -961,6 +961,17 @@
     if (mountedStudioRoot) {
       updateStudioPreviewAndStates(mountedStudioRoot);
     }
+
+    try {
+      const skinVal = document.getElementById('mfs-skin-value');
+      if (skinVal) {
+        const p = SKIN_PRESETS.find((x) => x.id === currentSkin.preset);
+        const pName = p ? p.name : '系统默认';
+        const bubbleNames = { soft: '柔光圆润', 'im-bubble': '逐句分段', glass: '玻璃拟态', outline: '极简细框', letter: '复古信纸' };
+        const bName = bubbleNames[currentSkin.bubbleStyle] || '柔光圆润';
+        skinVal.textContent = `${pName} · ${bName}`;
+      }
+    } catch {}
   }
 
   function extractAccentFromImageSrc(src) {

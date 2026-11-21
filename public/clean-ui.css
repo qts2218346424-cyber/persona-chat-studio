@@ -5346,6 +5346,14 @@ dialog::backdrop {
   display: none !important;
 }
 
+/* 彻底清除剧本聊天框底部心声与记忆多余胶囊 */
+#toggle-thought-btn,
+#toggle-automem-btn {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+}
+
 /* 彻底清除语音通话相关一切元素（物理隐藏防任何旧缓存） */
 .comp-voice-wrap,
 .comp-voice-call-pill,

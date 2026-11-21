@@ -4651,10 +4651,14 @@
       rollingSummaryInput.value = state.activeSession.rolling_summary || '';
       const thoughtOn = state.activeSession.enable_inner_thought === 1;
       const autoMemOn = state.activeSession.enable_auto_memory === 1;
-      toggleThoughtBtn.classList.toggle('active', thoughtOn);
-      toggleThoughtBtn.setAttribute('aria-pressed', String(thoughtOn));
-      toggleAutoMemBtn.classList.toggle('active', autoMemOn);
-      toggleAutoMemBtn.setAttribute('aria-pressed', String(autoMemOn));
+      if (toggleThoughtBtn) {
+        toggleThoughtBtn.classList.toggle('active', thoughtOn);
+        toggleThoughtBtn.setAttribute('aria-pressed', String(thoughtOn));
+      }
+      if (toggleAutoMemBtn) {
+        toggleAutoMemBtn.classList.toggle('active', autoMemOn);
+        toggleAutoMemBtn.setAttribute('aria-pressed', String(autoMemOn));
+      }
     }
 
     memoryCountLabel.textContent = `${state.memories.length} 条`;
@@ -7379,7 +7383,7 @@
     showToast(`已开启${roundTitle || `与${shortName}的全新篇章`}`);
   });
 
-  toggleThoughtBtn.addEventListener('click', async () => {
+  toggleThoughtBtn?.addEventListener('click', async () => {
     if (!state.activeSession) return;
     const next = state.activeSession.enable_inner_thought !== 1;
     const res = await apiJson(`/api/sessions/${encodeURIComponent(state.activeSessionId)}`, {
@@ -7390,7 +7394,7 @@
     renderTelemetryAndMemories();
   });
 
-  toggleAutoMemBtn.addEventListener('click', async () => {
+  toggleAutoMemBtn?.addEventListener('click', async () => {
     if (!state.activeSession) return;
     const next = state.activeSession.enable_auto_memory !== 1;
     const res = await apiJson(`/api/sessions/${encodeURIComponent(state.activeSessionId)}`, {

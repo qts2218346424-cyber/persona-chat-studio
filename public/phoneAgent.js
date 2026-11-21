@@ -575,17 +575,24 @@
       return;
     }
 
-    const inputEl = $('chat-input');
+    const paInput = $('pa-task-input');
+    const chatInput = $('chat-input');
+    const targetInput = (paInput && paInput.offsetParent !== null) ? paInput : chatInput;
+
     if (mode === 'fill') {
-      if (inputEl) {
-        inputEl.value = cmd;
-        inputEl.dispatchEvent(new Event('input', { bubbles: true }));
-        inputEl.focus();
+      if (targetInput) {
+        targetInput.value = cmd;
+        targetInput.dispatchEvent(new Event('input', { bubbles: true }));
+        targetInput.focus();
         try {
-          inputEl.setSelectionRange(cmd.length, cmd.length);
+          targetInput.setSelectionRange(cmd.length, cmd.length);
         } catch {}
       }
-      showToast(`请补充「${cmd.trim()}」后的内容并点击右侧发送按钮`);
+      if (chatInput && chatInput !== targetInput) {
+        chatInput.value = cmd;
+        chatInput.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+      showToast(`请补充「${cmd.trim()}」后的文字内容并点击执行`);
       return;
     }
 
@@ -1461,10 +1468,15 @@
       if (act === 'input') {
         const txt = String(p.text || '');
         const viewId = String(p.viewId || '');
+        const shouldAutoSubmit = Boolean(p.autoSubmit || p.submit || /发送|提交|回复|评论/i.test(p.actionDesc || '') || /发送|提交|回复|评论/i.test(txt));
         const ok = typeof b.dispatchSmartInput === 'function'
-          ? b.dispatchSmartInput(txt, false, false)
+          ? b.dispatchSmartInput(txt, false, shouldAutoSubmit)
           : b.dispatchInputText(viewId, txt);
-        return { executed: Boolean(ok), error: !ok, text: ok ? `已向输入框填入文本` : '未能定位到可编辑输入框' };
+        return {
+          executed: Boolean(ok),
+          error: !ok,
+          text: ok ? (shouldAutoSubmit ? `已向输入框打字并自动点击发送「${txt}」` : `已向输入框填入文本`) : '未能定位到可编辑输入框'
+        };
       }
       if (act === 'home' || act === 'back' || act === 'recents') {
         const ok = b.dispatchGlobalAction(act);
@@ -1937,11 +1949,7 @@
   async function executeTaskInChat(taskText) {
     const clean = String(taskText || '').trim();
     if (!clean) return;
-    if (!isNativeApk()) {
-      showToast('手机辅助功能仅在 Android 随身版 App 端开放，请先下载安装 App');
-      openModal();
-      return;
-    }
+
     // 确保处于手机辅助模式
     const shell = document.getElementById('app-shell');
     if (shell && shell.dataset.uiMode !== 'phone-agent') {
@@ -2651,6 +2659,227 @@
       closeModal();
       executeTaskInChat(cmd);
     });
+
+    // 手机辅助任务卡片语音听写识别模块（双引擎支持：Web Speech 实时听写 + 后端 ASR 录音转写保底）
+    const paVoiceBtn = $('pa-voice-input-btn');
+    const paTaskInput = $('pa-task-input');
+    if (paVoiceBtn && paTaskInput) {
+      let isPaVoiceRecording = false;
+      let paActiveMediaRecorder = null;
+      let paActiveAudioStream = null;
+      let paRecordedChunks = [];
+      let paActiveSpeechRec = null;
+      let paBaseInput = '';
+      let paSpeechFinalText = '';
+      let paSpeechInterimText = '';
+
+      const cleanupPaAudioStream = () => {
+        if (paActiveAudioStream) {
+          try {
+            paActiveAudioStream.getTracks().forEach((track) => track.stop());
+          } catch {}
+          paActiveAudioStream = null;
+        }
+      };
+
+      const setPaVoiceBtnUi = (recording) => {
+        isPaVoiceRecording = recording;
+        paVoiceBtn.classList.toggle('recording', recording);
+        paVoiceBtn.setAttribute('aria-pressed', String(recording));
+        const span = paVoiceBtn.querySelector('span');
+        if (span) span.textContent = recording ? '正在倾听…' : '语音';
+        paVoiceBtn.title = recording ? '正在倾听…点击完成语音输入' : '语音输入口令（点击开始说话，再次点击完成）';
+      };
+
+      const applyPaTextToInput = (textSegment) => {
+        const clean = String(textSegment || '').trim();
+        if (!clean && !paBaseInput) return;
+        const sep = paBaseInput && clean && !/\s$/.test(paBaseInput) ? ' ' : '';
+        paTaskInput.value = `${paBaseInput}${sep}${clean}`;
+        paTaskInput.dispatchEvent(new Event('input', { bubbles: true }));
+      };
+
+      const stopPaVoiceRecording = async () => {
+        if (!isPaVoiceRecording) return;
+        setPaVoiceBtnUi(false);
+
+        if (paActiveSpeechRec) {
+          try { paActiveSpeechRec.stop(); } catch {}
+          paActiveSpeechRec = null;
+        }
+
+        if (paActiveMediaRecorder && paActiveMediaRecorder.state !== 'inactive') {
+          try { paActiveMediaRecorder.stop(); } catch { cleanupPaAudioStream(); }
+        } else {
+          cleanupPaAudioStream();
+          const finalWebSpeech = (paSpeechFinalText + paSpeechInterimText).trim();
+          if (finalWebSpeech) {
+            applyPaTextToInput(finalWebSpeech);
+            paTaskInput.focus();
+            showToast('口令语音输入完成');
+          }
+        }
+      };
+
+      const startPaVoiceRecording = async () => {
+        if (isPaVoiceRecording) {
+          await stopPaVoiceRecording();
+          return;
+        }
+
+        paBaseInput = paTaskInput.value || '';
+        paSpeechFinalText = '';
+        paSpeechInterimText = '';
+        paRecordedChunks = [];
+
+        const SpeechRecCtor = window.SpeechRecognition || window.webkitSpeechRecognition;
+        const canUseRecorder = Boolean(
+          navigator.mediaDevices &&
+            typeof navigator.mediaDevices.getUserMedia === 'function' &&
+            typeof window.MediaRecorder !== 'undefined'
+        );
+
+        if (!SpeechRecCtor && !canUseRecorder) {
+          showToast('当前浏览器环境不支持麦克风语音输入');
+          return;
+        }
+
+        let startedEngine = false;
+
+        // 引擎 1：浏览器原生实时听写
+        if (SpeechRecCtor) {
+          try {
+            const rec = new SpeechRecCtor();
+            rec.lang = 'zh-CN';
+            rec.continuous = true;
+            rec.interimResults = true;
+            rec.onresult = (e) => {
+              let finalS = '';
+              let interimS = '';
+              for (let i = 0; i < e.results.length; i++) {
+                const item = e.results[i];
+                const tr = item[0]?.transcript || '';
+                if (item.isFinal) finalS += tr;
+                else interimS += tr;
+              }
+              paSpeechFinalText = finalS;
+              paSpeechInterimText = interimS;
+              applyPaTextToInput(paSpeechFinalText + paSpeechInterimText);
+            };
+            rec.onerror = (errEv) => {
+              if (errEv?.error === 'not-allowed' || errEv?.error === 'service-not-allowed') {
+                if (!paActiveMediaRecorder) {
+                  setPaVoiceBtnUi(false);
+                  showToast('麦克风权限被拒绝，请允许麦克风权限后重试');
+                }
+              }
+            };
+            rec.onend = () => {
+              if (isPaVoiceRecording && (!paActiveMediaRecorder || paActiveMediaRecorder.state === 'inactive')) {
+                setPaVoiceBtnUi(false);
+                const combined = (paSpeechFinalText + paSpeechInterimText).trim();
+                if (combined) {
+                  applyPaTextToInput(combined);
+                  paTaskInput.focus();
+                  showToast('口令语音输入完成');
+                }
+              }
+            };
+            rec.start();
+            paActiveSpeechRec = rec;
+            startedEngine = true;
+          } catch {}
+        }
+
+        // 引擎 2：MediaRecorder 录制高精度音频转写兜底
+        if (canUseRecorder) {
+          try {
+            const stream = await navigator.mediaDevices.getUserMedia({
+              audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+            });
+            paActiveAudioStream = stream;
+            const chosenMime = typeof MediaRecorder.isTypeSupported === 'function' && MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+              ? 'audio/webm;codecs=opus'
+              : (MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' : '');
+            const recorder = chosenMime ? new MediaRecorder(stream, { mimeType: chosenMime }) : new MediaRecorder(stream);
+            recorder.ondataavailable = (ev) => {
+              if (ev.data && ev.data.size > 0) paRecordedChunks.push(ev.data);
+            };
+            recorder.onstop = async () => {
+              cleanupPaAudioStream();
+              const webSpeech = (paSpeechFinalText + paSpeechInterimText).trim();
+              const audioBlob = new Blob(paRecordedChunks, { type: recorder.mimeType || 'audio/webm' });
+              paRecordedChunks = [];
+              if (audioBlob.size < 400) {
+                if (webSpeech) {
+                  applyPaTextToInput(webSpeech);
+                  paTaskInput.focus();
+                } else {
+                  showToast('未检测到有效语音，请靠近麦克风再试');
+                }
+                return;
+              }
+              if (!webSpeech) {
+                showToast('正在识别口令语音内容…', 1800);
+              }
+              try {
+                const reader = new FileReader();
+                reader.readAsDataURL(audioBlob);
+                reader.onloadend = async () => {
+                  try {
+                    const dataUrl = String(reader.result || '');
+                    const res = await fetch('/api/asr/transcribe', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ audio_data_url: dataUrl })
+                    });
+                    if (res.ok) {
+                      const j = await res.json();
+                      const asrText = String(j?.text || '').trim();
+                      if (asrText) {
+                        applyPaTextToInput(asrText);
+                        paTaskInput.focus();
+                        showToast('口令语音识别完成');
+                        return;
+                      }
+                    }
+                  } catch {}
+                  if (webSpeech) {
+                    applyPaTextToInput(webSpeech);
+                    paTaskInput.focus();
+                  }
+                };
+              } catch {
+                if (webSpeech) {
+                  applyPaTextToInput(webSpeech);
+                  paTaskInput.focus();
+                }
+              }
+            };
+            recorder.start();
+            paActiveMediaRecorder = recorder;
+            startedEngine = true;
+          } catch (permErr) {
+            cleanupPaAudioStream();
+            if (!startedEngine) {
+              setPaVoiceBtnUi(false);
+              showToast('请允许麦克风权限以使用语音输入');
+              return;
+            }
+          }
+        }
+
+        if (startedEngine) {
+          setPaVoiceBtnUi(true);
+          showToast('正在倾听…说出你想执行的口令，说完了再次点击此按钮');
+        } else {
+          setPaVoiceBtnUi(false);
+          showToast('启动麦克风录音失败，请确认浏览器已授予录音权限');
+        }
+      };
+
+      paVoiceBtn.addEventListener('click', startPaVoiceRecording);
+    }
 
     document.querySelectorAll('.pa-quick-test-btn').forEach((btn) => {
       btn.addEventListener('click', () => {

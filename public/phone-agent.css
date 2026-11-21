@@ -869,7 +869,6 @@
 .app-shell[data-ui-mode="phone-agent"] #ds-prefix-bar,
 .app-shell[data-ui-mode="phone-agent"] #attach-file-btn,
 .app-shell[data-ui-mode="phone-agent"] #ds-composer-api-chip,
-.app-shell[data-ui-mode="phone-agent"] #voice-input-btn,
 .app-shell[data-ui-mode="phone-agent"] .composer-disclaimer {
   display: none !important;
 }
@@ -2362,4 +2361,34 @@
     box-shadow: 0 0 0 0 rgba(77, 107, 254, 0);
     background-color: transparent;
   }
+}
+
+/* 手机辅助任务卡片语音输入按钮样式 */
+.phone-agent-voice-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 38px;
+  padding: 0 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #0284c7;
+  background: rgba(2, 132, 199, 0.1);
+  border: 1px solid rgba(2, 132, 199, 0.25);
+  border-radius: 8px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  user-select: none;
+}
+.phone-agent-voice-btn:hover {
+  background: rgba(2, 132, 199, 0.18);
+  border-color: rgba(2, 132, 199, 0.45);
+}
+.phone-agent-voice-btn.recording {
+  color: #ffffff !important;
+  background: #ef4444 !important;
+  border-color: #ef4444 !important;
+  box-shadow: 0 0 14px rgba(239, 68, 68, 0.45) !important;
 }

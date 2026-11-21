@@ -1,16 +1,22 @@
 package com.deepseek.starwhisper.studio;
 
+import android.Manifest;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.graphics.PixelFormat;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Build;
+import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
 import android.os.Vibrator;
+import android.speech.RecognitionListener;
+import android.speech.RecognizerIntent;
+import android.speech.SpeechRecognizer;
 import android.text.TextUtils;
 import android.util.DisplayMetrics;
 import android.util.TypedValue;
@@ -55,6 +61,12 @@ public class FloatAgentService extends Service {
     private EditText typingEditText;
     private TextView feedbackTextView;
     private TextView autoSwipeToggleBtn;
+
+    // 原生语音识别听写状态
+    private SpeechRecognizer speechRecognizer = null;
+    private boolean isListeningSpeech = false;
+    private EditText activeSpeechTarget = null;
+    private TextView activeSpeechVoiceBtn = null;
 
     private final List<TextView> tabButtons = new ArrayList<>();
     private final List<LinearLayout> tabPages = new ArrayList<>();
@@ -395,6 +407,17 @@ public class FloatAgentService extends Service {
         editLp.rightMargin = dp(6);
         cmdEditText.setLayoutParams(editLp);
 
+        final TextView voiceBtn = createActionBtn("🎙️ 语音", "#0284C7", "#FFFFFF");
+        LinearLayout.LayoutParams voiceLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        voiceLp.rightMargin = dp(4);
+        voiceBtn.setLayoutParams(voiceLp);
+        voiceBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                toggleSpeechRecognitionFor(cmdEditText, voiceBtn);
+            }
+        });
+
         TextView sendBtn = createActionBtn("执行", "#4D6BFE", "#FFFFFF");
         sendBtn.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -435,6 +458,7 @@ public class FloatAgentService extends Service {
         });
 
         inputRow.addView(cmdEditText);
+        inputRow.addView(voiceBtn);
         inputRow.addView(sendBtn);
         inputRow.addView(normalStopBtn);
         inputRow.addView(stopBtn);
@@ -696,6 +720,13 @@ public class FloatAgentService extends Service {
         LinearLayout page = new LinearLayout(this);
         page.setOrientation(LinearLayout.VERTICAL);
 
+        LinearLayout typingInputRow = new LinearLayout(this);
+        typingInputRow.setOrientation(LinearLayout.HORIZONTAL);
+        typingInputRow.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout.LayoutParams tRowLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        tRowLp.bottomMargin = dp(6);
+        typingInputRow.setLayoutParams(tRowLp);
+
         typingEditText = new EditText(this);
         typingEditText.setHint("输入要填入底层输入框的文字（点按钮即自动填字）");
         typingEditText.setHintTextColor(Color.parseColor("#64748B"));
@@ -705,8 +736,8 @@ public class FloatAgentService extends Service {
         typingEditText.setImeOptions(EditorInfo.IME_ACTION_SEND);
         typingEditText.setPadding(dp(10), dp(7), dp(10), dp(7));
         setViewBg(typingEditText, createRoundRect("#331E293B", 10, "#334155", 1));
-        LinearLayout.LayoutParams edLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        edLp.bottomMargin = dp(6);
+        LinearLayout.LayoutParams edLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
+        edLp.rightMargin = dp(4);
         typingEditText.setLayoutParams(edLp);
         typingEditText.setOnEditorActionListener(new TextView.OnEditorActionListener() {
             @Override
@@ -718,7 +749,18 @@ public class FloatAgentService extends Service {
                 return false;
             }
         });
-        page.addView(typingEditText);
+
+        final TextView typingVoiceBtn = createActionBtn("🎙️ 语音", "#0284C7", "#FFFFFF");
+        typingVoiceBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                toggleSpeechRecognitionFor(typingEditText, typingVoiceBtn);
+            }
+        });
+
+        typingInputRow.addView(typingEditText);
+        typingInputRow.addView(typingVoiceBtn);
+        page.addView(typingInputRow);
 
         // 5 个打字操作按钮
         LinearLayout actRow = new LinearLayout(this);
@@ -1035,6 +1077,145 @@ public class FloatAgentService extends Service {
         } catch (Exception ignored) {}
     }
 
+    /**
+     * 切换悬浮窗语音听写识别（支持实时转写上屏、无按键自动停、异常提示与状态反馈）
+     */
+    private void toggleSpeechRecognitionFor(final EditText targetEditText, final TextView voiceBtn) {
+        if (targetEditText == null) return;
+
+        if (isListeningSpeech) {
+            stopSpeechRecognition();
+            return;
+        }
+
+        // 1. 检查麦克风权限
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                Toast.makeText(this, "悬浮窗语音输入需要麦克风权限，请在主应用或系统设置中允许", Toast.LENGTH_LONG).show();
+                bringMainActivityToFront("");
+                return;
+            }
+        }
+
+        // 2. 检查系统是否支持语音识别
+        if (!SpeechRecognizer.isRecognitionAvailable(this)) {
+            Toast.makeText(this, "当前设备未安装语音识别服务，可直接在输入框打字或使用手机键盘语音键", Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        try {
+            if (speechRecognizer != null) {
+                try { speechRecognizer.destroy(); } catch (Exception ignored) {}
+                speechRecognizer = null;
+            }
+            speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this);
+            activeSpeechTarget = targetEditText;
+            activeSpeechVoiceBtn = voiceBtn;
+
+            speechRecognizer.setRecognitionListener(new RecognitionListener() {
+                @Override
+                public void onReadyForSpeech(Bundle params) {
+                    isListeningSpeech = true;
+                    updateVoiceBtnUi(true);
+                    showFeedback("🎙️ 正在倾听... 请说话");
+                    Toast.makeText(FloatAgentService.this, "🎙️ 正在倾听，请说话...", Toast.LENGTH_SHORT).show();
+                }
+
+                @Override
+                public void onBeginningOfSpeech() {
+                    updateVoiceBtnUi(true);
+                    showFeedback("🎙️ 正在倾听语音输入...");
+                }
+
+                @Override
+                public void onRmsChanged(float rmsdB) {}
+
+                @Override
+                public void onBufferReceived(byte[] buffer) {}
+
+                @Override
+                public void onEndOfSpeech() {
+                    showFeedback("⏳ 正在识别语音...");
+                }
+
+                @Override
+                public void onError(int error) {
+                    isListeningSpeech = false;
+                    updateVoiceBtnUi(false);
+                    String tip = "语音识别已结束";
+                    if (error == SpeechRecognizer.ERROR_NO_MATCH) tip = "未能识别出清晰语音，请再试一次";
+                    else if (error == SpeechRecognizer.ERROR_AUDIO) tip = "录音设备异常，请检查麦克风";
+                    else if (error == SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS) tip = "麦克风权限未授予";
+                    showFeedback(tip);
+                    Toast.makeText(FloatAgentService.this, tip, Toast.LENGTH_SHORT).show();
+                }
+
+                @Override
+                public void onResults(Bundle results) {
+                    isListeningSpeech = false;
+                    updateVoiceBtnUi(false);
+                    if (results != null) {
+                        ArrayList<String> matches = results.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
+                        if (matches != null && !matches.isEmpty()) {
+                            String recognized = matches.get(0).trim();
+                            if (!recognized.isEmpty() && activeSpeechTarget != null) {
+                                String old = activeSpeechTarget.getText() != null ? activeSpeechTarget.getText().toString() : "";
+                                String sep = old.isEmpty() || old.endsWith(" ") ? "" : " ";
+                                activeSpeechTarget.setText(old + sep + recognized);
+                                activeSpeechTarget.setSelection(activeSpeechTarget.getText().length());
+                                showFeedback("✓ 语音已输入: " + recognized);
+                                Toast.makeText(FloatAgentService.this, "已输入: " + recognized, Toast.LENGTH_SHORT).show();
+                            }
+                            return;
+                        }
+                    }
+                    showFeedback("未检测到有效语音");
+                }
+
+                @Override
+                public void onPartialResults(Bundle partialResults) {
+                    if (partialResults != null && activeSpeechTarget != null) {
+                        ArrayList<String> partials = partialResults.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
+                        if (partials != null && !partials.isEmpty()) {
+                            showFeedback("🎙️ 倾听中: " + partials.get(0));
+                        }
+                    }
+                }
+
+                @Override
+                public void onEvent(int eventType, Bundle params) {}
+            });
+
+            Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+            intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+            intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, "zh-CN");
+            intent.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
+            intent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1);
+            speechRecognizer.startListening(intent);
+        } catch (Exception e) {
+            isListeningSpeech = false;
+            updateVoiceBtnUi(false);
+            Toast.makeText(this, "启动语音识别失败: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void stopSpeechRecognition() {
+        if (speechRecognizer != null) {
+            try {
+                speechRecognizer.stopListening();
+            } catch (Exception ignored) {}
+        }
+        isListeningSpeech = false;
+        updateVoiceBtnUi(false);
+    }
+
+    private void updateVoiceBtnUi(boolean listening) {
+        if (activeSpeechVoiceBtn != null) {
+            activeSpeechVoiceBtn.setText(listening ? "⏹ 停止" : "🎙️ 语音");
+            setViewBg(activeSpeechVoiceBtn, createRoundRect(listening ? "#EF4444" : "#0284C7", 8, null, 0));
+        }
+    }
+
     private void handleBubbleClick() {
         if ("confirming".equals(sCurrentStatus)) {
             if (confirmBannerView == null) {
@@ -1332,6 +1513,7 @@ public class FloatAgentService extends Service {
 
     @Override
     public void onDestroy() {
+        stopSpeechRecognition();
         hideConfirmBanner();
         AgentAccessibilityService a11y = AgentAccessibilityService.getInstance();
         if (a11y != null) {

@@ -640,6 +640,9 @@ public class AgentAccessibilityService extends AccessibilityService {
             target.performAction(AccessibilityNodeInfo.ACTION_CLICK);
         }
 
+        Rect inputBounds = new Rect();
+        target.getBoundsInScreen(inputBounds);
+
         String rawInput = text != null ? text : "";
         String finalText = rawInput;
         if (appendMode) {
@@ -666,16 +669,173 @@ public class AgentAccessibilityService extends AccessibilityService {
         root.recycle();
 
         if (ok && autoSubmit) {
-            mainHandler.postDelayed(new Runnable() {
-                @Override
-                public void run() {
-                    if (!FloatAgentService.sEmergencyStopRequested) {
-                        clickAnyMatchingButton(new String[]{"发送", "搜索", "评论", "发布", "确认", "完成", "前往"});
+            final Rect finalInputBounds = inputBounds;
+            final int[] retryDelays = new int[]{ 260, 580, 1000 };
+            for (int delay : retryDelays) {
+                mainHandler.postDelayed(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (!FloatAgentService.sEmergencyStopRequested) {
+                            performSmartSubmitAction(finalInputBounds);
+                        }
                     }
-                }
-            }, 340);
+                }, delay);
+            }
         }
         return ok;
+    }
+
+    /**
+     * 智能发送/提交触发器：综合多轮轮询、模糊描述、同行右侧控件扫描与手势点击，确保主流聊天/搜索应用均能成功发送
+     */
+    public boolean performSmartSubmitAction(final Rect inputBounds) {
+        AccessibilityNodeInfo root = getRootInActiveWindow();
+        if (root == null) return false;
+
+        String[] submitKeywords = new String[]{"发送", "搜索", "发布", "评论", "确认", "完成", "前往", "Send", "Search"};
+
+        // 策略 1：模糊扫描文本、contentDescription 与控件 ID
+        List<AccessibilityNodeInfo> candidates = new ArrayList<>();
+        collectSubmitCandidates(root, candidates, submitKeywords);
+        if (!candidates.isEmpty()) {
+            AccessibilityNodeInfo bestNode = candidates.get(0);
+            Rect bounds = new Rect();
+            bestNode.getBoundsInScreen(bounds);
+
+            boolean clicked = false;
+            AccessibilityNodeInfo clickTarget = bestNode;
+            while (clickTarget != null) {
+                if (clickTarget.isClickable()) {
+                    clicked = clickTarget.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+                    if (clicked) break;
+                }
+                clickTarget = clickTarget.getParent();
+            }
+
+            if (bounds.width() > 0 && bounds.height() > 0) {
+                performClickCoordinate(bounds.centerX(), bounds.centerY());
+                clicked = true;
+            }
+
+            for (AccessibilityNodeInfo n : candidates) {
+                if (n != null) n.recycle();
+            }
+            root.recycle();
+            return clicked;
+        }
+
+        // 策略 2：同行右侧按钮探测（典型如微信/QQ输入框右侧发送按钮）
+        if (inputBounds != null && inputBounds.width() > 0) {
+            AccessibilityNodeInfo rightNeighbor = findRightNeighborButton(root, inputBounds);
+            if (rightNeighbor != null) {
+                Rect bounds = new Rect();
+                rightNeighbor.getBoundsInScreen(bounds);
+                boolean clicked = rightNeighbor.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+                if (bounds.width() > 0 && bounds.height() > 0) {
+                    performClickCoordinate(bounds.centerX(), bounds.centerY());
+                    clicked = true;
+                }
+                rightNeighbor.recycle();
+                root.recycle();
+                return clicked;
+            }
+        }
+
+        // 策略 3：派发软键盘 IME_ACTION (兼容低版本 SDK 常量 16908372)
+        AccessibilityNodeInfo focused = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT);
+        if (focused != null) {
+            boolean imeOk = false;
+            try {
+                imeOk = focused.performAction(16908372);
+            } catch (Throwable ignored) {}
+            focused.recycle();
+            root.recycle();
+            if (imeOk) return true;
+        }
+
+        root.recycle();
+        return false;
+    }
+
+    private void collectSubmitCandidates(AccessibilityNodeInfo node, List<AccessibilityNodeInfo> out, String[] keywords) {
+        if (node == null || out.size() >= 5) return;
+        if (node.isVisibleToUser()) {
+            CharSequence text = node.getText();
+            CharSequence desc = node.getContentDescription();
+            String viewId = node.getViewIdResourceName();
+            String tStr = text != null ? text.toString().trim() : "";
+            String dStr = desc != null ? desc.toString().trim() : "";
+            String idStr = viewId != null ? viewId.toLowerCase(Locale.ROOT) : "";
+
+            boolean match = false;
+            for (String kw : keywords) {
+                if (tStr.equals(kw) || dStr.equals(kw) || tStr.contains(kw) || dStr.contains(kw)) {
+                    match = true;
+                    break;
+                }
+            }
+            if (!match && (!idStr.isEmpty() && (idStr.contains("send") || idStr.contains("submit") || idStr.contains("btn_send")))) {
+                match = true;
+            }
+
+            if (match) {
+                Rect r = new Rect();
+                node.getBoundsInScreen(r);
+                if (r.width() > 10 && r.height() > 10) {
+                    out.add(AccessibilityNodeInfo.obtain(node));
+                }
+            }
+        }
+
+        int count = node.getChildCount();
+        for (int i = 0; i < count && out.size() < 5; i++) {
+            AccessibilityNodeInfo child = node.getChild(i);
+            if (child != null) {
+                collectSubmitCandidates(child, out, keywords);
+                child.recycle();
+            }
+        }
+    }
+
+    private AccessibilityNodeInfo findRightNeighborButton(AccessibilityNodeInfo root, Rect inputBounds) {
+        List<AccessibilityNodeInfo> cands = new ArrayList<>();
+        collectClickableNodes(root, cands);
+        if (cands.isEmpty()) return null;
+
+        AccessibilityNodeInfo best = null;
+        int minDistance = Integer.MAX_VALUE;
+        for (AccessibilityNodeInfo cand : cands) {
+            Rect r = new Rect();
+            cand.getBoundsInScreen(r);
+            boolean horizontallyRight = r.left >= (inputBounds.right - 30);
+            boolean verticallyAligned = Math.abs(r.centerY() - inputBounds.centerY()) <= Math.max(inputBounds.height(), 80);
+            if (horizontallyRight && verticallyAligned && r.width() >= 20 && r.height() >= 20) {
+                int dist = Math.abs(r.left - inputBounds.right);
+                if (dist < minDistance) {
+                    minDistance = dist;
+                    if (best != null) best.recycle();
+                    best = cand;
+                    continue;
+                }
+            }
+            cand.recycle();
+        }
+        return best;
+    }
+
+    private void collectClickableNodes(AccessibilityNodeInfo node, List<AccessibilityNodeInfo> out) {
+        if (node == null || out.size() >= 40) return;
+        if (node.isVisibleToUser() && (node.isClickable() || String.valueOf(node.getClassName()).contains("Button") || String.valueOf(node.getClassName()).contains("ImageView"))) {
+            out.add(AccessibilityNodeInfo.obtain(node));
+        }
+        int count = node.getChildCount();
+        for (int i = 0; i < count && out.size() < 40; i++) {
+            AccessibilityNodeInfo child = node.getChild(i);
+            if (child != null) {
+                collectClickableNodes(child, out);
+                child.recycle();
+            }
+        }
     }
 
     /**

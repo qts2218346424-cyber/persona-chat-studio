@@ -1122,21 +1122,51 @@
     display: inline-flex !important;
     align-items: center !important;
     gap: 6px !important;
-    background: light-dark(#f3f4f6, #1e2230) !important;
-    border: 1px solid light-dark(rgba(0, 0, 0, 0.05), rgba(255, 255, 255, 0.08)) !important;
-    border-radius: 10px !important;
-    padding: 5px 12px !important;
+    background: light-dark(#f0f2f5, rgba(255, 255, 255, 0.08)) !important;
+    border: 1px solid light-dark(rgba(0, 0, 0, 0.04), rgba(255, 255, 255, 0.06)) !important;
+    border-radius: 8px !important;
+    padding: 4px 10px !important;
     font-size: 13px !important;
     font-weight: 500 !important;
-    color: light-dark(#475569, #94a3b8) !important;
+    line-height: 1.4 !important;
+    color: light-dark(#475569, #cbd5e1) !important;
     cursor: pointer !important;
     list-style: none !important;
     width: auto !important;
     max-width: fit-content !important;
+    transition: background-color 0.15s ease, color 0.15s ease !important;
+  }
+
+  .thought-summary:hover {
+    background: light-dark(#e5e7eb, rgba(255, 255, 255, 0.12)) !important;
+    color: light-dark(#1e293b, #f8fafc) !important;
   }
 
   .thought-summary::-webkit-details-marker {
     display: none !important;
+  }
+
+  .thought-summary::before,
+  .ds-fold-summary::before {
+    content: none !important;
+    display: none !important;
+  }
+
+  .thought-summary .ds-think-chevron-svg {
+    display: inline-block !important;
+    color: light-dark(#64748b, #94a3b8) !important;
+    flex-shrink: 0 !important;
+    transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  }
+
+  .thought-details[open] > .thought-summary .ds-think-chevron-svg {
+    transform: rotate(180deg) !important;
+  }
+
+  .thought-summary .ds-think-badge-icon {
+    display: inline-block !important;
+    color: light-dark(#64748b, #94a3b8) !important;
+    flex-shrink: 0 !important;
   }
 
   .thought-content {

@@ -2526,6 +2526,7 @@
     const isLocal = activeLlmMode === 'local_antigravity';
     const btnLlmMode = document.getElementById('ds-toggle-llm-mode');
     const labelLlmMode = document.getElementById('ds-llm-mode-label');
+    const modeIconSlot = document.getElementById('ds-mode-icon-slot');
     const dsModelPill = document.getElementById('ds-model-pill');
     const dsThinkOn = state.activeSession ? state.activeSession.ds_thinking !== 0 : true;
 
@@ -2533,18 +2534,23 @@
       btnLlmMode.classList.toggle('active', isLocal);
       btnLlmMode.classList.toggle('mode-api', !isLocal);
       btnLlmMode.setAttribute('aria-pressed', String(isLocal));
+      if (modeIconSlot) {
+        modeIconSlot.innerHTML = isLocal
+          ? `<svg class="ds-pill-icon ds-mode-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>`
+          : `<svg class="ds-pill-icon ds-mode-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"></path></svg>`;
+      }
       if (labelLlmMode) {
-        labelLlmMode.textContent = isLocal ? '⚡ 本地直连' : '☁️ 云端 API';
+        labelLlmMode.textContent = isLocal ? '本地直连' : '云端 API';
       }
       btnLlmMode.title = isLocal
-        ? '当前为【⚡ 本地极速直连模式（DeepSeek · 深度思考）】\n点击切换为【☁️ 云端 API 模式】'
-        : '当前为【☁️ 云端 API 模式】\n点击切换为【⚡ 本地极速直连模式（DeepSeek）】';
+        ? '当前为【本地极速直连模式（DeepSeek · 深度思考）】\n点击切换为【云端 API 模式】'
+        : '当前为【云端 API 模式】\n点击切换为【本地极速直连模式（DeepSeek）】';
     }
 
     if (dsModelPill) {
       if (isLocal) {
-        dsModelPill.innerHTML = `<span class="ds-badge-dot"></span><span id="ds-model-pill-text">⚡ DeepSeek-V4.1-Flash${dsThinkOn ? ' · 深度思考' : ''}</span>`;
-        dsModelPill.title = '当前为【⚡ 本地极速直连模式（DeepSeek · 深度思考）】点击可切换至【☁️ 云端 API 模式】';
+        dsModelPill.innerHTML = `<span class="ds-badge-dot"></span><span id="ds-model-pill-text">DeepSeek-V4.1-Flash${dsThinkOn ? ' · 深度思考' : ''}</span>`;
+        dsModelPill.title = '当前为【本地极速直连模式（DeepSeek · 深度思考）】点击可切换至【云端 API 模式】';
       } else {
         const p = state.settings?.provider || 'online';
         const hasOwnKey = Boolean(state.settings?.own_deepseek_api_key_masked);
@@ -2552,8 +2558,8 @@
         const shortModel = rawOwnModel.replace(/^.*\//, '') || 'DeepSeek-V4.1-Flash';
         const isCustomThirdModel = p === 'own_deepseek' && hasOwnKey && !/deepseek|flash/i.test(rawOwnModel);
         const basePillName = isCustomThirdModel ? shortModel : 'DeepSeek-V4.1-Flash';
-        dsModelPill.innerHTML = `<span class="ds-badge-dot mode-api"></span><span id="ds-model-pill-text">☁️ ${dsThinkOn ? `${basePillName} · 深度思考` : basePillName}</span>`;
-        dsModelPill.title = '当前为【☁️ 云端 API 模式】点击可切换至【⚡ 本地直连模式】';
+        dsModelPill.innerHTML = `<span class="ds-badge-dot mode-api"></span><span id="ds-model-pill-text">${dsThinkOn ? `${basePillName} · 深度思考` : basePillName}</span>`;
+        dsModelPill.title = '当前为【云端 API 模式】点击可切换至【本地直连模式】';
       }
     }
   }
@@ -2571,17 +2577,17 @@
     let switchNotice = '';
     if (isNextLocal) {
       if (state.antigravityStatus && state.antigravityStatus.available === false) {
-        switchNotice = '⚠️ 已切换至【⚡ 本地直连模式】。当前本地服务繁忙或未就绪，建议稍后重试或切回「云端 API 模式」';
+        switchNotice = '已切换至【本地直连模式】。当前本地服务繁忙或未就绪，建议稍后重试或切回「云端 API 模式」';
       } else {
-        switchNotice = '已切换至：⚡ 本地极速直连模式 (DeepSeek-V4.1-Flash)';
+        switchNotice = '已切换至：本地极速直连模式 (DeepSeek-V4.1-Flash)';
       }
     } else {
       const hasApiKey = Boolean(state.settings?.own_deepseek_api_key_masked || state.settings?.has_own_deepseek_key);
       const isOwnProvider = state.settings?.provider === 'own_deepseek';
       if (isOwnProvider && !hasApiKey) {
-        switchNotice = '⚠️ 已切换至【☁️ 云端 API 模式】。您尚未配置 API 密钥，请在「设置」中填入密钥，或随时切回「本地直连模式」开箱即用';
+        switchNotice = '已切换至【云端 API 模式】。您尚未配置 API 密钥，请在「设置」中填入密钥，或随时切回「本地直连模式」开箱即用';
       } else {
-        switchNotice = '已切换至：☁️ 云端 API 模式';
+        switchNotice = '已切换至：云端 API 模式';
       }
     }
 
@@ -4730,7 +4736,10 @@
 
   const DS_WHALE_AVATAR_SVG = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path fill="#4D6BFE" fill-rule="evenodd" clip-rule="evenodd" d="M23.748 4.482c-.254-.124-.364.113-.512.234-.051.039-.094.09-.137.136-.372.397-.806.657-1.373.626-.829-.046-1.537.214-2.163.848-.133-.782-.575-1.248-1.247-1.548-.352-.156-.708-.311-.955-.65-.172-.241-.219-.51-.305-.774-.055-.16-.11-.323-.293-.35-.2-.031-.278.136-.356.276-.313.572-.434 1.202-.422 1.84.027 1.436.633 2.58 1.838 3.393.137.093.172.187.129.323-.082.28-.18.552-.266.833-.055.179-.137.217-.329.14a5.526 5.526 0 0 1-1.736-1.18c-.857-.828-1.631-1.742-2.597-2.458a11.365 11.365 0 0 0-.689-.471c-.985-.957.13-1.743.388-1.836.27-.098.093-.432-.779-.428-.872.004-1.67.295-2.687.684a3.055 3.055 0 0 1-.465.137 9.597 9.597 0 0 0-2.883-.102c-1.885.21-3.39 1.102-4.497 2.623C.082 8.606-.231 10.684.152 12.85c.403 2.284 1.569 4.175 3.36 5.653 1.858 1.533 3.997 2.284 6.438 2.14 1.482-.085 3.133-.284 4.994-1.86.47.234.962.327 1.78.397.63.059 1.236-.03 1.705-.128.735-.156.684-.837.419-.961-2.155-1.004-1.682-.595-2.113-.926 1.096-1.296 2.746-2.642 3.392-7.003.05-.347.007-.565 0-.845-.004-.17.035-.237.23-.256a4.173 4.173 0 0 0 1.545-.475c1.396-.763 1.96-2.015 2.093-3.517.02-.23-.004-.467-.247-.588zM11.581 18c-2.089-1.642-3.102-2.183-3.52-2.16-.392.024-.321.471-.235.763.09.288.207.486.371.739.114.167.192.416-.113.603-.673.416-1.842-.14-1.897-.167-1.361-.802-2.5-1.86-3.301-3.307-.774-1.393-1.224-2.887-1.298-4.482-.02-.386.093-.522.477-.592a4.696 4.696 0 0 1 1.529-.039c2.132.312 3.946 1.265 5.468 2.774.868.86 1.525 1.887 2.202 2.891.72 1.066 1.494 2.082 2.48 2.914.348.292.625.514.891.677-.802.09-2.14.11-3.054-.614zm1-6.44a.306.306 0 0 1 .415-.287.302.302 0 0 1 .2.288.306.306 0 0 1-.31.307.303.303 0 0 1-.304-.308zm3.11 1.596c-.2.081-.399.151-.59.16a1.245 1.245 0 0 1-.798-.254c-.274-.23-.47-.358-.552-.758a1.73 1.73 0 0 1 .129-.933c.27-.611.832-1.047 1.411-1.428.16-.106.321-.219.493-.309.223-.117.434-.055.536.18.114.262.149.544.157.828.019.805-.285 1.487-.876 2.026z"/></svg>`;
 
-  const DS_THINK_ATOM_SVG = `<svg class="ds-inline-status-svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><circle cx="12" cy="12" r="2.2"></circle><ellipse cx="12" cy="12" rx="9" ry="3.8" transform="rotate(30 12 12)"></ellipse><ellipse cx="12" cy="12" rx="9" ry="3.8" transform="rotate(-30 12 12)"></ellipse></svg>`;
+  // 官方正版 DeepSeek 已思考微型折叠指示器（Chevron、四环交叠思考徽标）
+  const DS_THINK_CHEVRON_SVG = `<svg class="ds-think-chevron-svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>`;
+  const DS_THINK_BADGE_SVG = `<svg class="ds-think-badge-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8.6" cy="8.6" r="4.3"></circle><circle cx="15.4" cy="8.6" r="4.3"></circle><circle cx="8.6" cy="15.4" r="4.3"></circle><circle cx="15.4" cy="15.4" r="4.3"></circle></svg>`;
+  const DS_THINK_ATOM_SVG = DS_THINK_BADGE_SVG;
 
   const DS_GLOBE_SEARCH_SVG = `<svg class="ds-inline-status-svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><line x1="3.6" y1="9" x2="20.4" y2="9"></line><line x1="3.6" y1="15" x2="20.4" y2="15"></line><path d="M11.5 3a14 14 0 0 0 0 18"></path><path d="M12.5 3a14 14 0 0 1 0 18"></path></svg>`;
 
@@ -4852,9 +4861,10 @@
       if (isDsUi && isLastAssistant) details.open = true;
       details.innerHTML = `
         <summary class="thought-summary">
-          ${isDsUi ? DS_THINK_ATOM_SVG : ''}
-          <span>${escapeHtml(summaryLabel)}</span>
-          <span class="thought-chevron">▼</span>
+          ${isDsUi ? DS_THINK_CHEVRON_SVG : ''}
+          ${isDsUi ? DS_THINK_BADGE_SVG : ''}
+          <span class="thought-label">${escapeHtml(summaryLabel)}</span>
+          ${!isDsUi ? '<span class="thought-chevron">▼</span>' : ''}
         </summary>
         <div class="thought-content">${isDsUi ? formatDsReasoningHtml(msg.reasoning) : escapeHtml(msg.reasoning)}</div>
       `;
@@ -5686,9 +5696,10 @@
     thoughtDetails.open = true;
     thoughtDetails.innerHTML = `
       <summary class="thought-summary">
-        ${isDsUi ? DS_THINK_ATOM_SVG : ''}
+        ${isDsUi ? DS_THINK_CHEVRON_SVG : ''}
+        ${isDsUi ? DS_THINK_BADGE_SVG : ''}
         <span class="live-thought-label">${isDsUi ? '思考中... (0.0s)' : '正在倾听并揣摩心绪…'}</span>
-        <span class="thought-chevron">▼</span>
+        ${!isDsUi ? '<span class="thought-chevron">▼</span>' : ''}
       </summary>
       <div class="thought-content streaming-cursor"></div>
     `;
@@ -5750,7 +5761,7 @@
         if (accReasoning) {
           const livePronoun = getPersonaPronoun(state.activePersona);
           thoughtLabelEl.textContent = originIsDsUi
-            ? `已深度思考（用时 ${thinkDoneSec || 1} 秒）`
+            ? `已思考（用时 ${thinkDoneSec || 1} 秒）`
             : `${livePronoun}的心声独白`;
         }
         proseEl.innerHTML = renderMessageMarkdown(accContent, liveSearchResults, {
@@ -12091,9 +12102,10 @@
     thoughtDetails.open = true;
     thoughtDetails.innerHTML = `
       <summary class="thought-summary">
-        ${isDsUi ? DS_THINK_ATOM_SVG : ''}
+        ${isDsUi ? DS_THINK_CHEVRON_SVG : ''}
+        ${isDsUi ? DS_THINK_BADGE_SVG : ''}
         <span class="live-thought-label">${isDsUi ? '思考中...' : '主动搭话前的潜台词…'}</span>
-        <span class="thought-chevron">▼</span>
+        ${!isDsUi ? '<span class="thought-chevron">▼</span>' : ''}
       </summary>
       <div class="thought-content streaming-cursor"></div>
     `;

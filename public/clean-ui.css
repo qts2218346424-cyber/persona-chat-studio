@@ -5699,3 +5699,198 @@ dialog::backdrop {
   margin-right: 4px;
   flex-shrink: 0;
 }
+
+/* ==========================================================================
+   14.12 1:1 复刻正版 DeepSeek：顶栏图标群与已思考气泡标准规范
+   ========================================================================== */
+/* 顶栏图标群：放大镜与侧边栏折叠 */
+.sidebar-head-icons {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 4px !important;
+}
+
+.sidebar-head-icons .icon-btn {
+  width: 32px !important;
+  height: 32px !important;
+  min-width: 32px !important;
+  min-height: 32px !important;
+  padding: 0 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border-radius: 7px !important;
+  border: none !important;
+  background: transparent !important;
+  color: light-dark(#64748b, #94a3b8) !important;
+  cursor: pointer !important;
+  transition: background-color 0.16s ease, color 0.16s ease !important;
+}
+
+.sidebar-head-icons .icon-btn:hover {
+  background: light-dark(rgba(0, 0, 0, 0.06), rgba(255, 255, 255, 0.08)) !important;
+  color: light-dark(#1e293b, #f8fafc) !important;
+}
+
+.sidebar-head-icons .icon-btn svg {
+  display: block !important;
+  flex-shrink: 0 !important;
+}
+
+.collapse-btn-label {
+  display: none !important;
+}
+
+/* 官方正版：已思考思维链折叠药丸胶囊气泡 */
+.thought-details {
+  margin: 6px 0 10px 0 !important;
+  background: transparent !important;
+  border: none !important;
+}
+
+.thought-summary {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  background: light-dark(#f0f2f5, rgba(255, 255, 255, 0.08)) !important;
+  border: 1px solid light-dark(rgba(0, 0, 0, 0.04), rgba(255, 255, 255, 0.06)) !important;
+  border-radius: 8px !important;
+  padding: 4px 10px !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  line-height: 1.4 !important;
+  color: light-dark(#475569, #cbd5e1) !important;
+  cursor: pointer !important;
+  user-select: none !important;
+  width: auto !important;
+  max-width: fit-content !important;
+  box-shadow: none !important;
+  list-style: none !important;
+  transition: background-color 0.15s ease, color 0.15s ease !important;
+}
+
+.thought-summary:hover {
+  background: light-dark(#e5e7eb, rgba(255, 255, 255, 0.12)) !important;
+  color: light-dark(#1e293b, #f8fafc) !important;
+}
+
+.thought-summary::-webkit-details-marker {
+  display: none !important;
+}
+
+/* 彻底禁用旧伪元素箭头，避免与官方显式 SVG 冲突 */
+.thought-summary::before,
+.ds-fold-summary::before {
+  content: none !important;
+  display: none !important;
+}
+
+/* Chevron 展开/折叠动态微旋转 */
+.thought-summary .ds-think-chevron-svg {
+  display: inline-block !important;
+  color: light-dark(#64748b, #94a3b8) !important;
+  flex-shrink: 0 !important;
+  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+.thought-details[open] > .thought-summary .ds-think-chevron-svg {
+  transform: rotate(180deg) !important;
+}
+
+/* 官方四环交叠思考徽标 */
+.thought-summary .ds-think-badge-icon {
+  display: inline-block !important;
+  color: light-dark(#64748b, #94a3b8) !important;
+  flex-shrink: 0 !important;
+}
+
+/* 思考展开正文内容区 */
+.thought-content {
+  margin-top: 8px !important;
+  padding: 10px 14px !important;
+  border-left: 2px solid light-dark(#cbd5e1, #475569) !important;
+  background: light-dark(#f8fafc, rgba(255, 255, 255, 0.04)) !important;
+  border-radius: 0 10px 10px 0 !important;
+  font-size: 13.5px !important;
+  line-height: 1.65 !important;
+  color: light-dark(#475569, #cbd5e1) !important;
+}
+
+/* ==========================================================================
+   14.13 输入框底部快捷胶囊开关规范（100% 矢量线描、绝无 Emoji、防切边、居中对齐）
+   ========================================================================== */
+.composer-toggles.ds-only-flex {
+  display: flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  flex-wrap: wrap !important;
+}
+
+.composer-toggles .ds-pill-toggle {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 5px !important;
+  height: 28px !important;
+  min-height: 28px !important;
+  padding: 0 10px !important;
+  border-radius: 9999px !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  line-height: 1 !important;
+  letter-spacing: 0.01em !important;
+  border: 1px solid light-dark(rgba(0, 0, 0, 0.08), rgba(255, 255, 255, 0.12)) !important;
+  background: light-dark(#ffffff, #252833) !important;
+  color: light-dark(#475569, #cbd5e1) !important;
+  cursor: pointer !important;
+  user-select: none !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03) !important;
+  transition: background-color 0.16s ease, border-color 0.16s ease, color 0.16s ease, box-shadow 0.16s ease !important;
+}
+
+.composer-toggles .ds-pill-toggle:hover {
+  border-color: light-dark(#94a3b8, #64748b) !important;
+  background: light-dark(#f8fafc, rgba(255, 255, 255, 0.06)) !important;
+  color: light-dark(#1e293b, #f8fafc) !important;
+}
+
+.composer-toggles .ds-pill-toggle.active {
+  background: light-dark(#ebf2fe, rgba(77, 107, 254, 0.18)) !important;
+  border-color: #4d6bfe !important;
+  color: light-dark(#1d4ed8, #93c5fd) !important;
+  box-shadow: 0 1px 4px rgba(77, 107, 254, 0.15) !important;
+}
+
+.composer-toggles .ds-pill-toggle svg.ds-pill-icon {
+  width: 14px !important;
+  height: 14px !important;
+  min-width: 14px !important;
+  min-height: 14px !important;
+  stroke: currentColor !important;
+  fill: none !important;
+  flex-shrink: 0 !important;
+  overflow: visible !important;
+  display: block !important;
+}
+
+.composer-toggles .ds-pill-icon-wrap {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex-shrink: 0 !important;
+}
+
+.ds-mode-dot {
+  width: 6px !important;
+  height: 6px !important;
+  border-radius: 50% !important;
+  background: #10b981 !important;
+  flex-shrink: 0 !important;
+  box-shadow: 0 0 6px rgba(16, 185, 129, 0.4) !important;
+  margin-right: 1px !important;
+}
+
+.ds-mode-toggle.mode-api .ds-mode-dot {
+  background: #3b82f6 !important;
+  box-shadow: 0 0 6px rgba(59, 130, 246, 0.4) !important;
+}

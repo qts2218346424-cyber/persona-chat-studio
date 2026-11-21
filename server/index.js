@@ -628,6 +628,148 @@ const APP_VERSION_CORS_HEADERS = {
   'Cache-Control': 'no-store, no-cache, must-revalidate'
 };
 
+const VOICE_CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Expected-User-Id',
+  'Access-Control-Expose-Headers': 'X-Voice-Id, X-Tts-Engine'
+};
+
+const voiceGuestHits = new Map();
+function voiceGuestRateLimited(req) {
+  const ip = String(req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '').split(',')[0].trim();
+  const now = Date.now();
+  const rec = voiceGuestHits.get(ip) || { start: now, count: 0 };
+  if (now - rec.start > 60000) {
+    rec.start = now;
+    rec.count = 0;
+  }
+  rec.count += 1;
+  voiceGuestHits.set(ip, rec);
+  if (voiceGuestHits.size > 2000) {
+    for (const [k, v] of voiceGuestHits) {
+      if (now - v.start > 60000) voiceGuestHits.delete(k);
+    }
+  }
+  return rec.count > 30;
+}
+
+const VOICE_ASR_MODEL_CHAIN = [
+  'Qwen/Qwen3-ASR-1.7B',
+  'FunAudioLLM/SenseVoiceSmall',
+  'TeleAI/TeleSpeechASR'
+];
+
+async function handleVoiceApi(req, res, pathname, currentUser) {
+  const asrSilentFail = () =>
+    sendJson(res, 200, { ok: false, fallback_web_speech: true, text: '' }, VOICE_CORS_HEADERS);
+  const ttsSilentFail = () =>
+    sendJson(res, 200, { ok: false, fallback: true }, VOICE_CORS_HEADERS);
+  const isTts = pathname === '/api/tts/speak';
+
+  try {
+    if (!currentUser && voiceGuestRateLimited(req)) {
+      return isTts ? ttsSilentFail() : asrSilentFail();
+    }
+    const userId = currentUser ? currentUser.id : null;
+    const platformSettings = getRawPlatformConfigInternal();
+
+    if (isTts) {
+      const body = await readJsonBody(req);
+      const text = String(body.text || '').trim();
+      if (!text) return sendJson(res, 400, { error: '朗读文本不能为空' }, VOICE_CORS_HEADERS);
+
+      let companion = null;
+      if (userId && body.sessionId) {
+        const sess = db
+          .prepare('SELECT * FROM sessions WHERE id = ? AND user_id = ?')
+          .get(body.sessionId, userId);
+        if (sess) {
+          try {
+            if (sess.companion_config) companion = JSON.parse(sess.companion_config);
+          } catch {}
+          companion = resolveOrGenerateCompanion({
+            persona: resolveEffectivePersona(sess),
+            currentConfig: companion
+          });
+        }
+      }
+
+      const voiceMeta = resolveVoiceForCompanion(companion, body.voiceId);
+      const ttsRes = await synthesizeNeuralSpeech({
+        text,
+        voiceId: voiceMeta.id,
+        settings: userId ? getExecutionSettingsForUser(userId) : platformSettings
+      });
+      const outBuf = ttsRes.audioBuffer || ttsRes.wavBuffer;
+      if (!ttsRes.ok || !outBuf) return ttsSilentFail();
+
+      res.writeHead(200, {
+        'Content-Type': ttsRes.mimeType || 'audio/wav',
+        'Content-Length': outBuf.length,
+        'Cache-Control': 'no-store',
+        'X-Voice-Id': voiceMeta.id,
+        'X-Tts-Engine': encodeURIComponent(ttsRes.engineName || 'local'),
+        ...VOICE_CORS_HEADERS,
+        ...SECURITY_HEADERS
+      });
+      res.end(outBuf);
+      return;
+    }
+
+    // ASR：优先平台内置密钥，模型链依次尝试
+    const body = await readJsonBody(req, 8 * 1024 * 1024);
+    const dataUrl = String(body.audio_data_url || '').trim();
+    const match = dataUrl.match(/^data:(audio\/[^;]+)(?:;[^,]*)?;base64,(.+)$/i);
+    if (!match) return asrSilentFail();
+
+    let asrCfg = platformSettings._builtin_asr;
+    if (!asrCfg || !asrCfg.enabled || !asrCfg.apiKey) {
+      asrCfg = userId ? getExecutionSettingsForUser(userId)._builtin_asr : null;
+    }
+    if (!asrCfg || !asrCfg.enabled || !asrCfg.apiKey) return asrSilentFail();
+
+    const mime = match[1].toLowerCase();
+    const ext = mime.includes('mp4') || mime.includes('aac')
+      ? 'm4a'
+      : mime.includes('wav')
+      ? 'wav'
+      : mime.includes('mpeg') || mime.includes('mp3')
+      ? 'mp3'
+      : mime.includes('ogg')
+      ? 'ogg'
+      : 'webm';
+    const audioBuf = Buffer.from(match[2], 'base64');
+    const endpoint = asrCfg.endpoint || 'https://api.siliconflow.cn/v1/audio/transcriptions';
+    const models = [asrCfg.model, ...VOICE_ASR_MODEL_CHAIN].filter(
+      (m, i, arr) => m && arr.indexOf(m) === i
+    );
+
+    for (const model of models) {
+      try {
+        const form = new FormData();
+        form.append('model', model);
+        form.append('file', new Blob([audioBuf], { type: mime }), `voice_input.${ext}`);
+        const resp = await fetch(endpoint, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${asrCfg.apiKey}` },
+          body: form,
+          signal: AbortSignal.timeout(15000)
+        });
+        if (!resp.ok) continue;
+        const data = await resp.json().catch(() => ({}));
+        const textOut = String(data?.text || '').replace(/<\|[^|]*\|>/g, '').trim();
+        if (textOut) {
+          return sendJson(res, 200, { ok: true, text: textOut, model }, VOICE_CORS_HEADERS);
+        }
+      } catch {}
+    }
+    return asrSilentFail();
+  } catch {
+    return isTts ? ttsSilentFail() : asrSilentFail();
+  }
+}
+
 async function handleApi(req, res, pathname, parsedUrl) {
   const method = req.method || 'GET';
   const currentToken = extractAuthToken(req, parsedUrl);
@@ -941,6 +1083,18 @@ async function handleApi(req, res, pathname, parsedUrl) {
   // 允许通过单次 /api/bootstrap?check_auth=1 探明登录态并顺带取回工作台与首会话，消除 auth/me 串行 RTT
   if (method === 'GET' && pathname === '/api/bootstrap' && parsedUrl.searchParams.get('check_auth') === '1' && !currentUser) {
     return sendJson(res, 200, { authenticated: false });
+  }
+
+  // ========= 语音朗读 (TTS) / 语音识别 (ASR)：游客与独立版也默认使用站长内置密钥，失败一律静默降级 =========
+  if (pathname === '/api/tts/speak' || pathname === '/api/asr/transcribe') {
+    if (method === 'OPTIONS') {
+      res.writeHead(204, { ...VOICE_CORS_HEADERS, ...SECURITY_HEADERS });
+      res.end();
+      return;
+    }
+    if (method === 'POST') {
+      return handleVoiceApi(req, res, pathname, currentUser);
+    }
   }
 
   // ========= 登录态守卫：以下业务接口均需已登录账号 =========
@@ -2581,106 +2735,6 @@ async function handleApi(req, res, pathname, parsedUrl) {
   }
 
   // ========= 实时神经语音合成 (TTS) & 角色双向语音对话接口 =========
-  if (method === 'POST' && pathname === '/api/tts/speak') {
-    const body = await readJsonBody(req);
-    const text = String(body.text || '').trim();
-    if (!text) return sendJson(res, 400, { error: '朗读文本不能为空' });
-
-    let companion = null;
-    if (body.sessionId) {
-      const sess = db
-        .prepare('SELECT * FROM sessions WHERE id = ? AND user_id = ?')
-        .get(body.sessionId, userId);
-      if (sess) {
-        try {
-          if (sess.companion_config) companion = JSON.parse(sess.companion_config);
-        } catch {}
-        companion = resolveOrGenerateCompanion({
-          persona: resolveEffectivePersona(sess),
-          currentConfig: companion
-        });
-      }
-    }
-
-    const voiceMeta = resolveVoiceForCompanion(companion, body.voiceId);
-    const ttsRes = await synthesizeNeuralSpeech({
-      text,
-      voiceId: voiceMeta.id,
-      settings: getExecutionSettingsForUser(userId)
-    });
-
-    const outBuf = ttsRes.audioBuffer || ttsRes.wavBuffer;
-    if (!ttsRes.ok || !outBuf) {
-      return sendJson(res, 200, { ok: false, fallback: true, voice: voiceMeta });
-    }
-
-    res.writeHead(200, {
-      'Content-Type': ttsRes.mimeType || 'audio/wav',
-      'Content-Length': outBuf.length,
-      'Cache-Control': 'no-store',
-      'X-Voice-Id': voiceMeta.id,
-      'X-Tts-Engine': encodeURIComponent(ttsRes.engineName || 'local'),
-      ...SECURITY_HEADERS
-    });
-    res.end(outBuf);
-    return;
-  }
-
-  // 高精度语音转文字 (ASR) 接口：内置支持硅基流动 Qwen/Qwen3-ASR-1.7B 等兼容端点
-  if (method === 'POST' && pathname === '/api/asr/transcribe') {
-    const body = await readJsonBody(req, 8 * 1024 * 1024);
-    const dataUrl = String(body.audio_data_url || '').trim();
-    const match = dataUrl.match(/^data:(audio\/[^;]+)(?:;[^,]*)?;base64,(.+)$/i);
-    if (!match) {
-      return sendJson(res, 400, { ok: false, error: '未收到有效录音音频数据' });
-    }
-
-    const execSettings = getExecutionSettingsForUser(userId);
-    const asrCfg = execSettings._builtin_asr;
-    if (!asrCfg || !asrCfg.enabled || !asrCfg.apiKey) {
-      return sendJson(res, 400, {
-        ok: false,
-        error: '填入硅基流动 API Key 后即可自动启用 Qwen3-ASR-1.7B 语音识别'
-      });
-    }
-
-    try {
-      const mime = match[1].toLowerCase();
-      const ext = mime.includes('mp4') ? 'm4a' : mime.includes('wav') ? 'wav' : 'webm';
-      const audioBuf = Buffer.from(match[2], 'base64');
-      const form = new FormData();
-      form.append('model', asrCfg.model || 'Qwen/Qwen3-ASR-1.7B');
-      form.append('file', new Blob([audioBuf], { type: mime }), `voice_input.${ext}`);
-
-      const resp = await fetch(asrCfg.endpoint || 'https://api.siliconflow.cn/v1/audio/transcriptions', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${asrCfg.apiKey}`
-        },
-        body: form,
-        signal: AbortSignal.timeout(15000)
-      });
-
-      const data = await resp.json().catch(() => ({}));
-      if (!resp.ok) {
-        return sendJson(res, 400, {
-          ok: false,
-          error: sanitizePublicErrorMessage(new Error(data?.message || `语音识别返回异常 (${resp.status})`))
-        });
-      }
-      return sendJson(res, 200, {
-        ok: true,
-        text: String(data?.text || '').trim(),
-        model: asrCfg.model || 'Qwen/Qwen3-ASR-1.7B'
-      });
-    } catch (err) {
-      return sendJson(res, 400, {
-        ok: false,
-        error: sanitizePublicErrorMessage(err, '语音识别请求超时，请重试或直接打字')
-      });
-    }
-  }
-
   // 测试商业配音音源连通性并返回试听音频（严格限站长访问）
   if (method === 'POST' && pathname === '/api/tts/test') {
     if (!currentUser.is_admin) {

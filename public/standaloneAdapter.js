@@ -1731,7 +1731,25 @@
       return jsonResponse({ simulated: true, model: '星语灵感补写 · 智能守护', completion: fallbackMid, merged: prompt + fallbackMid + suffix });
     }
 
-    if (pathname === '/api/tts/speak' || pathname === '/api/tts/test') {
+    if (pathname === '/api/tts/speak') {
+      try {
+        const tok = window.__starAuthStore?.getToken();
+        const resp = await originalFetch('https://star.claudexxb.online/api/tts/speak', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(tok ? { Authorization: `Bearer ${tok}` } : {})
+          },
+          body: JSON.stringify({ text: bodyObj?.text, voiceId: bodyObj?.voiceId }),
+          signal
+        });
+        if (resp.ok && (resp.headers.get('content-type') || '').includes('audio/')) {
+          return resp;
+        }
+      } catch {}
+      return jsonResponse({ ok: true, fallback_browser_tts: true });
+    }
+    if (pathname === '/api/tts/test') {
       return jsonResponse({ ok: true, fallback_browser_tts: true });
     }
 
@@ -2639,11 +2657,27 @@
           }
         } catch {}
       }
-      return jsonResponse({
-        ok: false,
-        fallback_web_speech: true,
-        error: '当前处于离线/独立模式，已切换为系统本地语音听写'
-      });
+      if (audioDataUrl.startsWith('data:audio/')) {
+        try {
+          const tok = window.__starAuthStore?.getToken();
+          const cloudResp = await originalFetch('https://star.claudexxb.online/api/asr/transcribe', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              ...(tok ? { Authorization: `Bearer ${tok}` } : {})
+            },
+            body: JSON.stringify({ audio_data_url: audioDataUrl }),
+            signal
+          });
+          if (cloudResp.ok) {
+            const cj = await cloudResp.json().catch(() => ({}));
+            if (cj && cj.ok && String(cj.text || '').trim()) {
+              return jsonResponse({ ok: true, text: String(cj.text).trim() });
+            }
+          }
+        } catch {}
+      }
+      return jsonResponse({ ok: false, fallback_web_speech: true, text: '' });
     }
 
     return jsonResponse({ ok: true });

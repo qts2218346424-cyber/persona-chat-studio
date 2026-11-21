@@ -8990,11 +8990,7 @@
                 }
               } catch (asrErr) {
                 if (!webSpeechText) {
-                  showToast(
-                    asrErr?.message
-                      ? `语音转写提示：${asrErr.message}`
-                      : '语音转写服务暂不可用，请检查麦克风或网络设置'
-                  );
+                  showToast('未能识别出清晰语音，请靠近麦克风再试一次');
                   return;
                 }
               }
@@ -9004,7 +9000,7 @@
                 chatInput.focus();
                 showToast('语音输入已完成');
               } else {
-                showToast('未能识别出清晰语音，请重试（或在设置中配置硅基流动密钥开启高精度语音转写）');
+                showToast('未能识别出清晰语音，请靠近麦克风再试一次');
               }
             };
 

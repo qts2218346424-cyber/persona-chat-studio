@@ -5792,3 +5792,28 @@ dialog::backdrop {
   }
 }
 
+/* 移动端专属皮肤与外观工坊二级子抽屉高质感微调 */
+.mfs-skin-scroll-box .skin-studio {
+  gap: 14px !important;
+}
+
+.mfs-skin-scroll-box .skin-preview-stage {
+  padding: 12px !important;
+  border-radius: 14px !important;
+}
+
+@media (max-width: 640px) {
+  .mfs-skin-scroll-box .skin-preset-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 8px !important;
+  }
+  .mfs-skin-scroll-box .skin-wallpaper-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 8px !important;
+  }
+  .mfs-skin-scroll-box .skin-sliders-grid {
+    grid-template-columns: 1fr !important;
+    gap: 10px !important;
+  }
+}
+

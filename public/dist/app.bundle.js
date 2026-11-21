@@ -4728,7 +4728,7 @@ lastInteractionAt: Date.now(),
 hasMoreMessages: false,
 totalMessages: 0,
 oldestMessageId: 0,
-appVersion: '2.0.0',
+appVersion: '2.0.2',
 tourIndex: 0,
 tourActive: false,
 llmMode: localStorage.getItem('user_llm_mode') || 'local_antigravity',
@@ -4916,7 +4916,7 @@ return null;
 }
 }
 function syncWebVersionBadges(verStr) {
-const raw = String(verStr || state.appVersion || '2.0.0').trim().replace(/^v/i, '');
+const raw = String(verStr || state.appVersion || '2.0.2').trim().replace(/^v/i, '');
 if (!raw) return;
 const vLabel = `v${raw}`;
 const isNativeApk = Boolean(
@@ -12100,7 +12100,7 @@ if (verVal) {
 if (window.PhoneAgent && typeof window.PhoneAgent.getInstalledVersionLabel === 'function') {
 verVal.textContent = window.PhoneAgent.getInstalledVersionLabel();
 } else {
-const verStr = state.appVersion || (window.PhoneAgent && window.PhoneAgent.currentVersion) || '2.0.0';
+const verStr = state.appVersion || (window.PhoneAgent && window.PhoneAgent.currentVersion) || '2.0.2';
 verVal.textContent = verStr.startsWith('v') ? verStr : `v${verStr}`;
 }
 }

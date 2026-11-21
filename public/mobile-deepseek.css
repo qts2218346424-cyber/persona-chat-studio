@@ -1339,11 +1339,10 @@
     width: 100% !important;
   }
 
-  /* 左侧胶囊横向平滑滚动，彻底消灭换行导致的上下折叠 */
-  .composer-toggles,
-  .composer-toggles.ds-only-flex,
-  .app-shell[data-ui-mode="deepseek"] .composer-toggles,
-  .app-shell[data-ui-mode="roleplay"] .composer-toggles {
+  /* 左侧胶囊横向平滑滚动，彻底消灭换行导致的上下折叠（严格按模式隔离，严禁跨模式互相穿透污染） */
+  .app-shell[data-ui-mode="deepseek"] .composer-toggles.ds-only-flex,
+  .app-shell[data-ui-mode="phone-agent"] .composer-toggles.ds-only-flex,
+  .app-shell[data-ui-mode="roleplay"] .composer-toggles.rp-only-flex {
     display: flex !important;
     flex-direction: row !important;
     flex-wrap: nowrap !important;
@@ -1357,16 +1356,46 @@
     -webkit-overflow-scrolling: touch !important;
   }
 
+  /* 严密隔离：DeepSeek 模式下坚决隐藏剧本专属工具栏与任何剧本选项（包括本剧幕次/帮我回一句/灵感库） */
+  .app-shell[data-ui-mode="deepseek"] .rp-only-flex,
+  .app-shell[data-ui-mode="deepseek"] .rp-only-block,
+  .app-shell[data-ui-mode="deepseek"] .rp-only-inline,
+  .app-shell[data-ui-mode="deepseek"] .composer-toggles.rp-only-flex,
+  .app-shell[data-ui-mode="deepseek"] #open-theater-btn,
+  .app-shell[data-ui-mode="deepseek"] .magic-split-pill-group,
+  .app-shell[data-ui-mode="deepseek"] #magic-popover-btn,
+  .app-shell[data-ui-mode="deepseek"] #magic-menu-trigger-btn,
+  .app-shell[data-ui-mode="deepseek"] #rp-toggle-prefix-btn,
+  .app-shell[data-ui-mode="deepseek"] #theater-pill-label,
+  .app-shell[data-ui-mode="phone-agent"] .rp-only-flex,
+  .app-shell[data-ui-mode="phone-agent"] .rp-only-block,
+  .app-shell[data-ui-mode="phone-agent"] .rp-only-inline,
+  .app-shell[data-ui-mode="phone-agent"] .composer-toggles.rp-only-flex,
+  .app-shell[data-ui-mode="phone-agent"] #open-theater-btn {
+    display: none !important;
+  }
+
+  /* 严密隔离：剧本模式下坚决隐藏 DeepSeek 专用工具栏与按钮 */
+  .app-shell[data-ui-mode="roleplay"] .ds-only-flex,
+  .app-shell[data-ui-mode="roleplay"] .ds-only-block,
+  .app-shell[data-ui-mode="roleplay"] .ds-only-inline,
+  .app-shell[data-ui-mode="roleplay"] .composer-toggles.ds-only-flex,
+  .app-shell[data-ui-mode="roleplay"] #ds-toggle-llm-mode,
+  .app-shell[data-ui-mode="roleplay"] #ds-toggle-think,
+  .app-shell[data-ui-mode="roleplay"] #ds-toggle-search,
+  .app-shell[data-ui-mode="roleplay"] #ds-toggle-prefix {
+    display: none !important;
+  }
+
   .composer-toggles::-webkit-scrollbar,
   .composer-toggles.ds-only-flex::-webkit-scrollbar {
     display: none !important;
   }
 
-  .composer-toggles .pill-btn,
-  .composer-toggles .ds-pill-toggle,
-  .ds-pill-toggle,
   .app-shell[data-ui-mode="deepseek"] .ds-pill-toggle,
-  .app-shell[data-ui-mode="roleplay"] .composer-toggles .pill-btn {
+  .app-shell[data-ui-mode="phone-agent"] .ds-pill-toggle,
+  .app-shell[data-ui-mode="roleplay"] .composer-toggles.rp-only-flex .pill-btn,
+  .app-shell[data-ui-mode="roleplay"] .composer-toggles.rp-only-flex .pill-toggle {
     display: inline-flex !important;
     align-items: center !important;
     justify-content: center !important;

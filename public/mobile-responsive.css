@@ -692,8 +692,10 @@ body[data-ui-mode="phone-agent"] .auth-gate .info-callout {
   #topbar-switch-ds-btn,
   .app-shell[data-ui-mode="deepseek"] #toggle-right-btn,
   .app-shell[data-ui-mode="phone-agent"] #toggle-right-btn,
-  .app-shell[data-ui-mode="roleplay"] #open-theater-btn,
-  .app-shell[data-ui-mode="roleplay"] #rp-toggle-prefix-btn,
+  .app-shell[data-ui-mode="deepseek"] #open-theater-btn,
+  .app-shell[data-ui-mode="deepseek"] #rp-toggle-prefix-btn,
+  .app-shell[data-ui-mode="phone-agent"] #open-theater-btn,
+  .app-shell[data-ui-mode="phone-agent"] #rp-toggle-prefix-btn,
   .app-shell[data-ui-mode="roleplay"] #attach-file-btn {
     display: none !important;
   }

@@ -6948,6 +6948,11 @@ userBtnEl.title = `${fullNick} · ${roleStr}（点击修改我在剧中的名字
 const theaterBtn = document.getElementById('open-theater-btn');
 const theaterLbl = document.getElementById('theater-pill-label');
 if (theaterBtn && theaterLbl) {
+if (state.uiMode !== 'roleplay') {
+theaterBtn.style.setProperty('display', 'none', 'important');
+} else {
+theaterBtn.style.removeProperty('display');
+}
 const hasNote = Boolean(state.activeSession?.director_note && state.activeSession.director_note.trim());
 theaterBtn.classList.toggle('active', hasNote);
 theaterLbl.textContent = hasNote ? '幕次演绎中' : '本剧幕次';
@@ -14619,6 +14624,22 @@ if (isPhoneAgent) {
 dsTopTitleEl.textContent = '手机辅助';
 } else if (state.uiMode === 'deepseek') {
 dsTopTitleEl.textContent = state.activeSession?.title || '新对话';
+}
+}
+const rpToggles = document.querySelector('.composer-toggles.rp-only-flex');
+const dsToggles = document.querySelector('.composer-toggles.ds-only-flex');
+if (rpToggles) {
+if (state.uiMode === 'roleplay') {
+rpToggles.style.removeProperty('display');
+} else {
+rpToggles.style.setProperty('display', 'none', 'important');
+}
+}
+if (dsToggles) {
+if (state.uiMode === 'deepseek' || state.uiMode === 'phone-agent') {
+dsToggles.style.removeProperty('display');
+} else {
+dsToggles.style.setProperty('display', 'none', 'important');
 }
 }
 if (quickJumpBtn) {

@@ -561,18 +561,9 @@ body[data-ui-mode="phone-agent"] .auth-gate .info-callout {
 
   .app-shell[data-ui-mode="deepseek"] .chat-stage.ds-empty-mode .ds-topbar-meta ,
   .app-shell[data-ui-mode="phone-agent"] .chat-stage.ds-empty-mode .ds-topbar-meta {
-    display: none !important;
-  }
-
-  .app-shell[data-ui-mode="deepseek"] .chat-stage.ds-empty-mode .ds-mobile-empty-brand ,
-  .app-shell[data-ui-mode="phone-agent"] .chat-stage.ds-empty-mode .ds-mobile-empty-brand {
-    display: inline-block !important;
-    font-size: 18px;
-    font-weight: 800;
-    color: #4d6bfe;
-    letter-spacing: -0.03em;
-    font-family: "Inter", "HarmonyOS Sans SC", "PingFang SC", system-ui, sans-serif;
-    user-select: none;
+    display: flex !important;
+    visibility: visible !important;
+    opacity: 1 !important;
   }
 
   .ds-topbar-new-icon {

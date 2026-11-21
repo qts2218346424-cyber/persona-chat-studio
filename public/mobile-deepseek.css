@@ -803,7 +803,7 @@
     backdrop-filter: blur(8px) !important;
     -webkit-backdrop-filter: blur(8px) !important;
     border-bottom: 1px solid light-dark(rgba(15, 23, 42, 0.06), rgba(255, 255, 255, 0.08)) !important;
-    z-index: 90 !important;
+    z-index: 120 !important;
   }
 
   .stage-topbar .topbar-left {
@@ -891,12 +891,15 @@
     max-width: calc(100vw - 172px) !important;
   }
 
-  .app-shell[data-ui-mode="phone-agent"] .ds-topbar-meta {
+  .app-shell[data-ui-mode="phone-agent"] .ds-topbar-meta,
+  .app-shell[data-ui-mode="deepseek"] .ds-topbar-meta {
     display: flex !important;
     visibility: visible !important;
+    opacity: 1 !important;
   }
 
-  .app-shell[data-ui-mode="phone-agent"] .ds-mobile-empty-brand {
+  .app-shell[data-ui-mode="phone-agent"] .ds-mobile-empty-brand,
+  .app-shell[data-ui-mode="deepseek"] .ds-mobile-empty-brand {
     display: none !important;
   }
 
@@ -971,6 +974,61 @@
     width: 100vw !important;
     max-width: 100vw !important;
     height: 100dvh !important;
+    position: relative !important;
+    overflow: hidden !important;
+  }
+
+  /* 移动端空对话欢迎态（ds-empty-mode）：弹性全屏居中，杜绝 position:fixed 贴底侵占顶栏 */
+  .chat-stage.ds-empty-mode {
+    display: flex !important;
+    flex-direction: column !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    overflow: hidden !important;
+  }
+
+  .chat-stage.ds-empty-mode .stage-body-split {
+    display: none !important;
+    flex: 0 0 0px !important;
+    height: 0 !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+  }
+
+  /* 核心修复：空状态下 composer-dock 占满主视口居中，绝不设为 position: fixed 钉死在屏幕底向上爆冲！ */
+  .app-shell[data-ui-mode="deepseek"] .chat-stage.ds-empty-mode .composer-dock {
+    position: relative !important;
+    bottom: auto !important;
+    left: auto !important;
+    right: auto !important;
+    top: auto !important;
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    height: auto !important;
+    max-height: calc(100dvh - 52px) !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    padding: 8px 12px calc(env(safe-area-inset-bottom, 0px) + 12px) 12px !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    background: transparent !important;
+    z-index: 10 !important;
+    box-sizing: border-box !important;
+  }
+
+  .app-shell[data-ui-mode="deepseek"] .chat-stage.ds-empty-mode #ds-home-greeting {
+    display: flex !important;
+    width: 100% !important;
+    max-width: min(100%, 480px) !important;
+    margin: 0 auto 10px auto !important;
+  }
+
+  .app-shell[data-ui-mode="deepseek"] .chat-stage.ds-empty-mode .composer-card {
+    width: min(100%, 480px) !important;
+    max-width: min(100%, 480px) !important;
+    margin: 0 auto !important;
   }
 
   .messages-viewport,
@@ -1205,8 +1263,10 @@
     opacity: 1 !important;
   }
 
-  /* 底部悬浮输入舱（移动端超紧凑瘦身，降低上下占用并确保不遮挡回复） */
-  .composer-dock {
+  /* 底部悬浮输入舱（非空模式或剧场模式下固定贴底，空模式下由上文自适应居中） */
+  .chat-stage:not(.ds-empty-mode) .composer-dock,
+  .app-shell[data-ui-mode="roleplay"] .composer-dock,
+  .app-shell[data-ui-mode="phone-agent"] .composer-dock {
     position: fixed !important;
     bottom: 0 !important;
     left: 0 !important;
@@ -1222,13 +1282,18 @@
     border-top: none !important;
   }
 
-  .composer-card {
-    border-radius: 16px !important;
-    padding: 4px 10px 3px 10px !important;
-    gap: 2px !important;
+  .composer-card,
+  #chat-form.composer-card,
+  .app-shell[data-ui-mode="deepseek"] .composer-card,
+  .app-shell[data-ui-mode="roleplay"] .composer-card {
+    border-radius: 18px !important;
+    padding: 6px 11px 5px 11px !important;
+    gap: 3px !important;
     background: light-dark(#ffffff, #1a1d27) !important;
     border: 1px solid light-dark(rgba(0, 0, 0, 0.08), rgba(255, 255, 255, 0.12)) !important;
     box-shadow: 0 3px 16px rgba(0, 0, 0, 0.06) !important;
+    box-sizing: border-box !important;
+    margin-bottom: 0 !important;
   }
 
   .composer-card textarea#chat-input,
@@ -1236,12 +1301,12 @@
   .app-shell[data-ui-mode="deepseek"] .composer-card textarea#chat-input {
     border: none !important;
     background: transparent !important;
-    font-size: 14px !important;
-    line-height: 1.3 !important;
-    padding: 0 2px !important;
+    font-size: 14.5px !important;
+    line-height: 1.35 !important;
+    padding: 1px 2px 3px 2px !important;
     margin: 0 !important;
-    min-height: 19px !important;
-    min-block-size: 1.05lh !important;
+    min-height: 20px !important;
+    min-block-size: 1.1lh !important;
     max-block-size: 4lh !important;
     box-shadow: none !important;
     color: light-dark(#0f172a, #f8fafc) !important;
@@ -1257,46 +1322,98 @@
     color: light-dark(#94a3b8, #64748b) !important;
   }
 
-  .composer-toolbar {
+  /* 工具栏：绝对单行两端对齐，绝不换行 */
+  .composer-toolbar,
+  .composer-card .composer-toolbar {
     display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
     align-items: center !important;
     justify-content: space-between !important;
-    padding-top: 2px !important;
+    padding-top: 3px !important;
     margin-top: 0 !important;
-    min-height: 26px !important;
+    min-height: 28px !important;
     border-top: 1px solid light-dark(rgba(0, 0, 0, 0.04), rgba(255, 255, 255, 0.05)) !important;
+    box-sizing: border-box !important;
+    gap: 6px !important;
+    width: 100% !important;
+  }
+
+  /* 左侧胶囊横向平滑滚动，彻底消灭换行导致的上下折叠 */
+  .composer-toggles,
+  .composer-toggles.ds-only-flex,
+  .app-shell[data-ui-mode="deepseek"] .composer-toggles,
+  .app-shell[data-ui-mode="roleplay"] .composer-toggles {
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+    align-items: center !important;
+    gap: 5px !important;
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    scrollbar-width: none !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+
+  .composer-toggles::-webkit-scrollbar,
+  .composer-toggles.ds-only-flex::-webkit-scrollbar {
+    display: none !important;
   }
 
   .composer-toggles .pill-btn,
+  .composer-toggles .ds-pill-toggle,
   .ds-pill-toggle,
   .app-shell[data-ui-mode="deepseek"] .ds-pill-toggle,
   .app-shell[data-ui-mode="roleplay"] .composer-toggles .pill-btn {
     display: inline-flex !important;
     align-items: center !important;
+    justify-content: center !important;
     gap: 4px !important;
-    height: 24px !important;
-    min-height: 24px !important;
+    height: 25px !important;
+    min-height: 25px !important;
     padding: 0 8px !important;
     border-radius: 9999px !important;
     font-size: 11px !important;
     font-weight: 600 !important;
+    flex: 0 0 auto !important;
+    white-space: nowrap !important;
     border: 1px solid light-dark(rgba(0, 0, 0, 0.1), rgba(255, 255, 255, 0.15)) !important;
     background: light-dark(#f8fafc, rgba(255, 255, 255, 0.06)) !important;
     color: light-dark(#475569, #cbd5e1) !important;
     transition: background-color 0.18s ease, border-color 0.18s ease, color 0.18s ease !important;
   }
 
+  /* 右侧动作图标组：固定在右侧，单行对齐，绝不换行 */
+  .composer-actions,
+  .composer-card .composer-actions {
+    display: inline-flex !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+    align-items: center !important;
+    gap: 5px !important;
+    flex: 0 0 auto !important;
+  }
+
   .composer-actions .icon-btn,
   .composer-actions .attach-icon-btn,
   .composer-actions .send-btn,
+  #attach-file-btn,
+  #voice-input-btn,
   .app-shell[data-ui-mode="roleplay"] .composer-actions .send-btn,
   .app-shell[data-ui-mode="deepseek"] .composer-actions .send-btn,
   .app-shell[data-ui-mode="deepseek"] .composer-actions .attach-icon-btn {
-    width: 28px !important;
-    height: 28px !important;
-    min-width: 28px !important;
-    min-height: 28px !important;
+    width: 29px !important;
+    height: 29px !important;
+    min-width: 29px !important;
+    min-height: 29px !important;
     padding: 0 !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    border-radius: 50% !important;
+    flex-shrink: 0 !important;
   }
 
   .ds-pill-toggle.active,

@@ -120,10 +120,78 @@
   line-height: 1.45;
 }
 
-@media (max-width: 760px) {
+@media (max-width: 860px) {
+  #ds-home-greeting {
+    gap: 8px !important;
+    padding: 6px 10px 4px !important;
+    margin: 0 0 8px 0 !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  #ds-greeting-title {
+    font-size: clamp(17px, 4.4vw, 21px) !important;
+  }
+
+  .ds-greeting-subtitle {
+    font-size: 12px !important;
+    margin-top: -3px !important;
+    line-height: 1.4 !important;
+    padding: 0 8px !important;
+  }
+
   .ds-inspiration-grid {
-    grid-template-columns: 1fr;
-    max-width: min(100%, 420px);
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    scroll-snap-type: x mandatory !important;
+    -webkit-overflow-scrolling: touch !important;
+    scrollbar-width: none !important;
+    gap: 8px !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    padding: 3px 6px 6px 6px !important;
+    box-sizing: border-box !important;
+    margin-top: 0 !important;
+  }
+
+  .ds-inspiration-grid::-webkit-scrollbar {
+    display: none !important;
+  }
+
+  .ds-inspiration-card {
+    flex: 0 0 min(76vw, 246px) !important;
+    max-width: 250px !important;
+    min-width: 190px !important;
+    scroll-snap-align: center !important;
+    padding: 9px 12px !important;
+    border-radius: 14px !important;
+    gap: 4px !important;
+    box-sizing: border-box !important;
+  }
+
+  .ds-inspiration-card .card-badge {
+    font-size: 10.5px !important;
+    padding: 1.5px 7px !important;
+  }
+
+  .ds-inspiration-card .card-title {
+    font-size: 12.5px !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    width: 100% !important;
+  }
+
+  .ds-inspiration-card .card-desc {
+    font-size: 11px !important;
+    line-height: 1.35 !important;
+    display: -webkit-box !important;
+    -webkit-line-clamp: 2 !important;
+    -webkit-box-orient: vertical !important;
+    overflow: hidden !important;
   }
 }
 
@@ -404,8 +472,7 @@
    ========================================================================== */
 @media (max-width: 768px) {
   #chat-form.composer-card {
-    margin-bottom: calc(8px + env(safe-area-inset-bottom, 10px)) !important;
-    border-radius: 22px;
+    margin-bottom: 0 !important;
   }
 
   .mobile-drawer-backdrop:not(.hidden) {

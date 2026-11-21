@@ -5558,7 +5558,13 @@ dialog::backdrop {
   display: flex !important;
   align-items: center !important;
   gap: 6px !important;
-  flex-wrap: wrap !important;
+  flex-wrap: nowrap !important;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.composer-toggles.ds-only-flex::-webkit-scrollbar {
+  display: none !important;
 }
 
 .composer-toggles .ds-pill-toggle {

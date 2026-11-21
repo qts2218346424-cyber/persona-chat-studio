@@ -23,9 +23,10 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 16px;
-  padding: 20px 16px 14px;
+  gap: 14px;
+  padding: 14px 16px 22px;
   animation: emptyStateFadeIn 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+  text-align: center;
 }
 
 .ds-home-greeting-head {
@@ -60,138 +61,24 @@
   text-align: center;
 }
 
-.ds-inspiration-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 224px));
-  gap: 12px;
-  width: 100%;
-  max-width: 700px;
-  margin-top: 2px;
-}
-
-.ds-inspiration-card {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 7px;
-  padding: 14px 15px;
-  border-radius: 16px;
-  background: var(--polish-glass-bg);
-  backdrop-filter: blur(20px) saturate(140%);
-  -webkit-backdrop-filter: blur(20px) saturate(140%);
-  border: 1px solid var(--polish-glass-border);
-  box-shadow: var(--polish-glass-shadow);
-  cursor: pointer;
-  text-align: left;
-  transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1),
-              border-color 0.28s ease,
-              box-shadow 0.28s ease;
-}
-
-.ds-inspiration-card:hover {
-  transform: translateY(-4px);
-  border-color: var(--polish-gold);
-  box-shadow: 0 18px 42px -10px rgba(157, 123, 255, 0.22);
-}
-
-.ds-inspiration-card .card-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--polish-violet);
-  padding: 2.5px 8px;
-  border-radius: 999px;
-  background: light-dark(rgba(157, 123, 255, 0.1), rgba(157, 123, 255, 0.16));
-}
-
-.ds-inspiration-card .card-title {
-  font-size: 13.5px;
-  font-weight: 600;
-  color: light-dark(#2d1f36, #f6effb);
-  line-height: 1.35;
-}
-
-.ds-inspiration-card .card-desc {
-  font-size: 12px;
-  color: light-dark(rgba(45, 31, 54, 0.65), rgba(246, 239, 251, 0.62));
-  line-height: 1.45;
-}
-
 @media (max-width: 860px) {
   #ds-home-greeting {
     gap: 8px !important;
-    padding: 6px 10px 4px !important;
-    margin: 0 0 8px 0 !important;
+    padding: 6px 10px 14px !important;
+    margin: 0 auto !important;
     width: 100% !important;
     box-sizing: border-box !important;
   }
 
   #ds-greeting-title {
-    font-size: clamp(17px, 4.4vw, 21px) !important;
+    font-size: clamp(18px, 4.8vw, 22px) !important;
   }
 
   .ds-greeting-subtitle {
-    font-size: 12px !important;
-    margin-top: -3px !important;
-    line-height: 1.4 !important;
-    padding: 0 8px !important;
-  }
-
-  .ds-inspiration-grid {
-    display: flex !important;
-    flex-direction: row !important;
-    flex-wrap: nowrap !important;
-    overflow-x: auto !important;
-    overflow-y: hidden !important;
-    scroll-snap-type: x mandatory !important;
-    -webkit-overflow-scrolling: touch !important;
-    scrollbar-width: none !important;
-    gap: 8px !important;
-    width: 100% !important;
-    max-width: 100% !important;
-    padding: 3px 6px 6px 6px !important;
-    box-sizing: border-box !important;
-    margin-top: 0 !important;
-  }
-
-  .ds-inspiration-grid::-webkit-scrollbar {
-    display: none !important;
-  }
-
-  .ds-inspiration-card {
-    flex: 0 0 min(76vw, 246px) !important;
-    max-width: 250px !important;
-    min-width: 190px !important;
-    scroll-snap-align: center !important;
-    padding: 9px 12px !important;
-    border-radius: 14px !important;
-    gap: 4px !important;
-    box-sizing: border-box !important;
-  }
-
-  .ds-inspiration-card .card-badge {
-    font-size: 10.5px !important;
-    padding: 1.5px 7px !important;
-  }
-
-  .ds-inspiration-card .card-title {
     font-size: 12.5px !important;
-    white-space: nowrap !important;
-    overflow: hidden !important;
-    text-overflow: ellipsis !important;
-    width: 100% !important;
-  }
-
-  .ds-inspiration-card .card-desc {
-    font-size: 11px !important;
-    line-height: 1.35 !important;
-    display: -webkit-box !important;
-    -webkit-line-clamp: 2 !important;
-    -webkit-box-orient: vertical !important;
-    overflow: hidden !important;
+    margin-top: -2px !important;
+    line-height: 1.45 !important;
+    padding: 0 8px !important;
   }
 }
 

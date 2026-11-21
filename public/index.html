@@ -100,9 +100,9 @@
       pointer-events: none !important;
     }
   </style>
-  <link rel="preload" href="./dist/app.bundle.css?v=20261122_v202_mobile_polish" as="style" />
-  <link rel="preload" href="./dist/app.bundle.js?v=20261122_v202_mobile_polish" as="script" />
-  <link rel="stylesheet" href="./dist/app.bundle.css?v=20261122_v202_mobile_polish" />
+  <link rel="preload" href="./dist/app.bundle.css?v=20261122_v202_clean_greeting" as="style" />
+  <link rel="preload" href="./dist/app.bundle.js?v=20261122_v202_clean_greeting" as="script" />
+  <link rel="stylesheet" href="./dist/app.bundle.css?v=20261122_v202_clean_greeting" />
 </head>
 <body data-ui-mode="deepseek">
   <div id="skin-wallpaper-layer" class="skin-wallpaper-layer" aria-hidden="true"></div>
@@ -193,6 +193,20 @@
         <div class="quick-exp-divider">
           <span>或使用正式账号登录 / 注册</span>
         </div>
+      </div>
+
+      <!-- 站长与管理员快捷登录提示与一键填入 -->
+      <div class="admin-quick-fill-box" id="admin-quick-fill-box">
+        <div class="admin-quick-fill-info">
+          <span class="admin-crown-icon" aria-hidden="true">👑</span>
+          <div class="admin-quick-fill-text">
+            <strong>站长 / 超级管理员通道</strong>
+            <span>内置超级管理账号：<code>admin@star.love</code></span>
+          </div>
+        </div>
+        <button type="button" class="admin-fill-btn" id="fill-admin-creds-btn" title="一键填入内置管理员账号与密码并切换至登录">
+          一键填入
+        </button>
       </div>
 
       <div class="auth-tabs" role="tablist" aria-label="登录或注册切换">
@@ -896,7 +910,7 @@
           </button>
         </div>
 
-        <!-- 原生 DeepSeek 空对话居中问候标题行 + 场景化灵感卡片 -->
+        <!-- 原生 DeepSeek 空对话居中问候标题行 -->
         <div class="ds-home-greeting ds-only-flex" id="ds-home-greeting">
           <div class="ds-home-greeting-head">
             <svg class="ds-greeting-whale" width="38" height="38" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -905,23 +919,6 @@
             <span class="ds-greeting-title" id="ds-greeting-title">今天有什么可以帮到你？</span>
           </div>
           <p class="ds-greeting-subtitle" id="ds-greeting-subtitle">星轨静谧，随时开启深度思考或沉浸剧场</p>
-          <div class="ds-inspiration-grid" id="ds-inspiration-grid" aria-label="快捷场景灵感卡">
-            <button type="button" class="ds-inspiration-card" data-action="prompt" data-prompt="请帮我系统排查这段代码中的异步竞争、边界条件与性能瓶颈，并给出可直接替换的最小修改方案：">
-              <span class="card-badge">代码调试</span>
-              <span class="card-title">代码诊断与性能重构</span>
-              <span class="card-desc">定位边界隐患，输出高可读优化实现</span>
-            </button>
-            <button type="button" class="ds-inspiration-card" data-action="prompt" data-prompt="请开启深度思考，从核心假设、隐含约束、反例推演三个角度系统拆解并对比下面这个问题：">
-              <span class="card-badge">深度推理</span>
-              <span class="card-title">多维度严谨方案推演</span>
-              <span class="card-desc">结构化比对利弊，直击本质结论</span>
-            </button>
-            <button type="button" class="ds-inspiration-card" data-action="roleplay">
-              <span class="card-badge">星语剧场</span>
-              <span class="card-title">前往沉浸角色扮演剧场</span>
-              <span class="card-desc">换上曜石流金舞台，开启长效记忆剧情</span>
-            </button>
-          </div>
         </div>
 
         <!-- 快捷灵感弹出面板：严格区分「点击填入输入框」与「立即执行动作」两大分区，彻底消除误触 -->

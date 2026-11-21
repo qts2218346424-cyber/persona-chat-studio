@@ -5131,7 +5131,7 @@
       const rpSparkSvg = '<svg class="thought-spark-icon" width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 1.5L14.4 9.6L22.5 12L14.4 14.4L12 22.5L9.6 14.4L1.5 12L9.6 9.6Z"/></svg>';
       const details = document.createElement('details');
       details.className = 'thought-details';
-      if (isDsUi && isLastAssistant) details.open = true;
+      details.open = false; // 深度思考过程默认不展开，只有用户点击 summary 主动展开时才展开
       details.innerHTML = `
         <summary class="thought-summary">
           ${isDsUi ? DS_THINK_CHEVRON_SVG : rpSparkSvg}
@@ -5981,7 +5981,7 @@
 
     const thoughtDetails = document.createElement('details');
     thoughtDetails.className = 'thought-details hidden';
-    thoughtDetails.open = true;
+    thoughtDetails.open = false; // 默认不展开，只有用户主动点击时才展开
     const rpLiveSparkSvg = '<svg class="thought-spark-icon" width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 1.5L14.4 9.6L22.5 12L14.4 14.4L12 22.5L9.6 14.4L1.5 12L9.6 9.6Z"/></svg>';
     thoughtDetails.innerHTML = `
       <summary class="thought-summary">
@@ -6270,7 +6270,12 @@
             if (payload.membership) state.membership = payload.membership;
             setStreamingUi(false);
             trimPreviousLastAssistantDecorations();
+            const wasThoughtUserOpened = Boolean(liveRow?.querySelector('.thought-details')?.open);
             const finalRow = createAssistantMessageDom(finalAssistantMsg, true);
+            if (wasThoughtUserOpened) {
+              const finalDetails = finalRow.querySelector('.thought-details');
+              if (finalDetails) finalDetails.open = true;
+            }
             if (liveRow.parentNode) {
               liveRow.replaceWith(finalRow);
             } else {
@@ -12372,7 +12377,7 @@
 
     const thoughtDetails = document.createElement('details');
     thoughtDetails.className = 'thought-details hidden';
-    thoughtDetails.open = true;
+    thoughtDetails.open = false; // 默认不展开
     thoughtDetails.innerHTML = `
       <summary class="thought-summary">
         ${isDsUi ? DS_THINK_CHEVRON_SVG : ''}
@@ -12504,7 +12509,12 @@
           if (Array.isArray(payload.sessions)) state.sessions = payload.sessions;
           setStreamingUi(false);
           trimPreviousLastAssistantDecorations();
+          const wasProThoughtUserOpened = Boolean(liveRow?.querySelector('.thought-details')?.open);
           const finalProRow = createAssistantMessageDom(proMsg, true);
+          if (wasProThoughtUserOpened) {
+            const finalProDetails = finalProRow?.querySelector('.thought-details');
+            if (finalProDetails) finalProDetails.open = true;
+          }
           if (liveRow.parentNode) {
             liveRow.replaceWith(finalProRow);
           } else {

@@ -541,8 +541,8 @@ function extractAuthToken(req, parsedUrl = null) {
   return '';
 }
 
-const APP_LATEST_VERSION = '2.0.1';
-const APP_LATEST_VERSION_CODE = 131;
+const APP_LATEST_VERSION = '2.0.2';
+const APP_LATEST_VERSION_CODE = 132;
 const APP_OFFICIAL_CERT_SHA256 = '6fd05e32a3cabf327140129d866e55a342fe30daa3384c67aad4b3cbdd98a17b';
 const APP_UPDATE_TICKET_SECRET = crypto
   .createHash('sha256')
@@ -679,7 +679,7 @@ async function handleApi(req, res, pathname, parsedUrl) {
       latestVersion: APP_LATEST_VERSION,
       versionCode: APP_LATEST_VERSION_CODE,
       minSupportedVersion: '1.0.0',
-      releaseDate: '2026-11-21',
+      releaseDate: '2026-11-22',
       fileSize: (apkSizeBytes / (1024 * 1024)).toFixed(2) + ' MB',
       fileSizeBytes: apkSizeBytes,
       sha256: apkMeta.sha256 || '',
@@ -691,10 +691,10 @@ async function handleApi(req, res, pathname, parsedUrl) {
       forceUpdate,
       diffGenerations,
       changelog: [
-        '【开屏启动彻底修复】手机版开屏启动体验全面重构：杜绝闪退/黑白屏闪烁，新增灵鲸星徽呼吸微光与柔和淡出退场动效',
-        '【开屏登录深度完善】增设「✨ 免密极速体验」绿色入口，1秒推门进入随身版探索；优化软键盘防挤压滚动适配与登录 Loading 状态',
-        '【原生凭证毫秒级恢复】账户信息与真实昵称同步落地至 Android 原生 SharedPreferences，首屏秒开快照，杜绝退回默认昵称',
-        '手机辅助高风险确认悬浮窗强提醒与常规停止按钮支持'
+        '【纯净剧场体验升级】彻底移除立绘功能，全面释放全宽阅读与沉浸写作视口，聚焦心声独白与语音朗读',
+        '【全新外观定制系统】新增多款质感主题与全局外观定制体系（appearanceSystem），细节视觉全面抛光',
+        '【剧情推进引擎优化】升级章节推进转换提示判定为分词重叠匹配，显著降低误触发率',
+        '【移动端体验增强】全面同步最新前端预压缩静态资产，提升随身版响应与加载速度'
       ]
     };
 

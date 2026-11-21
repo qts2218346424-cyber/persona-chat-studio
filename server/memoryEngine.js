@@ -856,7 +856,12 @@ function evaluateChapterProgression({ sessionId, persona, userText = '', assista
 
   const cp = curChap.checkpoint || {};
   const cpKeywords = Array.isArray(cp.keywords) ? cp.keywords.filter(Boolean) : [];
-  const nextTitleTokens = String(nextChap.title || '').replace(/^[^\u4e00-\u9fa5a-zA-Z0-9]+/, '').split(/[·\s、，]+/).filter((w) => w.length >= 2);
+  const nextCueTokens = tokenizeForRecall(`${nextChap.title || ''} ${nextChap.note || ''}`);
+  const turnTokens = tokenizeForRecall(combinedTurnText);
+  let cueOverlap = 0;
+  for (const tok of nextCueTokens) {
+    if (turnTokens.has(tok)) cueOverlap += 1;
+  }
   const minTurns = Math.max(2, Number(cp.min_turns) || 4);
 
   const userTurnCount = db
@@ -864,7 +869,7 @@ function evaluateChapterProgression({ sessionId, persona, userText = '', assista
     .get(sessionId)?.cnt || 0;
 
   const hitCheckpointKeyword = cpKeywords.some((kw) => combinedTurnText.includes(String(kw)));
-  const hitTransitionCue = nextTitleTokens.some((tok) => combinedTurnText.includes(tok));
+  const hitTransitionCue = cueOverlap >= 2;
   const enoughTurnsAndHint =
     userTurnCount >= (currentIdx + 1) * minTurns &&
     (hitCheckpointKeyword || hitTransitionCue || (triggeredLorebooks && triggeredLorebooks.length > 0));

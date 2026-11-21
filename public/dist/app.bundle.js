@@ -17426,8 +17426,8 @@ runCloneBtn.innerHTML = origHtml;
 })();
 ;
 (() => {
-const CURRENT_APK_VERSION = '1.9.9';
-const CURRENT_APK_CODE = 129;
+const CURRENT_APK_VERSION = '2.0.2';
+const CURRENT_APK_CODE = 132;
 const DEEPSEEK_API_KEYS_URL = 'https://platform.deepseek.com/api_keys';
 const PUBLIC_WEB_ORIGIN = 'https://star.claudexxb.online';
 const GITHUB_RELEASES_URL = 'https://github.com/qts2218346424-cyber/persona-chat-studio/releases';

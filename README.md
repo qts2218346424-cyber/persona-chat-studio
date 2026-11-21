@@ -32,7 +32,7 @@
     <img src="https://img.shields.io/badge/Online_Status-24%2F7_Live-22C55E?style=flat-square&logo=statuspage&logoColor=white" alt="Online Status" />
   </a>
   <a href="https://github.com/qts2218346424-cyber/persona-chat-studio/releases/latest">
-    <img src="https://img.shields.io/badge/Release-v2.0.1-7C3AED?style=flat-square&logo=rocket&logoColor=white" alt="Version v2.0.1" />
+    <img src="https://img.shields.io/badge/Release-v2.0.2-7C3AED?style=flat-square&logo=rocket&logoColor=white" alt="Version v2.0.2" />
   </a>
   <a href="https://nodejs.org/">
     <img src="https://img.shields.io/badge/Node.js-%3E%3D22.5.0-339933?style=flat-square&logo=node.js&logoColor=white" alt="Node.js >= 22.5.0" />

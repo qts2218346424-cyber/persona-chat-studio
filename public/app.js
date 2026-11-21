@@ -10825,12 +10825,17 @@
     }
 
     const paNativeAvailable = Boolean(window.PhoneAgent && window.PhoneAgent.isNative);
-    // 控制聊天窗口顶部的单行紧凑控制栏、加号按钮与空态引导
+    // 控制聊天窗口底部的手机辅助专属加号按钮（点击展开本地离线指令库抽屉）
     const plusBtnEl = document.getElementById('mobile-tools-plus-btn');
     if (plusBtnEl) {
-      plusBtnEl.classList.toggle('hidden', !isPhoneAgent || !paNativeAvailable);
+      plusBtnEl.classList.toggle('hidden', !isPhoneAgent);
+      if (isPhoneAgent) {
+        plusBtnEl.style.removeProperty('display');
+      } else {
+        plusBtnEl.style.setProperty('display', 'none', 'important');
+      }
     }
-    if (!isPhoneAgent || !paNativeAvailable) {
+    if (!isPhoneAgent) {
       document.getElementById('phone-cmd-quick-drawer')?.classList.add('hidden');
       document.getElementById('pa-open-cmdlib-btn')?.classList.remove('is-active');
       plusBtnEl?.classList.remove('is-active');
@@ -10879,9 +10884,10 @@
       }
     }
     if (dsToggles) {
-      if (state.uiMode === 'deepseek' || state.uiMode === 'phone-agent') {
+      if (state.uiMode === 'deepseek') {
         dsToggles.style.removeProperty('display');
       } else {
+        // 手机辅助 (phone-agent) 与剧本模式 (roleplay) 下均严密物理隐藏 DeepSeek 工具栏
         dsToggles.style.setProperty('display', 'none', 'important');
       }
     }

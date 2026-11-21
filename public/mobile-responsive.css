@@ -898,8 +898,7 @@ body[data-ui-mode="phone-agent"] .auth-gate .info-callout {
 
   .composer-card,
   .app-shell[data-ui-mode="roleplay"] .composer-card,
-  .app-shell[data-ui-mode="deepseek"] .composer-card,
-  .app-shell[data-ui-mode="phone-agent"] .composer-card {
+  .app-shell[data-ui-mode="deepseek"] .composer-card {
     width: 100% !important;
     max-width: 100% !important;
     border-radius: 16px !important;
@@ -909,8 +908,7 @@ body[data-ui-mode="phone-agent"] .auth-gate .info-callout {
 
   #chat-input,
   .app-shell[data-ui-mode="roleplay"] #chat-input,
-  .app-shell[data-ui-mode="deepseek"] #chat-input,
-  .app-shell[data-ui-mode="phone-agent"] #chat-input {
+  .app-shell[data-ui-mode="deepseek"] #chat-input {
     min-height: 22px !important;
     min-block-size: 1.25lh !important;
     max-block-size: 4lh !important;
@@ -1263,7 +1261,6 @@ body[data-ui-mode="phone-agent"] .auth-gate .info-callout {
 
 @media (max-width: 860px) {
   .app-shell[data-ui-mode="deepseek"] .composer-card,
-  .app-shell[data-ui-mode="phone-agent"] .composer-card,
   .composer-card {
     width: min(100%, 750px) !important;
     max-width: min(100%, 750px) !important;

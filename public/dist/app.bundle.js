@@ -14587,9 +14587,14 @@ tabPa.setAttribute('aria-selected', String(isPhoneAgent));
 const paNativeAvailable = Boolean(window.PhoneAgent && window.PhoneAgent.isNative);
 const plusBtnEl = document.getElementById('mobile-tools-plus-btn');
 if (plusBtnEl) {
-plusBtnEl.classList.toggle('hidden', !isPhoneAgent || !paNativeAvailable);
+plusBtnEl.classList.toggle('hidden', !isPhoneAgent);
+if (isPhoneAgent) {
+plusBtnEl.style.removeProperty('display');
+} else {
+plusBtnEl.style.setProperty('display', 'none', 'important');
 }
-if (!isPhoneAgent || !paNativeAvailable) {
+}
+if (!isPhoneAgent) {
 document.getElementById('phone-cmd-quick-drawer')?.classList.add('hidden');
 document.getElementById('pa-open-cmdlib-btn')?.classList.remove('is-active');
 plusBtnEl?.classList.remove('is-active');
@@ -14636,7 +14641,7 @@ rpToggles.style.setProperty('display', 'none', 'important');
 }
 }
 if (dsToggles) {
-if (state.uiMode === 'deepseek' || state.uiMode === 'phone-agent') {
+if (state.uiMode === 'deepseek') {
 dsToggles.style.removeProperty('display');
 } else {
 dsToggles.style.setProperty('display', 'none', 'important');

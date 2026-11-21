@@ -905,6 +905,10 @@
   gap: 5px !important;
 }
 
+.app-shell[data-ui-mode="phone-agent"] #mobile-tools-plus-btn {
+  display: inline-flex !important;
+}
+
 /* phone-agent 专属独立左侧边栏与最近指令历史记录 */
 .pa-sidebar-zone {
   display: flex;

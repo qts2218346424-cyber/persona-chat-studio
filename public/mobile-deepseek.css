@@ -1341,7 +1341,6 @@
 
   /* 左侧胶囊横向平滑滚动，彻底消灭换行导致的上下折叠（严格按模式隔离，严禁跨模式互相穿透污染） */
   .app-shell[data-ui-mode="deepseek"] .composer-toggles.ds-only-flex,
-  .app-shell[data-ui-mode="phone-agent"] .composer-toggles.ds-only-flex,
   .app-shell[data-ui-mode="roleplay"] .composer-toggles.rp-only-flex {
     display: flex !important;
     flex-direction: row !important;
@@ -1366,12 +1365,27 @@
   .app-shell[data-ui-mode="deepseek"] #magic-popover-btn,
   .app-shell[data-ui-mode="deepseek"] #magic-menu-trigger-btn,
   .app-shell[data-ui-mode="deepseek"] #rp-toggle-prefix-btn,
-  .app-shell[data-ui-mode="deepseek"] #theater-pill-label,
-  .app-shell[data-ui-mode="phone-agent"] .rp-only-flex,
-  .app-shell[data-ui-mode="phone-agent"] .rp-only-block,
-  .app-shell[data-ui-mode="phone-agent"] .rp-only-inline,
+  .app-shell[data-ui-mode="deepseek"] #theater-pill-label {
+    display: none !important;
+  }
+
+  /* 严密隔离：phone-agent 模式下坚决隐藏所有快捷切换胶囊（彻底恢复纯粹超薄单行控制舱） */
+  .app-shell[data-ui-mode="phone-agent"] .composer-toggles,
+  .app-shell[data-ui-mode="phone-agent"] .composer-toggles.ds-only-flex,
   .app-shell[data-ui-mode="phone-agent"] .composer-toggles.rp-only-flex,
-  .app-shell[data-ui-mode="phone-agent"] #open-theater-btn {
+  .app-shell[data-ui-mode="phone-agent"] .ds-pill-toggle,
+  .app-shell[data-ui-mode="phone-agent"] #open-theater-btn,
+  .app-shell[data-ui-mode="phone-agent"] #magic-popover-btn,
+  .app-shell[data-ui-mode="phone-agent"] #magic-menu-trigger-btn,
+  .app-shell[data-ui-mode="phone-agent"] #rp-toggle-prefix-btn,
+  .app-shell[data-ui-mode="phone-agent"] #ds-toggle-llm-mode,
+  .app-shell[data-ui-mode="phone-agent"] #ds-toggle-think,
+  .app-shell[data-ui-mode="phone-agent"] #ds-toggle-search,
+  .app-shell[data-ui-mode="phone-agent"] #ds-toggle-prefix,
+  .app-shell[data-ui-mode="phone-agent"] #attach-file-btn,
+  .app-shell[data-ui-mode="phone-agent"] #ds-prefix-bar,
+  .app-shell[data-ui-mode="phone-agent"] #ds-composer-api-chip,
+  .app-shell[data-ui-mode="phone-agent"] .composer-disclaimer {
     display: none !important;
   }
 
@@ -1393,7 +1407,6 @@
   }
 
   .app-shell[data-ui-mode="deepseek"] .ds-pill-toggle,
-  .app-shell[data-ui-mode="phone-agent"] .ds-pill-toggle,
   .app-shell[data-ui-mode="roleplay"] .composer-toggles.rp-only-flex .pill-btn,
   .app-shell[data-ui-mode="roleplay"] .composer-toggles.rp-only-flex .pill-toggle {
     display: inline-flex !important;
@@ -1486,6 +1499,11 @@
 
   .app-shell[data-ui-mode="phone-agent"] .composer-actions {
     gap: 4px !important;
+  }
+
+  /* 手机辅助模式下确保专属加号工具按钮可见并支持呼出指令库 */
+  .app-shell[data-ui-mode="phone-agent"] #mobile-tools-plus-btn {
+    display: inline-flex !important;
   }
 
   /* 分类离线指令库抽屉与胶囊样式由 phone-agent.css 统一控制 */

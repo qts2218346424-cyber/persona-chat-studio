@@ -25,4 +25,5 @@ data/tts_cache/
 .DS_Store
 Thumbs.db
 *.tar.gz
+*.tmp
 .deploy.local.json

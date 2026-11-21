@@ -192,19 +192,23 @@
 
 .pedestal-ring-inner::before,
 .pedestal-ring-inner::after {
-  content: "✦";
+  content: "";
   position: absolute;
-  color: #ec5ea7;
-  font-size: 12px;
-  top: -8px;
+  width: 7px;
+  height: 7px;
+  background: #ec5ea7;
+  box-shadow: 0 0 8px rgba(236, 94, 167, 0.95);
+  top: -4px;
   left: 50%;
-  transform: translateX(-50%);
+  transform: translateX(-50%) rotate(45deg);
+  border-radius: 1px;
 }
 
 .pedestal-ring-inner::after {
   top: auto;
-  bottom: -8px;
-  color: #9b6bf6;
+  bottom: -4px;
+  background: #9b6bf6;
+  box-shadow: 0 0 8px rgba(155, 107, 246, 0.95);
 }
 
 @keyframes spinRingClockwise {

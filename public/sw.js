@@ -1,5 +1,5 @@
 // 星语恋庭 · PWA 极速离线与边缘加速 Service Worker
-const CACHE_VERSION = 'star-whisper-v20261121-nav198-v16';
+const CACHE_VERSION = 'star-whisper-v20261122-no-portrait-v18';
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const ASSETS_CACHE = `${CACHE_VERSION}-assets`;
 const MAX_STATIC_CACHE_ENTRIES = 80;
@@ -54,7 +54,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 2. 立绘图片、静态音频与展示截图（Cache-First 策略：极速秒开并节省移动流量）
+  // 2. 静态图标、音频与展示截图（Cache-First 策略：极速秒开并节省移动流量）
   if (url.pathname.startsWith('/assets/')) {
     event.respondWith(
       caches.open(ASSETS_CACHE).then((cache) => {

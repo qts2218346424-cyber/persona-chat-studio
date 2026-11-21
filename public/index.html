@@ -15,6 +15,30 @@
         ? qMode
         : (sMode === "roleplay" || sMode === "deepseek" || sMode === "phone-agent") ? sMode : "deepseek";
       document.documentElement.dataset.uiMode = initMode;
+      const savedSkinRaw = localStorage.getItem("xingyu_skin_v1");
+      if (savedSkinRaw) {
+        const sk = JSON.parse(savedSkinRaw);
+        if (sk && typeof sk === "object") {
+          const r = document.documentElement;
+          r.dataset.skin = sk.preset || "default";
+          r.dataset.bubbleStyle = sk.bubbleStyle || "soft";
+          r.dataset.fontStyle = sk.fontStyle || "sans";
+          if (sk.accentColor) {
+            r.dataset.hasAccent = "1";
+            r.style.setProperty("--skin-accent", sk.accentColor);
+          }
+          if (sk.wallpaperType === "image" && sk.wallpaperValue) {
+            r.dataset.hasWallpaper = "1";
+            r.style.setProperty("--skin-wallpaper-bg", 'url("' + sk.wallpaperValue.replace(/"/g, "%22") + '")');
+          } else if (sk.wallpaperType === "gradient" && sk.wallpaperValue) {
+            r.dataset.hasWallpaper = "1";
+            r.style.setProperty("--skin-wallpaper-bg", sk.wallpaperValue);
+          }
+          if (sk.scrimOpacity !== undefined) r.style.setProperty("--skin-scrim-opacity", String(Number(sk.scrimOpacity) / 100));
+          if (sk.glassBlur !== undefined) r.style.setProperty("--skin-glass-blur", Number(sk.glassBlur) + "px");
+          if (sk.fontScale !== undefined) r.style.setProperty("--skin-font-scale", String(Number(sk.fontScale) / 100));
+        }
+      }
     } catch {}
   </script>
   <title>星语恋庭 · 互动剧本与沉浸角色扮演馆</title>
@@ -76,11 +100,12 @@
       pointer-events: none !important;
     }
   </style>
-  <link rel="preload" href="./dist/app.bundle.css?v=20261122_v212_mobile_auth_modal" as="style" />
-  <link rel="preload" href="./dist/app.bundle.js?v=20261122_v212_mobile_auth_modal" as="script" />
-  <link rel="stylesheet" href="./dist/app.bundle.css?v=20261122_v212_mobile_auth_modal" />
+  <link rel="preload" href="./dist/app.bundle.css?v=20261122_v214_polish_engines" as="style" />
+  <link rel="preload" href="./dist/app.bundle.js?v=20261122_v214_polish_engines" as="script" />
+  <link rel="stylesheet" href="./dist/app.bundle.css?v=20261122_v214_polish_engines" />
 </head>
 <body data-ui-mode="deepseek">
+  <div id="skin-wallpaper-layer" class="skin-wallpaper-layer" aria-hidden="true"></div>
   <!-- 首屏零白屏优雅过渡欢迎层（工作台或登录门扉就绪后平滑淡出退场） -->
   <div id="boot-splash" class="boot-splash" role="status" aria-live="polite">
     <div class="boot-splash-card">
@@ -648,10 +673,7 @@
             记忆·指令
           </button>
 
-          <!-- 恋庭剧本扮演模式顶栏主按钮（仅 立绘 / 养成 + ⋯） -->
-          <button type="button" class="soft-tool-btn rp-only-inline active" id="topbar-companion-btn" title="显示或隐藏角色陪伴立绘">
-            <span>立绘</span>
-          </button>
+          <!-- 恋庭剧本扮演模式顶栏主按钮（养成 + ⋯） -->
           <button type="button" class="soft-tool-btn rp-only-inline" id="toggle-right-btn" title="展开右侧面板：查看好感度日记、记忆库与本对话设定">
             <span>养成</span>
           </button>
@@ -774,7 +796,6 @@
             <button type="button" class="popover-action-item hidden" id="export-history-btn"></button>
             <button type="button" class="popover-action-item hidden" id="more-switch-account-btn"></button>
             <button type="button" class="popover-action-item hidden" id="more-open-drawer-btn"></button>
-            <button type="button" class="popover-action-item hidden" id="toggle-companion-btn"></button>
             <button type="button" class="popover-action-item hidden" id="memory-status-pill">
               <span class="pulse-ring"></span>
               <span id="memory-pill-text">已记住 0 件事</span>
@@ -786,7 +807,7 @@
       <!-- 实时轻提示横幅 -->
       <div class="memory-toast hidden" id="memory-toast" role="status" aria-live="polite"></div>
 
-      <!-- 聊天主舞台（默认隐藏陪伴立绘，释放纯净故事阅读空间） -->
+      <!-- 聊天主舞台（纯净故事阅读空间） -->
       <div class="stage-body-split">
         <!-- 对话消息滚动流 -->
         <div class="messages-viewport" id="messages-viewport">
@@ -822,73 +843,6 @@
 
           <div class="messages-container" id="messages-container"></div>
         </div>
-
-        <!-- 2.5D 立体陪伴立绘默认直接开启展示，角色与专属真声全自动联动 -->
-        <aside class="companion-stage" id="companion-stage" aria-label="角色实时陪伴立绘与语音互动">
-          <input type="file" id="custom-companion-file" accept="image/*" class="visually-hidden" />
-
-          <div class="companion-Style-bar">
-            <button type="button" class="comp-mode-btn active" id="comp-mode-cool" title="切换高冷系造型">
-              高冷
-            </button>
-            <button type="button" class="comp-mode-btn" id="comp-mode-cute" title="切换可爱系造型">
-              可爱
-            </button>
-            <button type="button" class="comp-icon-btn" id="comp-cycle-skin" title="换一套造型">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
-            </button>
-            <button type="button" class="comp-icon-btn" id="comp-upload-img" title="换上自定义角色立绘图片">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
-            </button>
-          </div>
-
-          <!-- 时不时浮现的温馨提醒云朵气泡 -->
-          <div class="companion-cloud" id="companion-cloud" role="status" aria-live="polite">
-            <div class="cloud-head">
-              <span class="cloud-tag" id="comp-cloud-tag">贴心陪伴</span>
-              <span class="cloud-tts-wrap">
-                <span class="theater-wave-bars" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
-                <button type="button" class="cloud-tts-btn" id="comp-cloud-tts" title="听 TA 念出这句话" aria-label="听 TA 念出这句话"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg></button>
-              </span>
-            </div>
-            <p class="cloud-text" id="comp-cloud-text">
-              我会一直守在聊天框旁边陪着你。累了就戳戳我，记得适时喝口温水歇一歇眼睛哦。
-            </p>
-          </div>
-
-          <!-- 动态呼吸陪伴立绘展示橱窗（支持点击“戳一戳”互动） -->
-          <div class="companion-figure-card" id="companion-poke-area" title="点击立绘轻轻戳一戳互动">
-            <div class="comp-particles" id="comp-particles" aria-hidden="true">
-              <span class="cp-p p1"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 0L14.6 9.4L24 12L14.6 14.6L12 24L9.4 14.6L0 12L9.4 9.4Z"/></svg></span>
-              <span class="cp-p p2"><svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2L14 9.5L21.5 11.5L14 13.5L12 21L10 13.5L2.5 11.5L10 9.5Z"/></svg></span>
-              <span class="cp-p p3"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 0L14.6 9.4L24 12L14.6 14.6L12 24L9.4 14.6L0 12L9.4 9.4Z"/></svg></span>
-              <span class="cp-p p4"><svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2L14 9.5L21.5 11.5L14 13.5L12 21L10 13.5L2.5 11.5L10 9.5Z"/></svg></span>
-            </div>
-            <img
-              id="companion-img"
-              class="companion-img"
-              src="./assets/companions/cool_silver_cutout.png"
-              width="246"
-              height="312"
-              decoding="async"
-              fetchpriority="low"
-              alt="角色实时陪伴立绘"
-            />
-            <div class="comp-poke-hint">点击互动</div>
-          </div>
-
-          <!-- 底部陪伴动作栏（求一句叮嘱 & 定时暖心提醒直接可见） -->
-          <div class="companion-foot">
-            <div class="comp-live-status" id="comp-live-status">正温柔守候在你身旁</div>
-            <div class="comp-foot-actions">
-              <button type="button" class="mini-btn" id="comp-ask-remind-btn">求一句叮嘱</button>
-              <label class="comp-auto-check">
-                <input type="checkbox" id="comp-auto-remind-chk" checked />
-                <span>定时暖心提醒</span>
-              </label>
-            </div>
-          </div>
-        </aside>
       </div>
 
       <!-- 底部输入舱（极简留白水晶输入舱 & 1:1 复刻 DeepSeek 官方纯白/极客深灰居中与底部输入卡片） -->
@@ -942,12 +896,32 @@
           </button>
         </div>
 
-        <!-- 原生 DeepSeek 空对话居中问候标题行 -->
+        <!-- 原生 DeepSeek 空对话居中问候标题行 + 场景化灵感卡片 -->
         <div class="ds-home-greeting ds-only-flex" id="ds-home-greeting">
-          <svg class="ds-greeting-whale" width="38" height="38" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <path fill="#4D6BFE" fill-rule="evenodd" clip-rule="evenodd" d="M23.748 4.482c-.254-.124-.364.113-.512.234-.051.039-.094.09-.137.136-.372.397-.806.657-1.373.626-.829-.046-1.537.214-2.163.848-.133-.782-.575-1.248-1.247-1.548-.352-.156-.708-.311-.955-.65-.172-.241-.219-.51-.305-.774-.055-.16-.11-.323-.293-.35-.2-.031-.278.136-.356.276-.313.572-.434 1.202-.422 1.84.027 1.436.633 2.58 1.838 3.393.137.093.172.187.129.323-.082.28-.18.552-.266.833-.055.179-.137.217-.329.14a5.526 5.526 0 0 1-1.736-1.18c-.857-.828-1.631-1.742-2.597-2.458a11.365 11.365 0 0 0-.689-.471c-.985-.957.13-1.743.388-1.836.27-.098.093-.432-.779-.428-.872.004-1.67.295-2.687.684a3.055 3.055 0 0 1-.465.137 9.597 9.597 0 0 0-2.883-.102c-1.885.21-3.39 1.102-4.497 2.623C.082 8.606-.231 10.684.152 12.85c.403 2.284 1.569 4.175 3.36 5.653 1.858 1.533 3.997 2.284 6.438 2.14 1.482-.085 3.133-.284 4.994-1.86.47.234.962.327 1.78.397.63.059 1.236-.03 1.705-.128.735-.156.684-.837.419-.961-2.155-1.004-1.682-.595-2.113-.926 1.096-1.296 2.746-2.642 3.392-7.003.05-.347.007-.565 0-.845-.004-.17.035-.237.23-.256a4.173 4.173 0 0 0 1.545-.475c1.396-.763 1.96-2.015 2.093-3.517.02-.23-.004-.467-.247-.588zM11.581 18c-2.089-1.642-3.102-2.183-3.52-2.16-.392.024-.321.471-.235.763.09.288.207.486.371.739.114.167.192.416-.113.603-.673.416-1.842-.14-1.897-.167-1.361-.802-2.5-1.86-3.301-3.307-.774-1.393-1.224-2.887-1.298-4.482-.02-.386.093-.522.477-.592a4.696 4.696 0 0 1 1.529-.039c2.132.312 3.946 1.265 5.468 2.774.868.86 1.525 1.887 2.202 2.891.72 1.066 1.494 2.082 2.48 2.914.348.292.625.514.891.677-.802.09-2.14.11-3.054-.614zm1-6.44a.306.306 0 0 1 .415-.287.302.302 0 0 1 .2.288.306.306 0 0 1-.31.307.303.303 0 0 1-.304-.308zm3.11 1.596c-.2.081-.399.151-.59.16a1.245 1.245 0 0 1-.798-.254c-.274-.23-.47-.358-.552-.758a1.73 1.73 0 0 1 .129-.933c.27-.611.832-1.047 1.411-1.428.16-.106.321-.219.493-.309.223-.117.434-.055.536.18.114.262.149.544.157.828.019.805-.285 1.487-.876 2.026z"/>
-          </svg>
-          <span class="ds-greeting-title" id="ds-greeting-title">今天有什么可以帮到你？</span>
+          <div class="ds-home-greeting-head">
+            <svg class="ds-greeting-whale" width="38" height="38" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path fill="#4D6BFE" fill-rule="evenodd" clip-rule="evenodd" d="M23.748 4.482c-.254-.124-.364.113-.512.234-.051.039-.094.09-.137.136-.372.397-.806.657-1.373.626-.829-.046-1.537.214-2.163.848-.133-.782-.575-1.248-1.247-1.548-.352-.156-.708-.311-.955-.65-.172-.241-.219-.51-.305-.774-.055-.16-.11-.323-.293-.35-.2-.031-.278.136-.356.276-.313.572-.434 1.202-.422 1.84.027 1.436.633 2.58 1.838 3.393.137.093.172.187.129.323-.082.28-.18.552-.266.833-.055.179-.137.217-.329.14a5.526 5.526 0 0 1-1.736-1.18c-.857-.828-1.631-1.742-2.597-2.458a11.365 11.365 0 0 0-.689-.471c-.985-.957.13-1.743.388-1.836.27-.098.093-.432-.779-.428-.872.004-1.67.295-2.687.684a3.055 3.055 0 0 1-.465.137 9.597 9.597 0 0 0-2.883-.102c-1.885.21-3.39 1.102-4.497 2.623C.082 8.606-.231 10.684.152 12.85c.403 2.284 1.569 4.175 3.36 5.653 1.858 1.533 3.997 2.284 6.438 2.14 1.482-.085 3.133-.284 4.994-1.86.47.234.962.327 1.78.397.63.059 1.236-.03 1.705-.128.735-.156.684-.837.419-.961-2.155-1.004-1.682-.595-2.113-.926 1.096-1.296 2.746-2.642 3.392-7.003.05-.347.007-.565 0-.845-.004-.17.035-.237.23-.256a4.173 4.173 0 0 0 1.545-.475c1.396-.763 1.96-2.015 2.093-3.517.02-.23-.004-.467-.247-.588zM11.581 18c-2.089-1.642-3.102-2.183-3.52-2.16-.392.024-.321.471-.235.763.09.288.207.486.371.739.114.167.192.416-.113.603-.673.416-1.842-.14-1.897-.167-1.361-.802-2.5-1.86-3.301-3.307-.774-1.393-1.224-2.887-1.298-4.482-.02-.386.093-.522.477-.592a4.696 4.696 0 0 1 1.529-.039c2.132.312 3.946 1.265 5.468 2.774.868.86 1.525 1.887 2.202 2.891.72 1.066 1.494 2.082 2.48 2.914.348.292.625.514.891.677-.802.09-2.14.11-3.054-.614zm1-6.44a.306.306 0 0 1 .415-.287.302.302 0 0 1 .2.288.306.306 0 0 1-.31.307.303.303 0 0 1-.304-.308zm3.11 1.596c-.2.081-.399.151-.59.16a1.245 1.245 0 0 1-.798-.254c-.274-.23-.47-.358-.552-.758a1.73 1.73 0 0 1 .129-.933c.27-.611.832-1.047 1.411-1.428.16-.106.321-.219.493-.309.223-.117.434-.055.536.18.114.262.149.544.157.828.019.805-.285 1.487-.876 2.026z"/>
+            </svg>
+            <span class="ds-greeting-title" id="ds-greeting-title">今天有什么可以帮到你？</span>
+          </div>
+          <p class="ds-greeting-subtitle" id="ds-greeting-subtitle">星轨静谧，随时开启深度思考或沉浸剧场</p>
+          <div class="ds-inspiration-grid" id="ds-inspiration-grid" aria-label="快捷场景灵感卡">
+            <button type="button" class="ds-inspiration-card" data-action="prompt" data-prompt="请帮我系统排查这段代码中的异步竞争、边界条件与性能瓶颈，并给出可直接替换的最小修改方案：">
+              <span class="card-badge">代码调试</span>
+              <span class="card-title">代码诊断与性能重构</span>
+              <span class="card-desc">定位边界隐患，输出高可读优化实现</span>
+            </button>
+            <button type="button" class="ds-inspiration-card" data-action="prompt" data-prompt="请开启深度思考，从核心假设、隐含约束、反例推演三个角度系统拆解并对比下面这个问题：">
+              <span class="card-badge">深度推理</span>
+              <span class="card-title">多维度严谨方案推演</span>
+              <span class="card-desc">结构化比对利弊，直击本质结论</span>
+            </button>
+            <button type="button" class="ds-inspiration-card" data-action="roleplay">
+              <span class="card-badge">星语剧场</span>
+              <span class="card-title">前往沉浸角色扮演剧场</span>
+              <span class="card-desc">换上曜石流金舞台，开启长效记忆剧情</span>
+            </button>
+          </div>
         </div>
 
         <!-- 快捷灵感弹出面板：严格区分「点击填入输入框」与「立即执行动作」两大分区，彻底消除误触 -->
@@ -1693,7 +1667,7 @@
     </div>
   </div>
 
-  <!-- 模态弹窗 1：创建新角色（支持选择性别自动匹配立绘与声线） -->
+  <!-- 模态弹窗 1：创建新角色（支持选择性别自动匹配专属声线） -->
   <dialog id="persona-dialog" class="modal-dialog" aria-labelledby="persona-dialog-title">
     <div class="modal-inner">
       <div class="modal-header">
@@ -1724,15 +1698,15 @@
         </div>
 
         <fieldset class="theme-fieldset" style="padding: 8px 12px;">
-          <legend>角色性别（自动匹配对应性别的陪伴立绘、声线与“她/他”称呼）</legend>
+          <legend>角色性别（自动匹配对应性别的专属声线与“她/他”称呼）</legend>
           <div class="theme-radio-group">
             <label class="theme-option">
               <input type="radio" name="cp-gender" value="female" id="cp-gender-female" checked />
-              <span>女性角色（配女性立绘与女声）</span>
+              <span>女性角色（配专属女声）</span>
             </label>
             <label class="theme-option">
               <input type="radio" name="cp-gender" value="male" id="cp-gender-male" />
-              <span>男性角色（配男性立绘与男声）</span>
+              <span>男性角色（配专属男声）</span>
             </label>
           </div>
         </fieldset>
@@ -2178,6 +2152,11 @@
                 </div>
               </fieldset>
 
+              <fieldset class="spacious-fieldset" id="skin-studio-mount-fieldset">
+                <legend>免费皮肤与外观工坊</legend>
+                <div id="skin-studio-root"></div>
+              </fieldset>
+
               <fieldset class="spacious-fieldset">
                 <legend>AI 记忆深度与表达风格</legend>
                 <div class="easy-vibe-grid spacious-vibe-grid" id="easy-vibe-grid">
@@ -2210,7 +2189,7 @@
               </fieldset>
 
               <fieldset class="spacious-fieldset rp-only-block">
-                <legend>角色语音与陪伴立绘（角色剧场模式）</legend>
+                <legend>角色语音与主动互动（角色剧场模式）</legend>
                 <div class="stack-form" style="gap: 12px;">
                   <label class="simple-pref-row" for="st-auto-tts-chk">
                     <div>
@@ -2218,13 +2197,6 @@
                       <small>对方发来新回复时自动用真声念给你听</small>
                     </div>
                     <input type="checkbox" id="st-auto-tts-chk" checked />
-                  </label>
-                  <label class="simple-pref-row" for="st-show-companion-chk">
-                    <div>
-                      <strong>显示角色陪伴立绘</strong>
-                      <small>在聊天窗旁展示可互动的角色立绘</small>
-                    </div>
-                    <input type="checkbox" id="st-show-companion-chk" checked />
                   </label>
                   <label class="simple-pref-row" for="st-auto-proactive-chk">
                     <div>
@@ -2354,15 +2326,21 @@
         写下你希望被怎么称呼、穿什么衣服或是什么性格，保存后<strong>所有角色都会立刻改口记住你的名字</strong>！
       </div>
       <form id="user-persona-form" class="stack-form">
-        <div class="inline-row">
-          <div class="field-group avatar-field">
-            <label for="up-avatar">我的头像 <span class="req-star" aria-hidden="true">*</span></label>
-            <input id="up-avatar" type="text" maxlength="4" value="旅" required />
+        <div class="up-avatar-studio-row">
+          <div id="up-avatar-preview"></div>
+          <div class="up-avatar-studio-meta">
+            <label for="up-avatar-quick-glyph">我的头像（支持捏脸、本地上传裁剪、免费头像框）</label>
+            <div class="up-avatar-studio-actions">
+              <input id="up-avatar-quick-glyph" class="up-avatar-quick-input" type="text" maxlength="4" value="旅" title="快捷输入单字或 Emoji" />
+              <button type="button" class="secondary-btn" id="open-avatar-studio-btn">打开头像工坊</button>
+            </div>
+            <input id="up-avatar" type="hidden" value="旅" />
+            <input id="up-avatar-config" type="hidden" value="" />
           </div>
-          <div class="field-group flex-1">
-            <label for="up-nickname">我在故事里的名字（角色对你的称呼） <span class="req-star" aria-hidden="true">*</span></label>
-            <input id="up-nickname" type="text" maxlength="24" placeholder="例如：小满、小栀、眠眠…" required />
-          </div>
+        </div>
+        <div class="field-group">
+          <label for="up-nickname">我在故事里的名字（角色对你的称呼） <span class="req-star" aria-hidden="true">*</span></label>
+          <input id="up-nickname" type="text" maxlength="24" placeholder="例如：小满、小栀、眠眠…" required />
         </div>
 
         <div class="field-group">
@@ -2394,6 +2372,9 @@
       </form>
     </div>
   </dialog>
+
+  <!-- 模态弹窗 5b：自定义头像工坊 -->
+  <dialog id="avatar-studio-dialog" class="modal-dialog modal-wide" closedby="any" aria-label="自定义头像工坊"></dialog>
 
   <!-- 模态弹窗 6：剧本与共创中心（我的剧本库 ｜ 上传与 AI 改剧本 ｜ 共创设计广场） -->
   <dialog id="plaza-dialog" class="modal-dialog modal-wide hub-modal" closedby="any" aria-labelledby="plaza-dialog-title">
@@ -3151,7 +3132,7 @@
             </div>
             <div class="apk-feature-card">
               <h4>全套离线资产瞬开</h4>
-              <p>预装全套界面图标、番剧剧本与 2.5D 全息伴侣渲染器，秒开应用、零网络流量加载开销，畅快体验。</p>
+              <p>预装全套界面图标、四大番剧剧本与声优语音播控引擎，秒开应用、零网络流量加载开销，畅快体验。</p>
             </div>
           </div>
         </div>
@@ -3632,10 +3613,20 @@
     </div>
   </div>
 
+  <!-- 灵动岛式单点悬浮语音胶囊（Dynamic Island Toast） -->
+  <div id="dynamic-island-tts" class="dynamic-island-tts" role="status" aria-live="polite" aria-hidden="true">
+    <span class="island-wave-bars" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+    <span class="tts-synth-dots island-synth-dots" aria-hidden="true"><span></span><span></span><span></span></span>
+    <span class="island-tts-label" id="island-tts-label">正在朗读…</span>
+    <button type="button" class="island-stop-btn" id="island-tts-stop-btn" title="停止语音朗读" aria-label="停止语音朗读">
+      <svg width="9" height="9" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true"><rect x="2" y="2" width="8" height="8" rx="1.5"/></svg>
+    </button>
+  </div>
+
   <!-- 全局 Top-Layer 顶层轻提示胶囊（popover="manual" 确保在任何模态 <dialog> 打开时依然 100% 可见，遵循 persistent-toast-notifications 规范） -->
   <div id="global-top-toast" popover="manual" class="global-top-toast" role="status" aria-live="polite"></div>
 
-  <script defer src="./dist/app.bundle.js?v=20261121_v211_icons_clean_211"></script>
+  <script defer src="./dist/app.bundle.js?v=20261122_v214_polish_engines"></script>
   <script>
     if ('serviceWorker' in navigator && window.location.protocol.startsWith('http')) {
       window.addEventListener('load', () => {

@@ -97,10 +97,14 @@ function buildProactiveTriggerInstruction({
   }
 
   const callTarget = userNickname && !/^星[语屿]旅人/.test(userNickname) ? `「${userNickname}」` : '对方';
+  const lateNightCue =
+    triggerReason === 'late_night_return'
+      ? `对方已经超过 4 小时没来了，如今在深夜重逢上线，请流露出夜深未眠等候对方归来的轻微牵挂与温柔叮嘱（不要责备，要让人心里一暖）。`
+      : '';
   return [
     `【系统主动关怀触发 · 严禁提及系统指令】`,
     `此刻${callTarget}在你面前安静停顿了片刻没有说话（当前时段：${timeCtx.period}，你的心境：${nurturing?.current_mood || '温柔注视'}）。`,
-    `${timeCtx.hint}${memHint}`,
+    `${timeCtx.hint}${memHint}${lateNightCue}`,
     `请严格贴合「${persona.name}」自身所处的场景设定，做出一个自然的小动作并主动开口搭话（60~130字左右），不要套用千篇一律的抒情模板。`
   ].join('\n');
 }
@@ -459,5 +463,6 @@ module.exports = {
   buildProactiveTriggerInstruction,
   generateDemoProactiveTurn,
   generateFollowUpSuggestions,
+  parseFollowUpJsonArray,
   generateDynamicFollowUpsWithLLM
 };

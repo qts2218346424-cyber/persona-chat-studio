@@ -1075,7 +1075,20 @@
     return AVATAR_PALETTES[idx];
   }
 
-  function renderSmartAvatarHtml(avatarRaw, nameRaw, sizeClass = 'size-md', isUser = false) {
+  window.__getActiveUserAvatarConfig = function () {
+    return state.user?.avatar_config || null;
+  };
+
+  function renderSmartAvatarHtml(avatarRaw, nameRaw, sizeClass = 'size-md', isUser = false, avatarConfig = null) {
+    if (window.AppearanceSystem && typeof window.AppearanceSystem.renderSmartAvatarHtml === 'function') {
+      return window.AppearanceSystem.renderSmartAvatarHtml(
+        avatarRaw,
+        nameRaw,
+        sizeClass,
+        isUser,
+        avatarConfig || (isUser ? state.user?.avatar_config : null)
+      );
+    }
     const raw = String(avatarRaw || '').trim();
     if (raw.startsWith('http://') || raw.startsWith('https://') || raw.startsWith('data:image/') || raw.startsWith('/')) {
       return `<img src="${escapeHtml(raw)}" class="avatar-img ${sizeClass}" alt="${escapeHtml(nameRaw || '')}" loading="lazy" decoding="async" />`;
@@ -2630,7 +2643,11 @@
     toggleLlmMode();
   };
   window.__dsOpenSettings = () => {
-    const btn = document.getElementById('ds-topbar-settings-btn') || document.getElementById('settings-btn');
+    const btn =
+      document.getElementById('open-settings-btn') ||
+      document.getElementById('ds-topbar-mobile-settings-btn') ||
+      document.getElementById('ds-topbar-settings-btn') ||
+      document.getElementById('settings-btn');
     if (btn) btn.click();
   };
 
@@ -2672,9 +2689,16 @@
     clearTimeout(copyFeedbackTimers.get(button));
     button.removeAttribute('data-copied');
     button.removeAttribute('data-failed');
+    button.classList.remove('is-copied');
     let msg = ok ? '已复制' : '复制失败';
     if (msg === lastCopyAnnouncement) msg += '\u00A0';
     lastCopyAnnouncement = msg;
+
+    if (ok && button.classList.contains('ds-code-btn')) {
+      if (!button.dataset.origLabel) button.dataset.origLabel = button.textContent;
+      button.classList.add('is-copied');
+      button.textContent = '✓ 已复制';
+    }
 
     if (tip && tip.getAttribute('role') === 'status') {
       tip.textContent = '';
@@ -2692,8 +2716,12 @@
       setTimeout(() => {
         button.removeAttribute('data-copied');
         button.removeAttribute('data-failed');
+        button.classList.remove('is-copied');
+        if (button.dataset.origLabel && button.classList.contains('ds-code-btn')) {
+          button.textContent = button.dataset.origLabel;
+        }
         if (tip && tip.getAttribute('role') === 'status') tip.textContent = '';
-      }, 2000)
+      }, 1800)
     );
   }
 
@@ -4037,20 +4065,25 @@
       return true;
     });
 
-    const timelineBounds = isDsUi ? getDsTimelineBounds() : null;
+    const timelineBounds = getDsTimelineBounds();
     const frag = document.createDocumentFragment();
     let lastGroup = '';
 
     for (const s of filtered) {
-      if (isDsUi) {
-        const grp = resolveDsTimelineGroup(s, timelineBounds);
-        if (grp !== lastGroup) {
-          lastGroup = grp;
-          const grpEl = document.createElement('div');
-          grpEl.className = 'session-group-label';
-          grpEl.innerHTML = `<span>${escapeHtml(grp)}</span>`;
-          frag.appendChild(grpEl);
-        }
+      let grp = resolveDsTimelineGroup(s, timelineBounds);
+      if (!isDsUi && grp !== '置顶' && grp !== '今天' && grp !== '昨天' && grp !== '7 天内') {
+        grp = '星语存档';
+      } else if (!isDsUi && (grp === '今天' || grp === '昨天')) {
+        grp = '今日';
+      } else if (!isDsUi && grp === '7 天内') {
+        grp = '近 7 日';
+      }
+      if (grp !== lastGroup) {
+        lastGroup = grp;
+        const grpEl = document.createElement('div');
+        grpEl.className = 'session-group-label session-time-group-header';
+        grpEl.innerHTML = `<span>${escapeHtml(grp)}</span>`;
+        frag.appendChild(grpEl);
       }
 
       const isActiveSession = s.id === state.activeSessionId;
@@ -4149,6 +4182,118 @@
     }
   }
 
+  let nurturingCapsuleTimer = null;
+  function showNurturingMicroCapsule({ personaName, deltas = {}, mood = '', moodChanged = false }) {
+    if (state.uiMode !== 'roleplay') return;
+    const dAff = Number(deltas.affection) || 0;
+    const dTrust = Number(deltas.trust) || 0;
+    const dInt = Number(deltas.intimacy) || 0;
+    if (!moodChanged && dAff <= 0 && dTrust <= 0 && dInt <= 0) return;
+
+    document.querySelectorAll('.theater-nurturing-capsule').forEach((el) => el.remove());
+    clearTimeout(nurturingCapsuleTimer);
+
+    const shortName = String(personaName || 'TA').split(/[·\s]/)[0] || 'TA';
+    const deltaTags = [];
+    if (dAff > 0) deltaTags.push(`好感 +${dAff}`);
+    if (dTrust > 0) deltaTags.push(`信任 +${dTrust}`);
+    if (dInt > 0) deltaTags.push(`默契 +${dInt}`);
+
+    const cleanMood = String(mood || '').replace(/^[^\u4e00-\u9fa5a-zA-Z]+/, '').trim();
+    const moodSegment = moodChanged && cleanMood ? `心境转为「${cleanMood}」` : cleanMood ? `心境 · ${cleanMood}` : '关系升温';
+
+    const cap = document.createElement('div');
+    cap.className = 'theater-nurturing-capsule';
+    cap.setAttribute('role', 'status');
+    cap.innerHTML = `
+      <span>✦ ${escapeHtml(shortName)} · ${escapeHtml(moodSegment)}</span>
+      ${deltaTags.length > 0 ? `<span class="capsule-deltas">${escapeHtml(deltaTags.join(' · '))}</span>` : ''}
+    `;
+    document.body.appendChild(cap);
+    requestAnimationFrame(() => cap.classList.add('is-visible'));
+
+    nurturingCapsuleTimer = setTimeout(() => {
+      cap.classList.remove('is-visible');
+      setTimeout(() => cap.remove(), 380);
+    }, 3600);
+  }
+
+  function showDreamLetterRitual(diary, persona) {
+    if (!diary || state.uiMode !== 'roleplay') return;
+    document.querySelectorAll('.theater-dream-letter-overlay').forEach((el) => el.remove());
+
+    const shortName = String(persona?.name || 'TA').split(/[·\s]/)[0] || '他';
+    const overlay = document.createElement('div');
+    overlay.className = 'theater-dream-letter-overlay';
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'true');
+    overlay.innerHTML = `
+      <div class="theater-dream-letter-card">
+        <div class="theater-dream-seal" aria-hidden="true">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 1.5L14.4 9.6L22.5 12L14.4 14.4L12 22.5L9.6 14.4L1.5 12L9.6 9.6Z"/></svg>
+        </div>
+        <h3 class="theater-dream-title">昨晚 ${escapeHtml(shortName)} 为你写了一篇私密手札</h3>
+        <p class="theater-dream-sub">${escapeHtml(diary.date || '星夜手札')} · ${escapeHtml(diary.mood || '静谧守候')}</p>
+        <div class="theater-dream-body hidden" id="dream-ritual-letter-body">${escapeHtml(diary.content || '')}</div>
+        <div class="theater-dream-actions">
+          <button type="button" class="mini-primary-btn" id="dream-ritual-open-btn">拆阅信笺</button>
+          <button type="button" class="secondary-btn" id="dream-ritual-close-btn">稍后再看</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+
+    const openBtn = overlay.querySelector('#dream-ritual-open-btn');
+    const closeBtn = overlay.querySelector('#dream-ritual-close-btn');
+    const bodyBox = overlay.querySelector('#dream-ritual-letter-body');
+    let opened = false;
+
+    openBtn?.addEventListener('click', () => {
+      if (!opened) {
+        opened = true;
+        bodyBox?.classList.remove('hidden');
+        openBtn.textContent = '收进日记本';
+      } else {
+        overlay.remove();
+        openRightTab('nurture-tab');
+      }
+    });
+    closeBtn?.addEventListener('click', () => overlay.remove());
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) overlay.remove();
+    });
+  }
+
+  function playChapterCurtainTransition(chapterInfo) {
+    if (!chapterInfo || !chapterInfo.chapter || state.uiMode !== 'roleplay') return;
+    document.querySelectorAll('.theater-chapter-curtain').forEach((el) => el.remove());
+
+    const romans = ['I', 'II', 'III', 'IV', 'V'];
+    const actNum = Math.max(1, Number(chapterInfo.act_number) || 2);
+    const roman = romans[actNum - 1] || String(actNum);
+    const chap = chapterInfo.chapter;
+    const cleanTitle = String(chap.title || `第 ${actNum} 幕`).replace(/^[^\u4e00-\u9fa5a-zA-Z0-9]+/, '').trim();
+    const cleanNote = String(chap.note || '').replace(/\{\{\s*user\s*\}\}/gi, state.user?.nickname || '你');
+
+    const curtain = document.createElement('div');
+    curtain.className = 'theater-chapter-curtain';
+    curtain.innerHTML = `
+      <div class="theater-curtain-act">ACT ${escapeHtml(roman)} · 开幕</div>
+      <div class="theater-curtain-line"></div>
+      <h2 class="theater-curtain-title">${escapeHtml(cleanTitle)}</h2>
+      ${cleanNote ? `<p class="theater-curtain-note">${escapeHtml(cleanNote)}</p>` : ''}
+    `;
+    document.body.appendChild(curtain);
+    requestAnimationFrame(() => curtain.classList.add('is-visible'));
+
+    const dismiss = () => {
+      curtain.classList.remove('is-visible');
+      setTimeout(() => curtain.remove(), 550);
+    };
+    curtain.addEventListener('click', dismiss, { once: true });
+    setTimeout(dismiss, 2800);
+  }
+
   function renderNurturingAndDiary() {
     const n = state.nurturing || {
       affection: 22,
@@ -4186,7 +4331,7 @@
     document.getElementById('val-trust').textContent = `${n.trust} / 100`;
     document.getElementById('val-intimacy').textContent = `${n.intimacy} / 100`;
 
-    // 同步剧场模式三环同心星轨仪
+    // 更新剧场模式三环同心星轨仪
     const updateAstrolabeRing = (ringId, valId, score, radius) => {
       const ringEl = document.getElementById(ringId);
       const valEl = document.getElementById(valId);
@@ -5568,8 +5713,29 @@
       const isEmpty = state.messages.length === 0;
       if (chatStageEl) chatStageEl.classList.toggle('ds-empty-mode', isEmpty);
       const greetTitleEl = document.getElementById('ds-greeting-title');
+      const greetSubEl = document.getElementById('ds-greeting-subtitle');
       if (greetTitleEl) {
-        greetTitleEl.textContent = '今天有什么可以帮到你？';
+        const hour = new Date().getHours();
+        let timeTitle = '今天有什么可以帮到你？';
+        let timeSub = '星轨静谧，随时开启深度思考或沉浸剧场';
+        if (hour >= 22 || hour < 5) {
+          timeTitle = '星轨静谧，今晚想聊点什么？';
+          timeSub = '夜深人静时分，适合代码调试、长程推演或推开剧场门扉';
+        } else if (hour >= 5 && hour < 11) {
+          timeTitle = '晨光微熹，今天从哪一件事开始？';
+          timeSub = '全新一天的灵感与待办已就绪';
+        } else if (hour >= 11 && hour < 14) {
+          timeTitle = '午间时分，需要一起拆解什么问题？';
+          timeSub = '喝口温水，随时告诉我你的想法';
+        } else if (hour >= 14 && hour < 18) {
+          timeTitle = '午后流光，有什么新点子想验证？';
+          timeSub = '支持代码预览、结构化推演与多幕剧情互动';
+        } else {
+          timeTitle = '暮色温柔，今晚想推进哪一件事？';
+          timeSub = '星语随身工作台已为你准备妥当';
+        }
+        greetTitleEl.textContent = timeTitle;
+        if (greetSubEl) greetSubEl.textContent = timeSub;
       }
       syncComposerEmptyState();
     } else if (isPhoneAgentUi) {
@@ -5685,15 +5851,6 @@
     stopStreamBtn.classList.toggle('hidden', !streaming);
     const stopLbl = document.getElementById('stop-btn-label');
     if (stopLbl) stopLbl.textContent = (state.uiMode === 'deepseek' || state.uiMode === 'phone-agent') ? '停止生成' : '轻声止步';
-
-    const figCard = document.getElementById('companion-poke-area');
-    const statusEl = document.getElementById('comp-live-status');
-    if (figCard) figCard.classList.toggle('speaking-glow', streaming);
-    if (statusEl) {
-      statusEl.textContent = streaming
-        ? '正在轻声回应你的心意…'
-        : `${state.companion?.label || '正温柔守候在你身旁'}`;
-    }
   }
 
   stopStreamBtn.addEventListener('click', () => {
@@ -5838,7 +5995,9 @@
 
     const proseEl = document.createElement('div');
     proseEl.className = 'assistant-prose streaming-cursor';
-    proseEl.innerHTML = `<span class="streaming-await-pill">${isDsUi ? '正在思考并组织回答…' : '正在构思回应…'}</span>`;
+    proseEl.innerHTML = `<span class="shimmer-thinking-wrap"><span class="shimmer-thinking-text">${
+      isDsUi ? '正在思考并组织回答…' : '正在聆听并组织回应…'
+    }</span></span>`;
 
     bodyEl.appendChild(liveSearchSlot);
     bodyEl.appendChild(liveToolSlot);
@@ -5967,6 +6126,7 @@
       const decoder = new TextDecoder('utf-8');
       let buffer = '';
       let receivedDoneEvent = false;
+      let chapterCurtainShown = false;
 
       const handleSseBlock = (rawBlock) => {
         const lines = rawBlock.split(/\r?\n/);
@@ -6038,11 +6198,18 @@
             state.nurturing = payload.snapshot;
             renderNurturingAndDiary();
             const d = payload.deltas || {};
-            if ((d.affection || 0) >= 3 || (d.trust || 0) >= 3) {
-              showToast(
-                `心动 +${d.affection} · 信任 +${d.trust} ｜ 此刻心境：${payload.snapshot.current_mood}`,
-                2400
-              );
+            if (!originIsDsUi) {
+              showNurturingMicroCapsule({
+                personaName: state.activePersona?.name || 'TA',
+                deltas: d,
+                mood: payload.snapshot.current_mood,
+                moodChanged: Boolean(payload.mood_changed)
+              });
+            }
+          } else if (eventName === 'chapter_advanced' && payload.chapter) {
+            if (!originIsDsUi && !chapterCurtainShown) {
+              chapterCurtainShown = true;
+              playChapterCurtainTransition(payload);
             }
           } else if (eventName === 'telemetry') {
             state.telemetry = payload.telemetry;
@@ -6129,6 +6296,10 @@
               messages: state.messages,
               forceBalanceRefresh: true
             });
+            if (payload.chapter_advanced && !originIsDsUi && !chapterCurtainShown) {
+              chapterCurtainShown = true;
+              playChapterCurtainTransition(payload.chapter_advanced);
+            }
             // 角色回复自动真声配音（零配置开箱即集成）
             if (
               !originIsDsUi &&
@@ -6799,13 +6970,11 @@
     renderPersonaList();
     populatePersonaEditor();
     renderNurturingAndDiary();
-    renderCompanionStage();
+    window.__activeSessionId = state.activeSessionId;
+    window.dispatchEvent(new CustomEvent('companion-updated', { detail: state.companion }));
     renderLorebooks();
     renderTelemetryAndMemories();
     renderDeepSeekSuiteTelemetry();
-    if (!silentReconcile && state.uiMode === 'roleplay') {
-      triggerCompanionCare('timer', true);
-    }
 
     // 同步右上角更多菜单中「自动主动搭话」按钮显示态
     const proBtnEl = document.getElementById('toggle-proactive-btn');
@@ -6824,8 +6993,44 @@
       saveBootSnapshot();
     }
 
+    // 离线超过 6 小时自动夜间做梦：弹出拆阅手札仪式
+    if (!fromCache && sessMode === 'roleplay' && data.auto_dream_diary) {
+      setTimeout(() => {
+        if (state.activeSessionId === sessionId && state.uiMode === 'roleplay') {
+          showDreamLetterRitual(data.auto_dream_diary, state.activePersona);
+        }
+      }, 450);
+    }
+
+    // 深夜跨时段重逢（23:00–04:00 且距上次互动超过 4 小时）自动发起带语音的深夜问候
+    let scheduledLateNightGreeting = false;
+    if (!fromCache && sessMode === 'roleplay' && state.messages.length > 0) {
+      const hour = new Date().getHours();
+      const isNight = hour >= 23 || hour < 4;
+      const lastMsg = state.messages[state.messages.length - 1];
+      const lastMeta = parseMsgMeta(lastMsg);
+      const idleMs = Date.now() - (lastMsg.created_at || Date.now());
+      const nightKey = `late_night_greet_${sessionId}_${new Date().toDateString()}`;
+      let alreadySentNight = false;
+      try {
+        alreadySentNight = sessionStorage.getItem(nightKey) === '1';
+      } catch {}
+      if (isNight && idleMs >= 4 * 3600 * 1000 && !lastMeta.is_proactive && !alreadySentNight) {
+        scheduledLateNightGreeting = true;
+        try {
+          sessionStorage.setItem(nightKey, '1');
+        } catch {}
+        setTimeout(() => {
+          if (state.activeSessionId === sessionId && state.uiMode === 'roleplay' && !state.isStreaming) {
+            triggerProactiveMessage('late_night_return', { autoSpeak: true });
+          }
+        }, 1100);
+      }
+    }
+
     // 久别重逢检测：仅在用户显式开启主动搭话时触发（默认保持安静不打扰）
     if (
+      !scheduledLateNightGreeting &&
       !fromCache &&
       sessMode === 'roleplay' &&
       state.messages.length > 0 &&
@@ -7753,7 +7958,6 @@
       themeScheme: storedTheme,
       autoTts: localStorage.getItem('auto_tts_reply') !== '0',
       autoProactive: localStorage.getItem('pref_auto_proactive') === '1',
-      showCompanion: companionStageEl ? !companionStageEl.classList.contains('hidden') : true,
       showFollowups: isShowFollowUpsEnabled()
     };
   }
@@ -7769,9 +7973,6 @@
     if (autoTtsChk) autoTtsChk.checked = snap.autoTts;
     const autoProChk = document.getElementById('st-auto-proactive-chk');
     if (autoProChk) autoProChk.checked = Boolean(snap.autoProactive);
-    setCompanionVisible(Boolean(snap.showCompanion), false);
-    const showCompChk = document.getElementById('st-show-companion-chk');
-    if (showCompChk) showCompChk.checked = Boolean(snap.showCompanion);
     setShowFollowUpsEnabled(snap.showFollowups !== false, false);
   }
 
@@ -7836,10 +8037,6 @@
     const autoTtsChk = document.getElementById('st-auto-tts-chk');
     if (autoTtsChk) {
       autoTtsChk.checked = localStorage.getItem('auto_tts_reply') !== '0';
-    }
-    const showCompChk = document.getElementById('st-show-companion-chk');
-    if (showCompChk && companionStageEl) {
-      showCompChk.checked = !companionStageEl.classList.contains('hidden');
     }
     syncFollowUpsToggleUi();
     activateSettingsTab('stab-key', false);
@@ -9016,10 +9213,6 @@
             localStorage.setItem('auto_tts_reply', autoTtsChk.checked ? '1' : '0');
           } catch {}
         }
-        const showCompChk = document.getElementById('st-show-companion-chk');
-        if (showCompChk) {
-          setCompanionVisible(Boolean(showCompChk.checked), false);
-        }
         const showFollowChk = document.getElementById('st-show-followups-chk');
         if (showFollowChk) {
           setShowFollowUpsEnabled(Boolean(showFollowChk.checked), false);
@@ -9088,18 +9281,80 @@
     });
   }
 
+  function refreshUpAvatarPreview() {
+    const previewEl = document.getElementById('up-avatar-preview');
+    if (!previewEl) return;
+    const avVal = document.getElementById('up-avatar')?.value || state.user?.avatar || '我';
+    const nickVal = document.getElementById('up-nickname')?.value || state.user?.nickname || '我';
+    let cfg = null;
+    try {
+      const rawCfg = document.getElementById('up-avatar-config')?.value;
+      cfg = rawCfg ? JSON.parse(rawCfg) : null;
+    } catch {}
+    previewEl.innerHTML = renderSmartAvatarHtml(avVal, nickVal, 'size-xl', true, cfg);
+  }
+
   document.getElementById('open-user-persona-btn').addEventListener('click', () => {
     if (!state.user) return;
-    document.getElementById('up-avatar').value = state.user.avatar || '我';
+    const curAv = state.user.avatar || '我';
+    const curCfg = state.user.avatar_config || null;
+    document.getElementById('up-avatar').value = curAv;
+    const cfgInput = document.getElementById('up-avatar-config');
+    if (cfgInput) cfgInput.value = curCfg ? JSON.stringify(curCfg) : '';
+    const quickGlyph = document.getElementById('up-avatar-quick-glyph');
+    if (quickGlyph) {
+      quickGlyph.value =
+        curAv.startsWith('/api/') || curAv.startsWith('data:') || curAv.startsWith('svg:')
+          ? (curCfg?.glyph || '星')
+          : curAv;
+    }
     document.getElementById('up-nickname').value = state.user.nickname || '';
     document.getElementById('up-role').value = state.user.user_persona?.role || '';
     document.getElementById('up-appearance').value = state.user.user_persona?.appearance || '';
     document.getElementById('up-bio').value = state.user.user_persona?.bio || '';
     syncRelPresetChipState();
+    refreshUpAvatarPreview();
     userPersonaDialog.showModal();
   });
   document.getElementById('close-up-dialog').addEventListener('click', () => userPersonaDialog.close());
   document.getElementById('cancel-up-dialog').addEventListener('click', () => userPersonaDialog.close());
+
+  document.getElementById('up-avatar-quick-glyph')?.addEventListener('input', (e) => {
+    const val = e.target.value.trim().slice(0, 4) || '我';
+    document.getElementById('up-avatar').value = val;
+    const cfgInput = document.getElementById('up-avatar-config');
+    let curCfg = {};
+    try {
+      curCfg = cfgInput?.value ? JSON.parse(cfgInput.value) : {};
+    } catch {}
+    curCfg = Object.assign({}, curCfg, { type: 'glyph', glyph: val });
+    if (cfgInput) cfgInput.value = JSON.stringify(curCfg);
+    refreshUpAvatarPreview();
+  });
+
+  document.getElementById('open-avatar-studio-btn')?.addEventListener('click', () => {
+    if (!window.AppearanceSystem?.openAvatarStudio) return;
+    let curCfg = null;
+    try {
+      const raw = document.getElementById('up-avatar-config')?.value;
+      curCfg = raw ? JSON.parse(raw) : state.user?.avatar_config || null;
+    } catch {}
+    window.AppearanceSystem.openAvatarStudio({
+      initialAvatar: document.getElementById('up-avatar')?.value || state.user?.avatar || '我',
+      initialConfig: curCfg,
+      nickname: document.getElementById('up-nickname')?.value || state.user?.nickname || '我',
+      onApply: ({ avatar, avatar_config }) => {
+        document.getElementById('up-avatar').value = avatar;
+        const cfgInput = document.getElementById('up-avatar-config');
+        if (cfgInput) cfgInput.value = avatar_config ? JSON.stringify(avatar_config) : '';
+        const quickGlyph = document.getElementById('up-avatar-quick-glyph');
+        if (quickGlyph && avatar_config?.type === 'glyph') {
+          quickGlyph.value = avatar_config.glyph || avatar;
+        }
+        refreshUpAvatarPreview();
+      }
+    });
+  });
 
   document.getElementById('up-role')?.addEventListener('input', syncRelPresetChipState);
   document.querySelectorAll('.rel-preset-chip').forEach((chip) => {
@@ -9118,11 +9373,17 @@
       nickInp?.focus();
       return;
     }
+    let avatarConfigPayload = undefined;
+    const rawCfgStr = document.getElementById('up-avatar-config')?.value;
+    if (rawCfgStr) {
+      try { avatarConfigPayload = JSON.parse(rawCfgStr); } catch {}
+    }
     try {
       const res = await apiJson('/api/auth/user-persona', {
         method: 'PUT',
         body: JSON.stringify({
           avatar: document.getElementById('up-avatar').value.trim() || '我',
+          avatar_config: avatarConfigPayload,
           nickname: cleanNick,
           role: document.getElementById('up-role').value.trim(),
           appearance: document.getElementById('up-appearance').value.trim(),
@@ -10421,155 +10682,7 @@
     showToast('高清心动语录签已保存至本地下载目录！');
   });
 
-  // E. ✨ 聊天框旁实时高冷/可爱陪伴立绘席 & 定时温馨提醒引擎
-  const companionStageEl = document.getElementById('companion-stage');
-  const compImgEl = document.getElementById('companion-img');
-  const compPokeArea = document.getElementById('companion-poke-area');
-  const compCloudEl = document.getElementById('companion-cloud');
-  const compCloudTag = document.getElementById('comp-cloud-tag');
-  const compCloudText = document.getElementById('comp-cloud-text');
-  const compLiveStatus = document.getElementById('comp-live-status');
-  const compModeCoolBtn = document.getElementById('comp-mode-cool');
-  const compModeCuteBtn = document.getElementById('comp-mode-cute');
-  const compAutoChk = document.getElementById('comp-auto-remind-chk');
-
-  function renderCompanionStage() {
-    const isFemaleNow = getPersonaPronoun(state.activePersona) === '她';
-    const rawComp = state.companion;
-    const genderMismatch =
-      rawComp &&
-      !rawComp.customImg &&
-      ((isFemaleNow && !rawComp.isFemale && !/lady|girl|chibi/.test(rawComp.skinKey || '')) ||
-        (!isFemaleNow && rawComp.isFemale && /lady|girl/.test(rawComp.skinKey || '')));
-
-    const c =
-      rawComp && !genderMismatch
-        ? rawComp
-        : {
-            mode: 'cool',
-            isFemale: isFemaleNow,
-            skinKey: isFemaleNow ? 'cool_lady' : 'cool_silver',
-            label: isFemaleNow ? '高冷清艳 · 专属陪伴' : '高冷清隽 · 银发星眸',
-            img: isFemaleNow
-              ? './assets/companions/cool_lady_cutout.png'
-              : './assets/companions/cool_silver_cutout.png',
-            aura: isFemaleNow ? 'rgba(192, 132, 252, 0.45)' : 'rgba(155, 135, 245, 0.36)',
-            particle: '✦',
-            reminderEnabled: true
-          };
-
-    const normImg = String(
-      c.img || (isFemaleNow ? './assets/companions/cool_lady_cutout.png' : './assets/companions/cool_silver_cutout.png')
-    )
-      .replace(/^\/assets\//, './assets/')
-      .replace(
-        /\.\/assets\/companions\/(cool_silver|cool_dark|cool_lady|cute_boy|cute_girl|cute_chibi)\.jpg$/i,
-        './assets/companions/$1_cutout.png'
-      );
-    compImgEl.src = normImg;
-    compPokeArea.style.setProperty('--comp-aura', c.aura || 'rgba(226, 85, 157, 0.25)');
-    compModeCoolBtn.classList.toggle('active', c.mode === 'cool');
-    compModeCuteBtn.classList.toggle('active', c.mode === 'cute');
-    compAutoChk.checked = c.reminderEnabled !== false;
-    compLiveStatus.textContent = c.label || '正温柔守候在你身旁';
-
-    const sparkSvg = '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 0L14.6 9.4L24 12L14.6 14.6L12 24L9.4 14.6L0 12L9.4 9.4Z"/></svg>';
-    const heartSvg = '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>';
-    const particleSvg = (c.particle === '♡') ? heartSvg : sparkSvg;
-    document.querySelectorAll('#comp-particles .cp-p').forEach((pEl) => {
-      pEl.innerHTML = particleSvg;
-    });
-
-    window.__activeSessionId = state.activeSessionId;
-    window.dispatchEvent(new CustomEvent('companion-updated', { detail: c }));
-  }
-
-  function showCompanionCloud({ tag, text }) {
-    if (!text) return;
-    compCloudTag.textContent = tag || '贴心叮嘱';
-    compCloudText.textContent = text;
-    compCloudEl.classList.remove('cloud-pop');
-    void compCloudEl.offsetWidth;
-    compCloudEl.classList.add('cloud-pop');
-  }
-
-  async function triggerCompanionCare(triggerType = 'timer', silentErr = false) {
-    if (!state.activeSessionId) return;
-    try {
-      const res = await apiJson(
-        `/api/sessions/${encodeURIComponent(state.activeSessionId)}/companion/remind`,
-        {
-          method: 'POST',
-          body: JSON.stringify({ trigger: triggerType })
-        }
-      );
-      if (res.companion) {
-        state.companion = res.companion;
-        renderCompanionStage();
-      }
-      if (res.reminder) {
-        showCompanionCloud(res.reminder);
-      }
-    } catch (err) {
-      if (!silentErr) showToast(`${err.message}`);
-    }
-  }
-
-  async function updateCompanionConfig(patch) {
-    if (!state.activeSessionId) return;
-    try {
-      const res = await apiJson(
-        `/api/sessions/${encodeURIComponent(state.activeSessionId)}/companion`,
-        {
-          method: 'POST',
-          body: JSON.stringify(patch)
-        }
-      );
-      state.companion = res.companion;
-      renderCompanionStage();
-      if (res.reminder) showCompanionCloud(res.reminder);
-    } catch (err) {
-      showToast(`${err.message}`);
-    }
-  }
-
-  const topbarCompanionBtn = document.getElementById('topbar-companion-btn');
-  function setCompanionVisible(visible, notify = false) {
-    if (!companionStageEl) return;
-    companionStageEl.classList.toggle('hidden', !visible);
-    topbarCompanionBtn?.classList.toggle('active', visible);
-    topbarCompanionBtn?.setAttribute('aria-pressed', String(Boolean(visible)));
-    const showCompChk = document.getElementById('st-show-companion-chk');
-    if (showCompChk) showCompChk.checked = Boolean(visible);
-    try {
-      localStorage.setItem('show_companion_stage', visible ? '1' : '0');
-    } catch {}
-    if (notify) {
-      showToast(
-        visible
-          ? '已开启角色陪伴立绘（可点击立绘戳一戳互动或换造型）'
-          : '已收起陪伴立绘'
-      );
-    }
-  }
-
-  // 初始化恢复立绘显示状态：桌面大屏默认展开，手机窄屏（<=860px）默认收起防遮挡聊天区
-  try {
-    const isNarrowMobile = window.matchMedia('(max-width: 860px)').matches;
-    const savedVis = localStorage.getItem('show_companion_stage');
-    if (isNarrowMobile) {
-      setCompanionVisible(false, false);
-    } else {
-      setCompanionVisible(savedVis !== '0', false);
-    }
-  } catch {}
-
-  document.getElementById('toggle-companion-btn').addEventListener('click', () => {
-    setCompanionVisible(companionStageEl.classList.contains('hidden'), true);
-  });
-  topbarCompanionBtn?.addEventListener('click', () => {
-    setCompanionVisible(companionStageEl.classList.contains('hidden'), true);
-  });
+  // E. ✨ 模式切换与语音自动朗读偏好绑定
   document.getElementById('topbar-switch-ds-btn')?.addEventListener('click', () => {
     switchWorkspaceMode('deepseek');
   });
@@ -10582,108 +10695,6 @@
       localStorage.setItem('auto_tts_reply', e.target.checked ? '1' : '0');
     } catch {}
   });
-  document.getElementById('st-show-companion-chk')?.addEventListener('change', (e) => {
-    setCompanionVisible(Boolean(e.target.checked));
-  });
-
-  compModeCoolBtn.addEventListener('click', () => {
-    updateCompanionConfig({ mode: 'cool', customImg: '' });
-  });
-
-  compModeCuteBtn.addEventListener('click', () => {
-    updateCompanionConfig({ mode: 'cute', customImg: '' });
-  });
-
-  document.getElementById('comp-cycle-skin').addEventListener('click', () => {
-    const cur = state.companion || { mode: 'cool', skinKey: 'cool_silver' };
-    const isFemale = Boolean(
-      cur.isFemale || cur.skinKey === 'cool_lady' || cur.skinKey === 'cute_girl'
-    );
-    const coolOrder = isFemale
-      ? ['cool_lady', 'cool_silver', 'cool_dark']
-      : ['cool_silver', 'cool_dark', 'cool_lady'];
-    const cuteOrder = isFemale
-      ? ['cute_girl', 'cute_chibi', 'cute_boy']
-      : ['cute_boy', 'cute_chibi', 'cute_girl'];
-    const order = cur.mode === 'cool' ? coolOrder : cuteOrder;
-    const idx = order.indexOf(cur.skinKey);
-    const nextSkin = order[(idx + 1) % order.length];
-    updateCompanionConfig({ mode: cur.mode, skinKey: nextSkin, customImg: '' });
-  });
-
-  const customCompFile = document.getElementById('custom-companion-file');
-  document.getElementById('comp-upload-img').addEventListener('click', () => {
-    customCompFile.click();
-  });
-  customCompFile.addEventListener('change', (e) => {
-    const file = e.target.files?.[0];
-    e.target.value = '';
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      updateCompanionConfig({
-        mode: state.companion?.mode || 'cool',
-        customImg: String(reader.result || '')
-      });
-      showToast('已换上你上传的专属陪伴立绘！');
-    };
-    reader.readAsDataURL(file);
-  });
-
-  // 鼠标“戳一戳”立绘弹跳互动
-  compPokeArea.addEventListener('click', () => {
-    compPokeArea.classList.remove('poked');
-    void compPokeArea.offsetWidth;
-    compPokeArea.classList.add('poked');
-    triggerCompanionCare('poke', true);
-  });
-
-  document.getElementById('comp-ask-remind-btn').addEventListener('click', () => {
-    triggerCompanionCare('manual', false);
-  });
-
-  document.getElementById('comp-cloud-tts').addEventListener('click', (e) => {
-    speakDialogueOnly(compCloudText.textContent, e.currentTarget);
-  });
-
-  compAutoChk.addEventListener('change', () => {
-    updateCompanionConfig({ reminderEnabled: compAutoChk.checked });
-  });
-
-  // 输入框打字时，陪伴立绘实时投来关注视线（仅在剧本模式且陪伴立绘可见时触发，防冗余 DOM 写）
-  let typingWatchTimer = null;
-  chatInput.addEventListener('input', () => {
-    if (
-      state.isStreaming ||
-      state.uiMode !== 'roleplay' ||
-      !companionStageEl ||
-      companionStageEl.classList.contains('hidden')
-    ) {
-      return;
-    }
-    if (compLiveStatus.textContent !== '正专注看着你打字…') {
-      compLiveStatus.textContent = '正专注看着你打字…';
-    }
-    clearTimeout(typingWatchTimer);
-    typingWatchTimer = setTimeout(() => {
-      if (!state.isStreaming && compLiveStatus) {
-        compLiveStatus.textContent = state.companion?.label || '正温柔守候在你身旁';
-      }
-    }, 2400);
-  });
-
-  // 每隔 52 秒自动冒出一句贴合真实时段的暖心提醒
-  setInterval(() => {
-    if (
-      state.user &&
-      state.activeSessionId &&
-      !state.isStreaming &&
-      !companionStageEl.classList.contains('hidden') &&
-      compAutoChk.checked
-    ) {
-      triggerCompanionCare('timer', true);
-    }
-  }, 52000);
 
   // ================= 13. 原生 DeepSeek 网页模式、全家桶 API 控制台与主动关怀引擎 =================
 
@@ -10826,7 +10837,7 @@
 
     syncComposerEmptyState();
 
-    // 仅在真正跨模式切换或显式要求重置时收起右栏，绝不在日常刷新会话或开关立绘时把用户已打开的右侧面板缩成 0 宽！
+    // 仅在真正跨模式切换或显式要求重置时收起右栏，绝不在日常刷新会话时把用户已打开的右侧面板缩成 0 宽！
     if (resetRightDrawer || prevMode !== state.uiMode) {
       setRightPanelCollapsed(true, false);
     }
@@ -11539,6 +11550,25 @@
   document.getElementById('done-code-preview-btn').addEventListener('click', () => codePreviewDialog.close());
   document.getElementById('reload-code-preview-btn').addEventListener('click', () => {
     if (state.lastSandboxCode) openCodeSandboxPreview(state.lastSandboxCode, true);
+  });
+
+  // DeepSeek 问答模式空对话欢迎态：场景化毛玻璃灵感卡片
+  document.querySelectorAll('.ds-inspiration-card').forEach((card) => {
+    card.addEventListener('click', () => {
+      const action = card.dataset.action;
+      if (action === 'roleplay') {
+        const rpBtn = document.getElementById('ws-mode-roleplay');
+        if (rpBtn) rpBtn.click();
+        else switchWorkspaceMode('roleplay');
+        return;
+      }
+      const prompt = card.dataset.prompt || '';
+      if (prompt) {
+        chatInput.value = prompt;
+        syncComposerEmptyState();
+        chatInput.focus();
+      }
+    });
   });
 
   // DeepSeek 问答模式空对话欢迎态：4 大原生问答快捷功能胶囊（与剧本扮演模式彻底分离）
@@ -12315,7 +12345,7 @@
   });
 
   // 🌟 多一点主动性核心引擎：仅在恋庭沉浸扮演模式下发起主动关怀（锁定发起会话 ID 严防串台）
-  async function triggerProactiveMessage(triggerReason = 'manual') {
+  async function triggerProactiveMessage(triggerReason = 'manual', opts = {}) {
     if (state.isStreaming || !state.activeSessionId) return;
     if (state.uiMode === 'deepseek' || state.uiMode === 'phone-agent' || state.activeSession?.session_mode === 'deepseek_native') return;
     const originSessionId = state.activeSessionId;
@@ -12359,7 +12389,7 @@
 
     const proseEl = document.createElement('div');
     proseEl.className = 'assistant-prose streaming-cursor';
-    proseEl.innerHTML = '<span class="streaming-await-pill">正在走近你…</span>';
+    proseEl.innerHTML = '<span class="shimmer-thinking-wrap"><span class="shimmer-thinking-text">正在走近你…</span></span>';
 
     bodyEl.appendChild(thoughtDetails);
     bodyEl.appendChild(proseEl);
@@ -12491,8 +12521,16 @@
           renderSessionList();
           if (triggerReason === 'idle') {
             showToast('看你安静了一会儿，TA 主动给你发来了一条新消息');
-          } else if (triggerReason === 'return') {
-            showToast('欢迎回来！TA 一看到你就主动迎上来打招呼啦');
+          } else if (triggerReason === 'return' || triggerReason === 'late_night_return') {
+            showToast(
+              triggerReason === 'late_night_return'
+                ? '夜深重逢，TA 轻声向你发来了一段问候'
+                : '欢迎回来！TA 一看到你就主动迎上来打招呼啦'
+            );
+          }
+          if (opts && opts.autoSpeak && accContent.trim()) {
+            const ttsBtn = finalProRow?.querySelector('.tts-btn') || null;
+            speakDialogueOnly(accContent, ttsBtn);
           }
         }
       };
@@ -12708,6 +12746,10 @@
     state.personas = boot.personas || [];
     state.sessions = boot.sessions || [];
     state.settings = boot.settings || {};
+    if (window.AppearanceSystem) {
+      window.AppearanceSystem.syncFromServer(state.settings.skin_config);
+      window.AppearanceSystem.initSkinStudio('skin-studio-root');
+    }
     state.membership = boot.membership || state.membership;
     state.wallet = boot.wallet || null;
     if (boot.app_version) {
@@ -12721,7 +12763,7 @@
 
     if (!silentReconcile) {
       applyUiModeVisuals(state.uiMode);
-      // 桌面宽屏下恢复或默认展开恋庭右侧面板（展示 💞养成 / 🧠记忆 / 🎯设定，与陪伴立绘优雅共存）
+      // 桌面宽屏下恢复或默认展开恋庭右侧面板（展示 💞养成 / 🧠记忆 / 🎯设定）
       try {
         const isDesktopWide = window.matchMedia('(min-width: 1180px)').matches;
         const savedRightPref = localStorage.getItem('right_panel_collapsed_v1');

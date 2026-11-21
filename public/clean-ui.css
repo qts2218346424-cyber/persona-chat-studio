@@ -490,61 +490,6 @@ details.sidebar-fold:not([open]) .fold-caret {
   border-color: var(--border-subtle) !important;
 }
 
-/* 6. 陪伴立绘舞台：保持控件清晰可点，与右侧面板共存绝不互斥 */
-.companion-stage {
-  width: 244px !important;
-  padding: 8px 12px 10px 0 !important;
-  justify-content: space-between !important;
-  gap: 4px !important;
-}
-
-.companion-stage .companion-Style-bar,
-.companion-stage .companion-foot {
-  opacity: 0.94;
-  pointer-events: auto;
-  transform: none;
-  transition: opacity 0.18s ease;
-}
-
-.companion-stage:hover .companion-Style-bar,
-.companion-stage:focus-within .companion-Style-bar,
-.companion-stage:hover .companion-foot,
-.companion-stage:focus-within .companion-foot {
-  opacity: 1;
-  pointer-events: auto;
-}
-
-@media (hover: none) {
-  .companion-stage .companion-Style-bar,
-  .companion-stage .companion-foot {
-    opacity: 0.9;
-    pointer-events: auto;
-    transform: none;
-  }
-}
-
-/* 柔化头顶轻语云朵：去除浓重边框，化作轻盈空气感气泡 */
-.companion-stage .companion-cloud {
-  background: light-dark(rgba(255, 255, 255, 0.78), rgba(34, 28, 56, 0.78)) !important;
-  border: 1px solid light-dark(rgba(236, 94, 167, 0.22), rgba(236, 94, 167, 0.28)) !important;
-  box-shadow: 0 6px 18px rgba(196, 112, 162, 0.08) !important;
-  padding: 8px 11px !important;
-}
-
-.companion-stage .companion-cloud::after {
-  border-right-color: light-dark(rgba(236, 94, 167, 0.22), rgba(236, 94, 167, 0.28)) !important;
-  border-bottom-color: light-dark(rgba(236, 94, 167, 0.22), rgba(236, 94, 167, 0.28)) !important;
-}
-
-.companion-stage .cloud-tts-btn {
-  opacity: 0;
-  transition: opacity 0.16s ease;
-}
-
-.companion-stage .companion-cloud:hover .cloud-tts-btn {
-  opacity: 0.85;
-}
-
 /* 7. 底部输入舱减负：紧凑通透，消除与侧栏重复的通道徽章 */
 .composer-dock {
   padding: 4px 24px 16px !important;
@@ -595,190 +540,6 @@ details.sidebar-fold:not([open]) .fold-caret {
 
 .pill-toggle.active {
   border-color: rgba(236, 94, 167, 0.32) !important;
-}
-
-
-/* 8. 立绘脚下极简双向语音对话微胶囊与声波对谈条（不增加任何杂乱边框） */
-.comp-voice-wrap {
-  display: flex;
-  justify-content: center;
-  width: 100%;
-  z-index: 9;
-  margin-top: -4px;
-}
-
-.comp-voice-call-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 14px;
-  border-radius: 999px;
-  border: 1px solid light-dark(rgba(236, 94, 167, 0.34), rgba(236, 94, 167, 0.42));
-  background: light-dark(rgba(255, 255, 255, 0.84), rgba(34, 28, 56, 0.84));
-  backdrop-filter: blur(10px);
-  color: var(--brand-primary);
-  font-size: 12px;
-  font-weight: 700;
-  cursor: pointer;
-  box-shadow: 0 4px 14px rgba(226, 85, 157, 0.14);
-  transition: transform 0.16s ease, box-shadow 0.16s ease, background 0.16s ease;
-}
-
-.comp-voice-call-pill:hover {
-  transform: translateY(-1px);
-  background: var(--brand-soft);
-  box-shadow: 0 6px 18px rgba(226, 85, 157, 0.24);
-}
-
-.voice-dot-live {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: #10b981;
-  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.22);
-}
-
-.comp-voice-dock {
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  padding: 7px 9px;
-  border-radius: 15px;
-  background: light-dark(rgba(255, 255, 255, 0.88), rgba(34, 28, 56, 0.88));
-  backdrop-filter: blur(10px);
-  border: 1px solid light-dark(rgba(236, 94, 167, 0.35), rgba(236, 94, 167, 0.42));
-  box-shadow: 0 8px 24px rgba(196, 112, 162, 0.14);
-}
-
-.cv-top-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 4px;
-}
-
-.cv-voice-switch {
-  border: none;
-  background: var(--brand-soft);
-  color: var(--brand-primary);
-  border-radius: 999px;
-  padding: 2px 9px;
-  font-size: 11px;
-  font-weight: 700;
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.cv-voice-switch:hover {
-  filter: brightness(0.96);
-}
-
-.cv-close-btn {
-  border: none;
-  background: transparent;
-  color: var(--text-muted);
-  font-size: 12px;
-  cursor: pointer;
-  padding: 1px 5px;
-  border-radius: 6px;
-}
-
-.cv-close-btn:hover {
-  color: var(--accent-danger);
-  background: rgba(217, 56, 90, 0.1);
-}
-
-/* 4 格迷你声波律动柱 */
-.cv-wave-bars {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  height: 12px;
-  opacity: 0.35;
-}
-
-.cv-wave-bars i {
-  display: block;
-  width: 2.5px;
-  height: 4px;
-  border-radius: 2px;
-  background: var(--brand-primary);
-}
-
-.cv-wave-bars.active {
-  opacity: 1;
-}
-
-.cv-wave-bars.active i {
-  animation: cvWaveJump 0.65s ease-in-out infinite;
-}
-.cv-wave-bars.active i:nth-child(2) { animation-delay: 0.15s; }
-.cv-wave-bars.active i:nth-child(3) { animation-delay: 0.3s; }
-.cv-wave-bars.active i:nth-child(4) { animation-delay: 0.45s; }
-
-@keyframes cvWaveJump {
-  0%, 100% { height: 4px; }
-  50% { height: 12px; }
-}
-
-.cv-input-row {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-}
-
-.cv-mic-btn {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  border: 1px solid var(--border-strong);
-  background: var(--bg-app);
-  cursor: pointer;
-  font-size: 13px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  transition: border-color 0.15s ease, background-color 0.15s ease, color 0.15s ease;
-}
-
-.cv-mic-btn:hover {
-  border-color: var(--brand-primary);
-}
-
-.cv-mic-btn.recording {
-  background: #ef4444;
-  border-color: #ef4444;
-  color: #ffffff;
-  animation: micPulseRing 1.1s ease-in-out infinite;
-}
-
-@keyframes micPulseRing {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.45); }
-  50% { box-shadow: 0 0 0 6px rgba(239, 68, 68, 0); }
-}
-
-.cv-quick-input {
-  flex: 1;
-  min-width: 0;
-  border: 1px solid var(--border-subtle);
-  border-radius: 999px;
-  background: var(--bg-app);
-  color: var(--text-primary);
-  padding: 4px 10px;
-  font: inherit;
-  font-size: 11.5px;
-  outline: none;
-}
-
-.cv-quick-input:focus {
-  border-color: var(--brand-primary);
-}
-
-/* 通话进行中暂时收起底部悬停条，避免上下按钮重叠干扰 */
-.companion-stage.voice-call-active .companion-foot {
-  display: none !important;
 }
 
 
@@ -3951,12 +3712,6 @@ dialog::backdrop {
   color: var(--brand-primary);
 }
 
-#topbar-companion-btn.active {
-  background: light-dark(rgba(226, 85, 157, 0.12), rgba(226, 85, 157, 0.22));
-  color: var(--brand-primary);
-  border-color: rgba(226, 85, 157, 0.35);
-}
-
 /* 设置弹窗底部保存操作栏粘性常驻，防止长内容滚动遮挡保存按钮 */
 #settings-dialog .settings-sticky-actions {
   position: sticky;
@@ -4317,16 +4072,6 @@ dialog::backdrop {
   display: none;
 }
 
-/* 3. 右侧面板层级与防遮挡、防 0 宽铁律 */
-.companion-stage {
-  position: relative;
-  z-index: 10 !important;
-}
-
-.companion-stage .cloud-tts-btn {
-  opacity: 0.82 !important;
-}
-
 /* 4. 聊天气泡内柔和动作神态描写：高雅文字排版，彻底去除突兀的紫色补丁背景色块 */
 .assistant-prose em.rp-action,
 .user-bubble em.rp-action {
@@ -4388,7 +4133,7 @@ dialog::backdrop {
 }
 
 /* ==========================================================================
-   16. 全量交互体验、无障碍键盘操作、面板立绘共存与破坏性操作防护增强层
+   16. 全量交互体验、无障碍键盘操作与破坏性操作防护增强层
    ========================================================================== */
 
 /* 16.1 桌面端显式锁定 Grid 三栏轨道坐标，彻底杜绝侧栏 display:none 导致中央舞台掉入 0px 列塌陷 */
@@ -4455,16 +4200,8 @@ dialog::backdrop {
   }
 }
 
-/* 861px ~ 1440px：当右侧面板展开时智能避让立绘并精简顶栏次级重复按钮，确保中栏绝不拥挤且右上角 ⋯ 永远清晰可点 */
+/* 861px ~ 1440px：当右侧面板展开时精简顶栏次级重复按钮，确保中栏绝不拥挤且右上角 ⋯ 永远清晰可点 */
 @media (min-width: 861px) and (max-width: 1440px) {
-  .app-shell[data-ui-mode="roleplay"]:not(.right-collapsed) #companion-stage.companion-stage {
-    display: none !important;
-  }
-
-  .app-shell[data-ui-mode="roleplay"].right-collapsed #companion-stage.companion-stage:not(.hidden) {
-    display: flex !important;
-  }
-
   .app-shell:not(.right-collapsed) .stage-topbar #topbar-script-switch-btn,
   .app-shell:not(.right-collapsed) .stage-topbar #topbar-voice-call-btn,
   .app-shell:not(.right-collapsed) .stage-topbar #ds-share-session-btn,
@@ -5605,9 +5342,7 @@ dialog::backdrop {
 .app-shell[data-ui-mode="deepseek"] .rp-only-flex,
 .app-shell[data-ui-mode="phone-agent"] .rp-only-flex,
 .app-shell[data-ui-mode="deepseek"] .rp-only-inline,
-.app-shell[data-ui-mode="phone-agent"] .rp-only-inline,
-.app-shell[data-ui-mode="deepseek"] #companion-stage ,
-.app-shell[data-ui-mode="phone-agent"] #companion-stage {
+.app-shell[data-ui-mode="phone-agent"] .rp-only-inline {
   display: none !important;
 }
 

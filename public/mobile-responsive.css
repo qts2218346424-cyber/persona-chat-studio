@@ -282,10 +282,6 @@ body[data-ui-mode="phone-agent"] .auth-gate .info-callout {
   .app-shell[data-ui-mode="phone-agent"] .session-item .session-del-btn {
     opacity: 0.65 !important;
   }
-
-  .companion-stage .cloud-tts-btn {
-    opacity: 0.85 !important;
-  }
 }
 
 /* 触屏设备防输入框字号 <16px 触发系统浏览器强制放大跑偏，并扩展紧凑图标点击热区 */
@@ -306,83 +302,6 @@ body[data-ui-mode="phone-agent"] .auth-gate .info-callout {
     position: relative;
     min-inline-size: 36px;
     min-block-size: 36px;
-  }
-}
-
-/* ==========================================================================
-   3. 移动端陪伴立绘（<=860px）改为精致悬浮全息卡片（与抽屉断点 860px 严格对齐，绝不在桌面遮挡右侧面板）
-   ========================================================================== */
-@media (max-width: 860px) {
-  .app-shell[data-ui-mode="roleplay"] .companion-stage.hidden,
-  .app-shell[data-ui-mode="roleplay"]:not(.right-collapsed) .companion-stage {
-    display: none !important;
-  }
-
-  .app-shell[data-ui-mode="roleplay"].right-collapsed .companion-stage:not(.hidden) {
-    display: flex !important;
-    position: fixed !important;
-    right: max(10px, env(safe-area-inset-right, 0px));
-    bottom: calc(136px + env(safe-area-inset-bottom, 0px));
-    width: min(176px, 46dvw) !important;
-    max-height: min(286px, 44dvh);
-    overflow: hidden;
-    padding: 6px 7px 7px !important;
-    border-radius: 18px !important;
-    background: light-dark(rgba(255, 250, 253, 0.95), rgba(26, 20, 44, 0.95)) !important;
-    backdrop-filter: blur(8px) !important;
-    border: 1px solid var(--border-strong) !important;
-    box-shadow: 0 14px 36px rgba(28, 16, 48, 0.25) !important;
-    z-index: 75 !important;
-  }
-
-  /* 移动端悬浮立绘内精简次要图标与长云朵气泡，确保立绘与底部叮嘱按钮完整显示且绝不遮挡底部输入框 */
-  .companion-stage #comp-cycle-skin,
-  .companion-stage #comp-upload-img,
-  .companion-stage .companion-cloud,
-  .companion-stage .comp-live-status {
-    display: none !important;
-  }
-
-  .companion-stage .companion-Style-bar,
-  .companion-stage .companion-foot {
-    opacity: 1 !important;
-    pointer-events: auto !important;
-    transform: none !important;
-  }
-
-  .companion-stage .comp-foot-actions {
-    display: flex !important;
-    flex-direction: column;
-    align-items: stretch;
-    gap: 3px !important;
-    margin-top: 2px;
-  }
-
-  .companion-stage #comp-ask-remind-btn {
-    padding: 3px 6px !important;
-    font-size: 11px !important;
-  }
-
-  .companion-stage .comp-auto-check {
-    font-size: 10.5px !important;
-    justify-content: center;
-  }
-
-  .companion-stage .companion-figure-card,
-  .companion-stage .holo-3d-rig {
-    min-height: 126px !important;
-    max-height: 156px !important;
-  }
-
-  .companion-stage .companion-img,
-  .companion-stage .companion-live-canvas {
-    max-height: 148px !important;
-    width: auto !important;
-    margin: 0 auto;
-  }
-
-  .comp-mobile-close-btn {
-    display: inline-flex !important;
   }
 }
 
@@ -1386,13 +1305,7 @@ body[data-ui-mode="phone-agent"] .auth-gate .info-callout {
    6. 参考 DeepSeekGo (dsh-Go) 架构设计的原生级移动端极简高可用布局
    ========================================================================== */
 
-/* 6.1 模式隔离铁律：DeepSeek 模式下彻底杜绝角色扮演浮层、立绘和养成面板的任何遮挡 */
-.app-shell[data-ui-mode="deepseek"] #companion-stage,
-.app-shell[data-ui-mode="phone-agent"] #companion-stage,
-.app-shell[data-ui-mode="deepseek"] .companion-stage,
-.app-shell[data-ui-mode="phone-agent"] .companion-stage,
-.app-shell[data-ui-mode="deepseek"] #topbar-companion-btn,
-.app-shell[data-ui-mode="phone-agent"] #topbar-companion-btn,
+/* 6.1 模式隔离铁律：DeepSeek 模式下彻底杜绝角色扮演浮层和养成面板的任何遮挡 */
 .app-shell[data-ui-mode="deepseek"] #toggle-right-btn,
 .app-shell[data-ui-mode="phone-agent"] #toggle-right-btn,
 .app-shell[data-ui-mode="deepseek"] #topbar-persona-chip,

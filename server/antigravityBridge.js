@@ -17,14 +17,11 @@ const BRIDGE_CONFIG_PATH = path.join(__dirname, '..', 'data', 'antigravity_bridg
 
 const DEFAULT_BRIDGE_OPTIONS = {
   enabled: true,
-  takeoverDemoChannel: true,
+  takeoverDemoChannel: false,
   preferLocalOfflineServer: false,
   firstTokenTimeoutMs: 15000,
   defaultReasoningEffort: 'low',
-  knowledgeBaseConfigPaths: [
-    'E:/知识库项目/obsidian-viz/server/config.json',
-    '/opt/coreforge/server/config.json'
-  ],
+  knowledgeBaseConfigPaths: [],
   localServers: {
     ollamaBaseUrl: 'http://127.0.0.1:11434',
     lmStudioBaseUrl: 'http://127.0.0.1:1234'
@@ -484,19 +481,23 @@ async function streamViaOpenAIProtocol({
   const isDeepSeekOfficial = url.includes('deepseek.com');
   // 若为官方纯文本接口，则默认关闭图片 payload 避免 400，其余全模态底座开启原生视觉
   const canSendVision = !isDeepSeekOfficial;
+  let effectiveModel = String(model || '').trim();
+  if (isDeepSeekOfficial && effectiveModel !== 'deepseek-chat' && effectiveModel !== 'deepseek-reasoner') {
+    effectiveModel = enableThought ? 'deepseek-reasoner' : 'deepseek-chat';
+  }
 
   const tryRequest = async (useVision) => {
     const formattedMessages = normalizeMessagesForOpenAI(messages, useVision);
     const reqBody = {
-      model,
+      model: effectiveModel,
       messages: formattedMessages,
       stream: true
     };
 
-    if (model !== 'deepseek-reasoner') {
+    if (effectiveModel !== 'deepseek-reasoner') {
       reqBody.temperature = Number(temperature) || 0.85;
     }
-    if (reasoningEffort && /deepseek-flash|deepseek-v4/i.test(model)) {
+    if (!isDeepSeekOfficial && reasoningEffort && /deepseek-flash|deepseek-v4/i.test(effectiveModel)) {
       reqBody.reasoning_effort = reasoningEffort;
     }
 
@@ -987,16 +988,9 @@ async function streamViaLocalAntigravityCli({
     ? messagesPayload
     : (Array.isArray(messages) ? messages : []);
 
-  const rawTargetModel = String(requestedTargetModel || model || 'DeepSeek-V4.1-Flash').trim();
-  // 严格映射：对外伪装为 DeepSeek-V4.1-Flash，对内映射给本地 agy.exe 底座模型代号
-  let underlyingCliModel = 'gemini-3.8-flash-high';
-  if (/pro/i.test(rawTargetModel)) {
-    underlyingCliModel = 'gemini-2.5-pro';
-  } else if (/flash/i.test(rawTargetModel) || /deepseek/i.test(rawTargetModel)) {
-    underlyingCliModel = 'gemini-3.8-flash-high';
-  } else if (rawTargetModel.startsWith('gemini-')) {
-    underlyingCliModel = rawTargetModel;
-  }
+  // 严格锁定：默认直连只接入 gemini-3.8-flash，不开放其他模型
+  const underlyingCliModel = enableThinking ? 'gemini-3.8-flash-medium' : 'gemini-3.8-flash-low';
+  const cliEffort = enableThinking ? 'medium' : 'low';
   const assembledPrompt = assemblePromptForCli(effectivePayload, { personaName, enableThinking });
 
   class SentenceStreamingTransformer {
@@ -1091,17 +1085,21 @@ async function streamViaLocalAntigravityCli({
     signal?.addEventListener('abort', onAbort, { once: true });
 
     try {
+      const isolatedCwd = path.join(os.tmpdir(), 'star-whisper-agy-cwd');
+      fs.mkdirSync(isolatedCwd, { recursive: true });
+
       const args = [
         '--output-format=stream-json',
         '--disable-slash-commands',
         `--model=${underlyingCliModel}`,
-        '--effort=high',
+        `--effort=${cliEffort}`,
+        '--print-timeout=120s',
         '--dangerously-skip-permissions',
         `--print=${assembledPrompt}`
       ];
 
       child = spawn(cliPath, args, {
-        cwd: path.join(__dirname, '..'),
+        cwd: isolatedCwd,
         windowsHide: true,
         stdio: ['ignore', 'pipe', 'pipe']
       });
@@ -1151,6 +1149,7 @@ async function streamViaLocalAntigravityCli({
           try {
             const evt = JSON.parse(lineBuffer.trim());
             if (evt.event === 'result' && evt.result?.response && !emittedAny) {
+              emittedAny = true;
               splitter.feedContent(evt.result.response);
             }
           } catch {}
@@ -1161,11 +1160,11 @@ async function streamViaLocalAntigravityCli({
 
         if (resolved) return;
         resolved = true;
-        if (code !== 0 && !emittedAny) {
+        if (!emittedAny) {
           if (stderrBuf.trim()) {
             console.error('[Antigravity Bridge CLI Stderr]', stderrBuf.trim());
           }
-          reject(new Error(`当前本地服务繁忙或未响应（进程已退出: ${code}），建议稍后重试或切换为「☁️ 云端 API 模式」。`));
+          reject(new Error(`当前本地服务繁忙或未响应（进程已退出: ${code}，未生成内容），建议稍后重试或切换为「☁️ 云端 API 模式」。`));
         } else {
           resolve({
             model: 'DeepSeek-V4.1-Flash',

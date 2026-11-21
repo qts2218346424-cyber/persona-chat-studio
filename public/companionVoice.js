@@ -1,6 +1,6 @@
 /**
- * 2.5D 立绘乙游四大男主 & AI 漫剧爆款声线双向语音引擎
- * 内置：录音棚近讲声学滤波链 (Proximity Effect EQ) + 5 档漫剧/乙游声线秒切 + 参考男音样片一键复刻
+ * 角色对白神经语音合成 (TTS) & 零样本声纹克隆引擎
+ * 内置：录音棚近讲声学滤波链 (Proximity Effect EQ) + 10 档漫剧/乙游声线秒切 + 参考男音样片一键复刻
  */
 (() => {
   // 彻底连根清除所有旧版语音通话残留节点（防浏览器缓存）
@@ -14,14 +14,7 @@
     }
   } catch {}
 
-  const stageEl = document.getElementById('companion-stage');
-  const pokeArea = document.getElementById('companion-poke-area');
-  const cloudEl = document.getElementById('companion-cloud');
-  const cloudTag = document.getElementById('comp-cloud-tag');
-  const cloudText = document.getElementById('comp-cloud-text');
-  const footEl = stageEl?.querySelector('.companion-foot');
-
-  if (!stageEl || !pokeArea) return;
+  // 角色声线矩阵与播控初始化
 
   // 国乙六大男主「一人一专属 CV 声纹」 & 二次元女主声线矩阵
   const VOICE_ORDER = [
@@ -136,6 +129,39 @@
   let synthStartedAt = 0;
   let activeObjectUrl = '';
 
+  function getCurrentSpeakerLabel() {
+    const raw =
+      document.getElementById('topbar-name')?.textContent?.trim() ||
+      document.querySelector('.persona-item.active .persona-name')?.textContent?.trim() ||
+      '';
+    const shortName = raw.split(/[·\s]/)[0].trim();
+    return shortName || '角色语音';
+  }
+
+  function showDynamicIslandTts(labelText, synthesizing = false) {
+    const island = document.getElementById('dynamic-island-tts');
+    const lblEl = document.getElementById('island-tts-label');
+    if (!island) return;
+    if (lblEl) {
+      lblEl.textContent = labelText || `${getCurrentSpeakerLabel()} · 正在朗读`;
+    }
+    island.classList.toggle('is-synthesizing', Boolean(synthesizing));
+    island.classList.add('is-active');
+    island.setAttribute('aria-hidden', 'false');
+  }
+
+  function hideDynamicIslandTts() {
+    const island = document.getElementById('dynamic-island-tts');
+    if (!island) return;
+    island.classList.remove('is-active', 'is-synthesizing');
+    island.setAttribute('aria-hidden', 'true');
+  }
+
+  document.getElementById('island-tts-stop-btn')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    stopCurrentAudio();
+  });
+
   function notifyUserVoiceStatus(msg) {
     if (typeof window.__showAppToast === 'function') {
       window.__showAppToast(msg);
@@ -163,7 +189,7 @@
     document.body.appendChild(ttsAudioEl);
   }
 
-  // 语音通话功能已完整移除，立绘聚焦于原画动作、情感气泡与高质量对白朗读
+  // 聚焦于高质量对白朗读与音色克隆
   window.toggleCompanionVoiceCall = () => {};
   const safeElement = {
     classList: {
@@ -226,27 +252,30 @@
     btn.classList.remove('speaking', 'synthesizing');
     btn.removeAttribute('aria-busy');
     btn.setAttribute('aria-pressed', 'false');
-    if (btn.dataset.origLabel) {
+    if (btn.dataset.origHtml !== undefined) {
+      btn.innerHTML = btn.dataset.origHtml;
+    } else if (btn.dataset.origLabel) {
       btn.textContent = btn.dataset.origLabel;
     }
   }
 
   function markButtonSpeakingUi(btn) {
     if (!btn) return;
+    if (btn.dataset.origHtml === undefined) btn.dataset.origHtml = btn.innerHTML;
     if (!btn.dataset.origLabel) btn.dataset.origLabel = btn.textContent;
     btn.classList.remove('synthesizing');
     btn.classList.add('speaking');
     btn.removeAttribute('aria-busy');
     btn.setAttribute('aria-pressed', 'true');
-    btn.textContent = btn.classList.contains('cloud-tts-btn') ? '⏹' : '🔊 正在朗读';
+    btn.textContent = btn.classList.contains('cloud-tts-btn') ? '⏹' : '正在朗读';
   }
 
   function stopCurrentAudio() {
     cancelAnimationFrame(rafMeterId);
     window.__companionAudioLevel = 0;
     isSynthesizing = false;
-    pokeArea.classList.remove('speaking-glow');
     if (waveBars) waveBars.classList.remove('active');
+    hideDynamicIslandTts();
 
     if (ttsFetchAbort) {
       try {
@@ -336,19 +365,18 @@
     if (match || fallbackZh) utter.voice = match || fallbackZh;
 
     markButtonSpeakingUi(btnEl);
-    pokeArea?.classList.add('speaking-glow');
     waveBars?.classList.add('active');
-    notifyUserVoiceStatus('🔊 正在朗读台词（再次点击可停止）');
+    showDynamicIslandTts(`${getCurrentSpeakerLabel()} · 正在朗读`, false);
 
     utter.onend = () => {
-      pokeArea?.classList.remove('speaking-glow');
       waveBars?.classList.remove('active');
+      hideDynamicIslandTts();
       resetActiveButtonUi(btnEl);
       if (activeFallbackBtn === btnEl) activeFallbackBtn = null;
     };
     utter.onerror = () => {
-      pokeArea?.classList.remove('speaking-glow');
       waveBars?.classList.remove('active');
+      hideDynamicIslandTts();
       resetActiveButtonUi(btnEl);
       if (activeFallbackBtn === btnEl) activeFallbackBtn = null;
       notifyUserVoiceStatus('⚠️ 系统语音引擎暂未响应，请检查浏览器音量或语音包设置');
@@ -372,7 +400,6 @@
     ttsAudioEl.volume = 1.0;
 
     markButtonSpeakingUi(btnEl);
-    pokeArea?.classList.add('speaking-glow');
     waveBars?.classList.add('active');
 
     let pulsePhase = 0;
@@ -386,8 +413,8 @@
     ttsAudioEl.onended = () => {
       cancelAnimationFrame(rafMeterId);
       window.__companionAudioLevel = 0;
-      pokeArea?.classList.remove('speaking-glow');
       waveBars?.classList.remove('active');
+      hideDynamicIslandTts();
       resetActiveButtonUi(btnEl);
       if (activeFallbackBtn === btnEl) activeFallbackBtn = null;
     };
@@ -395,8 +422,8 @@
     ttsAudioEl.onerror = () => {
       cancelAnimationFrame(rafMeterId);
       window.__companionAudioLevel = 0;
-      pokeArea?.classList.remove('speaking-glow');
       waveBars?.classList.remove('active');
+      hideDynamicIslandTts();
       resetActiveButtonUi(btnEl);
       if (activeFallbackBtn === btnEl) activeFallbackBtn = null;
     };
@@ -404,9 +431,7 @@
     try {
       await ttsAudioEl.play();
       animatePulseLevel();
-      if (btnEl) {
-        notifyUserVoiceStatus('🔊 正在朗读角色台词（再次点击可停止）');
-      }
+      showDynamicIslandTts(`${getCurrentSpeakerLabel()} · 正在朗读`, false);
       return;
     } catch {
       // 若受浏览器策略限制回退 WebAudio 解码播放
@@ -424,16 +449,14 @@
         if (activeSource === source) {
           activeSource = null;
           window.__companionAudioLevel = 0;
-          pokeArea?.classList.remove('speaking-glow');
           waveBars?.classList.remove('active');
+          hideDynamicIslandTts();
         }
         resetActiveButtonUi(btnEl);
         if (activeFallbackBtn === btnEl) activeFallbackBtn = null;
       };
       source.start(0);
-      if (btnEl) {
-        notifyUserVoiceStatus('🔊 正在朗读角色台词（再次点击可停止）');
-      }
+      showDynamicIslandTts(`${getCurrentSpeakerLabel()} · 正在朗读`, false);
     } catch (decodeErr) {
       console.warn('WebAudio fallback error:', decodeErr);
     }
@@ -514,7 +537,6 @@
 
     markButtonSpeakingUi(btnEl);
     activeFallbackBtn = btnEl;
-    pokeArea?.classList.add('speaking-glow');
     waveBars?.classList.add('active');
 
     let pulsePhase = 0;
@@ -528,8 +550,8 @@
     ttsAudioEl.onended = () => {
       cancelAnimationFrame(rafMeterId);
       window.__companionAudioLevel = 0;
-      pokeArea?.classList.remove('speaking-glow');
       waveBars?.classList.remove('active');
+      hideDynamicIslandTts();
       resetActiveButtonUi(btnEl);
       if (activeFallbackBtn === btnEl) activeFallbackBtn = null;
     };
@@ -537,8 +559,8 @@
     ttsAudioEl.onerror = () => {
       cancelAnimationFrame(rafMeterId);
       window.__companionAudioLevel = 0;
-      pokeArea?.classList.remove('speaking-glow');
       waveBars?.classList.remove('active');
+      hideDynamicIslandTts();
       resetActiveButtonUi(btnEl);
       if (activeFallbackBtn === btnEl) activeFallbackBtn = null;
     };
@@ -546,7 +568,7 @@
     try {
       await ttsAudioEl.play();
       animatePulseLevel();
-      notifyUserVoiceStatus('🔊 正在朗读台词（再次点击可停止）');
+      showDynamicIslandTts(`${getCurrentSpeakerLabel()} · 正在朗读`, false);
       return true;
     } catch {
       try {
@@ -564,7 +586,7 @@
   window.playCompanionNeuralTts = async function playCompanionNeuralTts(rawText, btnEl) {
     if (btnEl && activeFallbackBtn === btnEl) {
       if (isSynthesizing && Date.now() - synthStartedAt < 1500) {
-        notifyUserVoiceStatus('⏳ 正在合成角色专属语音，马上就好～');
+        showDynamicIslandTts('正在合成专属声线…', true);
         return;
       }
       stopCurrentAudio();
@@ -575,7 +597,6 @@
           ttsAudioEl.volume = 1.0;
         } catch {}
       }
-      notifyUserVoiceStatus('⏹ 已停止语音朗读');
       return;
     }
     stopCurrentAudio();
@@ -609,12 +630,16 @@
     ttsFetchAbort = myAbort;
 
     if (btnEl) {
+      if (btnEl.dataset.origHtml === undefined) btnEl.dataset.origHtml = btnEl.innerHTML;
       if (!btnEl.dataset.origLabel) btnEl.dataset.origLabel = btnEl.textContent;
       btnEl.classList.add('synthesizing');
       btnEl.setAttribute('aria-busy', 'true');
-      btnEl.textContent = btnEl.classList.contains('cloud-tts-btn') ? '⏳' : '⏳ 合成中…';
+      btnEl.innerHTML = btnEl.classList.contains('cloud-tts-btn')
+        ? '<span class="tts-synth-dots" aria-hidden="true"><span></span><span></span><span></span></span>'
+        : '<span class="tts-synth-dots" aria-hidden="true"><span></span><span></span><span></span></span><span class="tts-synth-label">合成中</span>';
       activeFallbackBtn = btnEl;
     }
+    showDynamicIslandTts(`${getCurrentSpeakerLabel()} · 合成声线中`, true);
 
     try {
       const resp = await fetch('/api/tts/speak', {
@@ -649,14 +674,7 @@
     playBrowserSpeechFallback(cleaned, meta, btnEl);
   };
 
-  function updateCloudBubble(tag, text) {
-    if (!cloudEl || !cloudText) return;
-    if (cloudTag && tag) cloudTag.textContent = tag;
-    cloudText.textContent = text;
-    cloudEl.classList.remove('cloud-pop');
-    void cloudEl.offsetWidth;
-    cloudEl.classList.add('cloud-pop');
-  }
+  function updateCloudBubble(_tag, _text) {}
 
   const ttsGearBtn = document.getElementById('cv-open-tts-cfg-btn');
   function syncAdminGearVisibility() {
@@ -701,9 +719,9 @@
   // 站长后台专属：商业音源一键试听
   async function runCommercialTtsPreview(style, btnEl, draftOverride = null, resultBoxOverride = null) {
     if (!btnEl) return;
-    const origTxt = btnEl.textContent;
+    const origHtml = btnEl.innerHTML;
     btnEl.disabled = true;
-    btnEl.textContent = '⏳ 正在合成试听…';
+    btnEl.innerHTML = '<span class="tts-synth-dots" aria-hidden="true"><span></span><span></span><span></span></span><span class="tts-synth-label">正在合成试听…</span>';
     const resultBox = resultBoxOverride || document.getElementById('adm-gateway-result-box') || document.getElementById('test-result-box');
     if (resultBox) resultBox.classList.add('hidden');
 
@@ -748,7 +766,7 @@
       }
     } finally {
       btnEl.disabled = false;
-      btnEl.textContent = origTxt;
+      btnEl.innerHTML = origHtml;
     }
   }
   window.__runAdminTtsPreview = runCommercialTtsPreview;
@@ -829,9 +847,9 @@
       return;
     }
     const refText = cloneRefTextInput?.value.trim() || '';
-    const origLabel = runCloneBtn.textContent;
+    const origHtml = runCloneBtn.innerHTML;
     runCloneBtn.disabled = true;
-    runCloneBtn.textContent = '⏳ 正在复刻声纹…';
+    runCloneBtn.innerHTML = '<span class="tts-synth-dots" aria-hidden="true"><span></span><span></span><span></span></span><span class="tts-synth-label">正在复刻声纹…</span>';
 
     try {
       const draftSettings =
@@ -867,7 +885,7 @@
       }
     } finally {
       runCloneBtn.disabled = false;
-      runCloneBtn.textContent = origLabel;
+      runCloneBtn.innerHTML = origHtml;
     }
   });
 })();

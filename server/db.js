@@ -370,6 +370,9 @@ ensureColumn('memories', 'slot_key', 'TEXT DEFAULT NULL');
 ensureColumn('memories', 'strength', 'REAL NOT NULL DEFAULT 3.0');
 ensureColumn('memories', 'recall_count', 'INTEGER NOT NULL DEFAULT 0');
 ensureColumn('memories', 'last_recalled_at', 'INTEGER NOT NULL DEFAULT 0');
+ensureColumn('memories', 'superseded_by', 'TEXT DEFAULT NULL');
+ensureColumn('sessions', 'last_dream_at', 'INTEGER NOT NULL DEFAULT 0');
+ensureColumn('sessions', 'current_chapter_index', 'INTEGER NOT NULL DEFAULT 0');
 
 function genId(prefix = 'id') {
   return `${prefix}_${crypto.randomBytes(6).toString('hex')}`;
@@ -804,8 +807,8 @@ const TASK_DEFINITIONS = [
     key: 'daily_interactive',
     type: 'daily',
     icon: '🎬',
-    title: '体验场景切换或立绘互动',
-    desc: '切换 1 次故事场景、开启平行分支，或戳一戳陪伴立绘',
+    title: '体验场景切换或平行分支',
+    desc: '切换 1 次故事场景，或开启平行对话分支',
     target: 1,
     reward_points: 20,
     reward_credits: 0
@@ -941,7 +944,7 @@ const STORY_SCRIPTS = [
     subtitle: '男女主一对一沉浸恋爱 · 点选角色即刻畅聊',
     player_role: '命中注定的心上人',
     synopsis:
-      '汇集高冷御姐、甜美学妹、清冷师姐、神秘歌姬与六大乙游男主，支持 2.5D 立体陪伴立绘、专属真声配音与好感度养成，无需任何配置点开即聊。',
+      '汇集高冷御姐、甜美学妹、清冷师姐、神秘歌姬与六大乙游男主，支持专属真声配音、心声独白推演与四阶好感度养成，无需任何配置点开即聊。',
     chapters: [
       {
         title: '🌧️ 情景一 · 雨夜独处与微温热饮',

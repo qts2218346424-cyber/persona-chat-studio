@@ -135,22 +135,26 @@ function buildLocalSmartAnalysis({ filename = '', rawText = '', focusMode = 'bal
     {
       title: `${icon} 第一幕 · 初遇与悬念起航`,
       note: `【第一幕】在《${title}》的开篇场景中，{{user}}与${leadName}因一桩突发小事件结成搭档，确立共同要完成的核心目标。`,
-      opener: `*看着眼前的局势，我深吸一口气朝你伸出手* 既然目标一致，那从今天起我们就是正式搭档了——第一步我们先从哪里入手？`
+      opener: `*看着眼前的局势，我深吸一口气朝你伸出手* 既然目标一致，那从今天起我们就是正式搭档了——第一步我们先从哪里入手？`,
+      checkpoint: { hint: '确立搭档约定并决定迈出第一步调查', keywords: ['搭档', '约定', '出发', '开始', '线索'], min_turns: 3 }
     },
     {
       title: `🌤️ 第二幕 · 并肩调查与暗流升温`,
       note: `【第二幕】两人共同克服第一道阻碍并找到关键线索，日常拌嘴与默契配合中关系迅速升温，但更深层的隐患初露端倪。`,
-      opener: `*把刚刚找到的关键线索摊开在桌上，抬头看向身旁的你* 果然没那么简单……你看这里留下的痕迹，是不是和你之前隐瞒的事有关？`
+      opener: `*把刚刚找到的关键线索摊开在桌上，抬头看向身旁的你* 果然没那么简单……你看这里留下的痕迹，是不是和你之前隐瞒的事有关？`,
+      checkpoint: { hint: '发现第一条关键线索并察觉背后隐藏秘密', keywords: ['秘密', '真相', '隐瞒', '发现', '痕迹'], min_turns: 4 }
     },
     {
       title: `🌧️ 第三幕 · 雨夜转折与心结摊牌`,
       note: `【第三幕】危机骤然逼近，${leadName}一直独自背负的过往秘密或代价被迫揭开，在脆弱与动摇的雨夜里，{{user}}选择坚定握住对方的手。`,
-      opener: `*窗外雨声渐急，我拦住想独自去承担一切的你，认真直视你的眼睛* 不许再一个人扛着了——把你一直瞒着我的真相全说出来，我们一起面对！`
+      opener: `*窗外雨声渐急，我拦住想独自去承担一切的你，认真直视你的眼睛* 不许再一个人扛着了——把你一直瞒着我的真相全说出来，我们一起面对！`,
+      checkpoint: { hint: '揭开心结与过去真相并决定共同面对', keywords: ['一起', '面对', '相信', '过去', '约定'], min_turns: 4 }
     },
     {
       title: `✨ 终幕 · 破局微光与改写的结局`,
       note: `【终幕】集齐一路积累的信任与线索，两人并肩跨过最大难关，在晨光与微风中迎来只属于彼此的圆满谢幕。`,
-      opener: `*最艰难的时刻终于跨过去了，晨光重新照亮四周，我转头朝如释重负的你露出笑容* 你看，我们真的把结局改写过来了！`
+      opener: `*最艰难的时刻终于跨过去了，晨光重新照亮四周，我转头朝如释重负的你露出笑容* 你看，我们真的把结局改写过来了！`,
+      checkpoint: { hint: '跨越危机迎来属于彼此的改写结局', keywords: ['结局', '改写', '未来', '永远', '光'], min_turns: 4 }
     }
   ];
 
@@ -237,7 +241,12 @@ async function analyzeAndOptimizeScript({ filename = '', rawText = '', focusMode
             player_role: '玩家在本剧中的具体身份定位',
             synopsis: '100字左右引人入胜的剧本世界观导语',
             chapters: [
-              { title: '🌸 第一幕 · 章节名', note: '本幕剧情背景与推进目标导演注', opener: '*动作描写* 玩家切入本幕的第一句台词' }
+              {
+                title: '🌸 第一幕 · 章节名',
+                note: '本幕剧情背景与推进目标导演注',
+                opener: '*动作描写* 玩家切入本幕的第一句台词',
+                checkpoint: { hint: '解锁下一幕的关键剧情目标', keywords: ['触发词1', '触发词2'], min_turns: 3 }
+              }
             ]
           },
           personas: [
@@ -312,7 +321,20 @@ async function analyzeAndOptimizeScript({ filename = '', rawText = '', focusMode
               subtitle: String(parsed.script.subtitle || 'AI 精修多幕互动剧').trim(),
               player_role: String(parsed.script.player_role || '剧中同行者').trim(),
               synopsis: String(parsed.script.synopsis || '').trim(),
-              chapters: Array.isArray(parsed.script.chapters) ? parsed.script.chapters.slice(0, 5) : []
+              chapters: Array.isArray(parsed.script.chapters)
+                ? parsed.script.chapters.slice(0, 5).map((ch, idx) => ({
+                    title: String(ch?.title || `第 ${idx + 1} 幕`).trim(),
+                    note: String(ch?.note || '').trim(),
+                    opener: String(ch?.opener || '').trim(),
+                    checkpoint: {
+                      hint: String(ch?.checkpoint?.hint || '').trim(),
+                      keywords: Array.isArray(ch?.checkpoint?.keywords)
+                        ? ch.checkpoint.keywords.map((k) => String(k || '').trim()).filter(Boolean).slice(0, 6)
+                        : [],
+                      min_turns: Math.max(2, Number(ch?.checkpoint?.min_turns) || 3)
+                    }
+                  }))
+                : []
             },
             personas: parsed.personas.slice(0, 4).map((p) => ({
               avatar: String(p.avatar || '🌸').slice(0, 4),

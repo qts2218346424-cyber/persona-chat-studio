@@ -195,7 +195,7 @@ function recallRelevantMemories(
 ) {
   const now = Date.now();
   const allMemories = db
-    .prepare('SELECT * FROM memories WHERE session_id = ? ORDER BY pinned DESC, importance DESC, updated_at DESC')
+    .prepare('SELECT * FROM memories WHERE session_id = ? AND superseded_by IS NULL ORDER BY pinned DESC, importance DESC, updated_at DESC')
     .all(sessionId);
 
   if (allMemories.length === 0) return [];
@@ -352,17 +352,79 @@ function extractFactsFromUserTurn(sessionId, userMessage) {
     },
     {
       category: 'fact',
+      slot_key: 'pref_drink',
+      importance: 4,
+      pinned: 0,
+      regex: /(?:我?(?:最近|现在|其实)?(?:改喝|只喝|爱喝|喜欢喝|偏爱喝|常喝|戒掉了?|不再喝|不喜欢喝|讨厌喝))\s*([^，,。！？!?\n]{2,36})/u,
+      format: (m) => `饮品偏好与变化：${m[0].trim()}`
+    },
+    {
+      category: 'fact',
+      slot_key: 'pref_food',
+      importance: 4,
+      pinned: 0,
+      regex: /(?:我?(?:最近|现在|其实)?(?:改吃|只吃|爱吃|喜欢吃|偏爱吃|常吃|不爱吃|不再吃|不喜欢吃|讨厌吃))\s*([^，,。！？!?\n]{2,36})/u,
+      format: (m) => `饮食偏好与变化：${m[0].trim()}`
+    },
+    {
+      category: 'fact',
       slot_key: null,
       importance: 4,
       pinned: 0,
-      regex: /(?:我最喜欢|我喜欢吃|我喜欢喝|我习惯用|我偏好|我讨厌|我最怕|我的生日是)\s*([^。！？!?\n]{2,56})/u,
-      format: (m) => `个人偏好与习惯：${m[0].trim()}`
+      regex: /(?:我?(?:最近|现在|其实)?(?:最喜欢|最爱|挺喜欢|很喜欢|喜欢|习惯用|偏好|不再喜欢|不喜欢|讨厌|最怕|害怕))\s*([^，,。！？!?\n]{2,48})/u,
+      validate: (m) => {
+        const val = String(m[1] || '').trim();
+        return val.length >= 2 && !/^(?:什么|这个|那个|这样|那样|这里|那里)$/.test(val);
+      },
+      format: (m) => `个人偏好与情感倾向：${m[0].trim()}`
+    },
+    {
+      category: 'fact',
+      slot_key: 'mood_status',
+      importance: 3,
+      pinned: 0,
+      regex: /(?:我?(?:最近|现在|其实|今天|这几天)(?:状态|心情|感觉|有点|有些|一直)?(?:很|挺|特别|有点|有些)?(?:累|疲惫|难过|开心|焦虑|失眠|兴奋|开心|紧张|忙|压力大))\s*([^。！？!?\n]{0,36})/u,
+      format: (m) => `近期心境与状态：${m[0].trim()}`
+    },
+    {
+      category: 'fact',
+      slot_key: 'user_birthday',
+      importance: 5,
+      pinned: 1,
+      regex: /(?:我的生日是|我生日在)\s*([^，,。！？!?\n]{2,32})/u,
+      format: (m) => `重要纪念日：${m[0].trim()}`
     }
   ];
 
-  const existingRows = db.prepare('SELECT * FROM memories WHERE session_id = ?').all(sessionId);
+  const inferMemoryTopicAndPolarity = (text, slotKey) => {
+    const clean = String(text || '').trim();
+    const isNeg = /(?:不再喜欢|不喜欢|讨厌|最怕|害怕|戒掉|不爱吃|不再吃|不再喝|讨厌吃|讨厌喝|拒绝)/.test(clean);
+    let topic = slotKey || '';
+    if (!topic) {
+      if (/喝|茶|咖啡|奶茶|拿铁|可乐|酒|水/.test(clean)) topic = 'pref_drink';
+      else if (/吃|甜点|火锅|面|蛋糕|水果|辛辣|辣/.test(clean)) topic = 'pref_food';
+      else if (/睡|熬夜|累|心情|焦虑|难过|开心|失眠|压力/.test(clean)) topic = 'mood_status';
+      else if (/颜色|蓝|红|黑|白|粉|紫|金/.test(clean)) topic = 'pref_color';
+      else {
+        const subjectMatch = clean.replace(/^[^：]+：/, '').replace(/(?:我|最近|现在|其实|最喜欢|最爱|不再喜欢|不喜欢|讨厌|喜欢|偏好|习惯用|害怕|最怕)/g, '').trim();
+        const subjectKey = subjectMatch.replace(/[^\u4e00-\u9fa5a-zA-Z0-9]/g, '').slice(0, 6);
+        if (subjectKey.length >= 2) topic = `subj_${subjectKey}`;
+      }
+    }
+    return { topic, polarity: isNeg ? -1 : 1 };
+  };
+
+  const existingRows = db
+    .prepare('SELECT * FROM memories WHERE session_id = ? AND superseded_by IS NULL')
+    .all(sessionId);
   const now = Date.now();
   const extracted = [];
+
+  const supersedeOldStmt = db.prepare(`
+    UPDATE memories
+    SET superseded_by = ?, pinned = 0, updated_at = ?
+    WHERE id = ?
+  `);
 
   const updateSlotStmt = db.prepare(`
     UPDATE memories
@@ -372,8 +434,8 @@ function extractFactsFromUserTurn(sessionId, userMessage) {
   `);
 
   const insertStmt = db.prepare(`
-    INSERT INTO memories (id, session_id, category, slot_key, content, pinned, importance, strength, recall_count, last_recalled_at, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
+    INSERT INTO memories (id, session_id, category, slot_key, content, pinned, importance, strength, recall_count, last_recalled_at, superseded_by, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, NULL, ?, ?)
   `);
 
   for (const seg of segments) {
@@ -385,30 +447,77 @@ function extractFactsFromUserTurn(sessionId, userMessage) {
 
       const factText = rule.format(match);
       const isPinned = rule.pinned ? 1 : 0;
+      const newInfo = inferMemoryTopicAndPolarity(factText, rule.slot_key);
+      const effectiveSlot = rule.slot_key || (newInfo.topic ? newInfo.topic : null);
 
-      // 1. 唯一槽位冲突覆盖（如修改称呼、切换当前技术栈，直接平滑覆盖旧槽位）
-      if (rule.slot_key) {
-        const sameSlot = existingRows.find((r) => r.slot_key === rule.slot_key);
-        if (sameSlot) {
-          if (sameSlot.content !== factText) {
-            updateSlotStmt.run(factText, isPinned, now, now, sameSlot.id);
-            sameSlot.content = factText;
-            sameSlot.pinned = Math.max(sameSlot.pinned || 0, isPinned);
-            extracted.push({
-              id: sameSlot.id,
-              category: rule.category,
-              content: factText,
-              updated_existing: true
-            });
+      // 1. 唯一槽位或同主题冲突检测（Memory Superseding）：如旧记忆存在冲突，标记 superseded_by 而非保留打架
+      let conflictTarget = null;
+      if (effectiveSlot) {
+        conflictTarget = existingRows.find(
+          (r) => !r.superseded_by && (r.slot_key === effectiveSlot || inferMemoryTopicAndPolarity(r.content, r.slot_key).topic === effectiveSlot)
+        );
+      }
+      if (!conflictTarget && newInfo.topic) {
+        const newCoreTokens = tokenizeForRecall(factText.replace(/(?:不再喜欢|不喜欢|讨厌|喜欢|最爱|偏好|其实|最近|现在)/g, ''));
+        conflictTarget = existingRows.find((r) => {
+          if (r.superseded_by) return false;
+          const oldInfo = inferMemoryTopicAndPolarity(r.content, r.slot_key);
+          if (oldInfo.topic && oldInfo.topic === newInfo.topic) return true;
+          if (oldInfo.polarity !== newInfo.polarity && newCoreTokens.size > 0) {
+            const oldTokens = tokenizeForRecall(r.content);
+            for (const t of newCoreTokens) {
+              if (oldTokens.has(t)) return true;
+            }
           }
+          return false;
+        });
+      }
+
+      if (conflictTarget) {
+        if (conflictTarget.content === factText) {
           continue;
         }
+        const newId = genId('mem');
+        const initStrength = isPinned || conflictTarget.pinned === 1 ? 12.0 : 7.0;
+        const keepPinned = isPinned || conflictTarget.pinned === 1 ? 1 : 0;
+        insertStmt.run(
+          newId,
+          sessionId,
+          rule.category,
+          effectiveSlot,
+          factText,
+          keepPinned,
+          rule.importance,
+          initStrength,
+          now,
+          now,
+          now
+        );
+        supersedeOldStmt.run(newId, now, conflictTarget.id);
+        conflictTarget.superseded_by = newId;
+        existingRows.push({
+          id: newId,
+          category: rule.category,
+          slot_key: effectiveSlot,
+          content: factText,
+          pinned: keepPinned,
+          superseded_by: null
+        });
+        extracted.push({
+          id: newId,
+          category: rule.category,
+          content: factText,
+          superseded_id: conflictTarget.id,
+          updated_existing: true
+        });
+        continue;
       }
 
       // 2. 高重合度近似记忆合并检测
       const newTokens = tokenizeForRecall(factText);
       let duplicateOrSimilar = null;
       for (const old of existingRows) {
+        if (old.superseded_by) continue;
         if (old.content === factText) {
           duplicateOrSimilar = { exact: true, row: old };
           break;
@@ -445,7 +554,7 @@ function extractFactsFromUserTurn(sessionId, userMessage) {
         id,
         sessionId,
         rule.category,
-        rule.slot_key || null,
+        effectiveSlot,
         factText,
         isPinned,
         rule.importance,
@@ -454,7 +563,7 @@ function extractFactsFromUserTurn(sessionId, userMessage) {
         now,
         now
       );
-      existingRows.push({ id, category: rule.category, slot_key: rule.slot_key, content: factText, pinned: isPinned });
+      existingRows.push({ id, category: rule.category, slot_key: effectiveSlot, content: factText, pinned: isPinned, superseded_by: null });
       extracted.push({ id, category: rule.category, content: factText, updated_existing: false });
     }
   }
@@ -696,10 +805,104 @@ function selectBudgetedActiveWindow(allMessages, maxTurns = 40, maxTokenBudget =
   return chosen;
 }
 
+function resolveScriptChaptersForSession(session, persona) {
+  const scriptId = persona?.script_id || '';
+  if (!scriptId) return [];
+  const builtin = (STORY_SCRIPTS || []).find((s) => s.id === scriptId);
+  if (builtin && Array.isArray(builtin.chapters)) {
+    return builtin.chapters;
+  }
+  try {
+    const customSc = db.prepare('SELECT chapters_json FROM user_scripts WHERE id = ?').get(scriptId);
+    if (customSc?.chapters_json) {
+      const parsed = JSON.parse(customSc.chapters_json);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch {}
+  return [];
+}
+
+function evaluateChapterProgression({ sessionId, persona, userText = '', assistantText = '', triggeredLorebooks = [] }) {
+  const session = db.prepare('SELECT * FROM sessions WHERE id = ?').get(sessionId);
+  if (!session || session.session_mode === 'deepseek_native') return null;
+  const chapters = resolveScriptChaptersForSession(session, persona);
+  if (!Array.isArray(chapters) || chapters.length <= 1) return null;
+
+  const currentIdx = Math.max(0, Math.min(chapters.length - 1, Number(session.current_chapter_index) || 0));
+  if (currentIdx >= chapters.length - 1) return null;
+
+  const curChap = chapters[currentIdx] || {};
+  const nextChap = chapters[currentIdx + 1] || {};
+  const combinedTurnText = `${userText || ''} ${assistantText || ''}`;
+
+  // 检查是否已触发该角色全部世界书伏笔
+  let allLoreTriggered = false;
+  try {
+    const totalLoreRows = db
+      .prepare("SELECT id FROM lorebook_entries WHERE persona_id = ? AND (user_id = 'system' OR user_id = ?) AND enabled = 1")
+      .all(session.persona_id, session.user_id);
+    if (totalLoreRows.length > 0) {
+      const recentMsgs = db
+        .prepare("SELECT content FROM messages WHERE session_id = ? ORDER BY id DESC LIMIT 12")
+        .all(sessionId)
+        .map((m) => m.content || '')
+        .join(' ');
+      const matched = matchLorebookEntries(session.persona_id, session.user_id, `${recentMsgs} ${combinedTurnText}`);
+      if (matched.length >= totalLoreRows.length) {
+        allLoreTriggered = true;
+      }
+    }
+  } catch {}
+
+  const cp = curChap.checkpoint || {};
+  const cpKeywords = Array.isArray(cp.keywords) ? cp.keywords.filter(Boolean) : [];
+  const nextTitleTokens = String(nextChap.title || '').replace(/^[^\u4e00-\u9fa5a-zA-Z0-9]+/, '').split(/[·\s、，]+/).filter((w) => w.length >= 2);
+  const minTurns = Math.max(2, Number(cp.min_turns) || 4);
+
+  const userTurnCount = db
+    .prepare("SELECT COUNT(*) AS cnt FROM messages WHERE session_id = ? AND role = 'user'")
+    .get(sessionId)?.cnt || 0;
+
+  const hitCheckpointKeyword = cpKeywords.some((kw) => combinedTurnText.includes(String(kw)));
+  const hitTransitionCue = nextTitleTokens.some((tok) => combinedTurnText.includes(tok));
+  const enoughTurnsAndHint =
+    userTurnCount >= (currentIdx + 1) * minTurns &&
+    (hitCheckpointKeyword || hitTransitionCue || (triggeredLorebooks && triggeredLorebooks.length > 0));
+
+  if (!allLoreTriggered && !hitCheckpointKeyword && !enoughTurnsAndHint) {
+    return null;
+  }
+
+  const nextIdx = currentIdx + 1;
+  const nextNote = String(nextChap.note || nextChap.title || '').trim();
+  db.prepare(`
+    UPDATE sessions
+    SET current_chapter_index = ?, director_note = ?, updated_at = ?
+    WHERE id = ?
+  `).run(nextIdx, nextNote, Date.now(), sessionId);
+
+  return {
+    advanced: true,
+    previous_index: currentIdx,
+    current_index: nextIdx,
+    act_number: nextIdx + 1,
+    total_acts: chapters.length,
+    chapter: nextChap
+  };
+}
+
 /**
  * 构建四维长效上下文载荷（核心设定锚点 + 永久置顶/艾宾浩斯长期记忆 + 高保真分层滚动摘要 + Token 预算守护长滑动窗口）
  */
-function buildThreeTierContext({ sessionId, expectedUserId = null, latestUserText, settings, reinforceMemories = false }) {
+function buildThreeTierContext({
+  sessionId,
+  expectedUserId = null,
+  latestUserText,
+  settings,
+  reinforceMemories = false,
+  skipSyncCompression = false,
+  includeFollowUps = false
+}) {
   const session = db.prepare('SELECT * FROM sessions WHERE id = ?').get(sessionId);
   if (!session) throw new Error('未找到对应的对话会话');
   if (expectedUserId && session.user_id !== expectedUserId) {
@@ -715,7 +918,9 @@ function buildThreeTierContext({ sessionId, expectedUserId = null, latestUserTex
   const slidingTurns = isNativeMode ? Math.max(48, configuredTurns) : configuredTurns;
   const maxRecall = Math.max(6, parseInt(settings.max_recalled_memories || '16', 10));
 
-  const rollingSummary = compressOverflowHistorySync(sessionId, slidingTurns);
+  const rollingSummary = skipSyncCompression
+    ? session.rolling_summary || ''
+    : compressOverflowHistorySync(sessionId, slidingTurns);
   const rawPersona = resolveEffectivePersona(session);
   const persona = {
     ...rawPersona,
@@ -867,16 +1072,34 @@ function buildThreeTierContext({ sessionId, expectedUserId = null, latestUserTex
 
   // 固定输出协议置于静态前缀后紧接位置，防止因动态记忆增减导致前缀漂移
   const enableThought = isNativeMode ? session.ds_thinking === 1 : session.enable_inner_thought === 1;
+  const followUpTailProtocol =
+    includeFollowUps && !isNativeMode
+      ? `\n\n## 隐藏玩家建议协议（严格执行 · 绝不暴露给玩家）\n在整段台词与动作描写完全结束后的最末一行，额外输出一行机器标签：\`<followups>["建议回复1","建议回复2","建议回复3"]</followups>\`，给出 3 条站在玩家视角紧扣本轮剧情的 12~34 字自然回复选项（JSON 字符串数组格式）。严禁在正文中提及该标签。`
+      : '';
   const thoughtProtocolBlock = isNativeMode
     ? ''
     : enableThought
-    ? `## 角色心声独白协议\n正式回复前先在最开头用 \`<think>...</think>\` 写一小段第一人称真实心理反应（25~70字，紧扣对方刚说的话产生即时情绪波动或吐槽，自然口语化、不要总结规则或写八股），然后在 \`</think>\` 后直接自然接上对话与动作。`
-    : `## 输出格式要求\n请直接输出角色台词与神态描写，不要输出 \`<think>\` 标签。`;
+    ? `## 角色心声独白协议\n正式回复前先在最开头用 \`<think>...</think>\` 写一小段第一人称真实心理反应（25~70字，紧扣对方刚说的话产生即时情绪波动或吐槽，自然口语化、不要总结规则或写八股），然后在 \`</think>\` 后直接自然接上对话与动作。${followUpTailProtocol}`
+    : `## 输出格式要求\n请直接输出角色台词与神态描写，不要输出 \`<think>\` 标签。${followUpTailProtocol}`;
 
-  // 第二层：会话级独立长期记忆锚点 + 分层滚动前情摘要 + 世界书词条（去除每轮浮动的鲜活度百分比数字以稳定缓存前缀）
+  // 第二层：会话级独立长期记忆锚点 + 分层滚动前情摘要 + 世界书词条 + 当前剧本幕次导演指引
   const tier2Parts = [];
   const pinnedMems = recalledMemories.filter((m) => m.pinned === 1);
   const dynamicMems = recalledMemories.filter((m) => m.pinned !== 1);
+
+  if (!isNativeMode) {
+    const chapters = resolveScriptChaptersForSession(session, rawPersona);
+    if (chapters.length > 0) {
+      const chapIdx = Math.max(0, Math.min(chapters.length - 1, Number(session.current_chapter_index) || 0));
+      const curChap = chapters[chapIdx];
+      if (curChap) {
+        const cpHint = curChap.checkpoint?.hint ? `\n- 本幕剧情推进锚点：${curChap.checkpoint.hint}` : '';
+        tier2Parts.push(
+          `## 当前剧本幕次导演指引（第 ${chapIdx + 1} / ${chapters.length} 幕：${curChap.title || ''}）\n- 剧情大纲：${replaceRoleplayMacros(curChap.note || '', userNick, persona.name)}${cpHint}`
+        );
+      }
+    }
+  }
 
   if (pinnedMems.length > 0) {
     const pinLines = pinnedMems.map((m) => `- [核心记忆] ${m.content}`);
@@ -950,5 +1173,7 @@ module.exports = {
   matchLorebookEntries,
   compressOverflowHistorySync,
   resolveEffectivePersona,
+  resolveScriptChaptersForSession,
+  evaluateChapterProgression,
   buildThreeTierContext
 };

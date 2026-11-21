@@ -80,11 +80,30 @@ function evaluateTurnNurturing(sessionId, userText) {
 
   const text = String(userText || '').trim();
   const plainLen = text.replace(/[\s\p{P}*＊]/gu, '').length;
+  const prevMood = session.current_mood || '温柔浅笑';
   let dAff = 0;
   let dTrust = 0;
   let dInt = 0;
   let reason = '';
-  let nextMood = session.current_mood || '✨ 专注倾听';
+  let nextMood = prevMood;
+
+  // 反刷分防抖：检测最近两轮用户发言是否短时间内高度重复或纯字数堆砌
+  let isSpamOrDuplicate = false;
+  try {
+    const recentUsers = db
+      .prepare("SELECT content, created_at FROM messages WHERE session_id = ? AND role = 'user' ORDER BY id DESC LIMIT 2")
+      .all(sessionId);
+    if (recentUsers.length >= 2) {
+      const cur = recentUsers[0];
+      const prev = recentUsers[1];
+      const dt = Math.abs((cur.created_at || 0) - (prev.created_at || 0));
+      const normA = String(cur.content || '').replace(/\s+/g, '').slice(0, 40);
+      const normB = String(prev.content || '').replace(/\s+/g, '').slice(0, 40);
+      if ((dt < 15000 && normA && normA === normB) || (dt < 8000 && plainLen > 45 && normA.slice(0, 12) === normB.slice(0, 12))) {
+        isSpamOrDuplicate = true;
+      }
+    }
+  } catch {}
 
   if (/讨厌|走开|别管我|烦死|滚/.test(text)) {
     dAff = 0;
@@ -120,6 +139,13 @@ function evaluateTurnNurturing(sessionId, userText) {
     nextMood = '✨ 专注倾听';
   }
 
+  if (isSpamOrDuplicate) {
+    dAff = 0;
+    dTrust = 0;
+    dInt = 0;
+    reason = '';
+  }
+
   const newAff = clampStat((session.affection ?? 22) + dAff);
   const newTrust = clampStat((session.trust ?? 26) + dTrust);
   const newInt = clampStat((session.intimacy ?? 18) + dInt);
@@ -133,6 +159,8 @@ function evaluateTurnNurturing(sessionId, userText) {
   const updated = db.prepare('SELECT * FROM sessions WHERE id = ?').get(sessionId);
   return {
     deltas: { affection: dAff, trust: dTrust, intimacy: dInt },
+    prev_mood: prevMood,
+    mood_changed: Boolean(nextMood && nextMood !== prevMood),
     reason,
     snapshot: formatNurturingSnapshot(updated)
   };
@@ -147,7 +175,7 @@ function runDreamConsolidation({ sessionId, persona, userNickname }) {
 
   const shortName = (persona.name || '角色').split(/[·\s]/)[0];
   const allMems = db
-    .prepare('SELECT * FROM memories WHERE session_id = ? ORDER BY importance DESC, updated_at DESC')
+    .prepare('SELECT * FROM memories WHERE session_id = ? AND superseded_by IS NULL ORDER BY importance DESC, updated_at DESC')
     .all(sessionId);
 
   // 1. 自愈去重并强化高频唤醒记忆（当 recall_count >= 3 自动提升 strength 并晋升重点记忆）
@@ -220,11 +248,12 @@ function runDreamConsolidation({ sessionId, persona, userNickname }) {
   diaryList.unshift(newEntry);
   const trimmedDiary = diaryList.slice(0, 12);
 
-  // 顺手提升一点默契度奖励
+  // 顺手提升一点默契度奖励并记录本次做梦时间
   const nextIntimacy = clampStat((session.intimacy ?? 18) + 3);
+  const dreamTs = Date.now();
   db.prepare(`
-    UPDATE sessions SET secret_diary = ?, intimacy = ?, updated_at = ? WHERE id = ?
-  `).run(JSON.stringify(trimmedDiary), nextIntimacy, Date.now(), sessionId);
+    UPDATE sessions SET secret_diary = ?, intimacy = ?, last_dream_at = ?, updated_at = ? WHERE id = ?
+  `).run(JSON.stringify(trimmedDiary), nextIntimacy, dreamTs, dreamTs, sessionId);
 
   const refreshed = db.prepare('SELECT * FROM sessions WHERE id = ?').get(sessionId);
   return {

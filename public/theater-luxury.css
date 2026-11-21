@@ -595,117 +595,7 @@ html[style*="color-scheme: light"] .app-shell[data-ui-mode="roleplay"] .composer
   box-shadow: 0 6px 18px rgba(229, 193, 133, 0.28) !important;
 }
 
-/* 7. 陪伴立绘主舞台：释放空间 + 香槟金全息星轨 */
-.app-shell[data-ui-mode="roleplay"] #companion-stage {
-  background: radial-gradient(circle at 50% 42%, var(--theater-persona-glow) 0%, transparent 72%) !important;
-  border-left: none !important;
-  position: relative;
-}
-
-.app-shell[data-ui-mode="roleplay"] #companion-stage .companion-Style-bar,
-.app-shell[data-ui-mode="roleplay"] #companion-stage .companion-foot {
-  background: var(--glass-surface) !important;
-  backdrop-filter: blur(18px) saturate(130%);
-  -webkit-backdrop-filter: blur(18px) saturate(130%);
-  border: var(--border-subtle) !important;
-  border-radius: 16px !important;
-  padding: 6px 10px !important;
-  opacity: 0.78;
-  transition: opacity 0.28s ease, border-color 0.28s ease;
-}
-
-.app-shell[data-ui-mode="roleplay"] #companion-stage:hover .companion-Style-bar,
-.app-shell[data-ui-mode="roleplay"] #companion-stage:hover .companion-foot,
-.app-shell[data-ui-mode="roleplay"] #companion-stage:focus-within .companion-Style-bar,
-.app-shell[data-ui-mode="roleplay"] #companion-stage:focus-within .companion-foot {
-  opacity: 1;
-  border-color: rgba(229, 193, 133, 0.28) !important;
-}
-
-.app-shell[data-ui-mode="roleplay"] #companion-stage .comp-mode-btn,
-.app-shell[data-ui-mode="roleplay"] #companion-stage .comp-icon-btn,
-.app-shell[data-ui-mode="roleplay"] #companion-stage .mini-btn {
-  background: transparent !important;
-  border: 1px solid transparent !important;
-  color: var(--text-secondary) !important;
-}
-
-.app-shell[data-ui-mode="roleplay"] #companion-stage .comp-mode-btn.active {
-  background: rgba(229, 193, 133, 0.16) !important;
-  border: 1px solid rgba(229, 193, 133, 0.36) !important;
-  color: var(--accent-gold-text) !important;
-}
-
-.app-shell[data-ui-mode="roleplay"] #companion-stage .companion-cloud {
-  background: var(--glass-elevated) !important;
-  backdrop-filter: var(--glass-blur);
-  -webkit-backdrop-filter: var(--glass-blur);
-  border: var(--border-specular) !important;
-  box-shadow: var(--shadow-soft) !important;
-  border-radius: 16px !important;
-}
-
-.app-shell[data-ui-mode="roleplay"] #companion-stage .cloud-tag {
-  color: var(--accent-gold-text) !important;
-  background: rgba(229, 193, 133, 0.12) !important;
-}
-
-.app-shell[data-ui-mode="roleplay"] #companion-stage .cloud-text,
-.app-shell[data-ui-mode="roleplay"] #companion-stage .comp-live-status {
-  color: var(--text-narrative) !important;
-}
-
-/* 将立绘星轨底座升级为香槟金 + 星云紫极细光环 */
-.app-shell[data-ui-mode="roleplay"] .pedestal-ring-outer {
-  border: 1.5px dashed rgba(229, 193, 133, 0.56) !important;
-  box-shadow: 0 0 22px rgba(229, 193, 133, 0.24), inset 0 0 18px rgba(180, 151, 255, 0.18) !important;
-}
-
-.app-shell[data-ui-mode="roleplay"] .pedestal-ring-inner {
-  border: 1px solid rgba(180, 151, 255, 0.55) !important;
-  box-shadow: 0 0 14px rgba(180, 151, 255, 0.24) !important;
-}
-
-.app-shell[data-ui-mode="roleplay"] .pedestal-ring-inner::before {
-  background: #E5C185 !important;
-  box-shadow: 0 0 8px rgba(229, 193, 133, 0.9) !important;
-}
-
-.app-shell[data-ui-mode="roleplay"] .pedestal-ring-inner::after {
-  background: #B497FF !important;
-  box-shadow: 0 0 8px rgba(180, 151, 255, 0.85) !important;
-}
-
-.app-shell[data-ui-mode="roleplay"] .holo-light-cone {
-  background: linear-gradient(
-    to top,
-    var(--theater-persona-glow) 0%,
-    rgba(229, 193, 133, 0.08) 55%,
-    transparent 100%
-  ) !important;
-}
-
-.app-shell[data-ui-mode="roleplay"] .holo-back-glow {
-  background: radial-gradient(
-    circle,
-    var(--theater-persona-glow) 0%,
-    rgba(229, 193, 133, 0.14) 36%,
-    rgba(180, 151, 255, 0.06) 62%,
-    transparent 82%
-  ) !important;
-}
-
-.app-shell[data-ui-mode="roleplay"] .comp-particles .cp-p {
-  color: #E5C185 !important;
-}
-
-.app-shell[data-ui-mode="roleplay"] .comp-poke-hint {
-  background: var(--glass-surface) !important;
-  border: var(--border-specular) !important;
-  color: var(--accent-gold-text) !important;
-}
-
-/* 8. 桌面端 P3 空间减法：立绘扩容 + 右侧抽屉改为悬浮毛玻璃面板 */
+/* 8. 桌面端 P3 空间减法：右侧抽屉改为悬浮毛玻璃面板 */
 @media (min-width: 861px) {
   .app-shell[data-ui-mode="roleplay"]:not(.right-collapsed):not(.left-collapsed) {
     grid-template-columns: 248px minmax(0, 1fr) !important;
@@ -713,21 +603,6 @@ html[style*="color-scheme: light"] .app-shell[data-ui-mode="roleplay"] .composer
 
   .app-shell[data-ui-mode="roleplay"].left-collapsed:not(.right-collapsed) {
     grid-template-columns: 0px minmax(0, 1fr) !important;
-  }
-
-  .app-shell[data-ui-mode="roleplay"] #companion-stage.companion-stage {
-    width: clamp(276px, 26vw, 372px) !important;
-    padding: 12px 18px 12px 6px !important;
-  }
-
-  /* 右侧面板展开时不再挤掉立绘 */
-  .app-shell[data-ui-mode="roleplay"]:not(.right-collapsed) #companion-stage.companion-stage:not(.hidden) {
-    display: flex !important;
-  }
-
-  .app-shell[data-ui-mode="roleplay"] .companion-live-canvas {
-    max-width: 356px !important;
-    max-height: 490px !important;
   }
 
   /* 悬浮光学毛玻璃抽屉 */
@@ -758,12 +633,6 @@ html[style*="color-scheme: light"] .app-shell[data-ui-mode="roleplay"] .composer
   .app-shell[data-ui-mode="roleplay"]:not(.right-collapsed) .inspector-panel#right-panel {
     display: flex !important;
     animation: theaterDrawerSlideIn 0.34s cubic-bezier(0.22, 1, 0.36, 1);
-  }
-}
-
-@media (min-width: 1200px) {
-  .app-shell[data-ui-mode="roleplay"] #companion-stage.companion-stage {
-    width: clamp(320px, 29vw, 412px) !important;
   }
 }
 
@@ -1218,10 +1087,6 @@ body[data-ui-mode="roleplay"] #plaza-cards-grid .ssc-del-btn {
     border-left: var(--border-specular) !important;
   }
 
-  .app-shell[data-ui-mode="roleplay"] #companion-stage.companion-stage {
-    background: radial-gradient(circle at 50% 42%, var(--theater-persona-glow) 0%, rgba(14, 16, 21, 0.96) 72%) !important;
-  }
-
   .app-shell[data-ui-mode="roleplay"] .msg-row.assistant .msg-body {
     padding: 14px 16px 12px !important;
   }
@@ -1230,4 +1095,172 @@ body[data-ui-mode="roleplay"] #plaza-cards-grid .ssc-del-btn {
   .app-shell[data-ui-mode="roleplay"] .cloud-tts-btn {
     min-height: 36px;
   }
+}
+
+/* 13. 剧场养成微反馈胶囊、夜间拆信仪式与全屏黑金幕间转场 */
+.theater-nurturing-capsule {
+  position: fixed;
+  top: 72px;
+  right: 22px;
+  z-index: 80;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 16px;
+  border-radius: 999px;
+  background: rgba(18, 20, 30, 0.84);
+  backdrop-filter: blur(20px) saturate(140%);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
+  border: 1px solid rgba(229, 193, 133, 0.36);
+  box-shadow: 0 16px 40px -10px rgba(0, 0, 0, 0.65), inset 0 1px 0 0 rgba(255, 255, 255, 0.14);
+  color: #F2D6A2;
+  font-family: var(--theater-font-serif, 'Noto Serif SC', serif);
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(-8px) scale(0.97);
+  transition: opacity 0.35s cubic-bezier(0.22, 1, 0.36, 1), transform 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.theater-nurturing-capsule.is-visible {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.theater-nurturing-capsule .capsule-deltas {
+  font-family: var(--theater-font-sans, 'Noto Sans SC', sans-serif);
+  font-size: 12px;
+  color: #CDB8FF;
+  margin-left: 4px;
+}
+
+.theater-dream-letter-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 95;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(10, 11, 16, 0.72);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  animation: theaterFadeOverlay 0.32s ease;
+}
+
+.theater-dream-letter-card {
+  width: min(92vw, 440px);
+  border-radius: 24px;
+  padding: 28px 26px 24px;
+  background: radial-gradient(circle at 80% 10%, rgba(229, 193, 133, 0.14), rgba(18, 20, 30, 0.96) 62%);
+  border: 1px solid rgba(229, 193, 133, 0.38);
+  box-shadow: 0 32px 72px -12px rgba(0, 0, 0, 0.78), inset 0 1px 0 0 rgba(255, 255, 255, 0.14);
+  color: #F4F5F8;
+  text-align: center;
+}
+
+.theater-dream-seal {
+  width: 48px;
+  height: 48px;
+  margin: 0 auto 14px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle, rgba(229, 193, 133, 0.28), rgba(184, 139, 114, 0.14));
+  border: 1px solid rgba(229, 193, 133, 0.56);
+  color: #F2D6A2;
+}
+
+.theater-dream-title {
+  font-family: var(--theater-font-serif, 'Noto Serif SC', serif);
+  font-size: 20px;
+  font-weight: 600;
+  color: #F2D6A2;
+  margin-bottom: 6px;
+}
+
+.theater-dream-sub {
+  font-size: 13px;
+  color: #9BA2B8;
+  margin-bottom: 16px;
+}
+
+.theater-dream-body {
+  text-align: left;
+  padding: 16px 18px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(229, 193, 133, 0.2);
+  color: #D0D4E0;
+  font-size: 14.5px;
+  line-height: 1.82;
+  margin-bottom: 18px;
+}
+
+.theater-dream-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+}
+
+.theater-chapter-curtain {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+  text-align: center;
+  background: radial-gradient(circle at 50% 45%, rgba(30, 32, 48, 0.92), rgba(8, 9, 14, 0.98) 72%);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.theater-chapter-curtain.is-visible {
+  opacity: 1;
+}
+
+.theater-curtain-act {
+  font-family: var(--theater-font-en, 'Cormorant Garamond', serif);
+  font-style: italic;
+  font-size: 20px;
+  letter-spacing: 0.22em;
+  color: #E5C185;
+  text-transform: uppercase;
+  margin-bottom: 12px;
+}
+
+.theater-curtain-line {
+  width: 72px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(229, 193, 133, 0.8), transparent);
+  margin: 0 auto 18px;
+}
+
+.theater-curtain-title {
+  font-family: var(--theater-font-serif, 'Noto Serif SC', serif);
+  font-size: clamp(24px, 3.2vw, 38px);
+  font-weight: 600;
+  color: #F4F5F8;
+  letter-spacing: 0.06em;
+  margin-bottom: 14px;
+}
+
+.theater-curtain-note {
+  max-width: 52ch;
+  font-size: 14.5px;
+  line-height: 1.8;
+  color: #B8C0D4;
+}
+
+@keyframes theaterFadeOverlay {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }

@@ -1,5 +1,5 @@
 /**
- * 实时陪伴立绘生成与情景温馨提醒引擎
+ * 角色性别与专属 CV 声线匹配引擎
  * 严格围绕「❄️ 高冷系」与「🐾 可爱系」双审美维度构建
  */
 
@@ -9,7 +9,7 @@ const COMPANION_SKINS = {
     mode: 'cool',
     isFemale: false,
     label: '❄️ 高冷清隽 · 银发星眸',
-    img: '/assets/companions/cool_silver_cutout.png',
+    img: '',
     aura: 'rgba(155, 135, 245, 0.45)',
     particle: '✦'
   },
@@ -18,7 +18,7 @@ const COMPANION_SKINS = {
     mode: 'cool',
     isFemale: false,
     label: '🥀 高冷禁欲 · 金丝墨发',
-    img: '/assets/companions/cool_dark_cutout.png',
+    img: '',
     aura: 'rgba(226, 85, 157, 0.42)',
     particle: '✧'
   },
@@ -27,7 +27,7 @@ const COMPANION_SKINS = {
     mode: 'cool',
     isFemale: true,
     label: '👠 高冷清艳 · 冰山御姐',
-    img: '/assets/companions/cool_lady_cutout.png',
+    img: '',
     aura: 'rgba(192, 132, 252, 0.48)',
     particle: '✦'
   },
@@ -36,7 +36,7 @@ const COMPANION_SKINS = {
     mode: 'cute',
     isFemale: false,
     label: '🐾 元气可爱 · 猫耳少年',
-    img: '/assets/companions/cute_boy_cutout.png',
+    img: '',
     aura: 'rgba(244, 114, 182, 0.48)',
     particle: '♡'
   },
@@ -45,7 +45,7 @@ const COMPANION_SKINS = {
     mode: 'cute',
     isFemale: true,
     label: '🍓 甜美元气 · 灵动少女',
-    img: '/assets/companions/cute_girl_cutout.png',
+    img: '',
     aura: 'rgba(251, 113, 133, 0.48)',
     particle: '♡'
   },
@@ -54,7 +54,7 @@ const COMPANION_SKINS = {
     mode: 'cute',
     isFemale: true,
     label: '🌸 软萌可爱 · 兔耳团子',
-    img: '/assets/companions/cute_chibi_cutout.png',
+    img: '',
     aura: 'rgba(251, 146, 60, 0.42)',
     particle: '❀'
   }
@@ -122,7 +122,7 @@ function detectFemalePersona(persona) {
 }
 
 /**
- * 根据角色人设文本与玩家指定气质，实时推演生成陪伴立绘与专属声线配置（支持男女角色双轨自适应）
+ * 根据角色人设文本与玩家指定气质，实时推演匹配专属声线与陪伴配置（支持男女角色双轨自适应）
  */
 function resolveOrGenerateCompanion({
   persona,
@@ -281,7 +281,7 @@ function resolveOrGenerateCompanion({
     skinKey: baseSkin.key,
     isFemale,
     voiceId,
-    label: finalImg ? `${baseSkin.mode === 'cool' ? '❄️ 高冷定制' : '🐾 可爱定制'} · 专属立绘` : baseSkin.label,
+    label: finalImg ? `${baseSkin.mode === 'cool' ? '❄️ 高冷定制' : '🐾 可爱定制'} · 专属气质` : baseSkin.label,
     img: finalImg || baseSkin.img,
     customImg: finalImg || '',
     aura: baseSkin.aura,
@@ -296,7 +296,7 @@ function pickRandom(arr) {
 }
 
 /**
- * 生成贴合角色立绘气质（高冷 / 可爱）与当前真实时间的温馨提醒气泡文案
+ * 生成贴合角色气质（高冷 / 可爱）与当前真实时间的温馨提醒文案
  */
 function buildCompanionReminder({ persona, companion, userNickname, stageLevel = 1, trigger = 'timer' }) {
   const shortName = (persona?.name || '他').split(/[·\s]/)[0];
@@ -304,7 +304,7 @@ function buildCompanionReminder({ persona, companion, userNickname, stageLevel =
   const mode = companion?.mode === 'cute' ? 'cute' : 'cool';
   const hour = new Date().getHours();
 
-  // 1. 鼠标点击“戳一戳”立绘互动反应（精准呼应高品质离线预制音轨）
+  // 1. 轻触互动反应（精准呼应高品质离线预制音轨）
   if (trigger === 'poke') {
     const coolPokes = [
       `怎么突然戳我？想听我说话不用这么试探，直接开口喊我就好。`,
@@ -324,7 +324,7 @@ function buildCompanionReminder({ persona, companion, userNickname, stageLevel =
     };
   }
 
-  // 2. 切换高冷/可爱立绘形态时的专属登场台词
+  // 2. 切换高冷/可爱气质形态时的专属登场台词
   if (trigger === 'switch_mode') {
     if (mode === 'cool') {
       return {
@@ -407,7 +407,7 @@ function buildCompanionReminder({ persona, companion, userNickname, stageLevel =
 }
 
 /**
- * 生成立绘实时双向语音通话的短句口语对白（纯净无星号旁白，专供高表现力语音亲口念出）
+ * 生成角色实时双向语音对话的短句口语对白（纯净无星号旁白，专供高表现力语音亲口念出）
  */
 function buildOfflineVoiceChatReply({ persona, companion, userNickname, stageLevel = 1, userText = '' }) {
   const shortName = (persona?.name || '我').split(/[·\s]/)[0];

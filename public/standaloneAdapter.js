@@ -127,7 +127,7 @@
       key: 'cool_silver',
       mode: 'cool',
       label: '❄️ 高冷清隽 · 银发星眸',
-      img: './assets/companions/cool_silver_cutout.png',
+      img: '',
       aura: 'rgba(155, 135, 245, 0.45)',
       particle: '✦'
     },
@@ -135,7 +135,7 @@
       key: 'cool_dark',
       mode: 'cool',
       label: '🥀 高冷禁欲 · 金丝墨发',
-      img: './assets/companions/cool_dark_cutout.png',
+      img: '',
       aura: 'rgba(226, 85, 157, 0.42)',
       particle: '✧'
     },
@@ -144,7 +144,7 @@
       mode: 'cool',
       isFemale: true,
       label: '👠 高冷清艳 · 冰山御姐',
-      img: './assets/companions/cool_lady_cutout.png',
+      img: '',
       aura: 'rgba(192, 132, 252, 0.48)',
       particle: '✦'
     },
@@ -152,7 +152,7 @@
       key: 'cute_boy',
       mode: 'cute',
       label: '🐾 元气可爱 · 猫耳少年',
-      img: './assets/companions/cute_boy_cutout.png',
+      img: '',
       aura: 'rgba(244, 114, 182, 0.48)',
       particle: '♡'
     },
@@ -161,7 +161,7 @@
       mode: 'cute',
       isFemale: true,
       label: '🍓 甜美元气 · 灵动少女',
-      img: './assets/companions/cute_girl_cutout.png',
+      img: '',
       aura: 'rgba(251, 113, 133, 0.48)',
       particle: '♡'
     },
@@ -169,7 +169,7 @@
       key: 'cute_chibi',
       mode: 'cute',
       label: '🌸 软萌可爱 · 兔耳团子',
-      img: './assets/companions/cute_chibi_cutout.png',
+      img: '',
       aura: 'rgba(251, 146, 60, 0.42)',
       particle: '❀'
     }

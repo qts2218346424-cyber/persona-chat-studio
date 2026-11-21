@@ -12,20 +12,21 @@ const DIST_DIR = path.join(PUBLIC_DIR, 'dist');
 
 const CSS_FILES = [
   'styles.css',
-  'companion3d.css',
   'clean-ui.css',
   'mobile-responsive.css',
   'phone-agent.css',
   'mobile-deepseek.css',
-  'theater-luxury.css'
+  'theater-luxury.css',
+  'appearance.css',
+  'ui-polish-v2.css'
 ];
 
 const JS_FILES = [
   'standaloneAdapter.js',
   'mobileAdapter.js',
   'plugins/deepseekUsageMonitor.js',
+  'appearanceSystem.js',
   'app.js',
-  'companion3d.js',
   'companionVoice.js',
   'phoneAgent.js'
 ];

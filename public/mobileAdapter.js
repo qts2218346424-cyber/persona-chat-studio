@@ -3,7 +3,7 @@
  * 职责：
  * 1. 确保每次新打开网页默认进入 DeepSeek 原生纯净模式（支持 ?mode=roleplay 显式直达恋庭模式）；
  * 2. 管理窄屏/手机端（<=860px）左右覆层抽屉、半透明毛玻璃遮罩、点击外侧/选会话自动收起与滑动关闭手势；
- * 3. 增强移动端顶栏快捷操作（一键开启新对话、一键切换恋庭剧场、2.5D 伴侣浮窗收起）并同步无障碍状态。
+ * 3. 增强移动端顶栏快捷操作（一键开启新对话、一键切换恋庭剧场）并同步无障碍状态。
  */
 (() => {
   const MOBILE_MQ = window.matchMedia('(max-width: 860px)');
@@ -63,7 +63,6 @@
 
   applyResponsiveButtonLabels('topbar-script-switch-btn', '换剧本', '剧本');
   applyResponsiveButtonLabels('toggle-right-btn', '养成', '养成');
-  applyResponsiveButtonLabels('topbar-companion-btn', '立绘', '立绘');
   applyResponsiveButtonLabels('topbar-switch-ds-btn', 'DeepSeek', 'DS');
   applyResponsiveButtonLabels('topbar-more-btn', '⋯', '⋯');
 
@@ -147,25 +146,6 @@
 
   // 保持 ⋯ 更多菜单极简纯净
   const morePopover = document.getElementById('topbar-more-popover');
-
-  // 陪伴立绘移动端悬浮卡片右上角收起按钮
-  const compStyleBar = document.querySelector('#companion-stage .companion-Style-bar');
-  const companionStage = document.getElementById('companion-stage');
-  if (compStyleBar && companionStage && !document.getElementById('comp-mobile-close-btn')) {
-    const closeCompBtn = document.createElement('button');
-    closeCompBtn.type = 'button';
-    closeCompBtn.id = 'comp-mobile-close-btn';
-    closeCompBtn.className = 'comp-icon-btn comp-mobile-close-btn';
-    closeCompBtn.title = '收起陪伴立绘';
-    closeCompBtn.setAttribute('aria-label', '收起陪伴立绘');
-    closeCompBtn.textContent = '✕';
-    closeCompBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      companionStage.classList.add('hidden');
-      document.getElementById('topbar-companion-btn')?.classList.remove('active');
-    });
-    compStyleBar.appendChild(closeCompBtn);
-  }
 
   // 3. 登录门扉与网页标题随模式动态同步（始终保留「星语恋庭」品牌标识）
   function syncBrandAndTitleByMode(mode) {
@@ -251,14 +231,10 @@
 
   window.__closeMobileDrawers = closeAllMobileDrawers;
 
-  // 首屏若处于手机视口，立即收起两侧抽屉与悬浮立绘，确保首帧呈现 100% 全宽无遮挡主对话区（点顶栏 ✨ 立绘 随时展开）
+  // 首屏若处于手机视口，立即收起两侧抽屉，确保首帧呈现 100% 全宽无遮挡主对话区
   if (isMobile()) {
     closeLeftDrawer();
     closeRightDrawer();
-    if (companionStage && !companionStage.classList.contains('hidden')) {
-      companionStage.classList.add('hidden');
-      document.getElementById('topbar-companion-btn')?.classList.remove('active');
-    }
   }
 
   let lastLeftOpen = !appShell.classList.contains('left-collapsed');
@@ -357,10 +333,6 @@
   MOBILE_MQ.addEventListener('change', (e) => {
     if (e.matches) {
       closeAllMobileDrawers();
-      if (companionStage) {
-        companionStage.classList.add('hidden');
-        document.getElementById('topbar-companion-btn')?.classList.remove('active');
-      }
     } else {
       backdrop.classList.add('hidden');
       let savedLeftCollapsed = false;

@@ -1,0 +1,451 @@
+/* ==========================================================================
+   Persona Chat Studio · 星语恋庭
+   6 大 UI 与交互细节高阶升级样式包 (ui-polish-v2.css)
+   ========================================================================== */
+
+:root {
+  --polish-gold: #E5C185;
+  --polish-violet: #9D7BFF;
+  --polish-glass-bg: light-dark(rgba(255, 255, 255, 0.72), rgba(20, 22, 34, 0.68));
+  --polish-glass-border: light-dark(rgba(157, 123, 255, 0.18), rgba(229, 193, 133, 0.22));
+  --polish-glass-shadow: light-dark(
+    0 16px 40px -12px rgba(45, 31, 54, 0.08),
+    0 20px 50px -12px rgba(0, 0, 0, 0.55)
+  );
+}
+
+/* ==========================================================================
+   1. 空状态与新对话引导页（动态微光问候 + 场景化灵感卡片）
+   匹配 DOM：#ds-home-greeting, #ds-greeting-title, .ds-inspiration-grid
+   ========================================================================== */
+#ds-home-greeting {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 20px 16px 14px;
+  animation: emptyStateFadeIn 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.ds-home-greeting-head {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+
+#ds-greeting-title {
+  font-size: clamp(22px, 2.3vw, 29px);
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  background: linear-gradient(
+    110deg,
+    light-dark(#2d1f36, #f6effb) 20%,
+    var(--polish-violet) 48%,
+    var(--polish-gold) 68%,
+    light-dark(#2d1f36, #f6effb) 85%
+  );
+  background-size: 220% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: greetingShimmer 7s ease-in-out infinite;
+}
+
+.ds-greeting-subtitle {
+  font-size: 13.5px;
+  color: light-dark(rgba(45, 31, 54, 0.62), rgba(246, 239, 251, 0.58));
+  margin-top: -6px;
+  text-align: center;
+}
+
+.ds-inspiration-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 224px));
+  gap: 12px;
+  width: 100%;
+  max-width: 700px;
+  margin-top: 2px;
+}
+
+.ds-inspiration-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 7px;
+  padding: 14px 15px;
+  border-radius: 16px;
+  background: var(--polish-glass-bg);
+  backdrop-filter: blur(20px) saturate(140%);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
+  border: 1px solid var(--polish-glass-border);
+  box-shadow: var(--polish-glass-shadow);
+  cursor: pointer;
+  text-align: left;
+  transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1),
+              border-color 0.28s ease,
+              box-shadow 0.28s ease;
+}
+
+.ds-inspiration-card:hover {
+  transform: translateY(-4px);
+  border-color: var(--polish-gold);
+  box-shadow: 0 18px 42px -10px rgba(157, 123, 255, 0.22);
+}
+
+.ds-inspiration-card .card-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--polish-violet);
+  padding: 2.5px 8px;
+  border-radius: 999px;
+  background: light-dark(rgba(157, 123, 255, 0.1), rgba(157, 123, 255, 0.16));
+}
+
+.ds-inspiration-card .card-title {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: light-dark(#2d1f36, #f6effb);
+  line-height: 1.35;
+}
+
+.ds-inspiration-card .card-desc {
+  font-size: 12px;
+  color: light-dark(rgba(45, 31, 54, 0.65), rgba(246, 239, 251, 0.62));
+  line-height: 1.45;
+}
+
+@media (max-width: 760px) {
+  .ds-inspiration-grid {
+    grid-template-columns: 1fr;
+    max-width: min(100%, 420px);
+  }
+}
+
+/* ==========================================================================
+   2. 思考流与等待加载动画（流光呼吸骨架屏 + 3 圆点 SVG 语音合成律动）
+   ========================================================================== */
+.shimmer-thinking-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  border-radius: 12px;
+  background: light-dark(rgba(157, 123, 255, 0.06), rgba(229, 193, 133, 0.08));
+  border: 1px solid var(--polish-glass-border);
+}
+
+.shimmer-thinking-text {
+  font-size: 13.5px;
+  font-weight: 500;
+  background: linear-gradient(
+    90deg,
+    light-dark(#6b587a, #9ba2b8) 0%,
+    var(--polish-gold) 45%,
+    var(--polish-violet) 55%,
+    light-dark(#6b587a, #9ba2b8) 100%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: greetingShimmer 2.2s linear infinite;
+}
+
+/* 替代生硬的沙漏 Emoji：3 个极细圆点呼吸律动 */
+.tts-synth-dots {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3.5px;
+  min-width: 22px;
+  height: 16px;
+  vertical-align: middle;
+}
+
+.tts-synth-dots span {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--polish-gold);
+  animation: ttsDotPulse 1.2s ease-in-out infinite;
+}
+
+.tts-synth-dots span:nth-child(2) {
+  animation-delay: 0.18s;
+  background: var(--polish-violet);
+}
+
+.tts-synth-dots span:nth-child(3) {
+  animation-delay: 0.36s;
+}
+
+.tts-synth-label {
+  font-size: 12px;
+  margin-left: 4px;
+}
+
+/* ==========================================================================
+   3. 灵动岛式单点悬浮语音胶囊（Dynamic Island Toast）
+   仅在顶部中央悬浮毛玻璃灵动岛，消除双横幅干扰
+   ========================================================================== */
+.dynamic-island-tts {
+  position: fixed;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%) translateY(-130%);
+  z-index: 9999;
+  display: inline-flex;
+  align-items: center;
+  gap: 11px;
+  padding: 7px 12px 7px 14px;
+  border-radius: 999px;
+  background: rgba(14, 16, 24, 0.88);
+  backdrop-filter: blur(24px) saturate(160%);
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
+  border: 1px solid rgba(229, 193, 133, 0.34);
+  box-shadow: 0 14px 36px -6px rgba(0, 0, 0, 0.45),
+              0 0 0 1px rgba(255, 255, 255, 0.06) inset;
+  color: #F4F5F8;
+  font-size: 12.5px;
+  font-weight: 500;
+  max-width: min(92vw, 380px);
+  opacity: 0;
+  pointer-events: none;
+  transition: transform 0.42s cubic-bezier(0.22, 1, 0.36, 1),
+              opacity 0.32s ease;
+}
+
+.dynamic-island-tts.is-active {
+  transform: translateX(-50%) translateY(0);
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.island-wave-bars {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 2.5px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.island-wave-bars i {
+  display: block;
+  width: 2.5px;
+  background: linear-gradient(180deg, var(--polish-gold), var(--polish-violet));
+  border-radius: 2px;
+  animation: islandWaveBounce 0.9s ease-in-out infinite;
+}
+
+.island-wave-bars i:nth-child(1) { height: 6px; animation-delay: 0s; }
+.island-wave-bars i:nth-child(2) { height: 13px; animation-delay: 0.15s; }
+.island-wave-bars i:nth-child(3) { height: 9px; animation-delay: 0.3s; }
+.island-wave-bars i:nth-child(4) { height: 12px; animation-delay: 0.45s; }
+
+.dynamic-island-tts.is-synthesizing .island-wave-bars {
+  display: none;
+}
+
+.dynamic-island-tts:not(.is-synthesizing) .island-synth-dots {
+  display: none;
+}
+
+.island-tts-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.island-stop-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.08);
+  color: #F4F5F8;
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.island-stop-btn:hover {
+  background: rgba(239, 68, 68, 0.28);
+  border-color: rgba(239, 68, 68, 0.55);
+  transform: scale(1.06);
+}
+
+/* ==========================================================================
+   4. 历史会话列表与存档管理（时间轴分组 + 右侧渐隐遮罩 + 悬停微操作）
+   匹配 DOM：#session-list, .session-group-label, .session-title-text, .session-row-actions
+   ========================================================================== */
+.session-time-group-header,
+.session-group-label {
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: light-dark(rgba(45, 31, 54, 0.48), rgba(246, 239, 251, 0.44));
+  padding: 12px 10px 5px;
+  user-select: none;
+}
+
+#session-list .session-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  border-radius: 11px;
+  overflow: hidden;
+  transition: background-color 0.2s ease;
+}
+
+#session-list .session-title-wrap {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+#session-list .session-title-text {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: clip;
+  -webkit-mask-image: linear-gradient(to right, #000 80%, transparent 98%);
+  mask-image: linear-gradient(to right, #000 80%, transparent 98%);
+}
+
+#session-list .session-item:hover .session-title-text {
+  -webkit-mask-image: linear-gradient(to right, #000 60%, transparent 82%);
+  mask-image: linear-gradient(to right, #000 60%, transparent 82%);
+}
+
+#session-list .session-row-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+@media (hover: hover) {
+  #session-list .session-row-actions {
+    opacity: 0;
+    transform: translateX(4px);
+  }
+  #session-list .session-item:hover .session-row-actions,
+  #session-list .session-item:focus-within .session-row-actions,
+  #session-list .session-item.active .session-row-actions {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* ==========================================================================
+   5. 隐形细滚动条 + 剧院级代码卡片（磨砂顶栏 + 丝滑打勾动效）
+   匹配 DOM：.ds-code-block, .ds-code-header, .ds-copy-btn-std
+   ========================================================================== */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: light-dark(rgba(157, 123, 255, 0.22), rgba(229, 193, 133, 0.22)) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: light-dark(rgba(157, 123, 255, 0.24), rgba(229, 193, 133, 0.22));
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: light-dark(rgba(157, 123, 255, 0.48), rgba(229, 193, 133, 0.48));
+}
+
+.ds-code-block {
+  border-radius: 14px !important;
+  overflow: hidden;
+  border: 1px solid light-dark(rgba(15, 23, 42, 0.12), rgba(255, 255, 255, 0.1)) !important;
+  box-shadow: light-dark(0 8px 24px -10px rgba(15, 23, 42, 0.1), 0 14px 32px -12px rgba(0, 0, 0, 0.45));
+}
+
+.ds-code-block .ds-code-header {
+  background: light-dark(rgba(241, 245, 249, 0.85), rgba(24, 27, 38, 0.88)) !important;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid light-dark(rgba(15, 23, 42, 0.08), rgba(255, 255, 255, 0.07)) !important;
+}
+
+.ds-code-btn.is-copied,
+.ds-copy-btn-std[data-copied] {
+  border-color: rgba(52, 211, 153, 0.48) !important;
+  background: rgba(52, 211, 153, 0.15) !important;
+  color: light-dark(#047857, #6EE7B7) !important;
+  transition: all 0.22s ease;
+}
+
+/* ==========================================================================
+   6. 手机端网页（Mobile Web）底部安全区留白 + 边缘手势压暗抽屉
+   匹配 DOM：#chat-form, .mobile-drawer-backdrop
+   ========================================================================== */
+@media (max-width: 768px) {
+  #chat-form.composer-card {
+    margin-bottom: calc(8px + env(safe-area-inset-bottom, 10px)) !important;
+    border-radius: 22px;
+  }
+
+  .mobile-drawer-backdrop:not(.hidden) {
+    background: rgba(10, 12, 18, 0.52) !important;
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    transition: opacity 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+}
+
+/* ==========================================================================
+   关键帧动画与减动效无障碍降级
+   ========================================================================== */
+@keyframes greetingShimmer {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+@keyframes emptyStateFadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes ttsDotPulse {
+  0%, 80%, 100% { transform: translateY(0) scale(0.85); opacity: 0.45; }
+  40% { transform: translateY(-4px) scale(1.15); opacity: 1; }
+}
+
+@keyframes islandWaveBounce {
+  0%, 100% { transform: scaleY(0.45); }
+  50% { transform: scaleY(1.15); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #ds-home-greeting,
+  #ds-greeting-title,
+  .shimmer-thinking-text,
+  .tts-synth-dots span,
+  .island-wave-bars i {
+    animation: none !important;
+  }
+}

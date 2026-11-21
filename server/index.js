@@ -68,6 +68,7 @@ const {
   extractFactsFromUserTurn,
   compressOverflowHistorySync,
   resolveEffectivePersona,
+  evaluateChapterProgression,
   buildThreeTierContext
 } = require('./memoryEngine');
 const {
@@ -113,6 +114,7 @@ const {
   buildProactiveTriggerInstruction,
   generateDemoProactiveTurn,
   generateFollowUpSuggestions,
+  parseFollowUpJsonArray,
   generateDynamicFollowUpsWithLLM
 } = require('./proactiveEngine');
 const { analyzeAndOptimizeScript } = require('./scriptWorkshop');
@@ -386,7 +388,7 @@ function listSessionsForUser(userId) {
              (TRIM(COALESCE(s.session_prompt, '')) != '' OR TRIM(COALESCE(s.director_note, '')) != '') AS has_session_prompt,
              p.name AS persona_name, p.avatar AS persona_avatar, p.script_id AS script_id,
              (SELECT COUNT(*) FROM messages m WHERE m.session_id = s.id) AS message_count,
-             (SELECT COUNT(*) FROM memories mem WHERE mem.session_id = s.id) AS memory_count
+             (SELECT COUNT(*) FROM memories mem WHERE mem.session_id = s.id AND mem.superseded_by IS NULL) AS memory_count
       FROM sessions s
       LEFT JOIN personas p ON p.id = s.persona_id
       WHERE s.user_id = ?
@@ -449,9 +451,34 @@ function buildSessionDetailPayload(session, userId, opts = {}) {
     ? Boolean(db.prepare('SELECT 1 FROM messages WHERE session_id = ? AND id < ? LIMIT 1').get(sessionId, oldestMessageId))
     : false;
 
-  const persona = formatPersonaRow(resolveEffectivePersona(session));
+  let persona = formatPersonaRow(resolveEffectivePersona(session));
+  let autoDreamDiary = null;
+
+  // 离线超过 6 小时自动在后台静默执行一次「夜间做梦」（生成私密手札 & 巩固高频记忆）
+  if ((session.session_mode || 'roleplay') === 'roleplay' && messages.length >= 2) {
+    const nowTs = Date.now();
+    const lastMsgTs = Number(messages[messages.length - 1]?.created_at || session.updated_at || 0);
+    const lastDreamTs = Number(session.last_dream_at || 0);
+    const SIX_HOURS_MS = 6 * 3600 * 1000;
+    if (lastMsgTs > 0 && nowTs - lastMsgTs >= SIX_HOURS_MS && nowTs - lastDreamTs >= SIX_HOURS_MS) {
+      try {
+        const userRow = db.prepare('SELECT nickname FROM users WHERE id = ?').get(userId);
+        const dreamRes = runDreamConsolidation({
+          sessionId,
+          persona,
+          userNickname: userRow?.nickname || '旅人'
+        });
+        if (dreamRes?.new_diary) {
+          autoDreamDiary = dreamRes.new_diary;
+          const refreshedSess = db.prepare('SELECT * FROM sessions WHERE id = ?').get(sessionId);
+          if (refreshedSess) session = refreshedSess;
+        }
+      } catch {}
+    }
+  }
+
   const rawMemories = db
-    .prepare('SELECT * FROM memories WHERE session_id = ? ORDER BY pinned DESC, importance DESC, updated_at DESC')
+    .prepare('SELECT * FROM memories WHERE session_id = ? AND superseded_by IS NULL ORDER BY pinned DESC, importance DESC, updated_at DESC')
     .all(sessionId);
   const lorebooks = db
     .prepare("SELECT * FROM lorebook_entries WHERE persona_id = ? AND (user_id = 'system' OR user_id = ?) ORDER BY created_at DESC")
@@ -492,6 +519,7 @@ function buildSessionDetailPayload(session, userId, opts = {}) {
     memories: decorateMemoriesWithRetention(rawMemories),
     lorebooks,
     nurturing: formatNurturingSnapshot(session),
+    auto_dream_diary: autoDreamDiary,
     companion,
     telemetry: fastTelemetry,
     membership: opts.membership || getMembership(userId)
@@ -2175,7 +2203,7 @@ async function handleApi(req, res, pathname, parsedUrl) {
       if (Array.isArray(parsed.imported_memories) && parsed.imported_memories.length > 0) {
         const existingMemContents = new Set(
           db
-            .prepare('SELECT content FROM memories WHERE session_id = ?')
+            .prepare('SELECT content FROM memories WHERE session_id = ? AND superseded_by IS NULL')
             .all(sessionId)
             .map((r) => String(r.content || '').trim())
         );
@@ -2277,7 +2305,7 @@ async function handleApi(req, res, pathname, parsedUrl) {
       .all(sessionId);
     const memories = db
       .prepare(
-        'SELECT category, content, pinned, importance FROM memories WHERE session_id = ? ORDER BY pinned DESC, importance DESC, updated_at DESC'
+        'SELECT category, content, pinned, importance FROM memories WHERE session_id = ? AND superseded_by IS NULL ORDER BY pinned DESC, importance DESC, updated_at DESC'
       )
       .all(sessionId);
 
@@ -2419,7 +2447,7 @@ async function handleApi(req, res, pathname, parsedUrl) {
     });
     recordUserDailyEvent(userId, 'dream_consolidated');
     const rawMems = db
-      .prepare('SELECT * FROM memories WHERE session_id = ? ORDER BY pinned DESC, importance DESC, updated_at DESC')
+      .prepare('SELECT * FROM memories WHERE session_id = ? AND superseded_by IS NULL ORDER BY pinned DESC, importance DESC, updated_at DESC')
       .all(sessionId);
     const updatedSession = db.prepare('SELECT * FROM sessions WHERE id = ?').get(sessionId);
     return sendJson(res, 200, {
@@ -2455,13 +2483,13 @@ async function handleApi(req, res, pathname, parsedUrl) {
 
     const memories = decorateMemoriesWithRetention(
       db
-        .prepare('SELECT * FROM memories WHERE session_id = ? ORDER BY pinned DESC, importance DESC, updated_at DESC')
+        .prepare('SELECT * FROM memories WHERE session_id = ? AND superseded_by IS NULL ORDER BY pinned DESC, importance DESC, updated_at DESC')
         .all(sessionId)
     );
     return sendJson(res, 201, { memories });
   }
 
-  // ========= 实时陪伴立绘生成与情景温馨提醒接口 =========
+  // ========= 角色陪伴气质与情景温馨提醒接口 =========
   const companionRemindMatch = pathname.match(/^\/api\/sessions\/([^/]+)\/companion\/remind$/);
   if (companionRemindMatch && method === 'POST') {
     const sessionId = decodeURIComponent(companionRemindMatch[1]);
@@ -2552,7 +2580,7 @@ async function handleApi(req, res, pathname, parsedUrl) {
     });
   }
 
-  // ========= 实时神经语音合成 (TTS) & 立绘双向语音对话接口 =========
+  // ========= 实时神经语音合成 (TTS) & 角色双向语音对话接口 =========
   if (method === 'POST' && pathname === '/api/tts/speak') {
     const body = await readJsonBody(req);
     const text = String(body.text || '').trim();
@@ -3092,7 +3120,7 @@ async function handleApi(req, res, pathname, parsedUrl) {
       );
     }
 
-    const srcMems = db.prepare('SELECT * FROM memories WHERE session_id = ?').all(srcSessionId);
+    const srcMems = db.prepare('SELECT * FROM memories WHERE session_id = ? AND superseded_by IS NULL').all(srcSessionId);
     const copyMemStmt = db.prepare(`
       INSERT INTO memories (id, session_id, category, slot_key, content, pinned, importance, strength, recall_count, last_recalled_at, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -3234,7 +3262,7 @@ async function handleApi(req, res, pathname, parsedUrl) {
 
       const memories = decorateMemoriesWithRetention(
         db
-          .prepare('SELECT * FROM memories WHERE session_id = ? ORDER BY pinned DESC, importance DESC, updated_at DESC')
+          .prepare('SELECT * FROM memories WHERE session_id = ? AND superseded_by IS NULL ORDER BY pinned DESC, importance DESC, updated_at DESC')
           .all(existing.session_id)
       );
       return sendJson(res, 200, { memories });
@@ -3244,7 +3272,7 @@ async function handleApi(req, res, pathname, parsedUrl) {
       db.prepare('DELETE FROM memories WHERE id = ?').run(memId);
       const memories = decorateMemoriesWithRetention(
         db
-          .prepare('SELECT * FROM memories WHERE session_id = ? ORDER BY pinned DESC, importance DESC, updated_at DESC')
+          .prepare('SELECT * FROM memories WHERE session_id = ? AND superseded_by IS NULL ORDER BY pinned DESC, importance DESC, updated_at DESC')
           .all(existing.session_id)
       );
       return sendJson(res, 200, { memories });
@@ -3707,6 +3735,71 @@ async function handleApi(req, res, pathname, parsedUrl) {
   }
 
   // ========= 9. 核心 SSE 实时流式对话端点（同时驱动恋庭沉浸模式 & 原生 DeepSeek 全家桶模式） =========
+  function createFollowupsStreamFilter(onSafeDelta) {
+    const OPEN_TAG = '<followups>';
+    let pending = '';
+    let tagBuf = '';
+    let inTag = false;
+    let cleanText = '';
+
+    const emitSafe = (str) => {
+      if (!str) return;
+      cleanText += str;
+      onSafeDelta(str);
+    };
+
+    const push = (chunk) => {
+      const delta = String(chunk || '');
+      if (!delta) return;
+      if (inTag) {
+        tagBuf += delta;
+        return;
+      }
+      const combined = pending + delta;
+      const idx = combined.indexOf(OPEN_TAG);
+      if (idx !== -1) {
+        emitSafe(combined.slice(0, idx));
+        tagBuf = combined.slice(idx);
+        pending = '';
+        inTag = true;
+        return;
+      }
+      // 保留末尾可能与 <followups> 前缀重叠的最短后缀
+      let keepLen = 0;
+      const maxCheck = Math.min(combined.length, OPEN_TAG.length - 1);
+      for (let len = maxCheck; len >= 1; len--) {
+        if (OPEN_TAG.startsWith(combined.slice(-len))) {
+          keepLen = len;
+          break;
+        }
+      }
+      if (keepLen > 0) {
+        emitSafe(combined.slice(0, combined.length - keepLen));
+        pending = combined.slice(-keepLen);
+      } else {
+        emitSafe(combined);
+        pending = '';
+      }
+    };
+
+    const flush = () => {
+      if (!inTag && pending) {
+        emitSafe(pending);
+        pending = '';
+      }
+      let followUps = null;
+      if (tagBuf) {
+        const m = tagBuf.match(/<followups>([\s\S]*?)(?:<\/followups>|$)/i);
+        if (m && m[1]) {
+          followUps = parseFollowUpJsonArray(m[1]);
+        }
+      }
+      return { cleanText, followUps };
+    };
+
+    return { push, flush };
+  }
+
   if (method === 'POST' && pathname === '/api/chat/stream') {
     const body = await readJsonBody(req, 8 * 1024 * 1024);
     const sessionId = body.session_id;
@@ -3925,6 +4018,10 @@ async function handleApi(req, res, pathname, parsedUrl) {
     let fullContent = '';
     let contextBundle = null;
     let nativeMeta = null;
+    let shouldAsyncCompress = false;
+    const asyncSlidingTurns = isNativeMode
+      ? Math.max(48, parseInt(settings.sliding_window_turns || '40', 10) || 40)
+      : Math.max(6, parseInt(settings.sliding_window_turns || '40', 10) || 40);
 
     try {
       let hasCustomOv = false;
@@ -3959,7 +4056,9 @@ async function handleApi(req, res, pathname, parsedUrl) {
         expectedUserId: userId,
         latestUserText: userContent,
         settings,
-        reinforceMemories: true
+        reinforceMemories: true,
+        skipSyncCompression: true,
+        includeFollowUps: includeFollowUps && !isNativeMode
       });
       contextBundle.attachments = effectiveAttachments;
 
@@ -3991,6 +4090,11 @@ async function handleApi(req, res, pathname, parsedUrl) {
         session_mode: session.session_mode
       });
 
+      const followupsFilter = createFollowupsStreamFilter((safeDelta) => {
+        fullContent += safeDelta;
+        sendEvent('content', { delta: safeDelta });
+      });
+
       if (usingLocalAntigravity) {
         const localTargetModel = body.local_model || session.local_model || 'DeepSeek-V4.1-Flash';
         const enableThinking = isNativeMode
@@ -4008,8 +4112,7 @@ async function handleApi(req, res, pathname, parsedUrl) {
             sendEvent('reasoning', { delta });
           },
           onContent: (delta) => {
-            fullContent += delta;
-            sendEvent('content', { delta });
+            followupsFilter.push(delta);
           },
           signal: abortController.signal
         });
@@ -4048,8 +4151,7 @@ async function handleApi(req, res, pathname, parsedUrl) {
             sendEvent('reasoning', { delta });
           },
           onContent: (delta) => {
-            fullContent += delta;
-            sendEvent('content', { delta });
+            followupsFilter.push(delta);
           },
           signal: abortController.signal
         });
@@ -4075,12 +4177,10 @@ async function handleApi(req, res, pathname, parsedUrl) {
               rpPrefixInjected = true;
               const trimmedLeading = String(delta || '').trimStart();
               if (!trimmedLeading.startsWith(cleanRpPrefix.slice(0, Math.min(4, cleanRpPrefix.length)))) {
-                fullContent += cleanRpPrefix;
-                sendEvent('content', { delta: cleanRpPrefix });
+                followupsFilter.push(cleanRpPrefix);
               }
             }
-            fullContent += delta;
-            sendEvent('content', { delta });
+            followupsFilter.push(delta);
           },
           signal: abortController.signal
         });
@@ -4089,6 +4189,7 @@ async function handleApi(req, res, pathname, parsedUrl) {
         }
       }
 
+      const { followUps: inlineFollowUps } = followupsFilter.flush();
       const durationMs = Date.now() - startedAt;
       const wasAborted = Boolean(abortController.signal.aborted);
       const substantiveContent = fullContent.replace(/^[\s*＊…—\-()（）「」『』【】]+$/g, '').trim();
@@ -4100,6 +4201,7 @@ async function handleApi(req, res, pathname, parsedUrl) {
       let latestMembership = getMembership(userId);
       let billingInfo = null;
       if (substantiveContent) {
+        shouldAsyncCompress = true;
         db.prepare('UPDATE users SET total_used = total_used + 1, updated_at = ? WHERE id = ?').run(
           Date.now(),
           userId
@@ -4107,25 +4209,19 @@ async function handleApi(req, res, pathname, parsedUrl) {
         latestMembership = getMembership(userId);
       }
 
-      const recentForFollowUps = [
-        ...(contextBundle.messagesPayload || []).filter((m) => m.role === 'user' || m.role === 'assistant').slice(-5),
-        { role: 'assistant', content: fullContent }
-      ];
       const followUps =
         wasAborted || !includeFollowUps || !substantiveContent
           ? []
-          : await generateDynamicFollowUpsWithLLM({
-              settings,
+          : Array.isArray(inlineFollowUps) && inlineFollowUps.length >= 2
+          ? inlineFollowUps
+          : generateFollowUpSuggestions({
               sessionMode: session.session_mode || 'roleplay',
               isPureOfficial,
-              persona: contextBundle.persona,
-              nurturing: contextBundle.nurturing,
-              userNickname: currentUser.nickname,
-              recentMessages: recentForFollowUps,
               userText: userContent,
               assistantText: fullContent,
-              nonce: Date.now(),
-              timeoutMs: 3600
+              persona: contextBundle.persona,
+              nurturing: contextBundle.nurturing,
+              nonce: Date.now()
             });
 
       const now = Date.now();
@@ -4223,9 +4319,26 @@ async function handleApi(req, res, pathname, parsedUrl) {
 
       db.prepare('UPDATE sessions SET updated_at = ? WHERE id = ?').run(now, sessionId);
 
+      // 剧场模式章节目标锚点推进判定
+      let chapterAdvanced = null;
+      if (!isNativeMode && !wasAborted && substantiveContent) {
+        try {
+          chapterAdvanced = evaluateChapterProgression({
+            sessionId,
+            persona: contextBundle.persona,
+            userText: userContent,
+            assistantText: finalAssistantContent,
+            triggeredLorebooks: contextBundle.triggeredLorebooks || []
+          });
+          if (chapterAdvanced) {
+            sendEvent('chapter_advanced', chapterAdvanced);
+          }
+        } catch {}
+      }
+
       const allMemories = decorateMemoriesWithRetention(
         db
-          .prepare('SELECT * FROM memories WHERE session_id = ? ORDER BY pinned DESC, importance DESC, updated_at DESC')
+          .prepare('SELECT * FROM memories WHERE session_id = ? AND superseded_by IS NULL ORDER BY pinned DESC, importance DESC, updated_at DESC')
           .all(sessionId)
       );
       const latestSessionRow = db.prepare('SELECT * FROM sessions WHERE id = ?').get(sessionId);
@@ -4237,6 +4350,7 @@ async function handleApi(req, res, pathname, parsedUrl) {
         meta: assistantMetaObj,
         memories: allMemories,
         nurturing: formatNurturingSnapshot(latestSessionRow),
+        chapter_advanced: chapterAdvanced,
         sessions: listSessionsForUser(userId),
         membership: latestMembership,
         billing: billingInfo
@@ -4303,7 +4417,7 @@ async function handleApi(req, res, pathname, parsedUrl) {
           }
           const allMemories = decorateMemoriesWithRetention(
             db
-              .prepare('SELECT * FROM memories WHERE session_id = ? ORDER BY pinned DESC, importance DESC, updated_at DESC')
+              .prepare('SELECT * FROM memories WHERE session_id = ? AND superseded_by IS NULL ORDER BY pinned DESC, importance DESC, updated_at DESC')
               .all(sessionId)
           );
           const latestSessionRow = db.prepare('SELECT * FROM sessions WHERE id = ?').get(sessionId);
@@ -4323,6 +4437,7 @@ async function handleApi(req, res, pathname, parsedUrl) {
         }
       } else {
         const rawErrMsg = String(err?.message || '');
+        console.error('[ChatStream Error]', rawErrMsg);
         const isLocalBusy = usingLocalAntigravity || /本地服务|本地 Antigravity|agy|服务繁忙/i.test(rawErrMsg);
         const userFriendlyMsg = isLocalBusy
           ? '当前本地服务繁忙或未响应，建议稍后重试，或临时切换为「☁️ 云端 API 模式」继续对话。'
@@ -4337,6 +4452,13 @@ async function handleApi(req, res, pathname, parsedUrl) {
       if (!res.writableEnded) {
         res.end();
       }
+      if (shouldAsyncCompress) {
+        setImmediate(() => {
+          try {
+            compressOverflowHistorySync(sessionId, asyncSlidingTurns);
+          } catch {}
+        });
+      }
     }
     return;
   }
@@ -4345,7 +4467,7 @@ async function handleApi(req, res, pathname, parsedUrl) {
   if (method === 'POST' && pathname === '/api/chat/proactive') {
     const body = await readJsonBody(req);
     const sessionId = body.session_id;
-    const triggerReason = body.trigger_reason || 'manual'; // 'idle' | 'return' | 'manual'
+    const triggerReason = body.trigger_reason || 'manual'; // 'idle' | 'return' | 'late_night_return' | 'manual'
 
     const session = db
       .prepare('SELECT * FROM sessions WHERE id = ? AND user_id = ?')
@@ -4354,10 +4476,26 @@ async function handleApi(req, res, pathname, parsedUrl) {
     if (session.session_mode === 'deepseek_native') {
       return sendJson(res, 400, { error: '极简问答模式不启用自动插话，以保障上下文纯粹与稳定' });
     }
-    if (triggerReason !== 'manual' && Number(session.proactive_enabled) !== 1) {
+    if (triggerReason === 'late_night_return') {
+      const hour = new Date().getHours();
+      const isNightWindow = hour >= 23 || hour < 5;
+      const lastMsg = db
+        .prepare('SELECT created_at FROM messages WHERE session_id = ? ORDER BY id DESC LIMIT 1')
+        .get(sessionId);
+      const idleMs = Date.now() - Number(lastMsg?.created_at || session.updated_at || 0);
+      if (!isNightWindow || idleMs < 4 * 3600 * 1000) {
+        return sendJson(res, 200, { ok: true, skipped: true, reason: 'late_night_condition_not_met' });
+      }
+      if (!global.__lateNightProactiveMap) global.__lateNightProactiveMap = new Map();
+      const lastNightTs = global.__lateNightProactiveMap.get(sessionId) || 0;
+      if (Date.now() - lastNightTs < 4 * 3600 * 1000) {
+        return sendJson(res, 200, { ok: true, skipped: true, reason: 'late_night_cooldown' });
+      }
+      global.__lateNightProactiveMap.set(sessionId, Date.now());
+    } else if (triggerReason !== 'manual' && Number(session.proactive_enabled) !== 1) {
       return sendJson(res, 200, { ok: true, skipped: true, reason: 'proactive_disabled' });
     }
-    if (triggerReason !== 'manual') {
+    if (triggerReason !== 'manual' && triggerReason !== 'late_night_return') {
       if (!global.__proactiveCooldownMap) global.__proactiveCooldownMap = new Map();
       const lastProactiveTs = global.__proactiveCooldownMap.get(sessionId) || 0;
       if (Date.now() - lastProactiveTs < 300 * 1000) {
@@ -4397,15 +4535,18 @@ async function handleApi(req, res, pathname, parsedUrl) {
       const allowCloudProactive = Boolean(usingOwnKeyPref || proactiveAccess.allowed);
       const settings = getExecutionSettingsForUser(userId, { forceDemoLlm: !allowCloudProactive });
       const cred = getEffectiveApiCredentials(settings);
+      const isNativeMode = session.session_mode === 'deepseek_native';
+      const includeFollowUps = body.include_follow_ups !== false;
       const contextBundle = buildThreeTierContext({
         sessionId,
         expectedUserId: userId,
         latestUserText: '',
         settings,
-        reinforceMemories: false
+        reinforceMemories: false,
+        skipSyncCompression: true,
+        includeFollowUps: includeFollowUps && !isNativeMode
       });
 
-      const isNativeMode = session.session_mode === 'deepseek_native';
       const isPureOfficial = contextBundle.persona.id === 'persona_deepseek_official';
       const lastUserRow = db
         .prepare("SELECT content FROM messages WHERE session_id = ? AND role = 'user' ORDER BY id DESC LIMIT 1")
@@ -4418,6 +4559,10 @@ async function handleApi(req, res, pathname, parsedUrl) {
       let fullReasoning = '';
       let fullContent = '';
       let usageMeta = null;
+      const proFilter = createFollowupsStreamFilter((safeDelta) => {
+        fullContent += safeDelta;
+        sendEvent('content', { delta: safeDelta });
+      });
 
       if (cred.hasKey) {
         // 使用真实大模型 API 流式生成自然主动搭话（临时追加场景触发指令，不污染用户消息表）
@@ -4452,8 +4597,7 @@ async function handleApi(req, res, pathname, parsedUrl) {
             sendEvent('reasoning', { delta });
           },
           onContent: (delta) => {
-            fullContent += delta;
-            sendEvent('content', { delta });
+            proFilter.push(delta);
           },
           signal: abortController.signal
         });
@@ -4494,6 +4638,7 @@ async function handleApi(req, res, pathname, parsedUrl) {
         }
       }
 
+      const { followUps: inlineProFollowUps } = proFilter.flush();
       const wasProactiveAborted = Boolean(abortController.signal.aborted);
       const substantiveProactive = fullContent.replace(/^[\s*＊…—\-()（）「」『』【】]+$/g, '').trim();
       if (!substantiveProactive) {
@@ -4511,25 +4656,19 @@ async function handleApi(req, res, pathname, parsedUrl) {
         : balancedProactive;
 
       const durationMs = Date.now() - startedAt;
-      const includeFollowUps = body.include_follow_ups !== false;
       const followUps =
         wasProactiveAborted || !includeFollowUps
           ? []
-          : await generateDynamicFollowUpsWithLLM({
-              settings,
+          : Array.isArray(inlineProFollowUps) && inlineProFollowUps.length >= 2
+          ? inlineProFollowUps
+          : generateFollowUpSuggestions({
               sessionMode: session.session_mode || 'roleplay',
               isPureOfficial,
               persona: contextBundle.persona,
               nurturing: contextBundle.nurturing,
-              userNickname: currentUser.nickname,
-              recentMessages: [
-                ...(contextBundle.messagesPayload || []).filter((m) => m.role === 'user' || m.role === 'assistant').slice(-4),
-                { role: 'assistant', content: finalProactiveContent }
-              ],
               userText: lastUserRow?.content || '',
               assistantText: finalProactiveContent,
-              nonce: Date.now(),
-              timeoutMs: 3600
+              nonce: Date.now()
             });
 
       const metaObj = {

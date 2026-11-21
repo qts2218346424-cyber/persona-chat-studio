@@ -1,0 +1,909 @@
+/* ==========================================================================
+   星语恋庭 · 自定义头像系统与皮肤更换系统样式表 (免费开放版)
+   ========================================================================== */
+
+:root {
+  --skin-scrim-opacity: 0.35;
+  --skin-glass-blur: 16px;
+  --skin-font-scale: 1;
+  --skin-wallpaper-bg: none;
+  --skin-accent: var(--brand-primary, #e2559d);
+}
+
+/* 1. 全屏壁纸与暗角遮罩底层（不阻挡任何点击事件） */
+.skin-wallpaper-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: var(--skin-wallpaper-bg);
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+html[data-has-wallpaper="1"] .skin-wallpaper-layer {
+  opacity: 1;
+}
+
+.skin-wallpaper-layer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgba(10, 11, 18, var(--skin-scrim-opacity, 0.35));
+}
+
+html[data-has-wallpaper="1"] .app-shell,
+html[data-has-wallpaper="1"] .chat-stage,
+html[data-has-wallpaper="1"] .ds-chat-main,
+html[data-has-wallpaper="1"] body {
+  background-color: transparent !important;
+}
+
+html[data-has-wallpaper="1"] .app-shell .sidebar,
+html[data-has-wallpaper="1"] .app-shell .ds-sidebar,
+html[data-has-wallpaper="1"] .app-shell .stage-topbar,
+html[data-has-wallpaper="1"] .app-shell .composer-card,
+html[data-has-wallpaper="1"] .app-shell .ds-composer-box {
+  backdrop-filter: blur(var(--skin-glass-blur, 16px)) saturate(135%);
+  -webkit-backdrop-filter: blur(var(--skin-glass-blur, 16px)) saturate(135%);
+}
+
+/* 2. 6 套免费精选皮肤预设（覆盖默认模式、DeepSeek 模式与剧场模式） */
+
+/* 2.1 曜石流金 */
+html[data-skin="obsidian-gold"],
+html[data-skin="obsidian-gold"] body,
+html[data-skin="obsidian-gold"] .app-shell {
+  color-scheme: dark;
+  --bg-app: #0d0f14;
+  --bg-stage: radial-gradient(circle at 75% 20%, rgba(229, 193, 133, 0.14) 0%, rgba(13, 15, 20, 0.98) 65%), #0d0f14;
+  --bg-sidebar: rgba(16, 19, 27, 0.88);
+  --bg-inspector: rgba(20, 23, 33, 0.92);
+  --bg-surface: rgba(255, 255, 255, 0.05);
+  --bg-surface-hover: rgba(229, 193, 133, 0.12);
+  --bg-composer: rgba(23, 27, 38, 0.84);
+  --bg-user-bubble: linear-gradient(135deg, rgba(229, 193, 133, 0.22) 0%, rgba(164, 128, 78, 0.24) 100%);
+  --bg-thought: rgba(25, 29, 41, 0.82);
+  --glass-surface: rgba(22, 25, 36, 0.72);
+  --glass-elevated: rgba(30, 34, 48, 0.86);
+  --border-subtle: rgba(255, 255, 255, 0.09);
+  --border-strong: rgba(229, 193, 133, 0.38);
+  --text-primary: #f5f2eb;
+  --text-secondary: #d4cdbf;
+  --text-muted: #989184;
+  --text-action: #e5c185;
+  --brand-primary: #e5c185;
+  --brand-accent-solid: #d9ac66;
+  --brand-gradient: linear-gradient(135deg, #e5c185 0%, #c8964e 100%);
+  --brand-gradient-hover: linear-gradient(135deg, #f0ce96 0%, #d4a35c 100%);
+  --brand-soft: rgba(229, 193, 133, 0.16);
+  --accent-gold: #e5c185;
+  --accent-gold-text: #f3d7a3;
+}
+
+/* 2.2 晨雾丝绸 */
+html[data-skin="mist-silk"],
+html[data-skin="mist-silk"] body,
+html[data-skin="mist-silk"] .app-shell {
+  color-scheme: light;
+  --bg-app: #f6f4f8;
+  --bg-stage: radial-gradient(circle at 75% 20%, rgba(184, 139, 114, 0.14) 0%, rgba(240, 236, 245, 0.95) 66%), #f6f4f8;
+  --bg-sidebar: rgba(248, 246, 251, 0.9);
+  --bg-inspector: rgba(251, 249, 253, 0.94);
+  --bg-surface: rgba(30, 27, 36, 0.04);
+  --bg-surface-hover: rgba(184, 139, 114, 0.12);
+  --bg-composer: rgba(255, 255, 255, 0.9);
+  --bg-user-bubble: linear-gradient(135deg, #f3e8e2 0%, #ebe5f2 100%);
+  --bg-thought: #f3eff7;
+  --glass-surface: rgba(255, 255, 255, 0.78);
+  --glass-elevated: rgba(255, 255, 255, 0.92);
+  --border-subtle: rgba(30, 27, 36, 0.08);
+  --border-strong: rgba(184, 139, 114, 0.34);
+  --text-primary: #211d27;
+  --text-secondary: #4e4659;
+  --text-muted: #7f768c;
+  --text-action: #9c6a51;
+  --brand-primary: #b88b72;
+  --brand-accent-solid: #a3745b;
+  --brand-gradient: linear-gradient(135deg, #c2957c 0%, #9b7386 100%);
+  --brand-gradient-hover: linear-gradient(135deg, #b08269 0%, #896275 100%);
+  --brand-soft: rgba(184, 139, 114, 0.14);
+  --accent-gold: #b88b72;
+  --accent-gold-text: #8c5c43;
+}
+
+/* 2.3 朝雾樱白 */
+html[data-skin="sakura-dawn"],
+html[data-skin="sakura-dawn"] body,
+html[data-skin="sakura-dawn"] .app-shell {
+  color-scheme: light;
+  --bg-app: #fff9fc;
+  --bg-stage: radial-gradient(circle at 80% 18%, rgba(236, 94, 167, 0.12) 0%, rgba(255, 246, 251, 0.96) 66%), #fff9fc;
+  --bg-sidebar: rgba(253, 242, 249, 0.9);
+  --bg-inspector: rgba(255, 248, 252, 0.94);
+  --bg-surface: #fcf0f7;
+  --bg-surface-hover: #f7e1ef;
+  --bg-composer: rgba(255, 255, 255, 0.92);
+  --bg-user-bubble: linear-gradient(135deg, #fde6f3 0%, #efe6ff 100%);
+  --bg-thought: #fdf5fa;
+  --glass-surface: rgba(255, 251, 254, 0.84);
+  --glass-elevated: rgba(255, 255, 255, 0.95);
+  --border-subtle: #f2daea;
+  --border-strong: #e7c2dc;
+  --text-primary: #2d1f36;
+  --text-secondary: #684f76;
+  --text-muted: #987ea8;
+  --text-action: #c44383;
+  --brand-primary: #e2559d;
+  --brand-accent-solid: #d63384;
+  --brand-gradient: linear-gradient(135deg, #ec5ea7 0%, #9b6bf6 100%);
+  --brand-gradient-hover: linear-gradient(135deg, #df4b97 0%, #8755eb 100%);
+  --brand-soft: rgba(236, 94, 167, 0.13);
+  --accent-gold: #d63384;
+  --accent-gold-text: #b83276;
+}
+
+/* 2.4 绯红古卷 */
+html[data-skin="crimson-scroll"],
+html[data-skin="crimson-scroll"] body,
+html[data-skin="crimson-scroll"] .app-shell {
+  color-scheme: dark;
+  --bg-app: #191211;
+  --bg-stage: radial-gradient(circle at 75% 20%, rgba(217, 107, 82, 0.15) 0%, rgba(22, 16, 15, 0.98) 68%), #191211;
+  --bg-sidebar: rgba(28, 20, 19, 0.9);
+  --bg-inspector: rgba(31, 22, 21, 0.94);
+  --bg-surface: rgba(255, 232, 220, 0.05);
+  --bg-surface-hover: rgba(217, 107, 82, 0.14);
+  --bg-composer: rgba(34, 24, 23, 0.86);
+  --bg-user-bubble: linear-gradient(135deg, rgba(186, 67, 56, 0.34) 0%, rgba(122, 46, 42, 0.36) 100%);
+  --bg-thought: rgba(38, 27, 25, 0.86);
+  --glass-surface: rgba(31, 22, 21, 0.78);
+  --glass-elevated: rgba(42, 30, 28, 0.9);
+  --border-subtle: rgba(242, 212, 194, 0.1);
+  --border-strong: rgba(217, 107, 82, 0.4);
+  --text-primary: #f6ebe3;
+  --text-secondary: #d7c3b7;
+  --text-muted: #a38a7c;
+  --text-action: #e58268;
+  --brand-primary: #d96b52;
+  --brand-accent-solid: #c8563d;
+  --brand-gradient: linear-gradient(135deg, #d96b52 0%, #b24136 100%);
+  --brand-gradient-hover: linear-gradient(135deg, #e57960 0%, #c44c40 100%);
+  --brand-soft: rgba(217, 107, 82, 0.18);
+  --accent-gold: #e4a374;
+  --accent-gold-text: #f0b98e;
+}
+
+/* 2.5 赛博霓虹 */
+html[data-skin="cyber-neon"],
+html[data-skin="cyber-neon"] body,
+html[data-skin="cyber-neon"] .app-shell {
+  color-scheme: dark;
+  --bg-app: #080d18;
+  --bg-stage: radial-gradient(circle at 78% 22%, rgba(34, 211, 238, 0.14) 0%, rgba(8, 13, 24, 0.98) 65%), #080d18;
+  --bg-sidebar: rgba(11, 17, 32, 0.9);
+  --bg-inspector: rgba(13, 20, 38, 0.94);
+  --bg-surface: rgba(56, 189, 248, 0.06);
+  --bg-surface-hover: rgba(34, 211, 238, 0.14);
+  --bg-composer: rgba(15, 23, 42, 0.86);
+  --bg-user-bubble: linear-gradient(135deg, rgba(6, 182, 212, 0.24) 0%, rgba(139, 92, 246, 0.28) 100%);
+  --bg-thought: rgba(17, 25, 48, 0.85);
+  --glass-surface: rgba(14, 21, 40, 0.76);
+  --glass-elevated: rgba(20, 30, 56, 0.9);
+  --border-subtle: rgba(56, 189, 248, 0.14);
+  --border-strong: rgba(34, 211, 238, 0.42);
+  --text-primary: #eaf6ff;
+  --text-secondary: #b7d2eb;
+  --text-muted: #7896b8;
+  --text-action: #22d3ee;
+  --brand-primary: #22d3ee;
+  --brand-accent-solid: #06b6d4;
+  --brand-gradient: linear-gradient(135deg, #06b6d4 0%, #8b5cf6 100%);
+  --brand-gradient-hover: linear-gradient(135deg, #22d3ee 0%, #a78bfa 100%);
+  --brand-soft: rgba(34, 211, 238, 0.16);
+  --accent-gold: #22d3ee;
+  --accent-gold-text: #67e8f9;
+}
+
+/* 2.6 极简墨水屏 */
+html[data-skin="eink-paper"],
+html[data-skin="eink-paper"] body,
+html[data-skin="eink-paper"] .app-shell {
+  color-scheme: light;
+  --bg-app: #f7f5ef;
+  --bg-stage: #f7f5ef;
+  --bg-sidebar: #f1eee6;
+  --bg-inspector: #f4f1ea;
+  --bg-surface: #ece8de;
+  --bg-surface-hover: #e3ded2;
+  --bg-composer: #fbfaf6;
+  --bg-user-bubble: #e8e4da;
+  --bg-thought: #efece3;
+  --glass-surface: #fbfaf6;
+  --glass-elevated: #ffffff;
+  --border-subtle: #d6d0c4;
+  --border-strong: #9f988a;
+  --text-primary: #1a1916;
+  --text-secondary: #3f3d37;
+  --text-muted: #6f6b62;
+  --text-action: #1a1916;
+  --brand-primary: #3b3831;
+  --brand-accent-solid: #26241f;
+  --brand-gradient: linear-gradient(135deg, #3b3831 0%, #1f1d19 100%);
+  --brand-gradient-hover: linear-gradient(135deg, #2a2822 0%, #11100d 100%);
+  --brand-soft: rgba(59, 56, 49, 0.1);
+  --accent-gold: #3b3831;
+  --accent-gold-text: #1a1916;
+  --shadow-soft: none;
+}
+
+/* 自定义强调色同步覆盖 */
+html[data-has-accent="1"] {
+  --brand-primary: var(--skin-accent);
+  --brand-accent-solid: var(--skin-accent);
+  --text-action: var(--skin-accent);
+  --accent-gold: var(--skin-accent);
+  --accent-gold-text: var(--skin-accent);
+}
+
+/* 皮肤生效时保证背景、气泡及文字跟随时令变量联动 */
+html[data-skin]:not([data-skin="default"]) .app-shell,
+html[data-skin]:not([data-skin="default"]) .chat-stage,
+html[data-skin]:not([data-skin="default"]) .ds-chat-main {
+  background: var(--bg-stage, var(--bg-app));
+}
+
+html[data-skin]:not([data-skin="default"]) .app-shell .msg-row.user .msg-body {
+  background: var(--bg-user-bubble) !important;
+  color: var(--text-primary) !important;
+  border-color: var(--border-strong) !important;
+}
+
+html[data-skin]:not([data-skin="default"]) .app-shell .msg-row.assistant .msg-body {
+  background: var(--bg-composer) !important;
+  color: var(--text-primary) !important;
+  border-color: var(--border-subtle) !important;
+}
+
+/* 3. 聊天气泡样式与字体排版风格 */
+html[data-bubble-style="glass"] .app-shell .msg-row.assistant .msg-body,
+html[data-bubble-style="glass"] .app-shell .msg-row.user .msg-body {
+  backdrop-filter: blur(var(--skin-glass-blur, 16px)) saturate(135%) !important;
+  -webkit-backdrop-filter: blur(var(--skin-glass-blur, 16px)) saturate(135%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.22) !important;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.14) !important;
+}
+
+html[data-bubble-style="outline"] .app-shell .msg-row.assistant .msg-body,
+html[data-bubble-style="outline"] .app-shell .msg-row.user .msg-body {
+  background: transparent !important;
+  border: 1.5px solid var(--border-strong) !important;
+  box-shadow: none !important;
+}
+
+html[data-bubble-style="letter"] .app-shell .msg-row.assistant .msg-body {
+  border-radius: 4px 16px 16px 4px !important;
+  border-left: 3px solid var(--skin-accent, var(--brand-primary)) !important;
+}
+
+html[data-bubble-style="letter"] .app-shell .msg-row.user .msg-body {
+  border-radius: 16px 4px 4px 16px !important;
+  border-right: 3px solid var(--skin-accent, var(--brand-primary)) !important;
+}
+
+html[data-font-style="serif"] .app-shell,
+html[data-font-style="serif"] .app-shell .msg-body,
+html[data-font-style="serif"] .app-shell .assistant-prose {
+  font-family: "Noto Serif SC", "Songti SC", "STSong", Georgia, serif !important;
+}
+
+html[data-font-style="rounded"] .app-shell,
+html[data-font-style="rounded"] .app-shell .msg-body,
+html[data-font-style="rounded"] .app-shell .assistant-prose {
+  font-family: "PingFang SC", "HarmonyOS Sans SC", "Hiragino Maru Gothic ProN", "Microsoft YaHei", sans-serif !important;
+  letter-spacing: 0.015em;
+}
+
+.app-shell .msg-body,
+.app-shell .assistant-prose {
+  font-size: calc(15px * var(--skin-font-scale, 1));
+}
+
+/* 4. 头像四层容器：头像框、轮廓形状、心情角标 */
+.avatar-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border-radius: 50%;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.avatar-wrap.size-sm {
+  width: 22px;
+  height: 22px;
+}
+
+.avatar-wrap.size-md {
+  width: 30px;
+  height: 30px;
+}
+
+.avatar-wrap.size-lg {
+  width: 38px;
+  height: 38px;
+}
+
+.avatar-wrap.size-xl {
+  width: 72px;
+  height: 72px;
+}
+
+.avatar-wrap .avatar-core {
+  width: 100%;
+  height: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: inherit;
+}
+
+.avatar-wrap .avatar-core > .avatar-img,
+.avatar-wrap .avatar-core > .art-badge-avatar,
+.avatar-wrap .avatar-core > svg {
+  width: 100% !important;
+  height: 100% !important;
+  border-radius: inherit !important;
+  display: block;
+}
+
+.avatar-wrap .avatar-core > .art-badge-avatar {
+  display: inline-flex !important;
+}
+
+/* 轮廓形状 */
+.avatar-wrap[data-shape="circle"] {
+  border-radius: 50%;
+}
+
+.avatar-wrap[data-shape="squircle"] {
+  border-radius: 30%;
+}
+
+.avatar-wrap[data-shape="rounded"] {
+  border-radius: 18%;
+}
+
+.avatar-wrap[data-shape="hex"] .avatar-core {
+  clip-path: polygon(50% 0%, 95% 25%, 95% 75%, 50% 100%, 5% 75%, 5% 25%);
+}
+
+/* 6 套免费头像框 */
+.avatar-wrap[data-frame]:not([data-frame="none"]) {
+  padding: 2.5px;
+}
+
+.avatar-wrap.size-sm[data-frame]:not([data-frame="none"]) {
+  padding: 1.5px;
+}
+
+.avatar-wrap.size-xl[data-frame]:not([data-frame="none"]) {
+  padding: 3.5px;
+}
+
+.avatar-wrap[data-frame="starlight-gold"] {
+  background: linear-gradient(135deg, #fde68a 0%, #d97706 48%, #fef08a 100%);
+  box-shadow: 0 0 10px rgba(245, 158, 11, 0.42);
+}
+
+.avatar-wrap[data-frame="sakura-bloom"] {
+  background: linear-gradient(135deg, #f9a8d4 0%, #ec4899 50%, #fbcfe8 100%);
+  box-shadow: 0 0 10px rgba(236, 72, 153, 0.38);
+}
+
+.avatar-wrap[data-frame="cyber-pulse"] {
+  background: linear-gradient(135deg, #22d3ee 0%, #6366f1 55%, #ec4899 100%);
+  box-shadow: 0 0 11px rgba(34, 211, 238, 0.44);
+}
+
+.avatar-wrap[data-frame="moonlit-silver"] {
+  background: linear-gradient(135deg, #f8fafc 0%, #94a3b8 50%, #cbd5e1 100%);
+  box-shadow: 0 0 8px rgba(148, 163, 184, 0.4);
+}
+
+.avatar-wrap[data-frame="crimson-seal"] {
+  background: linear-gradient(135deg, #fca5a5 0%, #b91c1c 55%, #f59e0b 100%);
+  box-shadow: 0 0 10px rgba(220, 38, 38, 0.4);
+}
+
+.avatar-wrap[data-frame="aurora-halo"] {
+  background: conic-gradient(from 0deg, #34d399, #38bdf8, #a78bfa, #f472b6, #34d399);
+  box-shadow: 0 0 12px rgba(167, 139, 250, 0.45);
+  animation: avatar-aurora-spin 6s linear infinite;
+}
+
+.avatar-wrap[data-frame="aurora-halo"] .avatar-core {
+  animation: avatar-aurora-counter 6s linear infinite;
+}
+
+@keyframes avatar-aurora-spin {
+  to {
+    filter: hue-rotate(360deg);
+  }
+}
+
+@keyframes avatar-aurora-counter {
+  to {
+    filter: hue-rotate(-360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .avatar-wrap[data-frame="aurora-halo"],
+  .avatar-wrap[data-frame="aurora-halo"] .avatar-core {
+    animation: none;
+  }
+}
+
+/* 右下角状态/心情角标 */
+.avatar-badge {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 3px;
+  border-radius: 999px;
+  background: var(--bg-composer, #1e1b2e);
+  border: 1.5px solid var(--border-strong, rgba(255, 255, 255, 0.3));
+  font-size: 10px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+  pointer-events: none;
+  z-index: 2;
+}
+
+.avatar-wrap.size-sm .avatar-badge {
+  display: none;
+}
+
+.avatar-wrap.size-xl .avatar-badge {
+  min-width: 24px;
+  height: 24px;
+  font-size: 14px;
+  right: -2px;
+  bottom: -2px;
+}
+
+/* 5. 主控个人资料弹窗内的头像快捷触发栏 */
+.up-avatar-studio-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+}
+
+.up-avatar-studio-meta {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.up-avatar-studio-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.up-avatar-quick-input {
+  width: 72px !important;
+  text-align: center;
+  padding: 6px 8px !important;
+  font-size: 14px !important;
+}
+
+/* 6. 免费皮肤工坊 UI */
+.skin-studio {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.skin-preview-stage {
+  position: relative;
+  border-radius: 16px;
+  padding: 16px;
+  overflow: hidden;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-stage, var(--bg-app));
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.skin-preview-bg {
+  position: absolute;
+  inset: 0;
+  background-size: cover;
+  background-position: center;
+  pointer-events: none;
+}
+
+.skin-preview-scrim {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.skin-preview-msg {
+  position: relative;
+  z-index: 1;
+  max-width: 82%;
+  padding: 10px 14px;
+  font-size: 13px;
+  line-height: 1.55;
+  border-radius: 14px;
+}
+
+.skin-preview-msg.ai {
+  align-self: flex-start;
+  background: var(--bg-composer);
+  color: var(--text-primary);
+  border: 1px solid var(--border-subtle);
+}
+
+.skin-preview-msg.user {
+  align-self: flex-end;
+  background: var(--bg-user-bubble);
+  color: var(--text-primary);
+  border: 1px solid var(--border-strong);
+}
+
+.skin-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+
+.skin-free-tag {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(16, 185, 129, 0.14);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.28);
+}
+
+.skin-preset-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(128px, 1fr));
+  gap: 10px;
+}
+
+.skin-preset-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  border-radius: 12px;
+  background: var(--bg-surface);
+  border: 1.5px solid var(--border-subtle);
+  cursor: pointer;
+  text-align: left;
+  color: var(--text-primary);
+  transition: transform 0.16s ease, border-color 0.16s ease, background 0.16s ease;
+}
+
+.skin-preset-card:hover {
+  transform: translateY(-1px);
+  border-color: var(--border-strong);
+}
+
+.skin-preset-card.active {
+  border-color: var(--brand-primary);
+  background: var(--brand-soft);
+  box-shadow: 0 0 0 1px var(--brand-primary);
+}
+
+.skin-swatch-bar {
+  height: 28px;
+  border-radius: 8px;
+  border: 1px solid rgba(128, 128, 128, 0.22);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 4px 6px;
+}
+
+.skin-swatch-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255, 255, 255, 0.8);
+}
+
+.skin-preset-name {
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.skin-preset-desc {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.skin-accent-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.skin-color-dot {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  padding: 0;
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+
+.skin-color-dot:hover {
+  transform: scale(1.1);
+}
+
+.skin-color-dot.active {
+  border-color: var(--text-primary);
+  box-shadow: 0 0 0 2px var(--bg-app);
+}
+
+.skin-color-picker-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px 3px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.skin-color-picker-wrap input[type="color"] {
+  width: 22px;
+  height: 22px;
+  border: none;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+}
+
+.skin-wallpaper-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(78px, 1fr));
+  gap: 8px;
+}
+
+.skin-wall-btn {
+  height: 48px;
+  border-radius: 10px;
+  border: 1.5px solid var(--border-subtle);
+  cursor: pointer;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-surface);
+  overflow: hidden;
+  position: relative;
+}
+
+.skin-wall-btn.active {
+  border-color: var(--brand-primary);
+  box-shadow: 0 0 0 1px var(--brand-primary);
+}
+
+.skin-sliders-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.skin-slider-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+}
+
+.skin-slider-item label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.skin-slider-item input[type="range"] {
+  width: 100%;
+  accent-color: var(--brand-primary);
+}
+
+.skin-pills-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.skin-pill-btn {
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.skin-pill-btn.active {
+  background: var(--brand-soft);
+  color: var(--text-primary);
+  border-color: var(--brand-primary);
+  font-weight: 600;
+}
+
+.skin-tools-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+/* 7. 头像工坊弹窗 UI */
+.avatar-studio-shell {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  gap: 18px;
+  align-items: start;
+}
+
+.avatar-studio-preview-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 18px 14px;
+  border-radius: 16px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+}
+
+.avatar-studio-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.avatar-studio-tab {
+  padding: 7px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.avatar-studio-tab.active {
+  background: var(--brand-gradient);
+  color: #ffffff;
+  border-color: transparent;
+  font-weight: 600;
+}
+
+.avatar-studio-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-height: 52vh;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.avatar-choice-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(64px, 1fr));
+  gap: 10px;
+}
+
+.avatar-choice-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 8px 4px;
+  border-radius: 12px;
+  border: 1.5px solid var(--border-subtle);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.avatar-choice-card.active {
+  border-color: var(--brand-primary);
+  background: var(--brand-soft);
+  color: var(--text-primary);
+}
+
+.avatar-crop-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.avatar-crop-canvas {
+  width: 220px;
+  height: 220px;
+  border-radius: 16px;
+  border: 1.5px dashed var(--border-strong);
+  cursor: grab;
+  touch-action: none;
+  background: rgba(0, 0, 0, 0.16);
+}
+
+.avatar-crop-canvas:active {
+  cursor: grabbing;
+}
+
+.builder-parts-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.builder-parts-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+@media (max-width: 720px) {
+  .avatar-studio-shell {
+    grid-template-columns: 1fr;
+  }
+  .avatar-studio-preview-col {
+    flex-direction: row;
+    justify-content: space-between;
+  }
+}

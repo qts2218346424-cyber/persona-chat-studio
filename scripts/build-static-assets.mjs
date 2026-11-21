@@ -16,7 +16,8 @@ const CSS_FILES = [
   'clean-ui.css',
   'mobile-responsive.css',
   'phone-agent.css',
-  'mobile-deepseek.css'
+  'mobile-deepseek.css',
+  'theater-luxury.css'
 ];
 
 const JS_FILES = [

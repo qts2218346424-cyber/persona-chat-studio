@@ -17,6 +17,8 @@ const {
   adoptShareItemToUser,
   getSafeClientSettings,
   updateSafeClientSettings,
+  getUserSkinConfig,
+  saveUserSkinConfig,
   getExecutionSettingsForUser,
   canUserBindOwnDeepSeekKey,
   getRawUserOwnDeepSeekConfig,
@@ -117,6 +119,13 @@ const { analyzeAndOptimizeScript } = require('./scriptWorkshop');
 const { parseAnyUploadedFile } = require('./fileParser');
 
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
+const UPLOADS_ROOT = path.join(__dirname, '..', 'data', 'uploads');
+for (const sub of ['avatars', 'wallpapers']) {
+  const dir = path.join(UPLOADS_ROOT, sub);
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+}
 const PORT = parseInt(process.env.PORT || '3210', 10);
 const COOKIE_NAME = 'star_session';
 
@@ -678,6 +687,48 @@ async function handleApi(req, res, pathname, parsedUrl) {
   if (method === 'GET' && (pathname === '/api/announcement' || pathname === '/api/site-announcement')) {
     const ann = getLatestAnnouncement();
     return sendJson(res, 200, { ok: true, announcement: ann }, APP_VERSION_CORS_HEADERS);
+  }
+
+  // ========= 0.1a2 用户自定义头像与壁纸静态访问接口 =========
+  if (pathname.startsWith('/api/uploads/')) {
+    if (method !== 'GET' && method !== 'HEAD') {
+      return sendJson(res, 405, { error: '方法不允许' });
+    }
+    const m = pathname.match(/^\/api\/uploads\/(avatars|wallpapers)\/([a-zA-Z0-9_-]+\.(webp|png|jpg|jpeg))$/);
+    if (!m) {
+      return sendJson(res, 400, { error: '非法的文件路径' });
+    }
+    const category = m[1];
+    const filename = m[2];
+    const ext = '.' + m[3].toLowerCase();
+    const targetPath = path.join(UPLOADS_ROOT, category, filename);
+    const resolvedBase = path.resolve(UPLOADS_ROOT, category) + path.sep;
+    const resolvedTarget = path.resolve(targetPath);
+    if (!resolvedTarget.startsWith(resolvedBase)) {
+      return sendJson(res, 400, { error: '非法路径访问' });
+    }
+    let stats;
+    try {
+      stats = fs.statSync(resolvedTarget);
+    } catch {
+      return sendJson(res, 404, { error: '图片不存在' });
+    }
+    if (!stats.isFile()) {
+      return sendJson(res, 404, { error: '图片不存在' });
+    }
+    const contentType = MIME_TYPES[ext] || 'application/octet-stream';
+    res.writeHead(200, {
+      'Content-Type': contentType,
+      'Content-Length': stats.size,
+      'Cache-Control': 'public, max-age=31536000, immutable',
+      ...SECURITY_HEADERS
+    });
+    if (method === 'HEAD') {
+      res.end();
+      return;
+    }
+    fs.createReadStream(resolvedTarget).pipe(res);
+    return;
   }
 
   // ========= 0.1b 原生客户端签名票据专用安全更新下载接口 (支持 HEAD / Range / 流式校验) =========
@@ -3347,6 +3398,63 @@ async function handleApi(req, res, pathname, parsedUrl) {
     } catch (err) {
       const code = err.statusCode || 400;
       return sendJson(res, code, { error: err.message, code: err.code || 'SETTINGS_ERROR' });
+    }
+  }
+
+  // ========= 外观与皮肤系统接口（免费开放：头像/壁纸上传与皮肤配置同步） =========
+  if (method === 'POST' && pathname === '/api/appearance/upload') {
+    if (!checkRateLimit(`appearance-upload:${userId}`, 30, 60000)) {
+      return sendJson(res, 429, { error: '图片上传过于频繁，请稍后再试' });
+    }
+    const body = await readJsonBody(req, 2 * 1024 * 1024);
+    const category = body.category === 'wallpapers' ? 'wallpapers' : body.category === 'avatars' ? 'avatars' : '';
+    if (!category) {
+      return sendJson(res, 400, { error: '不支持的上传分类，仅支持 avatars 或 wallpapers' });
+    }
+    const dataUrl = String(body.dataUrl || '').trim();
+    const match = dataUrl.match(/^data:image\/(webp|png|jpeg|jpg);base64,([A-Za-z0-9+/=]+)$/);
+    if (!match) {
+      return sendJson(res, 400, { error: '图片格式无效，仅支持 WebP / PNG / JPEG Base64 图片' });
+    }
+    const rawExt = match[1].toLowerCase();
+    const ext = rawExt === 'jpeg' ? 'jpg' : rawExt;
+    const buffer = Buffer.from(match[2], 'base64');
+    if (!buffer.length || buffer.length > 1.5 * 1024 * 1024) {
+      return sendJson(res, 400, { error: '图片大小须在 1.5MB 以内' });
+    }
+    // 基础魔数校验，防止伪装文件头
+    const isPng = buffer.length >= 8 && buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47;
+    const isJpg = buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
+    const isWebp =
+      buffer.length >= 12 &&
+      buffer.subarray(0, 4).toString('ascii') === 'RIFF' &&
+      buffer.subarray(8, 12).toString('ascii') === 'WEBP';
+    if ((ext === 'png' && !isPng) || (ext === 'jpg' && !isJpg) || (ext === 'webp' && !isWebp)) {
+      return sendJson(res, 400, { error: '图片内容与声明格式不符' });
+    }
+    const safeUserPart = String(userId).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 24) || 'u';
+    const filename = `${safeUserPart}_${Date.now()}_${crypto.randomBytes(4).toString('hex')}.${ext}`;
+    const destPath = path.join(UPLOADS_ROOT, category, filename);
+    fs.writeFileSync(destPath, buffer);
+    return sendJson(res, 200, {
+      ok: true,
+      url: `/api/uploads/${category}/${filename}`,
+      size: buffer.length
+    });
+  }
+
+  if (method === 'GET' && pathname === '/api/appearance/skin') {
+    return sendJson(res, 200, { ok: true, skin_config: getUserSkinConfig(userId) });
+  }
+
+  if ((method === 'PUT' || method === 'POST') && pathname === '/api/appearance/skin') {
+    const body = await readJsonBody(req, 64 * 1024);
+    const payload = body && body.skin_config !== undefined ? body.skin_config : body;
+    try {
+      const saved = saveUserSkinConfig(userId, payload);
+      return sendJson(res, 200, { ok: true, skin_config: saved });
+    } catch (err) {
+      return sendJson(res, 400, { error: err.message || '保存皮肤配置失败' });
     }
   }
 

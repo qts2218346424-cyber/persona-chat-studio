@@ -182,6 +182,7 @@
 
     const authHeading = document.getElementById('auth-brand-heading');
     const authSub = document.getElementById('auth-brand-subtitle') || document.querySelector('.auth-hero p');
+    const signinBtnText = document.getElementById('signin-btn-text');
     const signinSubmit = document.querySelector('#signin-form .auth-submit-btn');
     if (authHeading) {
       authHeading.textContent = '星语恋庭';
@@ -189,12 +190,30 @@
     if (authSub) {
       authSub.textContent = '沉浸互动剧本 · 立体陪伴配音 · 长效记忆对话馆';
     }
-    if (signinSubmit) {
+    if (signinBtnText) {
+      signinBtnText.textContent = '登录进入星语恋庭';
+    } else if (signinSubmit) {
       signinSubmit.textContent = '登录进入星语恋庭';
     }
   }
 
   syncBrandAndTitleByMode(bootMode);
+
+  // 3.1 手机端登录表单输入聚焦时自动平滑居中，避免软键盘遮挡输入框与提交按钮
+  const authGateEl = document.getElementById('auth-gate');
+  if (authGateEl) {
+    authGateEl.addEventListener('focusin', (e) => {
+      if (!isMobile()) return;
+      const target = e.target;
+      if (!(target instanceof HTMLElement)) return;
+      if (!target.matches('input, textarea, select')) return;
+      setTimeout(() => {
+        try {
+          target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        } catch {}
+      }, 260);
+    });
+  }
 
   // 4. 移动端左右抽屉互斥控制、遮罩同步与初始收起
   function isMobile() {

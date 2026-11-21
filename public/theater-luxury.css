@@ -1,0 +1,1233 @@
+/* ==========================================================================
+   星语剧场 UI 高阶视觉重构样式层 (Theater Luxury · 曜石流金 & 晨雾丝绸)
+   严格作用域限定：仅作用于 data-ui-mode="roleplay"，零影响 DeepSeek / Phone Agent 模式
+   ========================================================================== */
+
+/* 1. 曜石流金（暗夜星轨 · 默认）与晨雾丝绸（显式浅色）设计令牌 */
+html[data-ui-mode="roleplay"],
+body[data-ui-mode="roleplay"],
+.app-shell[data-ui-mode="roleplay"] {
+  --theater-font-serif: 'Noto Serif SC', 'Songti SC', 'STSong', serif;
+  --theater-font-en: 'Cormorant Garamond', 'Noto Serif SC', serif;
+  --theater-font-sans: 'Noto Sans SC', -apple-system, BlinkMacSystemFont, sans-serif;
+
+  --theater-persona-glow: rgba(124, 92, 255, 0.16);
+  --bg-stage: radial-gradient(circle at 75% 25%, var(--theater-persona-glow) 0%, rgba(14, 16, 21, 0.98) 65%), #0E1015;
+  --glass-surface: rgba(22, 25, 36, 0.58);
+  --glass-elevated: rgba(30, 34, 48, 0.76);
+  --glass-panel-solid: rgba(16, 19, 28, 0.88);
+  --glass-blur: blur(24px) saturate(140%);
+  --border-specular: 1px solid rgba(229, 193, 133, 0.24);
+  --border-subtle: 1px solid rgba(255, 255, 255, 0.08);
+  --text-primary: #F4F5F8;
+  --text-narrative: #B8C0D4;
+  --text-secondary: #D0D4E0;
+  --text-muted: #9BA2B8;
+  --accent-gold: #E5C185;
+  --accent-gold-text: #F2D6A2;
+  --accent-violet: #B497FF;
+  --brand-primary: #E5C185;
+  --shadow-ambient: 0 24px 60px -12px rgba(0, 0, 0, 0.65), inset 0 1px 0 0 rgba(255, 255, 255, 0.12);
+  --shadow-soft: 0 14px 36px -10px rgba(0, 0, 0, 0.55);
+
+  --bg-app: #0E1015;
+  --bg-sidebar: rgba(16, 18, 26, 0.72);
+  --bg-composer: rgba(22, 25, 36, 0.68);
+  --bg-surface: rgba(255, 255, 255, 0.045);
+  --bg-surface-hover: rgba(229, 193, 133, 0.1);
+  --border-strong: rgba(229, 193, 133, 0.34);
+
+  font-family: var(--theater-font-sans);
+  color: var(--text-primary);
+}
+
+/* 晨雾丝绸（当用户显式在设置中切换为浅色模式 color-scheme: light 时生效） */
+html[data-ui-mode="roleplay"][style*="color-scheme: light"],
+html[style*="color-scheme: light"] body[data-ui-mode="roleplay"],
+html[style*="color-scheme: light"] .app-shell[data-ui-mode="roleplay"] {
+  --theater-persona-glow: rgba(184, 139, 114, 0.16);
+  --bg-stage: radial-gradient(circle at 75% 25%, var(--theater-persona-glow) 0%, rgba(234, 230, 240, 0.92) 66%), #F6F5F8;
+  --glass-surface: rgba(255, 255, 255, 0.72);
+  --glass-elevated: rgba(255, 255, 255, 0.88);
+  --glass-panel-solid: rgba(248, 246, 251, 0.92);
+  --border-specular: 1px solid rgba(184, 139, 114, 0.32);
+  --border-subtle: 1px solid rgba(30, 27, 36, 0.08);
+  --text-primary: #1E1B24;
+  --text-narrative: #4B4458;
+  --text-secondary: #342E40;
+  --text-muted: #766E85;
+  --accent-gold: #B88B72;
+  --accent-gold-text: #8E5F47;
+  --accent-violet: #7C66AD;
+  --brand-primary: #9C6D54;
+  --shadow-ambient: 0 20px 48px -12px rgba(30, 27, 36, 0.12), inset 0 1px 0 0 rgba(255, 255, 255, 0.9);
+  --shadow-soft: 0 10px 28px -8px rgba(30, 27, 36, 0.09);
+
+  --bg-app: #F6F5F8;
+  --bg-sidebar: rgba(246, 245, 248, 0.82);
+  --bg-composer: rgba(255, 255, 255, 0.86);
+  --bg-surface: rgba(30, 27, 36, 0.04);
+  --bg-surface-hover: rgba(184, 139, 114, 0.11);
+  --border-strong: rgba(184, 139, 114, 0.42);
+}
+
+/* 2. 全局画布降噪 & 角色主色动态漫反射 */
+body[data-ui-mode="roleplay"] {
+  background: var(--bg-stage) !important;
+}
+
+body[data-ui-mode="roleplay"] .ambient-aurora {
+  opacity: 0.78 !important;
+  pointer-events: none;
+}
+
+body[data-ui-mode="roleplay"] .ambient-aurora .orb-sakura {
+  background: radial-gradient(circle, var(--theater-persona-glow) 0%, transparent 70%) !important;
+  opacity: 0.9 !important;
+  width: 62vw !important;
+  height: 62vw !important;
+  top: -12% !important;
+  right: -8% !important;
+  left: auto !important;
+}
+
+body[data-ui-mode="roleplay"] .ambient-aurora .orb-violet {
+  background: radial-gradient(circle, rgba(180, 151, 255, 0.11) 0%, transparent 72%) !important;
+  opacity: 0.55 !important;
+}
+
+body[data-ui-mode="roleplay"] .ambient-aurora .orb-gold {
+  background: radial-gradient(circle, rgba(229, 193, 133, 0.1) 0%, transparent 70%) !important;
+  opacity: 0.5 !important;
+}
+
+.app-shell[data-ui-mode="roleplay"] {
+  background: var(--bg-stage) !important;
+  position: relative;
+}
+
+/* 3. 左侧导航栏：降噪半透明光学侧栏 & 优雅衬线标识 */
+.app-shell[data-ui-mode="roleplay"] .sidebar {
+  background: var(--bg-sidebar) !important;
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border-right: var(--border-subtle) !important;
+}
+
+.app-shell[data-ui-mode="roleplay"] .brand-logo {
+  background: linear-gradient(135deg, rgba(229, 193, 133, 0.22), rgba(180, 151, 255, 0.14)) !important;
+  border: var(--border-specular) !important;
+  color: var(--accent-gold-text) !important;
+  box-shadow: none !important;
+}
+
+.app-shell[data-ui-mode="roleplay"] .brand-title {
+  font-family: var(--theater-font-serif) !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.04em;
+  color: var(--text-primary) !important;
+  background: none !important;
+  -webkit-text-fill-color: currentColor !important;
+}
+
+.app-shell[data-ui-mode="roleplay"] .dsh-segmented-bar,
+.app-shell[data-ui-mode="roleplay"] .workspace-mode-bar {
+  background: var(--bg-surface) !important;
+  border: var(--border-subtle) !important;
+  border-radius: 12px !important;
+}
+
+.app-shell[data-ui-mode="roleplay"] .ws-mode-btn {
+  color: var(--text-muted) !important;
+  border-radius: 9px !important;
+  transition: all 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.app-shell[data-ui-mode="roleplay"] .ws-mode-btn.active {
+  background: var(--glass-elevated) !important;
+  color: var(--accent-gold-text) !important;
+  border: var(--border-specular) !important;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.22) !important;
+}
+
+.app-shell[data-ui-mode="roleplay"] .active-script-card {
+  background: var(--glass-surface) !important;
+  border: var(--border-specular) !important;
+  border-radius: 16px !important;
+  box-shadow: var(--shadow-soft) !important;
+  transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1), border-color 0.25s ease;
+}
+
+.app-shell[data-ui-mode="roleplay"] .active-script-card:hover {
+  transform: translateY(-1px);
+  border-color: rgba(229, 193, 133, 0.45) !important;
+}
+
+.app-shell[data-ui-mode="roleplay"] .asc-icon {
+  background: rgba(229, 193, 133, 0.12) !important;
+  border: 1px solid rgba(229, 193, 133, 0.26) !important;
+  color: var(--accent-gold-text) !important;
+}
+
+.app-shell[data-ui-mode="roleplay"] .asc-kicker {
+  color: var(--accent-gold) !important;
+  letter-spacing: 0.04em;
+}
+
+.app-shell[data-ui-mode="roleplay"] .asc-title {
+  font-family: var(--theater-font-serif) !important;
+  color: var(--text-primary) !important;
+  font-weight: 600 !important;
+}
+
+.app-shell[data-ui-mode="roleplay"] .section-label {
+  color: var(--text-muted) !important;
+  letter-spacing: 0.06em;
+  font-size: 11px !important;
+}
+
+.app-shell[data-ui-mode="roleplay"] .text-action-btn {
+  color: var(--accent-gold-text) !important;
+}
+
+.app-shell[data-ui-mode="roleplay"] .persona-item,
+.app-shell[data-ui-mode="roleplay"] .session-item {
+  background: transparent !important;
+  border: 1px solid transparent !important;
+  border-radius: 12px !important;
+  transition: background-color 0.22s ease, border-color 0.22s ease, transform 0.2s ease;
+}
+
+.app-shell[data-ui-mode="roleplay"] .persona-item:hover,
+.app-shell[data-ui-mode="roleplay"] .session-item:hover {
+  background: var(--bg-surface) !important;
+  border-color: var(--border-subtle) !important;
+}
+
+.app-shell[data-ui-mode="roleplay"] .persona-item.active,
+.app-shell[data-ui-mode="roleplay"] .session-item.active {
+  background: var(--glass-elevated) !important;
+  border: var(--border-specular) !important;
+  box-shadow: inset 2px 0 0 var(--accent-gold), 0 8px 20px -10px rgba(0, 0, 0, 0.45) !important;
+}
+
+.app-shell[data-ui-mode="roleplay"] .persona-name,
+.app-shell[data-ui-mode="roleplay"] .session-title {
+  color: var(--text-primary) !important;
+}
+
+.app-shell[data-ui-mode="roleplay"] .persona-item.active .persona-name {
+  font-family: var(--theater-font-serif);
+  color: var(--accent-gold-text) !important;
+}
+
+.app-shell[data-ui-mode="roleplay"] .persona-tagline,
+.app-shell[data-ui-mode="roleplay"] .session-time {
+  color: var(--text-muted) !important;
+}
+
+.app-shell[data-ui-mode="roleplay"] .web-app-download-card,
+.app-shell[data-ui-mode="roleplay"] .clean-bottom-bar {
+  background: var(--glass-surface) !important;
+  border: var(--border-subtle) !important;
+  color: var(--text-secondary) !important;
+}
+
+.app-shell[data-ui-mode="roleplay"] .wad-badge {
+  background: rgba(229, 193, 133, 0.16) !important;
+  color: var(--accent-gold-text) !important;
+  border: 1px solid rgba(229, 193, 133, 0.3) !important;
+}
+
+/* 4. 中央主舞台 & 顶栏：退后一步的克制，衬线体分级 */
+.app-shell[data-ui-mode="roleplay"] .chat-stage {
+  background: transparent !important;
+}
+
+.app-shell[data-ui-mode="roleplay"] .stage-topbar {
+  background: var(--glass-surface) !important;
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border-bottom: var(--border-subtle) !important;
+  box-shadow: none !important;
+}
+
+.app-shell[data-ui-mode="roleplay"] .avatar-halo {
+  background: linear-gradient(135deg, rgba(229, 193, 133, 0.48), rgba(180, 151, 255, 0.38)) !important;
+  padding: 1.5px !important;
+}
+
+.app-shell[data-ui-mode="roleplay"] .persona-chip-name {
+  font-family: var(--theater-font-serif) !important;
+  font-weight: 600 !important;
+  font-size: 16.5px !important;
+  letter-spacing: 0.03em;
+  color: var(--text-primary) !important;
+}
+
+.app-shell[data-ui-mode="roleplay"] .bond-heart-tag {
+  background: rgba(229, 193, 133, 0.12) !important;
+  border: 1px solid rgba(229, 193, 133, 0.32) !important;
+  color: var(--accent-gold-text) !important;
+  font-weight: 500 !important;
+}
+
+.app-shell[data-ui-mode="roleplay"] .mood-live-chip {
+  background: rgba(180, 151, 255, 0.12) !important;
+  border: 1px solid rgba(180, 151, 255, 0.28) !important;
+  color: var(--accent-violet) !important;
+}
+
+.app-shell[data-ui-mode="roleplay"] .persona-chip-tagline {
+  color: var(--text-muted) !important;
+}
+
+.app-shell[data-ui-mode="roleplay"] .soft-tool-btn,
+.app-shell[data-ui-mode="roleplay"] .icon-btn,
+.app-shell[data-ui-mode="roleplay"] .apk-topbar-pill-btn {
+  background: var(--bg-surface) !important;
+  border: var(--border-subtle) !important;
+  color: var(--text-secondary) !important;
+  transition: all 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.app-shell[data-ui-mode="roleplay"] .soft-tool-btn:hover,
+.app-shell[data-ui-mode="roleplay"] .icon-btn:hover {
+  background: var(--bg-surface-hover) !important;
+  border-color: rgba(229, 193, 133, 0.38) !important;
+  color: var(--accent-gold-text) !important;
+}
+
+.app-shell[data-ui-mode="roleplay"] .soft-tool-btn.active {
+  background: rgba(229, 193, 133, 0.14) !important;
+  border: var(--border-specular) !important;
+  color: var(--accent-gold-text) !important;
+}
+
+/* 5. 去气泡化视觉小说（VN）剧本流 & 字体分级 */
+.app-shell[data-ui-mode="roleplay"] .messages-container {
+  max-width: 780px !important;
+  padding-top: 24px !important;
+  padding-bottom: 32px !important;
+}
+
+/* AI 角色台词：左侧香槟金高光细线 + 深邃毛玻璃剧本层 */
+.app-shell[data-ui-mode="roleplay"] .msg-row.assistant .msg-body {
+  background: var(--glass-surface) !important;
+  backdrop-filter: blur(18px) saturate(130%) !important;
+  -webkit-backdrop-filter: blur(18px) saturate(130%) !important;
+  border: var(--border-subtle) !important;
+  border-left: 2px solid rgba(229, 193, 133, 0.56) !important;
+  border-radius: 4px 20px 20px 18px !important;
+  padding: 18px 22px 14px !important;
+  box-shadow: var(--shadow-soft) !important;
+  color: var(--text-primary) !important;
+}
+
+.app-shell[data-ui-mode="roleplay"] .msg-row.assistant .assistant-prose {
+  font-size: 16.5px !important;
+  line-height: 1.85 !important;
+  color: var(--text-primary) !important;
+  letter-spacing: 0.015em;
+}
+
+/* 动作与环境旁白：斜体浅灰，与台词正文一眼区分 */
+.app-shell[data-ui-mode="roleplay"] .assistant-prose em.rp-action {
+  color: var(--text-narrative) !important;
+  font-style: italic !important;
+  font-weight: 300 !important;
+  letter-spacing: 0.02em;
+  opacity: 0.92;
+}
+
+.app-shell[data-ui-mode="roleplay"] .assistant-prose .rp-speech {
+  color: var(--text-primary) !important;
+  font-weight: 400 !important;
+}
+
+.app-shell[data-ui-mode="roleplay"] .msg-speaker-name {
+  font-family: var(--theater-font-serif) !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.03em;
+  color: var(--accent-gold-text) !important;
+}
+
+.app-shell[data-ui-mode="roleplay"] .msg-meta-time {
+  color: var(--text-muted) !important;
+}
+
+/* 玩家回复：克制的半透明暗紫金浮层 */
+.app-shell[data-ui-mode="roleplay"] .msg-row.user .msg-body {
+  background: linear-gradient(135deg, rgba(180, 151, 255, 0.14), rgba(229, 193, 133, 0.1)) !important;
+  border: 1px solid rgba(180, 151, 255, 0.26) !important;
+  border-radius: 18px 18px 4px 18px !important;
+  color: var(--text-primary) !important;
+  box-shadow: 0 10px 26px -12px rgba(0, 0, 0, 0.42) !important;
+}
+
+/* 心绪潜流独白（替代传统技术思考框） */
+.app-shell[data-ui-mode="roleplay"] .thought-details {
+  background: linear-gradient(135deg, rgba(229, 193, 133, 0.08), rgba(180, 151, 255, 0.06)) !important;
+  border: 1px solid rgba(229, 193, 133, 0.22) !important;
+  border-radius: 14px !important;
+  margin-bottom: 14px !important;
+  transition: border-color 0.25s ease, background-color 0.25s ease;
+}
+
+.app-shell[data-ui-mode="roleplay"] .thought-details[open] {
+  border-color: rgba(229, 193, 133, 0.4) !important;
+}
+
+.app-shell[data-ui-mode="roleplay"] .thought-summary {
+  font-family: var(--theater-font-serif) !important;
+  font-weight: 600 !important;
+  color: var(--accent-gold-text) !important;
+  padding: 9px 14px !important;
+  font-size: 13px !important;
+  letter-spacing: 0.03em;
+}
+
+.app-shell[data-ui-mode="roleplay"] .thought-spark-icon {
+  color: var(--accent-gold);
+  flex-shrink: 0;
+}
+
+.app-shell[data-ui-mode="roleplay"] .thought-content {
+  color: var(--text-narrative) !important;
+  border-top: 1px solid rgba(229, 193, 133, 0.14) !important;
+  padding: 10px 14px 12px !important;
+  font-size: 13.5px !important;
+  line-height: 1.75 !important;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .app-shell[data-ui-mode="roleplay"] .thought-details[open] .thought-content {
+    animation: theaterMonologueFadeIn 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+}
+
+@keyframes theaterMonologueFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 消息底部微工具栏 & 流光声波纹 */
+.app-shell[data-ui-mode="roleplay"] .msg-footer-bar {
+  color: var(--text-muted) !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  margin-top: 10px;
+  padding-top: 8px;
+}
+
+.app-shell[data-ui-mode="roleplay"] .msg-tool-btn {
+  background: transparent !important;
+  border: 1px solid transparent !important;
+  color: var(--text-muted) !important;
+  border-radius: 999px !important;
+  transition: all 0.2s ease;
+}
+
+.app-shell[data-ui-mode="roleplay"] .msg-tool-btn:hover {
+  background: var(--bg-surface-hover) !important;
+  border-color: rgba(229, 193, 133, 0.28) !important;
+  color: var(--accent-gold-text) !important;
+}
+
+.tts-wave-wrap,
+.cloud-tts-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  position: relative;
+}
+
+.tts-wave-wrap .tts-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.theater-wave-bars {
+  display: inline-flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 2.5px;
+  height: 13px;
+  padding: 0 2px;
+  pointer-events: none;
+}
+
+.theater-wave-bars i {
+  display: block;
+  width: 2px;
+  border-radius: 999px;
+  background: var(--accent-gold, #E5C185);
+  opacity: 0.72;
+  transition: opacity 0.2s ease, height 0.2s ease;
+}
+
+.theater-wave-bars i:nth-child(1) { height: 5px; }
+.theater-wave-bars i:nth-child(2) { height: 11px; }
+.theater-wave-bars i:nth-child(3) { height: 7px; }
+.theater-wave-bars i:nth-child(4) { height: 10px; }
+
+.tts-wave-wrap:has(.speaking) .theater-wave-bars i,
+.tts-wave-wrap:has(.is-speaking) .theater-wave-bars i,
+.cloud-tts-wrap:has(.speaking) .theater-wave-bars i,
+.cloud-tts-wrap:has(.is-speaking) .theater-wave-bars i,
+.companion-figure-card.speaking-glow ~ .companion-cloud .theater-wave-bars i {
+  opacity: 1;
+  background: var(--accent-gold-text, #F2D6A2);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .tts-wave-wrap:has(.speaking) .theater-wave-bars i,
+  .tts-wave-wrap:has(.is-speaking) .theater-wave-bars i,
+  .cloud-tts-wrap:has(.speaking) .theater-wave-bars i,
+  .cloud-tts-wrap:has(.is-speaking) .theater-wave-bars i {
+    animation: theaterWavePulse 0.9s ease-in-out infinite;
+  }
+
+  .tts-wave-wrap:has(.speaking) .theater-wave-bars i:nth-child(1),
+  .cloud-tts-wrap:has(.speaking) .theater-wave-bars i:nth-child(1) { animation-delay: 0s; }
+  .tts-wave-wrap:has(.speaking) .theater-wave-bars i:nth-child(2),
+  .cloud-tts-wrap:has(.speaking) .theater-wave-bars i:nth-child(2) { animation-delay: 0.16s; }
+  .tts-wave-wrap:has(.speaking) .theater-wave-bars i:nth-child(3),
+  .cloud-tts-wrap:has(.speaking) .theater-wave-bars i:nth-child(3) { animation-delay: 0.32s; }
+  .tts-wave-wrap:has(.speaking) .theater-wave-bars i:nth-child(4),
+  .cloud-tts-wrap:has(.speaking) .theater-wave-bars i:nth-child(4) { animation-delay: 0.48s; }
+}
+
+@keyframes theaterWavePulse {
+  0%, 100% { height: 4px; opacity: 0.68; }
+  50% { height: 13px; opacity: 1; }
+}
+
+/* 云朵语音按钮内嵌声波替代静态喇叭 */
+.app-shell[data-ui-mode="roleplay"] .cloud-tts-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.app-shell[data-ui-mode="roleplay"] .cloud-tts-wrap .theater-wave-bars {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  z-index: 2;
+}
+
+.app-shell[data-ui-mode="roleplay"] .cloud-tts-wrap .cloud-tts-btn {
+  color: transparent !important;
+  font-size: 0 !important;
+  min-width: 28px;
+  min-height: 28px;
+  border-radius: 999px;
+  background: rgba(229, 193, 133, 0.1) !important;
+  border: 1px solid rgba(229, 193, 133, 0.26) !important;
+}
+
+.app-shell[data-ui-mode="roleplay"] .cloud-tts-wrap .cloud-tts-btn svg {
+  display: none !important;
+}
+
+.app-shell[data-ui-mode="roleplay"] .tts-btn.speaking {
+  color: var(--accent-gold-text) !important;
+  border-color: rgba(229, 193, 133, 0.4) !important;
+  background: rgba(229, 193, 133, 0.12) !important;
+}
+
+/* 6. 底部悬浮毛玻璃输入舱 */
+.app-shell[data-ui-mode="roleplay"] .composer-dock {
+  background: linear-gradient(to top, rgba(14, 16, 21, 0.85) 35%, transparent 100%) !important;
+}
+
+html[style*="color-scheme: light"] .app-shell[data-ui-mode="roleplay"] .composer-dock {
+  background: linear-gradient(to top, rgba(246, 245, 248, 0.9) 35%, transparent 100%) !important;
+}
+
+.app-shell[data-ui-mode="roleplay"] .composer-card {
+  background: var(--glass-elevated) !important;
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: var(--border-specular) !important;
+  box-shadow: var(--shadow-ambient) !important;
+  border-radius: 22px !important;
+  transition: border-color 0.25s ease, box-shadow 0.25s ease;
+}
+
+.app-shell[data-ui-mode="roleplay"] .composer-card:focus-within {
+  border-color: rgba(229, 193, 133, 0.54) !important;
+  box-shadow: 0 24px 64px -12px rgba(0, 0, 0, 0.72), 0 0 0 1px rgba(229, 193, 133, 0.24) !important;
+}
+
+.app-shell[data-ui-mode="roleplay"] #chat-input {
+  color: var(--text-primary) !important;
+}
+
+.app-shell[data-ui-mode="roleplay"] #chat-input::placeholder {
+  color: var(--text-muted) !important;
+}
+
+.app-shell[data-ui-mode="roleplay"] .pill-toggle {
+  background: var(--bg-surface) !important;
+  border: var(--border-subtle) !important;
+  color: var(--text-secondary) !important;
+}
+
+.app-shell[data-ui-mode="roleplay"] .pill-toggle:hover,
+.app-shell[data-ui-mode="roleplay"] .pill-toggle.active {
+  background: rgba(229, 193, 133, 0.14) !important;
+  border-color: rgba(229, 193, 133, 0.36) !important;
+  color: var(--accent-gold-text) !important;
+}
+
+.app-shell[data-ui-mode="roleplay"] .send-btn {
+  background: linear-gradient(135deg, #E5C185, #C79B59) !important;
+  color: #141218 !important;
+  box-shadow: 0 6px 18px rgba(229, 193, 133, 0.28) !important;
+}
+
+/* 7. 陪伴立绘主舞台：释放空间 + 香槟金全息星轨 */
+.app-shell[data-ui-mode="roleplay"] #companion-stage {
+  background: radial-gradient(circle at 50% 42%, var(--theater-persona-glow) 0%, transparent 72%) !important;
+  border-left: none !important;
+  position: relative;
+}
+
+.app-shell[data-ui-mode="roleplay"] #companion-stage .companion-Style-bar,
+.app-shell[data-ui-mode="roleplay"] #companion-stage .companion-foot {
+  background: var(--glass-surface) !important;
+  backdrop-filter: blur(18px) saturate(130%);
+  -webkit-backdrop-filter: blur(18px) saturate(130%);
+  border: var(--border-subtle) !important;
+  border-radius: 16px !important;
+  padding: 6px 10px !important;
+  opacity: 0.78;
+  transition: opacity 0.28s ease, border-color 0.28s ease;
+}
+
+.app-shell[data-ui-mode="roleplay"] #companion-stage:hover .companion-Style-bar,
+.app-shell[data-ui-mode="roleplay"] #companion-stage:hover .companion-foot,
+.app-shell[data-ui-mode="roleplay"] #companion-stage:focus-within .companion-Style-bar,
+.app-shell[data-ui-mode="roleplay"] #companion-stage:focus-within .companion-foot {
+  opacity: 1;
+  border-color: rgba(229, 193, 133, 0.28) !important;
+}
+
+.app-shell[data-ui-mode="roleplay"] #companion-stage .comp-mode-btn,
+.app-shell[data-ui-mode="roleplay"] #companion-stage .comp-icon-btn,
+.app-shell[data-ui-mode="roleplay"] #companion-stage .mini-btn {
+  background: transparent !important;
+  border: 1px solid transparent !important;
+  color: var(--text-secondary) !important;
+}
+
+.app-shell[data-ui-mode="roleplay"] #companion-stage .comp-mode-btn.active {
+  background: rgba(229, 193, 133, 0.16) !important;
+  border: 1px solid rgba(229, 193, 133, 0.36) !important;
+  color: var(--accent-gold-text) !important;
+}
+
+.app-shell[data-ui-mode="roleplay"] #companion-stage .companion-cloud {
+  background: var(--glass-elevated) !important;
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: var(--border-specular) !important;
+  box-shadow: var(--shadow-soft) !important;
+  border-radius: 16px !important;
+}
+
+.app-shell[data-ui-mode="roleplay"] #companion-stage .cloud-tag {
+  color: var(--accent-gold-text) !important;
+  background: rgba(229, 193, 133, 0.12) !important;
+}
+
+.app-shell[data-ui-mode="roleplay"] #companion-stage .cloud-text,
+.app-shell[data-ui-mode="roleplay"] #companion-stage .comp-live-status {
+  color: var(--text-narrative) !important;
+}
+
+/* 将立绘星轨底座升级为香槟金 + 星云紫极细光环 */
+.app-shell[data-ui-mode="roleplay"] .pedestal-ring-outer {
+  border: 1.5px dashed rgba(229, 193, 133, 0.56) !important;
+  box-shadow: 0 0 22px rgba(229, 193, 133, 0.24), inset 0 0 18px rgba(180, 151, 255, 0.18) !important;
+}
+
+.app-shell[data-ui-mode="roleplay"] .pedestal-ring-inner {
+  border: 1px solid rgba(180, 151, 255, 0.55) !important;
+  box-shadow: 0 0 14px rgba(180, 151, 255, 0.24) !important;
+}
+
+.app-shell[data-ui-mode="roleplay"] .pedestal-ring-inner::before {
+  background: #E5C185 !important;
+  box-shadow: 0 0 8px rgba(229, 193, 133, 0.9) !important;
+}
+
+.app-shell[data-ui-mode="roleplay"] .pedestal-ring-inner::after {
+  background: #B497FF !important;
+  box-shadow: 0 0 8px rgba(180, 151, 255, 0.85) !important;
+}
+
+.app-shell[data-ui-mode="roleplay"] .holo-light-cone {
+  background: linear-gradient(
+    to top,
+    var(--theater-persona-glow) 0%,
+    rgba(229, 193, 133, 0.08) 55%,
+    transparent 100%
+  ) !important;
+}
+
+.app-shell[data-ui-mode="roleplay"] .holo-back-glow {
+  background: radial-gradient(
+    circle,
+    var(--theater-persona-glow) 0%,
+    rgba(229, 193, 133, 0.14) 36%,
+    rgba(180, 151, 255, 0.06) 62%,
+    transparent 82%
+  ) !important;
+}
+
+.app-shell[data-ui-mode="roleplay"] .comp-particles .cp-p {
+  color: #E5C185 !important;
+}
+
+.app-shell[data-ui-mode="roleplay"] .comp-poke-hint {
+  background: var(--glass-surface) !important;
+  border: var(--border-specular) !important;
+  color: var(--accent-gold-text) !important;
+}
+
+/* 8. 桌面端 P3 空间减法：立绘扩容 + 右侧抽屉改为悬浮毛玻璃面板 */
+@media (min-width: 861px) {
+  .app-shell[data-ui-mode="roleplay"]:not(.right-collapsed):not(.left-collapsed) {
+    grid-template-columns: 248px minmax(0, 1fr) !important;
+  }
+
+  .app-shell[data-ui-mode="roleplay"].left-collapsed:not(.right-collapsed) {
+    grid-template-columns: 0px minmax(0, 1fr) !important;
+  }
+
+  .app-shell[data-ui-mode="roleplay"] #companion-stage.companion-stage {
+    width: clamp(276px, 26vw, 372px) !important;
+    padding: 12px 18px 12px 6px !important;
+  }
+
+  /* 右侧面板展开时不再挤掉立绘 */
+  .app-shell[data-ui-mode="roleplay"]:not(.right-collapsed) #companion-stage.companion-stage:not(.hidden) {
+    display: flex !important;
+  }
+
+  .app-shell[data-ui-mode="roleplay"] .companion-live-canvas {
+    max-width: 356px !important;
+    max-height: 490px !important;
+  }
+
+  /* 悬浮光学毛玻璃抽屉 */
+  .app-shell[data-ui-mode="roleplay"] .inspector-panel#right-panel {
+    position: fixed !important;
+    top: 66px !important;
+    right: 16px !important;
+    bottom: 16px !important;
+    width: min(376px, calc(100vw - 32px)) !important;
+    min-width: 320px !important;
+    max-width: calc(100vw - 32px) !important;
+    height: auto !important;
+    z-index: 65 !important;
+    border-radius: 20px !important;
+    background: var(--glass-panel-solid) !important;
+    backdrop-filter: var(--glass-blur) !important;
+    -webkit-backdrop-filter: var(--glass-blur) !important;
+    border: var(--border-specular) !important;
+    box-shadow: var(--shadow-ambient) !important;
+    overflow: hidden;
+    transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.26s ease;
+  }
+
+  .app-shell[data-ui-mode="roleplay"].right-collapsed .inspector-panel#right-panel {
+    display: none !important;
+  }
+
+  .app-shell[data-ui-mode="roleplay"]:not(.right-collapsed) .inspector-panel#right-panel {
+    display: flex !important;
+    animation: theaterDrawerSlideIn 0.34s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+}
+
+@media (min-width: 1200px) {
+  .app-shell[data-ui-mode="roleplay"] #companion-stage.companion-stage {
+    width: clamp(320px, 29vw, 412px) !important;
+  }
+}
+
+@keyframes theaterDrawerSlideIn {
+  from {
+    opacity: 0;
+    transform: translateX(22px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* 9. 右侧养成/记忆/设定面板内部降噪与仪式感卡片 */
+.app-shell[data-ui-mode="roleplay"] .inspector-tabs {
+  background: transparent !important;
+  border-bottom: var(--border-subtle) !important;
+  padding: 10px 12px !important;
+}
+
+.app-shell[data-ui-mode="roleplay"] .inspector-tabs .tab-btn {
+  color: var(--text-muted) !important;
+  border-radius: 10px !important;
+}
+
+.app-shell[data-ui-mode="roleplay"] .inspector-tabs .tab-btn.active {
+  background: rgba(229, 193, 133, 0.14) !important;
+  color: var(--accent-gold-text) !important;
+  border: 1px solid rgba(229, 193, 133, 0.3) !important;
+}
+
+.app-shell[data-ui-mode="roleplay"] .nurturing-card,
+.app-shell[data-ui-mode="roleplay"] .memory-block,
+.app-shell[data-ui-mode="roleplay"] .session-iso-banner,
+.app-shell[data-ui-mode="roleplay"] .telemetry-card {
+  background: var(--glass-surface) !important;
+  border: var(--border-subtle) !important;
+  border-radius: 16px !important;
+}
+
+.app-shell[data-ui-mode="roleplay"] .nurture-stage-title {
+  font-family: var(--theater-font-serif) !important;
+  color: var(--accent-gold-text) !important;
+}
+
+.app-shell[data-ui-mode="roleplay"] .nurture-mood-pill {
+  background: rgba(180, 151, 255, 0.14) !important;
+  color: var(--accent-violet) !important;
+  border: 1px solid rgba(180, 151, 255, 0.28) !important;
+}
+
+.app-shell[data-ui-mode="roleplay"] .nurture-directive-tip {
+  color: var(--text-narrative) !important;
+}
+
+/* 隐藏工业进度条（保留 DOM 兼容），展示三环同心星轨仪 */
+.astrolabe-panel {
+  display: none;
+}
+
+.app-shell[data-ui-mode="roleplay"] .stat-bars-group {
+  display: none !important;
+}
+
+.app-shell[data-ui-mode="roleplay"] .astrolabe-panel {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 4px 4px;
+}
+
+.astrolabe-svg-wrap {
+  width: 112px;
+  height: 112px;
+  flex-shrink: 0;
+  position: relative;
+}
+
+.astrolabe-svg {
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+
+.astrolabe-track {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.08);
+  stroke-width: 6;
+}
+
+html[style*="color-scheme: light"] .astrolabe-track {
+  stroke: rgba(30, 27, 36, 0.09);
+}
+
+.astrolabe-ring {
+  fill: none;
+  stroke-width: 6;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.75s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.astrolabe-ring.ring-affection { stroke: #E5C185; }
+.astrolabe-ring.ring-trust { stroke: #B497FF; }
+.astrolabe-ring.ring-intimacy { stroke: #E89BB4; }
+
+.astrolabe-center-star {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent-gold-text);
+  pointer-events: none;
+}
+
+.astrolabe-legend {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.astrolabe-legend-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12.5px;
+  color: var(--text-narrative);
+}
+
+.astrolabe-legend-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.astrolabe-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+
+.astrolabe-dot.dot-aff { background: #E5C185; }
+.astrolabe-dot.dot-trust { background: #B497FF; }
+.astrolabe-dot.dot-int { background: #E89BB4; }
+
+.astrolabe-num {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+/* 私密日记：暗夜信笺 + 火漆印章仪式感 */
+.app-shell[data-ui-mode="roleplay"] .diary-card {
+  background: linear-gradient(155deg, rgba(32, 30, 44, 0.78), rgba(20, 22, 32, 0.85)) !important;
+  border: 1px solid rgba(229, 193, 133, 0.26) !important;
+  border-radius: 14px !important;
+  padding: 14px 16px !important;
+  color: var(--text-secondary) !important;
+  line-height: 1.78 !important;
+  position: relative;
+}
+
+html[style*="color-scheme: light"] .app-shell[data-ui-mode="roleplay"] .diary-card {
+  background: linear-gradient(155deg, rgba(255, 252, 245, 0.94), rgba(246, 240, 234, 0.92)) !important;
+  border: 1px solid rgba(184, 139, 114, 0.34) !important;
+}
+
+.app-shell[data-ui-mode="roleplay"] .diary-meta-row {
+  font-family: var(--theater-font-serif);
+  color: var(--accent-gold-text) !important;
+  border-bottom: 1px dashed rgba(229, 193, 133, 0.22);
+  padding-bottom: 7px;
+  margin-bottom: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.diary-wax-seal {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--accent-gold);
+}
+
+/* 星轨羁绊图谱（替代记忆字数进度条） */
+.constellation-compass-card {
+  display: none;
+}
+
+.app-shell[data-ui-mode="roleplay"] .constellation-compass-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: radial-gradient(circle at 50% 40%, rgba(180, 151, 255, 0.12), rgba(22, 25, 36, 0.72));
+  border: var(--border-specular);
+  margin-bottom: 10px;
+}
+
+html[style*="color-scheme: light"] .app-shell[data-ui-mode="roleplay"] .constellation-compass-card {
+  background: radial-gradient(circle at 50% 40%, rgba(184, 139, 114, 0.1), rgba(255, 255, 255, 0.84));
+}
+
+.constellation-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.constellation-title {
+  font-family: var(--theater-font-serif);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--accent-gold-text);
+}
+
+.constellation-en-sub {
+  font-family: var(--theater-font-en);
+  font-style: italic;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.constellation-svg {
+  width: 100%;
+  height: 132px;
+  display: block;
+}
+
+.constellation-summary {
+  font-size: 12px;
+  color: var(--text-narrative);
+  text-align: center;
+}
+
+/* 记忆容量折叠收纳 */
+.telemetry-fold {
+  margin-bottom: 10px;
+}
+
+.telemetry-fold-summary {
+  display: none;
+}
+
+.app-shell[data-ui-mode="roleplay"] .telemetry-fold-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  list-style: none;
+  cursor: pointer;
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--text-muted);
+  border-radius: 12px;
+  border: var(--border-subtle);
+  background: var(--bg-surface);
+}
+
+.app-shell[data-ui-mode="roleplay"] .telemetry-fold-summary::-webkit-details-marker {
+  display: none;
+}
+
+.app-shell[data-ui-mode="roleplay"] .telemetry-fold[open] .telemetry-card {
+  margin-top: 8px;
+}
+
+/* 核心羁绊点亮流光边框微动效 */
+.app-shell[data-ui-mode="roleplay"] .mem-card {
+  background: var(--bg-surface) !important;
+  border: var(--border-subtle) !important;
+  border-radius: 12px !important;
+  color: var(--text-secondary) !important;
+}
+
+.app-shell[data-ui-mode="roleplay"] .mem-card.recalled {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(135deg, rgba(229, 193, 133, 0.1), rgba(180, 151, 255, 0.08)) !important;
+  border: 1px solid rgba(229, 193, 133, 0.42) !important;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .app-shell[data-ui-mode="roleplay"] .mem-card.recalled::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(110deg, transparent 30%, rgba(242, 214, 162, 0.18) 50%, transparent 70%);
+    transform: translateX(-100%);
+    animation: theaterGoldSweep 3.8s ease-in-out infinite;
+    pointer-events: none;
+  }
+}
+
+@keyframes theaterGoldSweep {
+  0%, 55% { transform: translateX(-100%); }
+  100% { transform: translateX(120%); }
+}
+
+.app-shell[data-ui-mode="roleplay"] .mem-tag.pinned {
+  background: rgba(229, 193, 133, 0.18) !important;
+  color: var(--accent-gold-text) !important;
+}
+
+/* 10. 剧本与共创中心弹窗：3:4 竖版黑金塔罗海报卡 */
+body[data-ui-mode="roleplay"] #plaza-dialog,
+body[data-ui-mode="roleplay"] #theater-dialog {
+  background: var(--glass-panel-solid) !important;
+  backdrop-filter: var(--glass-blur) !important;
+  -webkit-backdrop-filter: var(--glass-blur) !important;
+  border: var(--border-specular) !important;
+  box-shadow: var(--shadow-ambient) !important;
+  color: var(--text-primary) !important;
+}
+
+body[data-ui-mode="roleplay"] #plaza-dialog-title,
+body[data-ui-mode="roleplay"] #theater-dialog-title {
+  font-family: var(--theater-font-serif) !important;
+  color: var(--text-primary) !important;
+}
+
+body[data-ui-mode="roleplay"] #plaza-dialog .hub-sub-pill {
+  background: rgba(229, 193, 133, 0.12) !important;
+  border: 1px solid rgba(229, 193, 133, 0.28) !important;
+  color: var(--accent-gold-text) !important;
+}
+
+body[data-ui-mode="roleplay"] #plaza-dialog .hub-tablist {
+  border-bottom: var(--border-subtle) !important;
+}
+
+body[data-ui-mode="roleplay"] #plaza-dialog .hub-tab[aria-selected="true"] {
+  color: var(--accent-gold-text) !important;
+}
+
+body[data-ui-mode="roleplay"] #plaza-dialog .hub-library-banner {
+  background: var(--bg-surface) !important;
+  border: var(--border-subtle) !important;
+}
+
+body[data-ui-mode="roleplay"] #plaza-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(248px, 1fr));
+  gap: 20px;
+}
+
+body[data-ui-mode="roleplay"] #plaza-cards-grid .script-select-card {
+  position: relative;
+  min-height: 336px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 20px 18px 16px !important;
+  border-radius: 20px !important;
+  background:
+    radial-gradient(circle at 85% 15%, var(--card-aura, rgba(229, 193, 133, 0.14)) 0%, transparent 55%),
+    linear-gradient(170deg, rgba(28, 31, 46, 0.92), rgba(14, 16, 21, 0.96)) !important;
+  border: 1px solid rgba(229, 193, 133, 0.22) !important;
+  box-shadow: 0 18px 36px -14px rgba(0, 0, 0, 0.6) !important;
+  transition: transform 0.32s cubic-bezier(0.22, 1, 0.36, 1), border-color 0.28s ease, box-shadow 0.32s ease;
+}
+
+html[style*="color-scheme: light"] body[data-ui-mode="roleplay"] #plaza-cards-grid .script-select-card {
+  background:
+    radial-gradient(circle at 85% 15%, var(--card-aura, rgba(184, 139, 114, 0.16)) 0%, transparent 55%),
+    linear-gradient(170deg, rgba(255, 255, 255, 0.95), rgba(242, 238, 246, 0.96)) !important;
+}
+
+body[data-ui-mode="roleplay"] #plaza-cards-grid .script-select-card:hover {
+  transform: translateY(-6px);
+  border-color: rgba(229, 193, 133, 0.58) !important;
+  box-shadow: 0 24px 48px -12px rgba(0, 0, 0, 0.72), 0 0 0 1px rgba(229, 193, 133, 0.24) !important;
+}
+
+body[data-ui-mode="roleplay"] #plaza-cards-grid .script-select-card.active {
+  border-color: var(--accent-gold) !important;
+  box-shadow: 0 20px 44px -10px rgba(229, 193, 133, 0.22) !important;
+}
+
+body[data-ui-mode="roleplay"] #plaza-cards-grid .ssc-title {
+  font-family: var(--theater-font-serif) !important;
+  font-size: 18px !important;
+  color: var(--text-primary) !important;
+}
+
+body[data-ui-mode="roleplay"] #plaza-cards-grid .ssc-sub {
+  font-family: var(--theater-font-en);
+  color: var(--accent-gold-text) !important;
+}
+
+body[data-ui-mode="roleplay"] #plaza-cards-grid .ssc-synopsis {
+  color: var(--text-narrative) !important;
+  font-size: 13px !important;
+  line-height: 1.68 !important;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+body[data-ui-mode="roleplay"] #plaza-cards-grid .script-cast-chip {
+  background: var(--bg-surface) !important;
+  border: var(--border-subtle) !important;
+  color: var(--text-secondary) !important;
+}
+
+body[data-ui-mode="roleplay"] #plaza-cards-grid .enter-script-btn {
+  background: linear-gradient(135deg, #E5C185, #C79B59) !important;
+  color: #141218 !important;
+  border: none !important;
+  font-weight: 600 !important;
+}
+
+body[data-ui-mode="roleplay"] #plaza-cards-grid .ssc-del-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  padding: 6px 10px !important;
+}
+
+/* 11. 剧场模式全局按钮主色规范化 */
+.app-shell[data-ui-mode="roleplay"] .mini-primary-btn {
+  background: linear-gradient(135deg, #E5C185, #C79B59) !important;
+  color: #141218 !important;
+  border: none !important;
+  font-weight: 600 !important;
+}
+
+.app-shell[data-ui-mode="roleplay"] .mini-btn,
+.app-shell[data-ui-mode="roleplay"] .secondary-btn {
+  background: var(--bg-surface) !important;
+  border: var(--border-subtle) !important;
+  color: var(--text-secondary) !important;
+}
+
+.app-shell[data-ui-mode="roleplay"] .secondary-btn:hover,
+.app-shell[data-ui-mode="roleplay"] .mini-btn:hover {
+  border-color: rgba(229, 193, 133, 0.35) !important;
+  color: var(--accent-gold-text) !important;
+}
+
+/* 12. 移动端窄屏保护（<= 860px）：确保抽屉与热区优雅收敛不溢出 */
+@media (max-width: 860px) {
+  .app-shell[data-ui-mode="roleplay"] .inspector-panel#right-panel {
+    background: var(--glass-panel-solid) !important;
+    backdrop-filter: var(--glass-blur) !important;
+    -webkit-backdrop-filter: var(--glass-blur) !important;
+    border-left: var(--border-specular) !important;
+  }
+
+  .app-shell[data-ui-mode="roleplay"] #companion-stage.companion-stage {
+    background: radial-gradient(circle at 50% 42%, var(--theater-persona-glow) 0%, rgba(14, 16, 21, 0.96) 72%) !important;
+  }
+
+  .app-shell[data-ui-mode="roleplay"] .msg-row.assistant .msg-body {
+    padding: 14px 16px 12px !important;
+  }
+
+  .app-shell[data-ui-mode="roleplay"] .msg-tool-btn,
+  .app-shell[data-ui-mode="roleplay"] .cloud-tts-btn {
+    min-height: 36px;
+  }
+}

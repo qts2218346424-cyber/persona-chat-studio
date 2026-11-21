@@ -7321,19 +7321,36 @@ pInt.value = n.intimacy;
 document.getElementById('val-affection').textContent = `${n.affection} / 100`;
 document.getElementById('val-trust').textContent = `${n.trust} / 100`;
 document.getElementById('val-intimacy').textContent = `${n.intimacy} / 100`;
+const updateAstrolabeRing = (ringId, valId, score, radius) => {
+const ringEl = document.getElementById(ringId);
+const valEl = document.getElementById(valId);
+const clamped = Math.max(0, Math.min(100, Number(score) || 0));
+if (ringEl) {
+const circ = 2 * Math.PI * radius;
+ringEl.setAttribute('stroke-dasharray', circ.toFixed(2));
+ringEl.setAttribute('stroke-dashoffset', (circ * (1 - clamped / 100)).toFixed(2));
+}
+if (valEl) {
+valEl.textContent = `${clamped} / 100`;
+}
+};
+updateAstrolabeRing('astrolabe-ring-affection', 'astrolabe-val-affection', n.affection, 46);
+updateAstrolabeRing('astrolabe-ring-trust', 'astrolabe-val-trust', n.trust, 35);
+updateAstrolabeRing('astrolabe-ring-intimacy', 'astrolabe-val-intimacy', n.intimacy, 24);
 const diaryListEl = document.getElementById('diary-list');
 diaryListEl.innerHTML = '';
 const diaries = Array.isArray(n.secret_diary) ? n.secret_diary : [];
 if (diaries.length === 0) {
 diaryListEl.innerHTML = `<div class="diary-card">点击上方「整理记忆 &amp; 写日记」，偷看${pronoun}在心底为你写下的私密日记吧。</div>`;
 } else {
+const sealSvg = '<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 1.5L14.4 9.6L22.5 12L14.4 14.4L12 22.5L9.6 14.4L1.5 12L9.6 9.6Z"/></svg>';
 for (const d of diaries) {
 const card = document.createElement('div');
 card.className = 'diary-card';
 const cleanDiaryText = String(d.content || '').replace(/。{2,}/g, '。');
 card.innerHTML = `
           <div class="diary-meta-row">
-            <span>${escapeHtml(d.date || '星夜日记')}</span>
+            <span class="diary-wax-seal">${sealSvg}<span>${escapeHtml(d.date || '星夜信笺')}</span></span>
             <span>${escapeHtml(d.mood || '')}</span>
           </div>
           <div>${escapeHtml(cleanDiaryText)}</div>
@@ -7432,6 +7449,76 @@ if (globalSyncChk) {
 globalSyncChk.checked = false;
 }
 syncSessionIsolationBadges();
+const personaGlowPalette = [
+'rgba(124, 92, 255, 0.17)',
+'rgba(229, 193, 133, 0.16)',
+'rgba(99, 179, 237, 0.15)',
+'rgba(232, 155, 180, 0.15)',
+'rgba(110, 203, 185, 0.14)'
+];
+const nameKey = String(p.id || p.name || '');
+let nameHash = 0;
+for (let i = 0; i < nameKey.length; i++) {
+nameHash = (nameHash * 31 + nameKey.charCodeAt(i)) >>> 0;
+}
+const glowColor = personaGlowPalette[nameHash % personaGlowPalette.length];
+if (appShell) appShell.style.setProperty('--theater-persona-glow', glowColor);
+document.documentElement.style.setProperty('--theater-persona-glow', glowColor);
+}
+function renderConstellationCompass(memories, recalledIds) {
+const svgEl = document.getElementById('constellation-svg');
+const summaryEl = document.getElementById('constellation-summary');
+if (!svgEl) return;
+const list = Array.isArray(memories) ? memories : [];
+const maxNodes = 12;
+const shown = list.slice(0, maxNodes);
+const recalledNodes = [];
+const cx = 160;
+const cy = 66;
+let parts = [
+`<circle cx="${cx}" cy="${cy}" r="54" fill="none" stroke="rgba(229,193,133,0.14)" stroke-width="1" stroke-dasharray="3 4"/>`,
+`<circle cx="${cx}" cy="${cy}" r="32" fill="none" stroke="rgba(180,151,255,0.18)" stroke-width="1"/>`,
+`<line x1="20" y1="${cy}" x2="300" y2="${cy}" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>`,
+`<line x1="${cx}" y1="8" x2="${cx}" y2="124" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>`
+];
+const coords = shown.map((mem, idx) => {
+const angle = (idx / Math.max(1, shown.length)) * Math.PI * 2 - Math.PI / 2;
+const radiusX = idx % 2 === 0 ? 112 : 68;
+const radiusY = idx % 2 === 0 ? 48 : 32;
+const x = Math.round((cx + Math.cos(angle) * radiusX) * 10) / 10;
+const y = Math.round((cy + Math.sin(angle) * radiusY) * 10) / 10;
+const lit = mem.pinned === 1 || (recalledIds && recalledIds.has(mem.id));
+if (lit) recalledNodes.push({ x, y });
+return { x, y, lit, title: mem.content || '' };
+});
+for (let i = 1; i < recalledNodes.length; i++) {
+const prev = recalledNodes[i - 1];
+const curr = recalledNodes[i];
+parts.push(
+`<line x1="${prev.x}" y1="${prev.y}" x2="${curr.x}" y2="${curr.y}" stroke="rgba(229,193,133,0.52)" stroke-width="1.2"/>`
+);
+}
+for (const node of coords) {
+if (node.lit) {
+parts.push(
+`<circle cx="${node.x}" cy="${node.y}" r="6.5" fill="rgba(229,193,133,0.22)"/>`,
+`<circle cx="${node.x}" cy="${node.y}" r="3.2" fill="#F2D6A2"/>`
+);
+} else {
+parts.push(`<circle cx="${node.x}" cy="${node.y}" r="2.2" fill="rgba(180,151,255,0.45)"/>`);
+}
+}
+if (coords.length === 0) {
+parts.push(`<circle cx="${cx}" cy="${cy}" r="3" fill="rgba(229,193,133,0.45)"/>`);
+}
+svgEl.innerHTML = parts.join('');
+if (summaryEl) {
+if (list.length === 0) {
+summaryEl.textContent = '星盘尚在静候，写下第一份共同回忆即可点亮星辰';
+} else {
+summaryEl.textContent = `星盘已点亮 ${recalledNodes.length} 颗核心羁绊 · 共珍藏 ${list.length} 段回忆`;
+}
+}
 }
 function renderTelemetryAndMemories() {
 const t = state.telemetry || {
@@ -7464,6 +7551,7 @@ toggleAutoMemBtn.setAttribute('aria-pressed', String(autoMemOn));
 }
 memoryCountLabel.textContent = `${state.memories.length} 条`;
 syncSessionIsolationBadges();
+renderConstellationCompass(state.memories, state.recalledIds);
 const isDsUi = state.uiMode === 'deepseek' || state.uiMode === 'phone-agent';
 const catLabel = isDsUi
 ? {
@@ -7940,13 +8028,14 @@ if (msg.reasoning && !isSystemPlaceholderReasoning(msg.reasoning)) {
 const secNum = Math.max(1, Math.round((msg.duration_ms || 1200) / 1000));
 const summaryLabel = isDsUi
 ? `已思考（用时 ${secNum} 秒）`
-: `${pPronoun}的心声独白${msg.duration_ms ? `（思考 ${(msg.duration_ms / 1000).toFixed(1)}s）` : ''}`;
+: `${pPronoun}的心绪潜流 · 内心独白`;
+const rpSparkSvg = '<svg class="thought-spark-icon" width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 1.5L14.4 9.6L22.5 12L14.4 14.4L12 22.5L9.6 14.4L1.5 12L9.6 9.6Z"/></svg>';
 const details = document.createElement('details');
 details.className = 'thought-details';
 if (isDsUi && isLastAssistant) details.open = true;
 details.innerHTML = `
         <summary class="thought-summary">
-          ${isDsUi ? DS_THINK_CHEVRON_SVG : ''}
+          ${isDsUi ? DS_THINK_CHEVRON_SVG : rpSparkSvg}
           ${isDsUi ? DS_THINK_BADGE_SVG : ''}
           <span class="thought-label">${escapeHtml(summaryLabel)}</span>
           ${!isDsUi ? '<span class="thought-chevron">▼</span>' : ''}
@@ -8061,7 +8150,10 @@ canRegen
 footer.innerHTML = `
         ${cacheTagHtml}
         ${verSwitcherHtml}
-        <button type="button" class="msg-tool-btn tts-btn" title="自动静音旁白，仅用温柔声线朗读角色对白">听声</button>
+        <span class="tts-wave-wrap">
+          <span class="theater-wave-bars" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+          <button type="button" class="msg-tool-btn tts-btn" title="自动静音旁白，仅用温柔声线朗读角色对白">听声</button>
+        </span>
         <button type="button" class="msg-tool-btn snap-btn" title="生成唯美心动语录珍藏海报">语录签</button>
         <button type="button" class="msg-tool-btn branch-btn" title="从这一刻创建对话分支">分支</button>
         <button type="button" class="msg-tool-btn edit-msg-btn" title="编辑修改本条回复">编辑</button>
@@ -8713,11 +8805,12 @@ liveToolSlot.className = 'ds-tool-pill-list hidden';
 const thoughtDetails = document.createElement('details');
 thoughtDetails.className = 'thought-details hidden';
 thoughtDetails.open = true;
+const rpLiveSparkSvg = '<svg class="thought-spark-icon" width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 1.5L14.4 9.6L22.5 12L14.4 14.4L12 22.5L9.6 14.4L1.5 12L9.6 9.6Z"/></svg>';
 thoughtDetails.innerHTML = `
       <summary class="thought-summary">
-        ${isDsUi ? DS_THINK_CHEVRON_SVG : ''}
+        ${isDsUi ? DS_THINK_CHEVRON_SVG : rpLiveSparkSvg}
         ${isDsUi ? DS_THINK_BADGE_SVG : ''}
-        <span class="live-thought-label">${isDsUi ? '思考中... (0.0s)' : '正在倾听并揣摩心绪…'}</span>
+        <span class="live-thought-label">${isDsUi ? '思考中... (0.0s)' : '正在倾听并揣摩心绪潜流…'}</span>
         ${!isDsUi ? '<span class="thought-chevron">▼</span>' : ''}
       </summary>
       <div class="thought-content streaming-cursor"></div>
@@ -8774,7 +8867,7 @@ if (accReasoning) {
 const livePronoun = getPersonaPronoun(state.activePersona);
 thoughtLabelEl.textContent = originIsDsUi
 ? `已思考（用时 ${thinkDoneSec || 1} 秒）`
-: `${livePronoun}的心声独白`;
+: `${livePronoun}的心绪潜流 · 内心独白`;
 }
 proseEl.innerHTML = renderMessageMarkdown(accContent, liveSearchResults, {
 isStreaming: true,
@@ -11845,7 +11938,16 @@ const grid = document.getElementById('plaza-cards-grid');
 if (!grid) return;
 grid.innerHTML = '';
 const scriptsList = state.scripts.length > 0 ? state.scripts : [getActiveScriptObj()];
+const cardAuras = [
+'rgba(229, 193, 133, 0.16)',
+'rgba(180, 151, 255, 0.16)',
+'rgba(110, 203, 185, 0.14)',
+'rgba(232, 155, 180, 0.15)'
+];
+let scIdx = 0;
 for (const sc of scriptsList) {
+const auraColor = cardAuras[scIdx % cardAuras.length];
+scIdx += 1;
 const isCurrent = sc.id === state.activeScriptId;
 const isCustom = Boolean(sc.is_custom);
 const fromSquare = Boolean(sc.source_share_id);
@@ -11876,6 +11978,7 @@ isCurrent ? '<span class="ssc-active-badge">当前剧本</span>' : ''
 .join('');
 const card = document.createElement('div');
 card.className = `script-select-card ${isCurrent ? 'active' : ''}`;
+card.style.setProperty('--card-aura', auraColor);
 card.innerHTML = `
         <div class="ssc-top">
           <div class="ssc-title-group">
@@ -11909,7 +12012,7 @@ card.innerHTML = `
           </button>
           ${
 isCustom
-? '<button type="button" class="secondary-btn ssc-del-btn" title="从我的剧本库移除此自建剧本"></button>'
+? '<button type="button" class="secondary-btn ssc-del-btn" title="从我的剧本库移除此自建剧本" aria-label="移除自建剧本"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path><path d="M10 11v6"></path><path d="M14 11v6"></path><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"></path></svg></button>'
 : ''
 }
         </div>
@@ -13154,6 +13257,21 @@ localStorage.setItem('ui_mode_v5', state.uiMode);
 } catch {}
 appShell.dataset.uiMode = state.uiMode;
 document.body.dataset.uiMode = state.uiMode;
+document.documentElement.dataset.uiMode = state.uiMode;
+const telemetryFold = document.querySelector('#memory-tab .telemetry-fold');
+if (telemetryFold) {
+if (!telemetryFold.dataset.toggleBound) {
+telemetryFold.dataset.toggleBound = '1';
+telemetryFold.querySelector('.telemetry-fold-summary')?.addEventListener('click', () => {
+telemetryFold.dataset.userToggled = '1';
+});
+}
+if (state.uiMode === 'roleplay') {
+if (!telemetryFold.dataset.userToggled) telemetryFold.open = false;
+} else {
+telemetryFold.open = true;
+}
+}
 if (!isDs) {
 appShell.classList.remove('artifacts-wide');
 if (codePreviewDialog?.open) {

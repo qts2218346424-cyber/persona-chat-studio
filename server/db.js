@@ -364,6 +364,7 @@ ensureColumn('users', 'last_checkin_date', 'TEXT DEFAULT NULL');
 ensureColumn('users', 'user_persona_role', "TEXT NOT NULL DEFAULT '命中注定的重逢旅人'");
 ensureColumn('users', 'user_persona_appearance', "TEXT NOT NULL DEFAULT ''");
 ensureColumn('users', 'user_persona_bio', "TEXT NOT NULL DEFAULT ''");
+ensureColumn('users', 'avatar_config', "TEXT NOT NULL DEFAULT ''");
 
 ensureColumn('memories', 'slot_key', 'TEXT DEFAULT NULL');
 ensureColumn('memories', 'strength', 'REAL NOT NULL DEFAULT 3.0');
@@ -2094,6 +2095,46 @@ function buildMembershipSnapshot(row, now = Date.now()) {
   };
 }
 
+function parseSafeAvatarConfig(raw) {
+  if (!raw) return null;
+  if (typeof raw === 'object' && !Array.isArray(raw)) return raw;
+  try {
+    const parsed = JSON.parse(String(raw));
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function sanitizeAvatarConfigInput(rawConfig) {
+  if (rawConfig === null || rawConfig === '') return '';
+  const cfg = parseSafeAvatarConfig(rawConfig);
+  if (!cfg) return '';
+  const clean = {};
+  if (typeof cfg.type === 'string') clean.type = cfg.type.slice(0, 32);
+  if (typeof cfg.src === 'string') clean.src = cfg.src.slice(0, 2048);
+  if (typeof cfg.frameId === 'string') clean.frameId = cfg.frameId.slice(0, 48);
+  if (typeof cfg.shape === 'string') clean.shape = cfg.shape.slice(0, 24);
+  if (typeof cfg.badge === 'string') clean.badge = cfg.badge.slice(0, 12);
+  if (typeof cfg.bg === 'string') clean.bg = cfg.bg.slice(0, 160);
+  if (typeof cfg.glyph === 'string') clean.glyph = cfg.glyph.slice(0, 12);
+  if (typeof cfg.presetId === 'string') clean.presetId = cfg.presetId.slice(0, 48);
+  if (cfg.parts && typeof cfg.parts === 'object' && !Array.isArray(cfg.parts)) {
+    const parts = {};
+    for (const [k, v] of Object.entries(cfg.parts)) {
+      if (typeof k === 'string' && k.length <= 24 && typeof v === 'string' && v.length <= 48) {
+        parts[k] = v;
+      }
+    }
+    clean.parts = parts;
+  }
+  const serialized = JSON.stringify(clean);
+  if (serialized.length > 4000) {
+    throw new Error('头像配置数据过大');
+  }
+  return serialized;
+}
+
 function sanitizeUser(row) {
   if (!row) return null;
   const now = Date.now();
@@ -2102,6 +2143,7 @@ function sanitizeUser(row) {
     email: row.email,
     nickname: row.nickname,
     avatar: row.avatar || '我',
+    avatar_config: parseSafeAvatarConfig(row.avatar_config),
     role: row.role || 'user',
     is_admin: row.role === 'admin',
     is_banned: row.is_banned === 1,
@@ -2115,7 +2157,7 @@ function sanitizeUser(row) {
   };
 }
 
-function updateUserPersona(userId, { nickname, avatar, role, appearance, bio }) {
+function updateUserPersona(userId, { nickname, avatar, avatar_config, role, appearance, bio }) {
   const row = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
   if (!row) throw new Error('用户不存在');
 
@@ -2123,16 +2165,28 @@ function updateUserPersona(userId, { nickname, avatar, role, appearance, bio }) 
     throw new Error('主控昵称不能为空，请填写希望角色对你的称呼');
   }
   const nextNick = nickname !== undefined ? String(nickname).trim().slice(0, 24) : row.nickname;
-  const nextAvatar = avatar !== undefined ? String(avatar).trim().slice(0, 4) || row.avatar : row.avatar;
+  let nextAvatar = row.avatar;
+  if (avatar !== undefined) {
+    const rawAv = String(avatar).trim();
+    if (rawAv.startsWith('/api/uploads/') || rawAv.startsWith('svg:')) {
+      nextAvatar = rawAv.slice(0, 256);
+    } else if (rawAv.startsWith('data:image/')) {
+      nextAvatar = rawAv.slice(0, 65536);
+    } else {
+      nextAvatar = rawAv.slice(0, 8) || row.avatar;
+    }
+  }
+  const nextAvatarConfig =
+    avatar_config !== undefined ? sanitizeAvatarConfigInput(avatar_config) : row.avatar_config || '';
   const nextRole = role !== undefined ? String(role).trim().slice(0, 80) : row.user_persona_role || '';
   const nextApp = appearance !== undefined ? String(appearance).trim().slice(0, 500) : row.user_persona_appearance || '';
   const nextBio = bio !== undefined ? String(bio).trim().slice(0, 1000) : row.user_persona_bio || '';
 
   db.prepare(`
     UPDATE users
-    SET nickname = ?, avatar = ?, user_persona_role = ?, user_persona_appearance = ?, user_persona_bio = ?, updated_at = ?
+    SET nickname = ?, avatar = ?, avatar_config = ?, user_persona_role = ?, user_persona_appearance = ?, user_persona_bio = ?, updated_at = ?
     WHERE id = ?
-  `).run(nextNick, nextAvatar, nextRole, nextApp, nextBio, Date.now(), userId);
+  `).run(nextNick, nextAvatar, nextAvatarConfig, nextRole, nextApp, nextBio, Date.now(), userId);
 
   recordUserDailyEvent(userId, 'user_persona_saved');
   return sanitizeUser(db.prepare('SELECT * FROM users WHERE id = ?').get(userId));
@@ -3440,8 +3494,92 @@ function getSafeClientSettings(userId) {
     temperature,
     sliding_window_turns: slidingWindow,
     max_recalled_memories: maxRecall,
-    proactive_idle_sec: proactiveIdle
+    proactive_idle_sec: proactiveIdle,
+    skin_config: getUserSkinConfig(userId)
   };
+}
+
+function sanitizeSkinConfigInput(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return null;
+  }
+  const ALLOWED_PRESETS = new Set([
+    'default',
+    'obsidian-gold',
+    'mist-silk',
+    'sakura-dawn',
+    'crimson-scroll',
+    'cyber-neon',
+    'eink-paper'
+  ]);
+  const ALLOWED_WALLPAPER_TYPES = new Set(['none', 'gradient', 'image']);
+  const ALLOWED_BUBBLES = new Set(['soft', 'glass', 'outline', 'letter']);
+  const ALLOWED_FONTS = new Set(['sans', 'serif', 'rounded']);
+
+  const preset = ALLOWED_PRESETS.has(raw.preset) ? raw.preset : 'default';
+  const accentColor =
+    typeof raw.accentColor === 'string' && /^#[0-9a-fA-F]{6}$/.test(raw.accentColor.trim())
+      ? raw.accentColor.trim()
+      : '';
+  const wallpaperType = ALLOWED_WALLPAPER_TYPES.has(raw.wallpaperType) ? raw.wallpaperType : 'none';
+  let wallpaperValue = '';
+  if (typeof raw.wallpaperValue === 'string') {
+    const val = raw.wallpaperValue.trim();
+    if (wallpaperType === 'gradient') {
+      wallpaperValue = val.slice(0, 320);
+    } else if (wallpaperType === 'image') {
+      if (val.startsWith('/api/uploads/wallpapers/') || val.startsWith('data:image/')) {
+        wallpaperValue = val.slice(0, 2048);
+      }
+    }
+  }
+  const scrimNum = Number(raw.scrimOpacity);
+  const scrimOpacity = Number.isFinite(scrimNum) ? Math.min(85, Math.max(0, Math.round(scrimNum))) : 35;
+  const blurNum = Number(raw.glassBlur);
+  const glassBlur = Number.isFinite(blurNum) ? Math.min(28, Math.max(0, Math.round(blurNum))) : 16;
+  const bubbleStyle = ALLOWED_BUBBLES.has(raw.bubbleStyle) ? raw.bubbleStyle : 'soft';
+  const fontStyle = ALLOWED_FONTS.has(raw.fontStyle) ? raw.fontStyle : 'sans';
+  const scaleNum = Number(raw.fontScale);
+  const fontScale = Number.isFinite(scaleNum) ? Math.min(115, Math.max(90, Math.round(scaleNum))) : 100;
+
+  return {
+    preset,
+    accentColor,
+    wallpaperType,
+    wallpaperValue,
+    scrimOpacity,
+    glassBlur,
+    bubbleStyle,
+    fontStyle,
+    fontScale
+  };
+}
+
+function getUserSkinConfig(userId) {
+  if (!userId) return null;
+  const row = db
+    .prepare("SELECT value FROM user_settings WHERE user_id = ? AND key = 'skin_config'")
+    .get(userId);
+  if (!row || !row.value) return null;
+  try {
+    const parsed = JSON.parse(row.value);
+    return sanitizeSkinConfigInput(parsed);
+  } catch {
+    return null;
+  }
+}
+
+function saveUserSkinConfig(userId, rawConfig) {
+  if (!userId) throw new Error('未指定用户身份');
+  const clean = sanitizeSkinConfigInput(rawConfig);
+  const now = Date.now();
+  const value = clean ? JSON.stringify(clean) : '';
+  db.prepare(`
+    INSERT INTO user_settings (user_id, key, value, updated_at)
+    VALUES (?, 'skin_config', ?, ?)
+    ON CONFLICT(user_id, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
+  `).run(userId, value, now);
+  return clean;
 }
 
 /**
@@ -4553,6 +4691,8 @@ module.exports = {
   updateUserSettings,
   getSafeClientSettings,
   updateSafeClientSettings,
+  getUserSkinConfig,
+  saveUserSkinConfig,
   getExecutionSettingsForUser,
   canUserBindOwnDeepSeekKey,
   getRawUserOwnDeepSeekConfig,

@@ -541,8 +541,8 @@ function extractAuthToken(req, parsedUrl = null) {
   return '';
 }
 
-const APP_LATEST_VERSION = '2.0.3';
-const APP_LATEST_VERSION_CODE = 133;
+const APP_LATEST_VERSION = '2.0.4';
+const APP_LATEST_VERSION_CODE = 134;
 const APP_OFFICIAL_CERT_SHA256 = '6fd05e32a3cabf327140129d866e55a342fe30daa3384c67aad4b3cbdd98a17b';
 const APP_UPDATE_TICKET_SECRET = crypto
   .createHash('sha256')
@@ -833,10 +833,10 @@ async function handleApi(req, res, pathname, parsedUrl) {
       forceUpdate,
       diffGenerations,
       changelog: [
-        '【移动端深度适配】重构移动端空对话与顶栏布局层级，彻底修复手机端顶栏汉堡按钮压扁与遮挡问题',
-        '【正版极简纯粹美学】全面移除多余灵感卡片，空对话页面复刻 DeepSeek 官方 App 般的纯粹极简体验',
-        '【输入舱丝滑横滑】输入区工具栏改为单行横向丝滑滑动，防止胶囊标签自动折行膨胀',
-        '【随身版客户端升级】Android 原生随身版同步升级至 v2.0.3 (Build 133)，内置最新离线静态资产与性能提升'
+        '【深度思考极简折叠】深度思考过程默认折叠不展开，仅在用户主动点击时才展开，保持界面清爽专注',
+        '【剧本扮演逐句分段】沉浸剧场升级即时通讯分句发消息卡片，每一句话独立半透明小气泡包裹，对话节奏明快灵动',
+        '【外观工坊上新】新增「逐句分段」聊天气泡风格，支持随时随心切换',
+        '【随身版客户端升级】Android 原生随身版同步升级至 v2.0.4 (Build 134)，内置最新离线静态资产与性能提升'
       ]
     };
 

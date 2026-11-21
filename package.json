@@ -1,6 +1,6 @@
 {
   "name": "persona-chat-studio",
-  "version": "2.0.3",
+  "version": "2.0.4",
   "description": "星语恋庭 · 互动剧本与角色扮演剧场（含 AI 剧本优化提取工坊、共创设计广场与三层上下文记忆引擎）",
   "main": "server/index.js",
   "scripts": {

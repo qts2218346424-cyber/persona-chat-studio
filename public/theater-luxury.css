@@ -331,6 +331,33 @@ body[data-ui-mode="roleplay"] .ambient-aurora .orb-gold {
   letter-spacing: 0.015em;
 }
 
+/* AI 角色台词：逐句独立分段卡片气泡（类似即时通讯独立发句体验） */
+.app-shell[data-ui-mode="roleplay"] .assistant-prose p {
+  display: block !important;
+  margin: 0 0 8px 0 !important;
+  padding: 10px 14px !important;
+  border-radius: 14px !important;
+  background: light-dark(rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0.07)) !important;
+  border: 1px solid light-dark(rgba(0, 0, 0, 0.06), rgba(255, 255, 255, 0.12)) !important;
+  box-shadow: 0 2px 8px light-dark(rgba(0, 0, 0, 0.02), rgba(0, 0, 0, 0.18)) !important;
+  backdrop-filter: blur(10px) !important;
+  -webkit-backdrop-filter: blur(10px) !important;
+  width: fit-content !important;
+  max-width: 100% !important;
+  line-height: 1.68 !important;
+  color: var(--text-primary) !important;
+  word-break: break-word !important;
+  transition: transform 0.15s ease, background-color 0.15s ease !important;
+}
+
+.app-shell[data-ui-mode="roleplay"] .assistant-prose p:last-child {
+  margin-bottom: 0 !important;
+}
+
+.app-shell[data-ui-mode="roleplay"] .assistant-prose p:hover {
+  background: light-dark(rgba(255, 255, 255, 0.88), rgba(255, 255, 255, 0.11)) !important;
+}
+
 /* 动作与环境旁白：斜体浅灰，与台词正文一眼区分 */
 .app-shell[data-ui-mode="roleplay"] .assistant-prose em.rp-action {
   color: var(--text-narrative) !important;

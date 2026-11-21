@@ -1123,6 +1123,7 @@
             <div class="skin-section-head"><span>聊天气泡风格</span></div>
             <div class="skin-pills-row">
               <button type="button" class="skin-pill-btn" data-bubble="soft">柔光圆润</button>
+              <button type="button" class="skin-pill-btn" data-bubble="im-bubble">逐句分段</button>
               <button type="button" class="skin-pill-btn" data-bubble="glass">玻璃拟态</button>
               <button type="button" class="skin-pill-btn" data-bubble="outline">极简细框</button>
               <button type="button" class="skin-pill-btn" data-bubble="letter">复古信纸</button>

@@ -22,7 +22,7 @@
 </p>
 
 <p>
-  <img src="https://img.shields.io/badge/Release-v2.0.3_Build_133-7C3AED?style=flat-square&logo=rocket&logoColor=white" alt="Version v2.0.3" />
+  <img src="https://img.shields.io/badge/Release-v2.0.4_Build_134-7C3AED?style=flat-square&logo=rocket&logoColor=white" alt="Version v2.0.4" />
   <img src="https://img.shields.io/badge/Node.js-%3E%3D22.5.0-339933?style=flat-square&logo=node.js&logoColor=white" alt="Node.js >= 22.5.0" />
   <img src="https://img.shields.io/badge/Dependencies-0_npm_Packages-FF6B6B?style=flat-square&logo=npm&logoColor=white" alt="Zero npm Dependencies" />
   <img src="https://img.shields.io/badge/Storage-node%3Asqlite-003B57?style=flat-square&logo=sqlite&logoColor=white" alt="Native SQLite" />
@@ -30,7 +30,7 @@
 </p>
 
 <p>
-  <a href="#-v203-最新版本核心特性">🚀 最新特性</a> •
+  <a href="#-v204-最新版本核心特性">🚀 最新特性</a> •
   <a href="#-三大工作台">🌐 三大工作台</a> •
   <a href="#-外观皮肤与头像工坊">🎨 外观工坊</a> •
   <a href="#-五大内置剧本与-20-位角色">🎬 剧本角色</a> •
@@ -47,13 +47,13 @@
 
 ---
 
-## 🚀 v2.0.3 最新版本核心特性
+## 🚀 v2.0.4 最新版本核心特性
 
-1. **移动端深度适配与顶栏防遮挡**：重构手机端空对话与顶栏布局层级（锁定 `z-index: 120` 与安全间距），彻底根治移动端汉堡菜单被压扁遮挡、标题文字裁切的异常。
-2. **正版极简纯粹美学**：空对话界面全面移除灵感推荐卡片，1:1 复刻正版 DeepSeek 官方 App 般的纯粹极简体验，聚焦灵感创作本身。
-3. **输入舱单行丝滑滑动**：工具栏强制单行排布（`flex-wrap: nowrap`），支持横向手势轻扫滑动，杜绝胶囊标签折行膨胀挤占聊天视口。
-4. **Android 原生随身版同步升级**：随身版 APK 升级至 `v2.0.3 (Build 133)`，内置最新离线静态 Bundle 与 SHA-256 签名校验，支持应用内丝滑无感 OTA。
-5. **纯净高阶剧场**：彻底移除立绘以释放全宽阅读视口；升级 `theater-luxury.css` 悬浮毛玻璃抽屉、黑金幕间转场与夜间拆信仪式。
+1. **深度思考极简折叠**：所有深度思考过程默认折叠不展开，仅保留 `已思考（用时 X 秒）` 清爽胶囊，只有用户主动点击才会展开，彻底杜绝长思考链挤占视觉视口。
+2. **剧本扮演逐句分段小气泡**：沉浸剧场模式台词升级为即时通讯（IM）拟真发句风格，每个段落与句子独立包裹为半透明毛玻璃小气泡卡片，对话层次分明、生动灵动。
+3. **外观工坊气泡风格扩展**：新增「逐句分段」气泡样式，支持在外观设置中一键自由切换。
+4. **Android 原生随身版同步升级**：随身版 APK 升级至 `v2.0.4 (Build 134)`，内置最新离线静态资产与组件增强。
+5. **移动端深度适配与顶栏防遮挡**：重构手机端空对话与顶栏布局层级，锁定安全间距，解决小屏汉堡按钮与标题遮挡问题。
 6. **三通道独立隔离连接中心**：本地直连 / DeepSeek 官方 API / 自定义云端 API 独立保存与无缝切换。
 7. **极速预压缩管线**：`scripts/build-static-assets.mjs` 合并构建前端 Bundle，全面提供 `.gz` 与 `.br` 极速加载。
 

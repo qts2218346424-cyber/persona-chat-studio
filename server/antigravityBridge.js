@@ -11,6 +11,7 @@
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const { spawn, execFileSync } = require('node:child_process');
 
 const BRIDGE_CONFIG_PATH = path.join(__dirname, '..', 'data', 'antigravity_bridge.json');
 
@@ -210,15 +211,20 @@ function loadBridgeRuntime() {
   }
 
   // 2. 系统环境变量（GEMINI_API_KEY / ANTIGRAVITY_API_KEY / PLATFORM_DEEPSEEK_API_KEY）
+  const rawGeminiModel = (process.env.GEMINI_MODEL || '').trim();
+  const safeGeminiModel =
+    !rawGeminiModel || /3(?:\.8)?/i.test(rawGeminiModel) || /^gemini[-_]?flash$/i.test(rawGeminiModel)
+      ? 'gemini-2.5-flash'
+      : rawGeminiModel;
   const geminiKey = (process.env.GEMINI_API_KEY || process.env.ANTIGRAVITY_API_KEY || '').trim();
   if (geminiKey) {
     pushEndpoint({
       id: 'env_gemini',
-      name: 'Google Gemini 本地环境变量底座',
+      name: 'Google Gemini 本地底座',
       apiFormat: 'openai',
-      baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
+      baseURL: process.env.GEMINI_BASE_URL || 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
       apiKey: geminiKey,
-      defaultModel: process.env.GEMINI_MODEL || 'gemini-3.8-flash'
+      defaultModel: safeGeminiModel
     });
   }
 
@@ -551,9 +557,14 @@ async function streamViaOpenAIProtocol({
         const parsed = JSON.parse(dataStr);
         const choice = parsed.choices && parsed.choices[0];
         const delta = (choice && (choice.delta || choice.message)) || {};
-        if (delta.reasoning_content) {
+        const reasoningChunk =
+          delta.reasoning_content ||
+          delta.reasoning ||
+          (typeof delta.thought === 'string' ? delta.thought : '') ||
+          (typeof delta.thinking === 'string' ? delta.thinking : '');
+        if (reasoningChunk) {
           emittedAny = true;
-          splitter.feedNativeReasoning(delta.reasoning_content);
+          splitter.feedNativeReasoning(reasoningChunk);
         }
         if (delta.content) {
           emittedAny = true;
@@ -852,8 +863,264 @@ function getLocalBridgeSuiteCredentials() {
   };
 }
 
+/**
+ * 探测本机已安装的 Antigravity / agy CLI 原生二进制路径
+ */
+function getLocalAntigravityCliPath() {
+  const localAppData = process.env.LOCALAPPDATA || '';
+  const appData = process.env.APPDATA || '';
+  const userHome = process.env.USERPROFILE || process.env.HOME || '';
+
+  const candidates = [
+    path.join(localAppData, 'agy', 'bin', 'agy.exe'),
+    path.join(userHome, 'AppData', 'Local', 'agy', 'bin', 'agy.exe'),
+    path.join(appData, 'npm', 'agy.cmd'),
+    path.join(localAppData, 'Programs', 'antigravity', 'Antigravity.exe'),
+    path.join(userHome, '.gemini', 'antigravity', 'bin', 'agentapi.bat')
+  ];
+
+  for (const c of candidates) {
+    if (c && fs.existsSync(c)) {
+      return c;
+    }
+  }
+
+  try {
+    const whereOut = execFileSync('where.exe', ['agy'], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+      timeout: 3000
+    }).trim();
+    const firstLine = whereOut.split(/\r?\n/)[0];
+    if (firstLine && fs.existsSync(firstLine)) return firstLine;
+  } catch {}
+
+  return null;
+}
+
+/**
+ * 获取本地 Antigravity 宿主底座的可用状态与模型清单
+ */
+function detectLocalAntigravityStatus() {
+  const cliPath = getLocalAntigravityCliPath();
+  const available = Boolean(cliPath && fs.existsSync(cliPath));
+
+  return {
+    available,
+    provider: 'local_antigravity',
+    name: '本机 Antigravity 双核智能体底座',
+    path: cliPath || '未检测到本地 agy.exe 安装',
+    version: 'Antigravity 2.0 (Google 本地宿主直连)',
+    defaultModel: 'gemini-3.8-flash-high',
+    models: [
+      { id: 'gemini-3.8-flash-high', name: 'Gemini 3.8 Flash (High) · 官方极速思考底座' },
+      { id: 'gemini-3.8-flash-medium', name: 'Gemini 3.8 Flash (Medium)' },
+      { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6 (Thinking)' },
+      { id: 'claude-opus-4-6-thinking', name: 'Claude Opus 4.6 (Thinking)' }
+    ],
+    detail: available
+      ? '已成功桥接电脑本地已授权的 Antigravity 底座，免 API 密钥，原生支持深度思考！'
+      : '未在电脑本地发现 Antigravity (agy.exe)，请确认已安装 Antigravity 并配置好环境变量。'
+  };
+}
+
+/**
+ * 组装适合本地 CLI 单轮运行的系统指令与对话全景文本
+ */
+function assemblePromptForCli(messagesPayload = [], { personaName = '', enableThinking = true } = {}) {
+  const historyParts = [];
+  let systemPrompt = '';
+
+  for (const m of messagesPayload) {
+    if (!m) continue;
+    if (m.role === 'system') {
+      systemPrompt += (systemPrompt ? '\n\n' : '') + String(m.content || '');
+    } else if (m.role === 'user') {
+      const attText = Array.isArray(m.attachments) && m.attachments.length > 0
+        ? `\n[附件：${m.attachments.map(a => a.name).join('、')}]`
+        : '';
+      historyParts.push(`用户：${m.content || ''}${attText}`);
+    } else if (m.role === 'assistant') {
+      historyParts.push(`AI助手：${m.content || ''}`);
+    }
+  }
+
+  const thinkingGuide = enableThinking
+    ? `\n\n【深度思考铁律】：\n请在回答最开头必须使用 \`<thought>...</thought>\` 标签输出你深入细致的第一人称纯中文思考推理过程（剖析用户真正诉求、逻辑推导、方案权衡），在 \`</thought>\` 标签之后输出你给用户的正式中文回答。`
+    : `\n\n【输出要求】：请直接给出清晰通顺的正式中文回答，不要附带思考标签。`;
+
+  const assembled =
+    (systemPrompt ? `【系统人设与背景指令】：\n${systemPrompt}\n\n` : '') +
+    (historyParts.length > 0 ? `【对话历史与当前交互】：\n${historyParts.join('\n\n')}\n\n` : '') +
+    `请给出针对最新对话的回复：` +
+    thinkingGuide;
+
+  return assembled;
+}
+
+/**
+ * 直接桥接调用电脑本地 Antigravity 宿主智能体（agy.exe）执行本地零配置流式生成
+ */
+async function streamViaLocalAntigravityCli({
+  messagesPayload = [],
+  messages = [],
+  personaName = '',
+  model = 'gemini-3.8-flash-high',
+  targetModel: requestedTargetModel,
+  enableThinking = true,
+  SplitterClass,
+  onReasoning,
+  onContent,
+  signal
+}) {
+  const cliPath = getLocalAntigravityCliPath();
+  if (!cliPath) {
+    throw new Error('未在电脑本地检测到 Antigravity 宿主环境 (agy.exe)，无法启用本地直连模式');
+  }
+
+  const effectivePayload = Array.isArray(messagesPayload) && messagesPayload.length > 0
+    ? messagesPayload
+    : (Array.isArray(messages) ? messages : []);
+
+  const targetModel = String(requestedTargetModel || model || 'gemini-3.8-flash-high').trim();
+  const assembledPrompt = assemblePromptForCli(effectivePayload, { personaName, enableThinking });
+
+  const EffectiveSplitter = SplitterClass || require('./deepseekApiSuite').NativeThinkSplitter;
+  const splitter = new EffectiveSplitter({
+    onReasoning: enableThinking ? onReasoning : () => {},
+    onContent,
+    enableThinking
+  });
+
+  return new Promise((resolve, reject) => {
+    let resolved = false;
+    let child = null;
+    let lineBuffer = '';
+    let emittedAny = false;
+
+    const safeCleanup = () => {
+      if (child && !child.killed) {
+        if (process.platform === 'win32') {
+          try {
+            execFileSync('taskkill.exe', ['/pid', String(child.pid), '/t', '/f'], {
+              stdio: 'ignore',
+              timeout: 3000
+            });
+          } catch {
+            try { child.kill(); } catch {}
+          }
+        } else {
+          try { child.kill('SIGTERM'); } catch {}
+        }
+      }
+    };
+
+    if (signal?.aborted) {
+      return reject(new Error('请求已取消'));
+    }
+
+    const onAbort = () => {
+      safeCleanup();
+      if (!resolved) {
+        resolved = true;
+        reject(new Error('本地 Antigravity 生成已中断'));
+      }
+    };
+    signal?.addEventListener('abort', onAbort, { once: true });
+
+    try {
+      const args = [
+        '--output-format=stream-json',
+        '--disable-slash-commands',
+        `--model=${targetModel}`,
+        '--effort=high',
+        '--dangerously-skip-permissions',
+        `--print=${assembledPrompt}`
+      ];
+
+      child = spawn(cliPath, args, {
+        cwd: path.join(__dirname, '..'),
+        windowsHide: true,
+        stdio: ['ignore', 'pipe', 'pipe']
+      });
+
+      child.stdout.on('data', (chunk) => {
+        lineBuffer += chunk.toString('utf8');
+        const lines = lineBuffer.split(/\r?\n/);
+        lineBuffer = lines.pop() || '';
+
+        for (const rawLine of lines) {
+          const line = rawLine.trim();
+          if (!line) continue;
+          try {
+            const evt = JSON.parse(line);
+            if (evt.event === 'step_update' && evt.step_update) {
+              const delta = evt.step_update.text_delta;
+              if (delta) {
+                emittedAny = true;
+                splitter.feedContent(delta);
+              }
+            } else if (evt.event === 'result' && evt.result) {
+              if (evt.result.response && !emittedAny) {
+                emittedAny = true;
+                splitter.feedContent(evt.result.response);
+              }
+            }
+          } catch {}
+        }
+      });
+
+      let stderrBuf = '';
+      child.stderr.on('data', (d) => {
+        stderrBuf += d.toString('utf8');
+      });
+
+      child.on('error', (err) => {
+        signal?.removeEventListener('abort', onAbort);
+        if (!resolved) {
+          resolved = true;
+          reject(new Error(`本地 Antigravity 启动失败: ${err.message}`));
+        }
+      });
+
+      child.on('close', (code) => {
+        signal?.removeEventListener('abort', onAbort);
+        if (lineBuffer.trim()) {
+          try {
+            const evt = JSON.parse(lineBuffer.trim());
+            if (evt.event === 'result' && evt.result?.response && !emittedAny) {
+              splitter.feedContent(evt.result.response);
+            }
+          } catch {}
+        }
+        splitter.flush();
+
+        if (resolved) return;
+        resolved = true;
+        if (code !== 0 && !emittedAny) {
+          reject(new Error(`本地 Antigravity 运行退出 (${code}): ${stderrBuf.slice(0, 300) || '未知异常'}`));
+        } else {
+          resolve({
+            model: targetModel,
+            isLocalAntigravity: true
+          });
+        }
+      });
+    } catch (err) {
+      signal?.removeEventListener('abort', onAbort);
+      if (!resolved) {
+        resolved = true;
+        reject(err);
+      }
+    }
+  });
+}
+
 module.exports = {
   loadBridgeRuntime,
   tryStreamViaAntigravityBridge,
-  getLocalBridgeSuiteCredentials
+  getLocalBridgeSuiteCredentials,
+  getLocalAntigravityCliPath,
+  detectLocalAntigravityStatus,
+  streamViaLocalAntigravityCli
 };

@@ -288,6 +288,17 @@ db.exec(`
     PRIMARY KEY (share_id, user_id)
   );
 
+  CREATE TABLE IF NOT EXISTS site_announcements (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    content TEXT NOT NULL,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    version INTEGER NOT NULL DEFAULT 1,
+    author_id TEXT NOT NULL DEFAULT 'admin',
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+
   CREATE INDEX IF NOT EXISTS idx_user_scripts_uid ON user_scripts(user_id, updated_at DESC);
   CREATE INDEX IF NOT EXISTS idx_community_shares_created ON community_shares(created_at DESC);
 
@@ -328,6 +339,8 @@ ensureColumn('sessions', 'ds_tools_enabled', 'INTEGER NOT NULL DEFAULT 1');
 ensureColumn('sessions', 'proactive_enabled', 'INTEGER NOT NULL DEFAULT 0');
 ensureColumn('sessions', 'pinned', 'INTEGER NOT NULL DEFAULT 0');
 ensureColumn('sessions', 'title_locked', 'INTEGER NOT NULL DEFAULT 0');
+ensureColumn('sessions', 'llm_mode', "TEXT NOT NULL DEFAULT 'local_antigravity'");
+ensureColumn('sessions', 'local_model', "TEXT NOT NULL DEFAULT 'gemini-3.8-flash-high'");
 ensureColumn('users', 'is_banned', 'INTEGER NOT NULL DEFAULT 0');
 ensureColumn('sessions', 'session_prompt', "TEXT NOT NULL DEFAULT ''");
 
@@ -3242,6 +3255,18 @@ function normalizeModelForEndpoint(rawModel, rawBaseUrl = '') {
     }
     return m;
   }
+  if (lowerUrl.includes('googleapis.com') || /gemini/i.test(m)) {
+    if (
+      isGenericFlashAlias ||
+      m === 'deepseek-chat' ||
+      m === 'deepseek-reasoner' ||
+      /gemini[-_]?3(?:\.8)?[-_]?flash/i.test(m) ||
+      /^gemini[-_]?flash$/i.test(m)
+    ) {
+      return 'gemini-2.5-flash';
+    }
+    return m;
+  }
   return m;
 }
 
@@ -4356,7 +4381,55 @@ function adoptShareItemToUser(userId, shareId, currentActiveScriptId = 'script_c
   };
 }
 
+// ================= 16. 全站系统公告持久化与管理员发布引擎 =================
+function getLatestAnnouncement() {
+  const row = db.prepare(`
+    SELECT id, title, content, enabled, version, author_id, created_at, updated_at
+    FROM site_announcements
+    WHERE enabled = 1
+    ORDER BY updated_at DESC
+    LIMIT 1
+  `).get();
+  return row || null;
+}
+
+function getAdminAnnouncementsList() {
+  return db.prepare(`
+    SELECT id, title, content, enabled, version, author_id, created_at, updated_at
+    FROM site_announcements
+    ORDER BY updated_at DESC
+    LIMIT 20
+  `).all();
+}
+
+function saveAdminAnnouncement(adminUserId, { title, content, enabled = true, version = 1, id = null } = {}) {
+  const cleanTitle = String(title || '').trim();
+  const cleanContent = String(content || '').trim();
+  if (!cleanTitle) throw new Error('公告标题不能为空');
+  if (!cleanContent) throw new Error('公告内容不能为空');
+  const now = Date.now();
+  const annId = id ? String(id).trim() : genId('ann');
+  const isEnabled = enabled === true || enabled === 1 || enabled === '1' ? 1 : 0;
+  const numVer = Math.max(1, parseInt(version || '1', 10) || 1);
+
+  db.prepare(`
+    INSERT INTO site_announcements (id, title, content, enabled, version, author_id, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+      title = excluded.title,
+      content = excluded.content,
+      enabled = excluded.enabled,
+      version = excluded.version,
+      updated_at = excluded.updated_at
+  `).run(annId, cleanTitle, cleanContent, isEnabled, numVer, adminUserId || 'admin', now, now);
+
+  return getLatestAnnouncement();
+}
+
 module.exports = {
+  getLatestAnnouncement,
+  getAdminAnnouncementsList,
+  saveAdminAnnouncement,
   db,
   genId,
   STORY_SCRIPTS,

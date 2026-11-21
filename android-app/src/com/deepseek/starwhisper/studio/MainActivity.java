@@ -5,6 +5,7 @@ import android.app.Activity;
 import android.content.ActivityNotFoundException;
 import android.content.ClipData;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.graphics.Color;
@@ -49,6 +50,11 @@ public class MainActivity extends Activity {
     private static final String START_URL = "https://" + VIRTUAL_HOST + "/index.html";
     private static final int FILE_CHOOSER_REQ_CODE = 1001;
     private static final int AUDIO_PERM_REQ_CODE = 1002;
+    private static final String PREF_AUTH = "star_whisper_auth";
+    private static final String PREF_KEY_TOKEN = "auth_token";
+    private static final String PREF_KEY_USER_JSON = "auth_user_json";
+
+    private static volatile MainActivity sInstance = null;
 
     private WebView webView;
     private ValueCallback<Uri[]> filePathCallback;
@@ -60,6 +66,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        sInstance = this;
 
         Window window = getWindow();
         if (window != null) {
@@ -158,6 +165,20 @@ public class MainActivity extends Activity {
             super.onPageFinished(view, url);
             if (url != null && url.contains(VIRTUAL_HOST)) {
                 webPageReady = true;
+                try {
+                    SharedPreferences sp = getSharedPreferences(PREF_AUTH, MODE_PRIVATE);
+                    String savedTok = sp.getString(PREF_KEY_TOKEN, "");
+                    String savedUser = sp.getString(PREF_KEY_USER_JSON, "");
+                    if (savedUser != null && !savedUser.trim().isEmpty()) {
+                        String qTok = JSONObject.quote(savedTok != null ? savedTok : "");
+                        String qUser = JSONObject.quote(savedUser.trim());
+                        view.evaluateJavascript(
+                            "if(window.__restoreNativeAuth){window.__restoreNativeAuth(" + qTok + "," + qUser + ");}",
+                            null
+                        );
+                    }
+                } catch (Exception ignored) {}
+
                 if (pendingAgentTaskFromFloat != null && !pendingAgentTaskFromFloat.trim().isEmpty()) {
                     final String taskToSend = pendingAgentTaskFromFloat;
                     pendingAgentTaskFromFloat = null;
@@ -472,7 +493,119 @@ public class MainActivity extends Activity {
         return "application/octet-stream";
     }
 
+    public static void dispatchConfirmDecisionToWebView(final String decision) {
+        final MainActivity act = sInstance;
+        if (act != null && act.webView != null) {
+            act.runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    if (act.webView != null) {
+                        String quoted = JSONObject.quote(decision != null ? decision : "cancel");
+                        act.webView.evaluateJavascript(
+                            "if(window.__onFloatConfirmDecision){window.__onFloatConfirmDecision(" + quoted + ");}",
+                            null
+                        );
+                    }
+                }
+            });
+        }
+    }
+
+    public static void dispatchNormalStopToWebView() {
+        final MainActivity act = sInstance;
+        if (act != null && act.webView != null) {
+            act.runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    if (act.webView != null) {
+                        act.webView.evaluateJavascript(
+                            "if(window.__onFloatNormalStop){window.__onFloatNormalStop();}",
+                            null
+                        );
+                    }
+                }
+            });
+        }
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        if (sInstance == this) {
+            sInstance = null;
+        }
+    }
+
     public final class NativeBridge {
+        @JavascriptInterface
+        public void saveAuthCredentials(String token, String userJson) {
+            try {
+                SharedPreferences sp = getSharedPreferences(PREF_AUTH, MODE_PRIVATE);
+                sp.edit()
+                  .putString(PREF_KEY_TOKEN, token != null ? token : "")
+                  .putString(PREF_KEY_USER_JSON, userJson != null ? userJson : "")
+                  .apply();
+            } catch (Exception ignored) {}
+        }
+
+        @JavascriptInterface
+        public String getAuthToken() {
+            try {
+                SharedPreferences sp = getSharedPreferences(PREF_AUTH, MODE_PRIVATE);
+                return sp.getString(PREF_KEY_TOKEN, "");
+            } catch (Exception ignored) {
+                return "";
+            }
+        }
+
+        @JavascriptInterface
+        public String getAuthUserJson() {
+            try {
+                SharedPreferences sp = getSharedPreferences(PREF_AUTH, MODE_PRIVATE);
+                return sp.getString(PREF_KEY_USER_JSON, "");
+            } catch (Exception ignored) {
+                return "";
+            }
+        }
+
+        @JavascriptInterface
+        public void clearAuthCredentials() {
+            try {
+                SharedPreferences sp = getSharedPreferences(PREF_AUTH, MODE_PRIVATE);
+                sp.edit().clear().apply();
+            } catch (Exception ignored) {}
+        }
+
+        @JavascriptInterface
+        public void requestUserConfirmation(final String summary, final String actionDesc) {
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    FloatAgentService.showConfirmPrompt(summary, actionDesc);
+                }
+            });
+        }
+
+        @JavascriptInterface
+        public void dismissUserConfirmation() {
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    FloatAgentService.dismissConfirmPrompt();
+                }
+            });
+        }
+
+        @JavascriptInterface
+        public void stopFloatAgentTask() {
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    FloatAgentService.requestNormalStop();
+                }
+            });
+        }
+
         @JavascriptInterface
         public String getAppVersion() {
             return AppUpdateManager.getInstalledVersionName(MainActivity.this);

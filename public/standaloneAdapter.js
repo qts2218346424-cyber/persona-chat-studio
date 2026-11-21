@@ -84,6 +84,31 @@
     }
   };
 
+  window.__restoreNativeAuth = function(token, userJson) {
+    if (!userJson) return;
+    try {
+      const u = typeof userJson === 'string' ? JSON.parse(userJson) : userJson;
+      if (u && (u.nickname || u.id)) {
+        const dbObj = loadLocalDb();
+        if (dbObj && dbObj.user) {
+          dbObj.user = Object.assign(dbObj.user, u);
+          if (u.nickname) dbObj.user.nickname = u.nickname;
+          saveLocalDb(dbObj);
+        }
+        if (token) {
+          window.__starAuthStore?.setToken(token, true);
+        }
+        if (u.id) {
+          window.__starAuthStore?.setActiveUserId(u.id);
+        }
+        try {
+          const navNick = document.getElementById('nav-user-nickname');
+          if (navNick && u.nickname) navNick.textContent = u.nickname;
+        } catch {}
+      }
+    } catch {}
+  };
+
   const COMPANION_SKINS = {
     cool_silver: {
       key: 'cool_silver',
@@ -640,6 +665,21 @@
       if (raw) parsed = JSON.parse(raw);
     } catch {}
 
+    if (window.AndroidAppBridge && typeof window.AndroidAppBridge.getAuthUserJson === 'function') {
+      try {
+        const nativeRaw = window.AndroidAppBridge.getAuthUserJson();
+        if (nativeRaw && nativeRaw.trim()) {
+          const nativeUser = JSON.parse(nativeRaw);
+          if (nativeUser && (nativeUser.nickname || nativeUser.id)) {
+            if (!parsed) parsed = {};
+            if (!parsed.user) parsed.user = {};
+            parsed.user = Object.assign(parsed.user, nativeUser);
+            if (nativeUser.nickname) parsed.user.nickname = nativeUser.nickname;
+          }
+        }
+      } catch {}
+    }
+
     if (parsed && parsed.user) {
       if (!Array.isArray(parsed.scripts) || parsed.scripts.length === 0) {
         parsed.scripts = DEFAULT_SCRIPTS;
@@ -724,6 +764,10 @@
   function saveLocalDb(dbObj) {
     try {
       localStorage.setItem(STORE_KEY, JSON.stringify(dbObj));
+      if (dbObj?.user && window.AndroidAppBridge && typeof window.AndroidAppBridge.saveAuthCredentials === 'function') {
+        const tok = window.__starAuthStore?.getToken() || 'standalone_token';
+        window.AndroidAppBridge.saveAuthCredentials(tok, JSON.stringify(dbObj.user));
+      }
     } catch {}
   }
 
@@ -1152,7 +1196,15 @@
       return jsonResponse({ authenticated: true, user: dbObj.user });
     }
     if (pathname === '/api/auth/demo-login' || pathname === '/api/auth/login' || pathname === '/api/auth/register') {
-      if (bodyObj?.nickname) dbObj.user.nickname = bodyObj.nickname;
+      if (bodyObj?.nickname) {
+        dbObj.user.nickname = bodyObj.nickname;
+      } else if (bodyObj?.email) {
+        if (!dbObj.user.nickname || dbObj.user.nickname === '超级无敌幸运星' || dbObj.user.nickname === '星屿旅人') {
+          const part = String(bodyObj.email).split('@')[0] || '星语旅人';
+          dbObj.user.nickname = part;
+        }
+      }
+      if (bodyObj?.email) dbObj.user.email = bodyObj.email;
       if (bodyObj?.avatar) dbObj.user.avatar = bodyObj.avatar;
       dbObj.user.membership = Object.assign(dbObj.user.membership || {}, {
         tier: 'standard',
@@ -1174,6 +1226,9 @@
       });
     }
     if (pathname === '/api/auth/logout') {
+      if (window.AndroidAppBridge && typeof window.AndroidAppBridge.clearAuthCredentials === 'function') {
+        window.AndroidAppBridge.clearAuthCredentials();
+      }
       return jsonResponse({ ok: true });
     }
     if (pathname === '/api/auth/onboarding') {
@@ -2565,6 +2620,41 @@
         });
       }
       return originalFetch(input, { ...init, headers: mergedHeaders, cache: 'no-store' });
+    }
+
+    if (standaloneActive && (pathname.startsWith('/api/auth/') || pathname === '/api/announcement')) {
+      try {
+        const remoteUrl = `https://star.claudexxb.online${pathname}${urlStr.includes('?') ? urlStr.slice(urlStr.indexOf('?')) : ''}`;
+        const mergedHeaders = new Headers(init?.headers || {});
+        const tok = window.__starAuthStore?.getToken();
+        if (tok && !mergedHeaders.has('Authorization')) {
+          mergedHeaders.set('Authorization', `Bearer ${tok}`);
+        }
+        const resp = await originalFetch(remoteUrl, {
+          ...init,
+          headers: mergedHeaders,
+          cache: 'no-store'
+        });
+        if (resp.ok) {
+          const clone = resp.clone();
+          const data = await clone.json().catch(() => null);
+          if (data && data.user) {
+            const dbObj = loadLocalDb();
+            dbObj.user = Object.assign(dbObj.user || {}, data.user);
+            if (data.user.nickname) dbObj.user.nickname = data.user.nickname;
+            saveLocalDb(dbObj);
+            if (data.token) {
+              window.__starAuthStore?.setToken(data.token, true);
+            }
+            if (window.AndroidAppBridge && typeof window.AndroidAppBridge.saveAuthCredentials === 'function') {
+              window.AndroidAppBridge.saveAuthCredentials(data.token || tok || '', JSON.stringify(data.user));
+            }
+          }
+          return resp;
+        }
+      } catch (e) {
+        // 网络不可达时平滑回退至本地单机模式
+      }
     }
 
     if (!standaloneActive) {

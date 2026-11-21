@@ -48,6 +48,15 @@ function readHotEnvMap() {
 
     cachedMtimeMs = stat.mtimeMs;
     cachedEnvMap = parsed;
+
+    // 同步热注入关键环境变量至 process.env，确保全底座生态即时感知
+    if (parsed.GEMINI_API_KEY) process.env.GEMINI_API_KEY = parsed.GEMINI_API_KEY;
+    if (parsed.GEMINI_MODEL) process.env.GEMINI_MODEL = parsed.GEMINI_MODEL;
+    if (parsed.GEMINI_BASE_URL) process.env.GEMINI_BASE_URL = parsed.GEMINI_BASE_URL;
+    if (parsed.ANTIGRAVITY_API_KEY) process.env.ANTIGRAVITY_API_KEY = parsed.ANTIGRAVITY_API_KEY;
+    if (parsed.SILICONFLOW_API_KEY) process.env.SILICONFLOW_API_KEY = parsed.SILICONFLOW_API_KEY;
+    if (parsed.DEEPSEEK_API_KEY) process.env.DEEPSEEK_API_KEY = parsed.DEEPSEEK_API_KEY;
+
     return cachedEnvMap;
   } catch {
     return cachedEnvMap;
@@ -68,6 +77,7 @@ function resolveBuiltinEnvConfig() {
   const siliconKey = getEnvVal('SILICONFLOW_API_KEY');
   const dashscopeKey = getEnvVal('DASHSCOPE_API_KEY');
   const deepseekKey = getEnvVal('DEEPSEEK_API_KEY') || getEnvVal('PLATFORM_DEEPSEEK_API_KEY');
+  const geminiKey = getEnvVal('GEMINI_API_KEY') || getEnvVal('ANTIGRAVITY_API_KEY');
   const minimaxKey = getEnvVal('MINIMAX_API_KEY');
   const minimaxGroupId = getEnvVal('MINIMAX_GROUP_ID');
   const volcToken = getEnvVal('VOLC_TTS_TOKEN');
@@ -114,6 +124,19 @@ function resolveBuiltinEnvConfig() {
       deepseek_base_url: getEnvVal('DEEPSEEK_BASE_URL') || 'https://api.deepseek.com/v1/chat/completions',
       deepseek_model: model,
       deepseek_api_key: deepseekKey
+    };
+  } else if (geminiKey) {
+    const rawModel = getEnvVal('GEMINI_MODEL') || 'gemini-2.5-flash';
+    const model = /3(?:\.8)?/i.test(rawModel) ? 'gemini-2.5-flash' : rawModel;
+    result.hasBuiltinChatKey = true;
+    result.builtinChatLabel = `Google Gemini 官方直连 (${model})`;
+    result.chatPatch = {
+      online_provider_type: 'deepseek',
+      deepseek_base_url:
+        getEnvVal('GEMINI_BASE_URL') ||
+        'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
+      deepseek_model: model,
+      deepseek_api_key: geminiKey
     };
   } else if (dashscopeKey) {
     const model = getEnvVal('DASHSCOPE_MODEL') || 'deepseek-v4.1-flash';

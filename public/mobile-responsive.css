@@ -555,8 +555,8 @@ body[data-ui-mode="phone-agent"] .auth-gate .info-callout {
     contain: none !important;
     visibility: visible !important;
     opacity: 1 !important;
-    transform: translate3d(105%, 0, 0) !important;
-    pointer-events: none !important;
+    transform: translate3d(105%, 0, 0);
+    pointer-events: none;
     box-shadow: none !important;
     transition: transform 0.26s cubic-bezier(0.22, 1, 0.36, 1) !important;
     will-change: transform;
@@ -857,17 +857,20 @@ body[data-ui-mode="phone-agent"] .auth-gate .info-callout {
     margin-bottom: 14px !important;
   }
 
-  /* 5.3 聊天视窗与消息气泡释放黄金阅读宽度 */
+  /* 5.3 聊天视窗与消息气泡释放黄金阅读宽度（底部预留与动态输入舱一致的安全空白间距） */
   .messages-viewport,
-  .app-shell[data-ui-mode="deepseek"] .messages-viewport ,
+  .app-shell[data-ui-mode="roleplay"] .messages-viewport,
+  .app-shell[data-ui-mode="deepseek"] .messages-viewport,
   .app-shell[data-ui-mode="phone-agent"] .messages-viewport {
-    padding: 14px 12px 10px !important;
+    padding: 10px 12px calc(var(--mobile-composer-h, 78px) + 28px + env(safe-area-inset-bottom, 0px)) !important;
+    scroll-padding-bottom: calc(var(--mobile-composer-h, 78px) + 28px + env(safe-area-inset-bottom, 0px)) !important;
   }
 
   .messages-container,
-  .app-shell[data-ui-mode="deepseek"] .messages-container ,
+  .app-shell[data-ui-mode="roleplay"] .messages-container,
+  .app-shell[data-ui-mode="deepseek"] .messages-container,
   .app-shell[data-ui-mode="phone-agent"] .messages-container {
-    gap: 18px !important;
+    gap: 16px !important;
     padding-bottom: 12px !important;
   }
 
@@ -964,34 +967,45 @@ body[data-ui-mode="phone-agent"] .auth-gate .info-callout {
   }
 
   .composer-dock,
-  .app-shell[data-ui-mode="deepseek"] .composer-dock ,
+  .app-shell[data-ui-mode="roleplay"] .composer-dock,
+  .app-shell[data-ui-mode="deepseek"] .composer-dock,
   .app-shell[data-ui-mode="phone-agent"] .composer-dock {
     padding:
       4px
       10px
-      max(6px, env(safe-area-inset-bottom, 0px)) !important;
+      calc(env(safe-area-inset-bottom, 0px) + 5px) !important;
   }
 
   .composer-card,
-  .app-shell[data-ui-mode="deepseek"] .composer-card ,
+  .app-shell[data-ui-mode="roleplay"] .composer-card,
+  .app-shell[data-ui-mode="deepseek"] .composer-card,
   .app-shell[data-ui-mode="phone-agent"] .composer-card {
     width: 100% !important;
     max-width: 100% !important;
-    border-radius: 18px !important;
-    padding: 7px 11px 6px !important;
+    border-radius: 16px !important;
+    padding: 5px 10px 4px !important;
+    gap: 3px !important;
   }
 
-  .app-shell[data-ui-mode="deepseek"] #chat-input ,
+  #chat-input,
+  .app-shell[data-ui-mode="roleplay"] #chat-input,
+  .app-shell[data-ui-mode="deepseek"] #chat-input,
   .app-shell[data-ui-mode="phone-agent"] #chat-input {
-    min-block-size: 1.35lh !important;
-    max-block-size: 4.5lh !important;
-    padding: 1px 2px 3px !important;
+    min-height: 22px !important;
+    min-block-size: 1.25lh !important;
+    max-block-size: 4lh !important;
+    padding: 1px 2px 2px !important;
+    font-size: 14px !important;
+    line-height: 1.35 !important;
   }
 
   /* 输入舱底部工具栏单行防折行 + 左侧胶囊可横滑绝不挤出右侧上传/发送按钮 */
   .composer-toolbar {
     flex-wrap: nowrap !important;
     gap: 6px !important;
+    padding-top: 3px !important;
+    margin-top: 0 !important;
+    min-height: 28px !important;
   }
 
   .composer-toggles {
@@ -1008,12 +1022,14 @@ body[data-ui-mode="phone-agent"] .auth-gate .info-callout {
     display: none !important;
   }
 
-  .app-shell[data-ui-mode="deepseek"] .ds-pill-toggle ,
+  .composer-toggles .pill-btn,
+  .app-shell[data-ui-mode="deepseek"] .ds-pill-toggle,
   .app-shell[data-ui-mode="phone-agent"] .ds-pill-toggle {
     flex: 0 0 auto !important;
-    height: 28px !important;
-    padding: 0 9px !important;
-    font-size: 11.5px !important;
+    height: 26px !important;
+    min-height: 26px !important;
+    padding: 0 8px !important;
+    font-size: 11px !important;
     gap: 4px !important;
     white-space: nowrap;
   }
@@ -1519,20 +1535,22 @@ body[data-ui-mode="phone-agent"] .auth-gate .info-callout {
 
   /* 输入舱针对手机软键盘与底部安全区全面优化 */
   .composer-dock {
-    padding-bottom: max(6px, env(safe-area-inset-bottom, 6px)) !important;
+    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 4px) !important;
   }
 
   .composer-card {
-    border-radius: 18px !important;
-    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.07) !important;
+    border-radius: 16px !important;
+    box-shadow: 0 3px 16px rgba(0, 0, 0, 0.06) !important;
   }
 
-  /* 深度思考 (R1) 胶囊在手机端醒目呈现 */
+  /* 深度思考 (R1) 胶囊在手机端醒目紧凑呈现 */
   #ds-toggle-think {
     display: inline-flex !important;
     border-radius: 9999px !important;
-    font-size: 12px !important;
-    padding: 4px 10px !important;
+    font-size: 11px !important;
+    padding: 0 8px !important;
+    height: 24px !important;
+    min-height: 24px !important;
     background: light-dark(rgba(77, 107, 254, 0.08), rgba(77, 107, 254, 0.16)) !important;
   }
 

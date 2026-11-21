@@ -3,6 +3,7 @@ import io
 import json
 import os
 import shutil
+import subprocess
 import sys
 import tarfile
 import time
@@ -16,6 +17,12 @@ KB_DEPLOY_SCRIPT = r'E:\知识库项目\deploy_all_update.py'
 
 
 def precompress_static_assets():
+    build_script = os.path.join(PROJECT_ROOT, 'scripts', 'build-static-assets.mjs')
+    node_bin = shutil.which('node')
+    if node_bin and os.path.isfile(build_script):
+        print('  [构建引擎] 正在执行 CSS/JS 合并压缩与 .gz/.br 双重预压缩...')
+        subprocess.run([node_bin, build_script], cwd=PROJECT_ROOT, check=True)
+
     public_dir = os.path.join(PROJECT_ROOT, 'public')
     exts = {'.js', '.css', '.html', '.svg', '.json'}
     count = 0

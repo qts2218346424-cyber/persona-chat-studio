@@ -861,9 +861,11 @@ public class AgentAccessibilityService extends AccessibilityService {
         int width = getResources().getDisplayMetrics().widthPixels;
         int height = getResources().getDisplayMetrics().heightPixels;
 
-        // 0. 多步离线组合宏（如："打开抖音然后自动刷视频" / "点击搜索接着输入星语" / 用分号分隔）
-        if (trimmedRaw.contains("然后") || trimmedRaw.contains("接着") || trimmedRaw.contains(";") || trimmedRaw.contains("；")) {
-            String[] parts = trimmedRaw.split("(?:然后|接着|[;；])+");
+        // 0. 多步离线组合宏（仅当拆出的每一步都可被本地离线规则独立处理时才整组执行，否则交还 AI 大模型）
+        if (trimmedRaw.contains("然后") || trimmedRaw.contains("接着")
+                || trimmedRaw.contains("之后") || trimmedRaw.contains("并且")
+                || trimmedRaw.contains(";") || trimmedRaw.contains("；")) {
+            String[] parts = trimmedRaw.split("(?:然后|接着|之后|并且|[;；])+");
             List<String> validSteps = new ArrayList<>();
             for (String p : parts) {
                 String cleanPart = p != null ? p.trim() : "";
@@ -872,6 +874,11 @@ public class AgentAccessibilityService extends AccessibilityService {
                 }
             }
             if (validSteps.size() >= 2 && validSteps.size() <= 6) {
+                for (String stepItem : validSteps) {
+                    if (!canHandleAtomicLocalStep(stepItem)) {
+                        return "UNMATCHED:步骤「" + stepItem + "」包含复杂动态语义，需交由大模型识屏规划执行";
+                    }
+                }
                 return executeLocalMacroSteps(validSteps);
             }
         }
@@ -1114,11 +1121,11 @@ public class AgentAccessibilityService extends AccessibilityService {
             return ok ? "已向右滑动" : "向右滑动失败";
         }
 
-        // 5. 动态打开任意已安装应用（前缀匹配 + 热门直呼）
+        // 5. 动态打开任意已安装应用（前缀匹配 + 热门直呼；若包含复杂后续目标语义则跳过，交还大模型处理）
         if (cmd.startsWith("打开") || cmd.startsWith("启动") || cmd.startsWith("进入") || cmd.startsWith("运行")
                 || isDirectAppShortcut(cmd)) {
             String targetApp = trimmedRaw.replaceFirst("^(打开|启动|进入|运行)\\s*", "").trim();
-            if (!targetApp.isEmpty() && launchAppByName(targetApp)) {
+            if (isPureTargetAppName(targetApp) && launchAppByName(targetApp)) {
                 return "已打开应用「" + targetApp + "」";
             }
         }
@@ -1207,6 +1214,80 @@ public class AgentAccessibilityService extends AccessibilityService {
         if (cmd.equals("刷视频") || cmd.equals("刷抖音") || cmd.equals("刷快手")
                 || cmd.equals("刷小红书") || cmd.equals("刷b站") || cmd.equals("刷哔哩哔哩")
                 || cmd.equals("开始刷视频") || cmd.equals("帮我刷视频") || cmd.equals("帮我刷抖音")) {
+            return true;
+        }
+        return false;
+    }
+
+    private boolean isPureTargetAppName(String targetApp) {
+        if (targetApp == null) return false;
+        String clean = targetApp.trim();
+        if (clean.isEmpty() || clean.length() > 16) return false;
+        if (clean.contains(" ") || clean.contains("，") || clean.contains(",") || clean.contains("。")) {
+            return false;
+        }
+        String[] complexMarkers = new String[]{"帮我", "发给", "发送给", "回复", "查找", "查一下", "搜索", "看看", "点外卖", "下订单", "挑选", "对比"};
+        for (String marker : complexMarkers) {
+            if (clean.contains(marker)) return false;
+        }
+        return true;
+    }
+
+    private boolean canHandleAtomicLocalStep(String rawStep) {
+        if (rawStep == null) return false;
+        String trimmed = rawStep.trim();
+        if (trimmed.isEmpty() || trimmed.length() > 36) return false;
+        String cmd = trimmed.toLowerCase(Locale.ROOT);
+        if (cmd.contains("帮我") || cmd.contains("发给") || cmd.contains("发送给") || cmd.contains("点外卖")
+                || cmd.contains("下订单") || cmd.contains("看看") || cmd.contains("对比") || cmd.contains("挑选")) {
+            return false;
+        }
+        if (isAutoVideoSwipeCommand(cmd) || isDirectAppShortcut(cmd)) return true;
+        if (cmd.contains("停止刷") || cmd.contains("别刷") || cmd.contains("停刷") || cmd.contains("停止连刷") || cmd.contains("停止自动")) {
+            return true;
+        }
+        if (cmd.equals("下一个视频") || cmd.equals("刷下一个") || cmd.equals("换一个") || cmd.equals("下一个") || cmd.equals("下个视频")
+                || cmd.equals("上一个视频") || cmd.equals("回看上一个") || cmd.equals("上一个") || cmd.equals("上个视频")
+                || cmd.equals("双击点赞") || cmd.equals("点赞") || cmd.equals("点红心") || cmd.equals("点个赞") || cmd.equals("喜欢")
+                || cmd.equals("暂停视频") || cmd.equals("播放视频") || cmd.equals("暂停播放") || cmd.equals("暂停/播")
+                || cmd.equals("看评论") || cmd.equals("打开评论") || cmd.equals("评论区")
+                || cmd.equals("点收藏") || cmd.equals("收藏视频") || cmd.equals("收藏")
+                || cmd.equals("点关注") || cmd.equals("关注作者") || cmd.equals("分享视频") || cmd.equals("转发视频") || cmd.equals("转发")) {
+            return true;
+        }
+        if (cmd.equals("回桌面") || cmd.equals("桌面") || cmd.equals("主页") || cmd.equals("home")
+                || cmd.equals("返回") || cmd.equals("后退") || cmd.equals("上一页") || cmd.equals("back")
+                || cmd.equals("最近任务") || cmd.equals("多任务") || cmd.equals("后台")
+                || cmd.equals("截屏") || cmd.equals("截图") || cmd.equals("屏幕截图")
+                || cmd.equals("锁屏") || cmd.equals("息屏") || cmd.equals("音量+") || cmd.equals("音量-")
+                || cmd.equals("音量加") || cmd.equals("音量减") || cmd.equals("调大音量") || cmd.equals("调小音量")
+                || cmd.equals("静音") || cmd.equals("取消静音") || cmd.equals("下一首") || cmd.equals("上一首")
+                || cmd.equals("暂停音乐") || cmd.equals("播放音乐") || cmd.equals("点中间") || cmd.equals("点击中间")) {
+            return true;
+        }
+        if (cmd.equals("回到顶部") || cmd.equals("滚到顶部") || cmd.equals("回顶部") || cmd.equals("最上面")
+                || cmd.equals("滑到底部") || cmd.equals("滚到底部") || cmd.equals("最下面")
+                || cmd.matches("^(?:连续)?(?:下滑|向下|下翻|上滑|向上|上翻|左滑|向左|右滑|向右)(?:\\s*\\d+\\s*次)?$")) {
+            return true;
+        }
+        if (cmd.startsWith("打字并发送") || cmd.startsWith("输入并发送") || cmd.startsWith("追加输入")
+                || cmd.startsWith("接着打字") || cmd.startsWith("帮我打字") || cmd.startsWith("打字")
+                || cmd.startsWith("输入") || cmd.startsWith("填入") || cmd.startsWith("写字")
+                || cmd.startsWith("清空输入框") || cmd.startsWith("清空输入") || cmd.startsWith("粘贴")
+                || cmd.startsWith("搜索") || cmd.startsWith("搜一下")) {
+            return true;
+        }
+        if ((cmd.startsWith("发送消息") || cmd.startsWith("发消息") || cmd.startsWith("回复") || cmd.startsWith("评论"))
+                && !cmd.matches("^(?:发送消息|发消息|回复)\\s*(?:给|到|询问).*")) {
+            return true;
+        }
+        if (cmd.startsWith("打开") || cmd.startsWith("启动") || cmd.startsWith("进入") || cmd.startsWith("运行")) {
+            String targetApp = trimmed.replaceFirst("^(打开|启动|进入|运行)\\s*", "").trim();
+            return isPureTargetAppName(targetApp);
+        }
+        if ((trimmed.startsWith("点击") || trimmed.startsWith("点一下") || trimmed.startsWith("按下")
+                || trimmed.startsWith("点") || trimmed.startsWith("长按") || trimmed.startsWith("双击"))
+                && trimmed.length() <= 14) {
             return true;
         }
         return false;

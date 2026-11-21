@@ -457,4 +457,35 @@
 
   attachSwipeToClose(leftSidebar, 'left', closeLeftDrawer);
   attachSwipeToClose(rightPanel, 'right', closeRightDrawer);
+
+  // 6. 动态同步移动端底部输入舱实时高度至 CSS 变量 --mobile-composer-h，确保任何行高/状态下消息底部均有安全留白
+  const composerDockEl = document.getElementById('tour-anchor-composer');
+  let lastComposerH = -1;
+  function syncMobileComposerHeightVar() {
+    if (!composerDockEl) return;
+    if (!MOBILE_MQ.matches) {
+      if (lastComposerH !== -1) {
+        lastComposerH = -1;
+        document.documentElement.style.removeProperty('--mobile-composer-h');
+      }
+      return;
+    }
+    const h = Math.round(composerDockEl.getBoundingClientRect().height);
+    if (h > 0 && h !== lastComposerH) {
+      lastComposerH = h;
+      document.documentElement.style.setProperty('--mobile-composer-h', `${h}px`);
+    }
+  }
+  if (composerDockEl) {
+    if (typeof ResizeObserver === 'function') {
+      const ro = new ResizeObserver(syncMobileComposerHeightVar);
+      ro.observe(composerDockEl);
+    }
+    window.addEventListener('resize', syncMobileComposerHeightVar, { passive: true });
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', syncMobileComposerHeightVar, { once: true });
+    } else {
+      syncMobileComposerHeightVar();
+    }
+  }
 })();

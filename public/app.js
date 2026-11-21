@@ -69,9 +69,239 @@
     lastSandboxCode: '',
     proactiveIdleCount: 0,
     lastInteractionAt: Date.now(),
+    hasMoreMessages: false,
+    totalMessages: 0,
+    oldestMessageId: 0,
+    appVersion: '2.0.0',
     tourIndex: 0,
-    tourActive: false
+    tourActive: false,
+    llmMode: localStorage.getItem('user_llm_mode') || 'local_antigravity',
+    localModel: localStorage.getItem('user_local_model') || 'gemini-3.8-flash-high',
+    antigravityStatus: { available: false, models: [], default_model: 'gemini-3.8-flash-high' }
   };
+
+  // ================= 会话内存 LRU 缓存与 0ms 首屏 SWR 本地快照引擎 =================
+  const SESSION_CACHE_MAX = 15;
+  const BOOT_SNAPSHOT_KEY = 'star_boot_snapshot_v1';
+  const BOOT_SNAPSHOT_TTL_MS = 7 * 24 * 3600 * 1000;
+  const sessionDetailCache = new Map();
+  let userManualSessionSwitchAt = 0;
+  let bootEnterStartedAt = 0;
+
+  function setSessionCache(sessionId, payload) {
+    if (!sessionId || !payload || !payload.session) return;
+    if (sessionDetailCache.has(sessionId)) {
+      sessionDetailCache.delete(sessionId);
+    } else if (sessionDetailCache.size >= SESSION_CACHE_MAX) {
+      const oldestKey = sessionDetailCache.keys().next().value;
+      if (oldestKey) sessionDetailCache.delete(oldestKey);
+    }
+    sessionDetailCache.set(sessionId, {
+      ...payload,
+      cachedAt: Date.now()
+    });
+  }
+
+  function getSessionCache(sessionId) {
+    if (!sessionId) return null;
+    const hit = sessionDetailCache.get(sessionId);
+    if (!hit) return null;
+    // LRU 刷新热度
+    sessionDetailCache.delete(sessionId);
+    sessionDetailCache.set(sessionId, hit);
+    return hit;
+  }
+
+  function invalidateSessionCache(sessionId) {
+    if (!sessionId) return;
+    sessionDetailCache.delete(sessionId);
+  }
+
+  function syncActiveSessionToCache() {
+    const sid = state.activeSessionId;
+    if (!sid || !state.activeSession) return;
+    setSessionCache(sid, {
+      session: state.activeSession,
+      persona: state.activePersona,
+      messages: Array.isArray(state.messages) ? state.messages.slice() : [],
+      has_more_messages: Boolean(state.hasMoreMessages),
+      total_messages: Number(state.totalMessages || (state.messages || []).length),
+      oldest_message_id: Number(state.oldestMessageId || state.messages?.[0]?.id || 0),
+      memories: Array.isArray(state.memories) ? state.memories.slice() : [],
+      lorebooks: Array.isArray(state.lorebooks) ? state.lorebooks.slice() : [],
+      nurturing: state.nurturing,
+      companion: state.companion,
+      telemetry: state.telemetry,
+      membership: state.membership
+    });
+  }
+
+  function clearBootSnapshot() {
+    try {
+      localStorage.removeItem(BOOT_SNAPSHOT_KEY);
+    } catch {}
+  }
+
+  function getPreferredSessionStorageKey(mode = state.uiMode) {
+    return `last_active_session_${mode === 'deepseek' ? 'deepseek' : 'roleplay'}`;
+  }
+
+  function buildBootstrapQueryParams(checkAuth = false) {
+    const qs = new URLSearchParams();
+    qs.set('lite', '1');
+    qs.set('msg_limit', '60');
+    if (checkAuth) qs.set('check_auth', '1');
+    if (state.uiMode) qs.set('ui_mode', state.uiMode);
+    if (state.activeScriptId) qs.set('active_script_id', state.activeScriptId);
+    try {
+      const lastSid = localStorage.getItem(getPreferredSessionStorageKey(state.uiMode));
+      if (lastSid) qs.set('preferred_session_id', lastSid);
+    } catch {}
+    return qs.toString();
+  }
+
+  function trimMessagesForSnapshot(msgs, maxCount) {
+    return (Array.isArray(msgs) ? msgs : []).slice(-maxCount).map((m) => ({
+      id: m.id,
+      session_id: m.session_id,
+      role: m.role,
+      content: String(m.content || '').slice(0, 6000),
+      reasoning: m.reasoning ? String(m.reasoning).slice(0, 2000) : '',
+      duration_ms: m.duration_ms,
+      recalled_count: m.recalled_count,
+      meta: m.meta,
+      created_at: m.created_at
+    }));
+  }
+
+  function saveBootSnapshot() {
+    try {
+      if (!state.user || !state.user.id) return;
+      const liteScripts = (state.scripts || []).map((sc) => ({
+        id: sc.id,
+        title: sc.title,
+        subtitle: sc.subtitle,
+        cover_emoji: sc.cover_emoji,
+        genre: sc.genre,
+        badge: sc.badge
+      }));
+      const litePersonas = (state.personas || []).map((p) => ({
+        id: p.id,
+        user_id: p.user_id,
+        script_id: p.script_id,
+        name: p.name,
+        avatar: p.avatar,
+        tagline: p.tagline,
+        backstory: String(p.backstory || '').slice(0, 400),
+        starter_prompts: Array.isArray(p.starter_prompts) ? p.starter_prompts.slice(0, 4) : []
+      }));
+
+      const buildSnapshotObj = (msgLimit) => {
+        const initPayload = state.activeSession
+          ? {
+              session: state.activeSession,
+              persona: state.activePersona,
+              messages: trimMessagesForSnapshot(state.messages, msgLimit),
+              total_messages: Number(state.totalMessages || (state.messages || []).length),
+              has_more_messages:
+                Boolean(state.hasMoreMessages) ||
+                (Array.isArray(state.messages) && state.messages.length > msgLimit),
+              oldest_message_id: Number(
+                (Array.isArray(state.messages) && state.messages.length > msgLimit
+                  ? state.messages[state.messages.length - msgLimit]?.id
+                  : state.oldestMessageId || state.messages?.[0]?.id) || 0
+              ),
+              memories: Array.isArray(state.memories) ? state.memories.slice(0, 16) : [],
+              lorebooks: Array.isArray(state.lorebooks) ? state.lorebooks.slice(0, 12) : [],
+              nurturing: state.nurturing,
+              companion: state.companion,
+              telemetry: state.telemetry,
+              membership: state.membership
+            }
+          : null;
+        return {
+          savedAt: Date.now(),
+          app_version: state.appVersion,
+          userId: state.user.id,
+          uiMode: state.uiMode,
+          activeScriptId: state.activeScriptId,
+          activeSessionId: state.activeSessionId,
+          user: state.user,
+          scripts: liteScripts,
+          personas: litePersonas,
+          sessions: Array.isArray(state.sessions) ? state.sessions.slice(0, 40) : [],
+          settings: state.settings || {},
+          membership: state.membership,
+          wallet: state.wallet,
+          initial_session_id: initPayload ? state.activeSessionId : null,
+          initial_session_payload: initPayload
+        };
+      };
+
+      let json = JSON.stringify(buildSnapshotObj(25));
+      if (json.length > 420 * 1024) {
+        json = JSON.stringify(buildSnapshotObj(10));
+      }
+      if (json.length > 480 * 1024) {
+        json = JSON.stringify(buildSnapshotObj(4));
+      }
+      if (json.length <= 512 * 1024) {
+        localStorage.setItem(BOOT_SNAPSHOT_KEY, json);
+      }
+    } catch {}
+  }
+
+  function loadBootSnapshot() {
+    try {
+      const raw = localStorage.getItem(BOOT_SNAPSHOT_KEY);
+      if (!raw) return null;
+      const snap = JSON.parse(raw);
+      if (!snap || !snap.userId || !snap.user?.id || snap.user.id !== snap.userId) {
+        clearBootSnapshot();
+        return null;
+      }
+      if (!snap.savedAt || Date.now() - snap.savedAt > BOOT_SNAPSHOT_TTL_MS) {
+        clearBootSnapshot();
+        return null;
+      }
+      const localActiveUid = window.__starAuthStore?.getActiveUserId();
+      if (localActiveUid && localActiveUid !== snap.userId) {
+        clearBootSnapshot();
+        return null;
+      }
+      return snap;
+    } catch {
+      return null;
+    }
+  }
+
+  function syncWebVersionBadges(verStr) {
+    const raw = String(verStr || state.appVersion || '2.0.0').trim().replace(/^v/i, '');
+    if (!raw) return;
+    const vLabel = `v${raw}`;
+    const isNativeApk = Boolean(
+      window.AndroidAppBridge ||
+        window.location.protocol === 'file:' ||
+        window.location.hostname === 'appassets.androidplatform.net'
+    );
+
+    const sidebarTag = document.getElementById('sidebar-web-version-tag');
+    if (sidebarTag) sidebarTag.textContent = vLabel;
+
+    const modalPill = document.getElementById('apk-modal-version-pill');
+    if (modalPill) {
+      modalPill.textContent = `版本 ${vLabel} (支持 60fps 极速流式、语音输入与可靠自动更新)`;
+    }
+
+    if (!isNativeApk) {
+      const mfsVer = document.getElementById('mfs-version-value');
+      if (mfsVer) mfsVer.textContent = vLabel;
+      const anvVer = document.getElementById('anv-current-version');
+      if (anvVer) anvVer.textContent = `${vLabel} (已就绪)`;
+      const updLocal = document.getElementById('upd-local-ver');
+      if (updLocal) updLocal.textContent = vLabel;
+    }
+  }
 
   // 登录门扉 DOM
   const authGate = document.getElementById('auth-gate');
@@ -951,10 +1181,12 @@
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       if (res.status === 401 && data.code === 'AUTH_REQUIRED') {
+        clearBootSnapshot();
         resetClientWorkspaceState();
         window.__starAuthStore?.clearTabSession(false);
         showAuthScreen();
       } else if (res.status === 409 && data.code === 'ACCOUNT_MISMATCH') {
+        clearBootSnapshot();
         resetClientWorkspaceState();
         await enterWorkspace();
       }
@@ -997,6 +1229,9 @@
     state.activeSession = null;
     state.activePersona = null;
     state.messages = [];
+    state.hasMoreMessages = false;
+    state.totalMessages = 0;
+    state.oldestMessageId = 0;
     state.memories = [];
     state.lorebooks = [];
     state.recalledIds = new Set();
@@ -1011,6 +1246,7 @@
     codeSnippetStore.clear();
     codeSeq = 0;
     markdownRenderCache.clear();
+    sessionDetailCache.clear();
     window.__activeSessionId = null;
     window.__isAdminUser = false;
     window.dispatchEvent(new CustomEvent('user-role-changed'));
@@ -1054,6 +1290,11 @@
       if (rememberGuest && authRes.user.id.startsWith('user_guest_')) {
         window.__starAuthStore?.setGuestUserId(authRes.user.id);
       }
+    }
+    if (window.AndroidAppBridge && typeof window.AndroidAppBridge.saveAuthCredentials === 'function' && authRes?.user) {
+      try {
+        window.AndroidAppBridge.saveAuthCredentials(authRes.token || '', JSON.stringify(authRes.user));
+      } catch {}
     }
   }
 
@@ -1141,6 +1382,7 @@
           password: document.getElementById('signin-password').value
         })
       });
+      clearBootSnapshot();
       applyAuthLoginPayload(res, { persistDefault: true, rememberGuest: false });
       signinForm.reset();
       await enterWorkspace();
@@ -1163,6 +1405,7 @@
           password: document.getElementById('signup-password').value
         })
       });
+      clearBootSnapshot();
       applyAuthLoginPayload(res, { persistDefault: true, rememberGuest: false });
       signupForm.reset();
       document.getElementById('signup-avatar').value = '星';
@@ -1256,6 +1499,10 @@
       sessionStorage.setItem('manual_account_switch', '1');
     } catch {}
     await apiJson('/api/auth/logout', { method: 'POST' }).catch(() => {});
+    if (window.AndroidAppBridge && typeof window.AndroidAppBridge.clearAuthCredentials === 'function') {
+      try { window.AndroidAppBridge.clearAuthCredentials(); } catch {}
+    }
+    clearBootSnapshot();
     resetClientWorkspaceState();
     window.__starAuthStore?.clearTabSession(true);
     document.getElementById('auth-confirm-signout-btn')?.classList.add('hidden');
@@ -1809,6 +2056,25 @@
       appShell.classList.remove('artifacts-wide');
     }
     toggleRightBtn?.classList.toggle('active', !collapsed);
+    const rightPanelEl = document.getElementById('right-panel');
+    if (rightPanelEl) {
+      if (isMobileViewport) {
+        if (!collapsed) {
+          rightPanelEl.style.setProperty('transform', 'translate3d(0, 0, 0)', 'important');
+          rightPanelEl.style.setProperty('pointer-events', 'auto', 'important');
+          rightPanelEl.style.setProperty('visibility', 'visible', 'important');
+          rightPanelEl.style.setProperty('opacity', '1', 'important');
+        } else {
+          rightPanelEl.style.setProperty('transform', 'translate3d(105%, 0, 0)', 'important');
+          rightPanelEl.style.setProperty('pointer-events', 'none', 'important');
+        }
+      } else {
+        rightPanelEl.style.removeProperty('transform');
+        rightPanelEl.style.removeProperty('pointer-events');
+        rightPanelEl.style.removeProperty('visibility');
+        rightPanelEl.style.removeProperty('opacity');
+      }
+    }
     if (isMobileViewport) {
       const bothClosed = collapsed && appShell.classList.contains('left-collapsed');
       document.getElementById('mobile-drawer-backdrop')?.classList.toggle('hidden', bothClosed);
@@ -2098,14 +2364,8 @@
         ? '手机辅助'
         : (state.activeSession?.title || '新对话');
     }
-    if (dsModelPill) {
-      const isCustomThirdModel =
-        p === 'own_deepseek' &&
-        hasOwnKey &&
-        !/deepseek|flash/i.test(rawOwnModel);
-      const basePillName = isCustomThirdModel ? shortModel : 'DeepSeek-V4.1-Flash';
-      dsModelPill.textContent = dsThinkOn ? `${basePillName} · 深度思考` : basePillName;
-    }
+
+    syncLlmModeUi();
 
     const btnDsThink = document.getElementById('ds-toggle-think');
     const btnDsSearch = document.getElementById('ds-toggle-search');
@@ -2133,6 +2393,94 @@
       } else {
         gatewaySummaryText.textContent = '星耀在线模型';
       }
+    }
+  }
+
+  // ================= DeepSeek 本地直连 (Antigravity) 与 云端 API 双模式调度引擎 =================
+  function syncLlmModeUi() {
+    const activeLlmMode = state.activeSession?.llm_mode || state.llmMode || 'local_antigravity';
+    const isLocal = activeLlmMode === 'local_antigravity';
+    const btnLlmMode = document.getElementById('ds-toggle-llm-mode');
+    const labelLlmMode = document.getElementById('ds-llm-mode-label');
+    const dsModelPill = document.getElementById('ds-model-pill');
+    const dsThinkOn = state.activeSession ? state.activeSession.ds_thinking !== 0 : true;
+
+    if (btnLlmMode) {
+      btnLlmMode.classList.toggle('active', isLocal);
+      btnLlmMode.classList.toggle('mode-api', !isLocal);
+      btnLlmMode.setAttribute('aria-pressed', String(isLocal));
+      if (labelLlmMode) {
+        labelLlmMode.textContent = isLocal ? '⚡ 本地直连' : '☁️ 云端 API';
+      }
+      btnLlmMode.title = isLocal
+        ? `当前为【⚡ 本地直连模式（免 Key，使用电脑本地 Antigravity · ${state.localModel || 'gemini-3.8-flash-high'}）】\n点击切换为【☁️ 云端 API 模式】`
+        : '当前为【☁️ 云端 API 模式】\n点击切换为【⚡ 本地直连模式（Antigravity）】';
+    }
+
+    if (dsModelPill) {
+      if (isLocal) {
+        const localTarget = state.activeSession?.local_model || state.localModel || 'gemini-3.8-flash-high';
+        let prettyLocal = 'Gemini 3.8 Flash';
+        if (/flash/i.test(localTarget)) prettyLocal = 'Gemini 3.8 Flash';
+        else if (/sonnet/i.test(localTarget)) prettyLocal = 'Claude 3.7 Sonnet';
+        else if (/opus/i.test(localTarget)) prettyLocal = 'Claude 3.7 Opus';
+        else prettyLocal = localTarget.replace(/^gemini-/, 'Gemini ').replace(/-/g, ' ');
+        dsModelPill.innerHTML = `<span class="ds-badge-dot"></span><span id="ds-model-pill-text">⚡ ${prettyLocal}${dsThinkOn ? ' · 深度思考' : ''}</span>`;
+        dsModelPill.title = '当前为【⚡ 本地直连模式】点击可切换至【☁️ 云端 API 模式】';
+      } else {
+        const p = state.settings?.provider || 'online';
+        const hasOwnKey = Boolean(state.settings?.own_deepseek_api_key_masked);
+        const rawOwnModel = state.settings?.own_deepseek_model || '';
+        const shortModel = rawOwnModel.replace(/^.*\//, '') || 'DeepSeek-V4.1-Flash';
+        const isCustomThirdModel = p === 'own_deepseek' && hasOwnKey && !/deepseek|flash/i.test(rawOwnModel);
+        const basePillName = isCustomThirdModel ? shortModel : 'DeepSeek-V4.1-Flash';
+        dsModelPill.innerHTML = `<span class="ds-badge-dot mode-api"></span><span id="ds-model-pill-text">☁️ ${dsThinkOn ? `${basePillName} · 深度思考` : basePillName}</span>`;
+        dsModelPill.title = '当前为【☁️ 云端 API 模式】点击可切换至【⚡ 本地直连模式】';
+      }
+    }
+  }
+
+  async function toggleLlmMode() {
+    const currentMode = state.activeSession?.llm_mode || state.llmMode || 'local_antigravity';
+    const nextMode = currentMode === 'local_antigravity' ? 'api' : 'local_antigravity';
+    state.llmMode = nextMode;
+    try {
+      localStorage.setItem('user_llm_mode', nextMode);
+    } catch {}
+
+    const isNextLocal = nextMode === 'local_antigravity';
+    const targetModelName = state.localModel || 'gemini-3.8-flash-high';
+
+    if (state.activeSessionId) {
+      await patchActiveSessionFlag(
+        { llm_mode: nextMode },
+        isNextLocal
+          ? `已切换至：⚡ 本地直连模式 (Antigravity · ${targetModelName})`
+          : '已切换至：☁️ 云端 API 模式'
+      );
+    } else {
+      showToast(
+        isNextLocal
+          ? `已切换至：⚡ 本地直连模式 (Antigravity · ${targetModelName})`
+          : '已切换至：☁️ 云端 API 模式'
+      );
+    }
+    syncLlmModeUi();
+  }
+
+  async function checkLocalAntigravityStatus() {
+    try {
+      const res = await fetch('/api/antigravity/status');
+      if (res.ok) {
+        const data = await res.json();
+        state.antigravityStatus = data;
+        if (data.default_model && !state.localModel) {
+          state.localModel = data.default_model;
+        }
+        syncLlmModeUi();
+      }
+    } catch (err) {
+      console.warn('[Antigravity] 探测本地底座状态异常:', err);
     }
   }
 
@@ -2261,6 +2609,9 @@
             </button>
             <button type="button" role="tab" class="wallet-tab" id="atab-security" data-apanel="apanel-security" aria-selected="false" tabindex="-1">
               <span>站长安全凭据</span>
+            </button>
+            <button type="button" role="tab" class="wallet-tab" id="atab-announcement" data-apanel="apanel-announcement" aria-selected="false" tabindex="-1">
+              <span>📢 全站公告发布</span>
             </button>
           </div>
 
@@ -2468,6 +2819,39 @@
                   </div>
                   <div class="form-footer-row">
                     <button type="submit" class="primary-btn">验证并更新站长安全凭据</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+
+            <!-- 站长面板 4：全站系统公告管理与主动发布中心 -->
+            <div role="tabpanel" id="apanel-announcement" aria-labelledby="atab-announcement" hidden>
+              <div class="wpanel-inner">
+                <form id="adm-ann-form" class="stack-form">
+                  <div class="block-title-row">
+                    <span>📢 全站系统公告主动发布与下发管理中心</span>
+                    <span class="user-role-badge">实时生效至开屏弹窗</span>
+                  </div>
+                  <p class="section-lead-note" style="margin:4px 0 10px 0;font-size:12.5px;color:var(--text-sub);">
+                    超级管理员可在此主动发布全站公告（支持分段多行排版）。更新后所有用户在打开网页或启动手机版时会自动弹出开屏展示。
+                  </p>
+                  <div class="field-group">
+                    <label for="adm-ann-title">公告标题 *</label>
+                    <input id="adm-ann-title" type="text" placeholder="例：星语 v1.9.9 手机辅助全新升级公告" required />
+                  </div>
+                  <div class="field-group">
+                    <label for="adm-ann-content">公告正文内容 * (支持分段说明)</label>
+                    <textarea id="adm-ann-content" rows="6" style="resize:vertical;font-size:13px;line-height:1.6;" placeholder="请输入全站公告正文内容..." required></textarea>
+                  </div>
+                  <div class="inline-row" style="margin-top:6px;align-items:center;">
+                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:600;font-size:13px;">
+                      <input type="checkbox" id="adm-ann-enabled" checked />
+                      <span>全站立即启用并向所有用户展示</span>
+                    </label>
+                  </div>
+                  <div class="form-footer-row" style="margin-top:12px;display:flex;gap:10px;">
+                    <button type="submit" class="primary-btn" id="adm-ann-publish-btn">🚀 立即发布 / 更新全站公告</button>
+                    <button type="button" class="mini-btn" id="adm-ann-offline-btn" style="padding:7px 14px;">下线并停用公告</button>
                   </div>
                 </form>
               </div>
@@ -2713,6 +3097,58 @@
     document.getElementById('adm-refresh-dash-btn')?.addEventListener('click', async () => {
       await refreshAdminDashboard(false);
       showToast('全站账户列表已同步刷新');
+    });
+
+    // 站长全站系统公告发布与管理
+    async function loadAdminAnnouncementData() {
+      try {
+        const res = await apiJson('/api/admin/announcement');
+        if (res && res.current) {
+          const t = document.getElementById('adm-ann-title');
+          const c = document.getElementById('adm-ann-content');
+          const en = document.getElementById('adm-ann-enabled');
+          if (t && !t.value) t.value = res.current.title || '';
+          if (c && !c.value) c.value = res.current.content || '';
+          if (en) en.checked = Boolean(res.current.enabled);
+        }
+      } catch {}
+    }
+    loadAdminAnnouncementData();
+
+    document.getElementById('adm-ann-form')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const title = document.getElementById('adm-ann-title')?.value?.trim();
+      const content = document.getElementById('adm-ann-content')?.value?.trim();
+      const enabled = document.getElementById('adm-ann-enabled')?.checked;
+      if (!title || !content) {
+        showToast('请完整填写公告标题与内容');
+        return;
+      }
+      try {
+        await apiJson('/api/admin/announcement', {
+          method: 'POST',
+          body: JSON.stringify({ title, content, enabled, version: Date.now() })
+        });
+        showToast('全站公告已成功发布并实时生效！');
+      } catch (err) {
+        showToast('发布公告失败: ' + err.message);
+      }
+    });
+
+    document.getElementById('adm-ann-offline-btn')?.addEventListener('click', async () => {
+      const title = document.getElementById('adm-ann-title')?.value?.trim() || '公告已下线';
+      const content = document.getElementById('adm-ann-content')?.value?.trim() || '当前无最新公告';
+      try {
+        await apiJson('/api/admin/announcement', {
+          method: 'POST',
+          body: JSON.stringify({ title, content, enabled: false, version: Date.now() })
+        });
+        const en = document.getElementById('adm-ann-enabled');
+        if (en) en.checked = false;
+        showToast('全站公告已下线停用');
+      } catch (err) {
+        showToast('下线公告失败: ' + err.message);
+      }
     });
 
     const searchInput = document.getElementById('adm-users-search-input');
@@ -3030,8 +3466,7 @@
     if (titleEl) titleEl.textContent = curScript.title || '选择剧本';
 
     if (state.uiMode === 'roleplay' && chatInput) {
-      const pShort = (state.activePersona?.name || '').split(/[·\s]/)[0] || '角色';
-      chatInput.placeholder = `输入台词或行动（可用 *星号* 写动作），与「${pShort}」推进《${curScript.title}》剧情…`;
+      syncChatInputPlaceholder();
     }
   }
 
@@ -3506,6 +3941,7 @@
         ) {
           return;
         }
+        userManualSessionSwitchAt = Date.now();
         loadSession(s.id);
       });
 
@@ -3513,6 +3949,7 @@
         if (e.target !== item) return;
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
+          userManualSessionSwitchAt = Date.now();
           loadSession(s.id);
         }
       });
@@ -3809,22 +4246,42 @@
   let scrollBottomRaf = 0;
   let pendingForceScroll = false;
   const scrollBottomBtn = document.getElementById('ds-scroll-bottom-btn');
+  const chatQuickNavEl = document.getElementById('chat-quick-nav');
+  const chatScrollTopBtn = document.getElementById('chat-scroll-top-btn');
+  const chatLocateBtn = document.getElementById('chat-locate-btn');
 
   function updateScrollBottomBtnVisibility(distOverride = null) {
-    if (!messagesViewport || !scrollBottomBtn) return;
+    if (!messagesViewport) return;
     const dist =
       distOverride !== null
         ? distOverride
         : messagesViewport.scrollHeight - messagesViewport.scrollTop - messagesViewport.clientHeight;
-    const shouldShow = state.messages.length > 0 && dist > 150;
-    if (shouldShow !== lastScrollBtnVisible) {
-      lastScrollBtnVisible = shouldShow;
-      scrollBottomBtn.classList.toggle('hidden', !shouldShow);
+    const isPaUnavailable = Boolean(
+      state.uiMode === 'phone-agent' && !(window.PhoneAgent && window.PhoneAgent.isNative)
+    );
+    const msgDomCount = messagesContainer ? messagesContainer.querySelectorAll('.msg-row').length : 0;
+    const hasChatContent = !isPaUnavailable && (state.messages.length > 0 || msgDomCount > 0);
+    const canScroll = messagesViewport.scrollHeight - messagesViewport.clientHeight > 60;
+
+    if (scrollBottomBtn) {
+      const shouldShow = hasChatContent && dist > 150;
+      if (shouldShow !== lastScrollBtnVisible) {
+        lastScrollBtnVisible = shouldShow;
+        scrollBottomBtn.classList.toggle('hidden', !shouldShow);
+      }
     }
+
+    const showTopBtn = hasChatContent && messagesViewport.scrollTop > 180;
+    const showLocateBtn = hasChatContent && (msgDomCount >= 2 || canScroll);
+    if (chatScrollTopBtn) chatScrollTopBtn.classList.toggle('hidden', !showTopBtn);
+    if (chatLocateBtn) chatLocateBtn.classList.toggle('hidden', !showLocateBtn);
+    if (chatQuickNavEl) chatQuickNavEl.classList.toggle('hidden', !showTopBtn && !showLocateBtn);
+
     if (dist < 60) {
       userManuallyScrolledUp = false;
     }
   }
+  window.__refreshChatQuickNav = () => updateScrollBottomBtnVisibility();
 
   messagesViewport.addEventListener(
     'scroll',
@@ -3848,6 +4305,143 @@
     userManuallyScrolledUp = false;
     messagesViewport.scrollTo({ top: messagesViewport.scrollHeight, behavior: 'smooth' });
   });
+
+  chatScrollTopBtn?.addEventListener('click', () => {
+    userManuallyScrolledUp = true;
+    messagesViewport.scrollTo({ top: 0, behavior: 'smooth' });
+  });
+
+  // ========= 「定位聊天」消息目录检索与高亮定位抽屉 =========
+  (function initChatLocatorSheet() {
+    const sheet = document.getElementById('chat-locator-sheet');
+    const backdrop = document.getElementById('chat-locator-backdrop');
+    const closeBtn = document.getElementById('chat-locator-close');
+    const searchInp = document.getElementById('chat-locator-search');
+    const listEl = document.getElementById('chat-locator-list');
+    const topBtn = document.getElementById('chat-locator-top-btn');
+    const bottomBtn = document.getElementById('chat-locator-bottom-btn');
+    const filterBtns = Array.from(document.querySelectorAll('.chat-loc-filter-btn'));
+    if (!sheet || !listEl) return;
+
+    let activeFilter = 'all';
+    let cachedEntries = [];
+
+    const collectEntries = () => {
+      if (!messagesContainer) return [];
+      const rows = Array.from(messagesContainer.querySelectorAll('.msg-row'));
+      return rows.map((rowEl, idx) => {
+        const isUser = rowEl.classList.contains('user');
+        const isPa = rowEl.classList.contains('pa-assistant-row');
+        let roleLabel = 'AI 回复';
+        if (isUser) {
+          roleLabel = '我的提问';
+        } else if (isPa) {
+          roleLabel = '手机辅助';
+        } else if (state.uiMode === 'deepseek') {
+          roleLabel = 'DeepSeek';
+        } else if (state.activePersona?.name) {
+          roleLabel = state.activePersona.name;
+        }
+
+        let textSource = '';
+        if (isPa) {
+          const taskTitle = rowEl.querySelector('.pa-card-task')?.textContent?.trim() || '';
+          const stepTexts = Array.from(rowEl.querySelectorAll('.pa-step-top span'))
+            .map((s) => s.textContent?.trim())
+            .filter(Boolean)
+            .slice(-2)
+            .join(' · ');
+          textSource = [taskTitle, stepTexts].filter(Boolean).join(' — ');
+        } else {
+          const contentEl = rowEl.querySelector('.msg-content, .msg-body') || rowEl;
+          textSource = contentEl.textContent || '';
+        }
+        const snippet = String(textSource || '').replace(/\s+/g, ' ').trim() || '（空消息内容）';
+        return { index: idx + 1, isUser, roleLabel, snippet, el: rowEl };
+      });
+    };
+
+    const renderList = () => {
+      const kw = String(searchInp?.value || '').trim().toLowerCase();
+      const filtered = cachedEntries.filter((item) => {
+        if (activeFilter === 'user' && !item.isUser) return false;
+        if (activeFilter === 'assistant' && item.isUser) return false;
+        if (kw && !item.snippet.toLowerCase().includes(kw) && !item.roleLabel.toLowerCase().includes(kw)) {
+          return false;
+        }
+        return true;
+      });
+
+      if (filtered.length === 0) {
+        listEl.innerHTML = `<div class="chat-loc-empty">${kw ? '未找到包含该关键词的对话记录' : '当前对话暂无消息记录'}</div>`;
+        return;
+      }
+
+      listEl.innerHTML = filtered
+        .map(
+          (item) => `
+          <button type="button" class="chat-loc-item" data-loc-floor="${item.index}" role="listitem">
+            <div class="chat-loc-item-meta">
+              <span class="chat-loc-role${item.isUser ? ' is-user' : ''}">${escapeHtml(item.roleLabel)}</span>
+              <span class="chat-loc-floor">第 ${item.index} 条</span>
+            </div>
+            <div class="chat-loc-snippet">${escapeHtml(item.snippet.slice(0, 140))}</div>
+          </button>`
+        )
+        .join('');
+
+      listEl.querySelectorAll('.chat-loc-item').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const floor = Number(btn.getAttribute('data-loc-floor'));
+          const entry = cachedEntries.find((x) => x.index === floor);
+          sheet.classList.add('hidden');
+          if (entry && entry.el && document.body.contains(entry.el)) {
+            userManuallyScrolledUp = true;
+            entry.el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            entry.el.classList.remove('chat-locate-highlight');
+            void entry.el.offsetWidth;
+            entry.el.classList.add('chat-locate-highlight');
+            setTimeout(() => entry.el.classList.remove('chat-locate-highlight'), 1900);
+          }
+        });
+      });
+    };
+
+    const openLocator = () => {
+      cachedEntries = collectEntries();
+      if (searchInp) searchInp.value = '';
+      renderList();
+      sheet.classList.remove('hidden');
+      setTimeout(() => searchInp?.focus(), 60);
+    };
+
+    const closeLocator = () => sheet.classList.add('hidden');
+
+    chatLocateBtn?.addEventListener('click', openLocator);
+    closeBtn?.addEventListener('click', closeLocator);
+    backdrop?.addEventListener('click', closeLocator);
+    searchInp?.addEventListener('input', renderList);
+
+    filterBtns.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        activeFilter = btn.getAttribute('data-loc-filter') || 'all';
+        filterBtns.forEach((b) => b.classList.toggle('active', b === btn));
+        renderList();
+      });
+    });
+
+    topBtn?.addEventListener('click', () => {
+      closeLocator();
+      userManuallyScrolledUp = true;
+      messagesViewport.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+
+    bottomBtn?.addEventListener('click', () => {
+      closeLocator();
+      userManuallyScrolledUp = false;
+      messagesViewport.scrollTo({ top: messagesViewport.scrollHeight, behavior: 'smooth' });
+    });
+  })();
 
   function scrollToBottom(force = false) {
     if (force) {
@@ -3984,6 +4578,8 @@
       msg.content = nextVal;
       box.remove();
       onSaved();
+      syncActiveSessionToCache();
+      saveBootSnapshot();
       showToast('内容已保存');
     });
     const resubmitBtn = box.querySelector('.resubmit-edit-btn');
@@ -4425,9 +5021,51 @@
     return row;
   }
 
+  function syncChatInputPlaceholder() {
+    if (!chatInput) return;
+    const isPhoneAgent = state.uiMode === 'phone-agent';
+    const isDs = state.uiMode === 'deepseek';
+    const hasChatted = isPhoneAgent
+      ? Boolean(messagesContainer && messagesContainer.querySelector('.msg-row, .pa-msg-row'))
+      : Boolean(Array.isArray(state.messages) && state.messages.some((m) => m.role === 'user'));
+
+    if (hasChatted) {
+      if (chatInput.placeholder !== '') chatInput.placeholder = '';
+      return;
+    }
+
+    const isNarrowViewport = window.matchMedia('(max-width: 860px)').matches;
+    let nextPlaceholder = '';
+    if (isPhoneAgent) {
+      nextPlaceholder = isNarrowViewport
+        ? '输入手机控制指令或任务…'
+        : '输入自然语言手机任务或本地口令（如：打开微信、回桌面、点击 设置）…';
+    } else if (isDs) {
+      nextPlaceholder = isNarrowViewport
+        ? '给 DeepSeek 发送消息…'
+        : '给 DeepSeek 发送消息（支持深度思考、联网搜索、代码生成与网页预览）…';
+    } else {
+      const pShort = (state.activePersona?.name || '').split(/[·\s]/)[0] || '';
+      const curScript = typeof getActiveScriptObj === 'function' ? getActiveScriptObj() : { title: '' };
+      if (isNarrowViewport) {
+        nextPlaceholder = pShort
+          ? `对「${pShort}」说点什么（可用 *写动作）…`
+          : `和${getPersonaPronoun(state.activePersona)}说点什么（可用 *写动作）…`;
+      } else if (pShort && curScript?.title) {
+        nextPlaceholder = `输入台词或行动（可用 *星号* 写动作），与「${pShort}」推进《${curScript.title}》剧情…`;
+      } else {
+        nextPlaceholder = `和${getPersonaPronoun(state.activePersona)}说点什么吧…（可用 *星号* 描写动作细节，Enter 发送）`;
+      }
+    }
+    if (chatInput.placeholder !== nextPlaceholder) {
+      chatInput.placeholder = nextPlaceholder;
+    }
+  }
+
   let lastComposerEmpty = null;
   let lastSendDisabled = null;
   function syncComposerEmptyState() {
+    syncChatInputPlaceholder();
     const isEmpty = !chatInput.value.trim() && state.pendingAttachments.length === 0;
     const isDisabled = Boolean(state.isStreaming || isEmpty);
     if (isEmpty !== lastComposerEmpty) {
@@ -4598,7 +5236,51 @@
     }
   }
 
-  function renderMessages() {
+  let loadingEarlierMsgs = false;
+  async function loadEarlierMessages() {
+    if (loadingEarlierMsgs || !state.activeSessionId || !state.oldestMessageId) return;
+    const targetSid = state.activeSessionId;
+    loadingEarlierMsgs = true;
+    const btn = document.getElementById('load-earlier-msgs-btn');
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = '正在加载更早的对话…';
+    }
+    const prevScrollHeight = messagesViewport ? messagesViewport.scrollHeight : 0;
+    const prevScrollTop = messagesViewport ? messagesViewport.scrollTop : 0;
+    try {
+      const res = await apiJson(
+        `/api/sessions/${encodeURIComponent(targetSid)}?before_id=${encodeURIComponent(state.oldestMessageId)}&limit=60`
+      );
+      if (state.activeSessionId !== targetSid) return;
+      const older = Array.isArray(res.messages) ? res.messages : [];
+      if (older.length > 0) {
+        const existIds = new Set(state.messages.map((m) => m.id).filter(Boolean));
+        const uniqueOlder = older.filter((m) => !m.id || !existIds.has(m.id));
+        state.messages = [...uniqueOlder, ...state.messages];
+      }
+      state.hasMoreMessages = Boolean(res.has_more_messages);
+      if (res.total_messages !== undefined) state.totalMessages = Number(res.total_messages);
+      state.oldestMessageId = Number(res.oldest_message_id || older[0]?.id || state.oldestMessageId || 0);
+      syncActiveSessionToCache();
+      renderMessages({ preserveScroll: true });
+      if (messagesViewport) {
+        const delta = messagesViewport.scrollHeight - prevScrollHeight;
+        messagesViewport.scrollTop = Math.max(0, prevScrollTop + delta);
+      }
+    } catch (err) {
+      showToast(err?.message || '加载更早消息失败');
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = `加载更早的对话记录（共 ${state.totalMessages || state.messages.length} 条）`;
+      }
+    } finally {
+      loadingEarlierMsgs = false;
+    }
+  }
+
+  function renderMessages(opts = {}) {
+    const preserveScroll = Boolean(opts && opts.preserveScroll);
     codeSnippetStore.clear();
     const p = state.activePersona;
     const isDsUi = state.uiMode === 'deepseek';
@@ -4683,6 +5365,22 @@
       }
     }
 
+    if (state.hasMoreMessages && state.messages.length > 0 && state.oldestMessageId > 0) {
+      const moreWrap = document.createElement('div');
+      moreWrap.className = 'load-earlier-msgs-wrap';
+      moreWrap.style.cssText = 'display:flex;justify-content:center;margin:10px 0 14px;';
+      const moreBtn = document.createElement('button');
+      moreBtn.type = 'button';
+      moreBtn.id = 'load-earlier-msgs-btn';
+      moreBtn.className = 'load-earlier-msgs-btn';
+      moreBtn.style.cssText = 'padding:6px 14px;border-radius:999px;border:1px solid var(--border-subtle,rgba(148,163,184,0.28));background:var(--bg-elevated,rgba(255,255,255,0.7));color:var(--text-secondary,#64748b);font-size:12px;font-weight:600;cursor:pointer;';
+      const totalLbl = state.totalMessages > state.messages.length ? `（共 ${state.totalMessages} 条）` : '';
+      moreBtn.textContent = `加载更早的对话记录${totalLbl}`;
+      moreBtn.addEventListener('click', loadEarlierMessages);
+      moreWrap.appendChild(moreBtn);
+      frag.appendChild(moreWrap);
+    }
+
     let lastAssistantIdx = -1;
     state.messages.forEach((m, idx) => {
       if (m.role === 'assistant') lastAssistantIdx = idx;
@@ -4700,7 +5398,11 @@
     syncArtifactsIndicator();
     updateBondBadge();
     syncComposerEmptyState();
-    scrollToBottom(true);
+    if (!preserveScroll) {
+      scrollToBottom(true);
+    } else {
+      updateScrollBottomBtnVisibility();
+    }
   }
 
   function setStreamingUi(streaming) {
@@ -4928,7 +5630,9 @@
           edit_message_id: editMessageId || 0,
           attachments: stagedFiles,
           assistant_prefix: assistantPrefix,
-          include_follow_ups: isShowFollowUpsEnabled()
+          include_follow_ups: isShowFollowUpsEnabled(),
+          llm_mode: state.activeSession?.llm_mode || state.llmMode || 'local_antigravity',
+          local_model: state.activeSession?.local_model || state.localModel || 'gemini-3.8-flash-high'
         }),
         signal: abortController.signal
       });
@@ -5118,6 +5822,11 @@
             renderLorebooks();
             renderTelemetryAndMemories();
             renderDeepSeekSuiteTelemetry();
+            if (typeof state.totalMessages === 'number') {
+              state.totalMessages = Math.max(state.totalMessages + 2, state.messages.length);
+            }
+            syncActiveSessionToCache();
+            saveBootSnapshot();
             window.DeepSeekMonitorPlugin?.sync({
               settings: state.settings,
               messages: state.messages,
@@ -5654,52 +6363,65 @@
 
   // ================= 10. 会话管理、梦境整理手账与世界书操作 =================
   let loadSessionSeq = 0;
-  async function loadSession(sessionId) {
-    if (!sessionId) return;
-    // 若正在另一个会话中流式生成，切换会话时立即中止旧流以彻底杜绝跨会话串台污染
-    if (state.isStreaming && state.streamingSessionId && state.streamingSessionId !== sessionId) {
-      state.userStoppedStream = false;
-      try {
-        state.streamingAbort?.abort('session_switch');
-      } catch {}
-      state.streamingAbort = null;
-      state.streamingSessionId = null;
-      setStreamingUi(false);
-    }
 
-    const reqSeq = ++loadSessionSeq;
-    const isSwitching = state.activeSessionId && state.activeSessionId !== sessionId;
-    if (isSwitching) {
-      state.activeSessionId = sessionId;
-      renderSessionList();
-      if (messagesContainer) {
-        messagesContainer.innerHTML = '<div class="session-loading-banner" role="status">正在载入对话记录与专属记忆…</div>';
-      }
-    }
+  async function applySessionDetailPayload(sessionId, data, opts = {}) {
+    if (!sessionId || !data || !data.session) return;
+    const reqSeq = opts.reqSeq !== undefined ? opts.reqSeq : loadSessionSeq;
+    const fromCache = Boolean(opts.fromCache);
+    const silentReconcile = Boolean(opts.silentReconcile);
 
-    let data;
-    try {
-      data = await apiJson(`/api/sessions/${encodeURIComponent(sessionId)}`);
-    } catch (err) {
-      if (/未找到|不存在|404/i.test(err?.message || '')) {
-        console.warn(`[Session] 会话 ${sessionId} 不存在，自动切换到有效会话`);
-        state.activeSessionId = null;
-        state.activeSession = null;
-        state.sessions = (state.sessions || []).filter((s) => s.id !== sessionId);
-        renderSessionList();
-        if (state.sessions.length > 0) {
-          return loadSession(state.sessions[0].id);
-        } else {
-          return startNativeDeepSeekSession('persona_deepseek_official');
-        }
-      }
-      throw err;
-    }
     if (reqSeq !== loadSessionSeq) return;
+    if (silentReconcile && state.activeSessionId && state.activeSessionId !== sessionId) return;
+    if (silentReconcile && state.isStreaming) return;
+
+    const srvMsgs = Array.isArray(data.messages) ? data.messages : [];
+    const srvHasMore = Boolean(data.has_more_messages);
+    const srvTotal = data.total_messages !== undefined ? Number(data.total_messages) : srvMsgs.length;
+    const srvOldestId = Number(data.oldest_message_id || srvMsgs[0]?.id || 0);
+
+    let shouldRenderMessages = true;
+    let shouldPreserveExistingOlder = false;
+    if (silentReconcile && state.activeSessionId === sessionId) {
+      const localMsgs = Array.isArray(state.messages) ? state.messages : [];
+      const localLast = localMsgs[localMsgs.length - 1];
+      const srvLast = srvMsgs[srvMsgs.length - 1];
+      const tailSame =
+        localLast &&
+        srvLast &&
+        String(localLast.id || '') === String(srvLast.id || '') &&
+        String(localLast.content || '').length === String(srvLast.content || '').length;
+
+      if (
+        localMsgs.length === srvMsgs.length &&
+        tailSame &&
+        Boolean(state.hasMoreMessages) === srvHasMore
+      ) {
+        shouldRenderMessages = false;
+      } else if (localMsgs.length > srvMsgs.length && tailSame && localMsgs.length <= srvTotal) {
+        // 本地已翻页加载过更早消息，且末尾最新消息未变，保留本地完整上下文，避免被默认60条分页覆盖
+        shouldRenderMessages = false;
+        shouldPreserveExistingOlder = true;
+      }
+    }
+
     state.activeSessionId = sessionId;
     state.activeSession = data.session;
     state.activePersona = data.persona;
-    state.messages = data.messages || [];
+    if (data.session?.llm_mode) {
+      state.llmMode = data.session.llm_mode;
+    }
+    if (data.session?.local_model) {
+      state.localModel = data.session.local_model;
+    }
+    syncLlmModeUi();
+    if (!shouldPreserveExistingOlder) {
+      state.messages = srvMsgs;
+      state.hasMoreMessages = srvHasMore;
+      state.totalMessages = srvTotal;
+      state.oldestMessageId = srvOldestId;
+    } else {
+      state.totalMessages = Math.max(srvTotal, state.messages.length);
+    }
     state.memories = data.memories || [];
     state.lorebooks = data.lorebooks || [];
     state.nurturing = data.nurturing || null;
@@ -5707,16 +6429,18 @@
     state.telemetry = data.telemetry;
     state.proactiveIdleCount = 0;
     state.lastInteractionAt = Date.now();
-    if (typeof resetSideArtifactSandbox === 'function') {
+    if (!silentReconcile && typeof resetSideArtifactSandbox === 'function') {
       resetSideArtifactSandbox();
     }
     if (data.membership) state.membership = data.membership;
 
     const sessMode = data.session?.session_mode === 'deepseek_native' ? 'deepseek' : 'roleplay';
-    if (sessMode === 'roleplay') {
-      if (state.uiMode !== 'roleplay') applyUiModeVisuals('roleplay');
-    } else {
-      if (state.uiMode !== 'deepseek') applyUiModeVisuals('deepseek');
+    if (!silentReconcile) {
+      if (sessMode === 'roleplay') {
+        if (state.uiMode !== 'roleplay') applyUiModeVisuals('roleplay');
+      } else {
+        if (state.uiMode !== 'deepseek') applyUiModeVisuals('deepseek');
+      }
     }
     if (sessMode === 'roleplay' && data.persona?.script_id) {
       state.activeScriptId = data.persona.script_id;
@@ -5724,11 +6448,24 @@
         localStorage.setItem('active_script_id', state.activeScriptId);
       } catch {}
     }
+    try {
+      localStorage.setItem(getPreferredSessionStorageKey(sessMode), sessionId);
+    } catch {}
 
-    codeSnippetStore.clear();
-    syncActiveScriptVisuals();
-    renderSessionList();
-    renderMessages();
+    if (!fromCache && !shouldPreserveExistingOlder) {
+      setSessionCache(sessionId, data);
+    } else if (!fromCache && shouldPreserveExistingOlder) {
+      syncActiveSessionToCache();
+    }
+
+    if (shouldRenderMessages) {
+      codeSnippetStore.clear();
+      syncActiveScriptVisuals();
+      renderSessionList();
+      renderMessages();
+    } else {
+      updateBondBadge();
+    }
 
     await yieldToMain();
     if (reqSeq !== loadSessionSeq) return;
@@ -5741,7 +6478,7 @@
     renderLorebooks();
     renderTelemetryAndMemories();
     renderDeepSeekSuiteTelemetry();
-    if (state.uiMode === 'roleplay') {
+    if (!silentReconcile && state.uiMode === 'roleplay') {
       triggerCompanionCare('timer', true);
     }
 
@@ -5758,8 +6495,13 @@
         : '角色安静时自动搭话：已关闭';
     }
 
+    if (!fromCache) {
+      saveBootSnapshot();
+    }
+
     // 久别重逢检测：仅在用户显式开启主动搭话时触发（默认保持安静不打扰）
     if (
+      !fromCache &&
       sessMode === 'roleplay' &&
       state.messages.length > 0 &&
       localStorage.getItem('pref_auto_proactive') === '1' &&
@@ -5776,6 +6518,67 @@
         }, 900);
       }
     }
+  }
+
+  async function loadSession(sessionId, opts = {}) {
+    if (!sessionId) return;
+    // 若正在另一个会话中流式生成，切换会话时立即中止旧流以彻底杜绝跨会话串台污染
+    if (state.isStreaming && state.streamingSessionId && state.streamingSessionId !== sessionId) {
+      state.userStoppedStream = false;
+      try {
+        state.streamingAbort?.abort('session_switch');
+      } catch {}
+      state.streamingAbort = null;
+      state.streamingSessionId = null;
+      setStreamingUi(false);
+    }
+
+    const reqSeq = ++loadSessionSeq;
+    const isSwitching = Boolean(state.activeSessionId && state.activeSessionId !== sessionId);
+    const forceNetwork = Boolean(opts && opts.forceNetwork) || !isSwitching;
+    const cached = !forceNetwork ? getSessionCache(sessionId) : null;
+
+    if (cached) {
+      // 命中内存缓存：0ms 瞬开对话内容，随后在后台静默拉取最新状态对账
+      await applySessionDetailPayload(sessionId, cached, { reqSeq, fromCache: true });
+      apiJson(`/api/sessions/${encodeURIComponent(sessionId)}?limit=60`)
+        .then((freshData) => {
+          if (reqSeq !== loadSessionSeq || state.activeSessionId !== sessionId) return;
+          applySessionDetailPayload(sessionId, freshData, { reqSeq, silentReconcile: true });
+        })
+        .catch(() => {});
+      return;
+    }
+
+    if (isSwitching) {
+      state.activeSessionId = sessionId;
+      renderSessionList();
+      if (messagesContainer) {
+        messagesContainer.innerHTML = '<div class="session-loading-banner" role="status">正在载入对话记录与专属记忆…</div>';
+      }
+    }
+
+    let data;
+    try {
+      data = await apiJson(`/api/sessions/${encodeURIComponent(sessionId)}?limit=60`);
+    } catch (err) {
+      if (/未找到|不存在|404/i.test(err?.message || '')) {
+        console.warn(`[Session] 会话 ${sessionId} 不存在，自动切换到有效会话`);
+        invalidateSessionCache(sessionId);
+        state.activeSessionId = null;
+        state.activeSession = null;
+        state.sessions = (state.sessions || []).filter((s) => s.id !== sessionId);
+        renderSessionList();
+        if (state.sessions.length > 0) {
+          return loadSession(state.sessions[0].id);
+        } else {
+          return startNativeDeepSeekSession('persona_deepseek_official');
+        }
+      }
+      throw err;
+    }
+    if (reqSeq !== loadSessionSeq) return;
+    await applySessionDetailPayload(sessionId, data, { reqSeq, fromCache: false });
   }
 
   document.getElementById('run-dream-btn').addEventListener('click', async (e) => {
@@ -5885,7 +6688,9 @@
           persona_id: personaId,
           session_mode: 'deepseek_native',
           ds_thinking: true,
-          ds_search: false
+          ds_search: false,
+          llm_mode: state.llmMode || 'local_antigravity',
+          local_model: state.localModel || 'gemini-3.8-flash-high'
         })
       });
       state.sessions = res.sessions;
@@ -5911,6 +6716,7 @@
     const res = await apiJson(`/api/sessions/${encodeURIComponent(sessionId)}`, {
       method: 'DELETE'
     });
+    invalidateSessionCache(sessionId);
     state.sessions = res.sessions;
     if (state.activeSessionId === sessionId) {
       const isDsUi = state.uiMode === 'deepseek' || state.uiMode === 'phone-agent';
@@ -6445,6 +7251,7 @@
     else if (lowerSavedUrl.includes('siliconflow.cn')) matchedPreset = 'siliconflow';
     else if (lowerSavedUrl.includes('aliyuncs.com')) matchedPreset = 'dashscope';
     else if (lowerSavedUrl.includes('openrouter.ai')) matchedPreset = 'openrouter';
+    else if (lowerSavedUrl.includes('googleapis.com')) matchedPreset = 'gemini';
 
     // 仅当用户自定义了非四大主流平台的中转站网址时才展开高级选项，保证小白界面干净清爽
     if (urlFold) {
@@ -6695,10 +7502,14 @@
     }
     if (keyInput) {
       keyInput.value = savedKey;
-      if (focusOwnApi) {
-        document.getElementById('mfs-apikey-drawer')?.classList.remove('hidden');
-        keyInput.focus();
-      }
+    }
+    document.getElementById('mfs-apikey-drawer')?.classList.add('hidden');
+    if (focusOwnApi) {
+      setTimeout(() => {
+        if (typeof window.__openMfsApiKeySheet === 'function') {
+          window.__openMfsApiKeySheet();
+        }
+      }, 40);
     }
 
     // 5. 按当前工作台模式隔离手机辅助设置项（在 DeepSeek/剧场模式下隐藏手机辅助专有项，防止串台）
@@ -6742,135 +7553,354 @@
       if (window.PhoneAgent && typeof window.PhoneAgent.getInstalledVersionLabel === 'function') {
         verVal.textContent = window.PhoneAgent.getInstalledVersionLabel();
       } else {
-        const verStr = (window.PhoneAgent && window.PhoneAgent.currentVersion) || '1.9.2';
+        const verStr = state.appVersion || (window.PhoneAgent && window.PhoneAgent.currentVersion) || '2.0.0';
         verVal.textContent = verStr.startsWith('v') ? verStr : `v${verStr}`;
       }
     }
+  }
+
+  function openDeepSeekOfficialKeyPage() {
+    if (window.PhoneAgent && typeof window.PhoneAgent.openDeepSeekOfficialPage === 'function') {
+      window.PhoneAgent.openDeepSeekOfficialPage();
+      return;
+    }
+    const url = 'https://platform.deepseek.com/api_keys';
+    const b = window.AndroidAppBridge;
+    if (b && typeof b.isNativeApk === 'function' && b.isNativeApk() && typeof b.openExternalUrl === 'function') {
+      try {
+        b.openExternalUrl(url);
+        return;
+      } catch {}
+    }
+    window.open(url, '_blank', 'noopener,noreferrer');
+  }
+
+  function closeMfsSubSheet() {
+    document.getElementById('mfs-sub-sheet')?.classList.add('hidden');
+  }
+
+  function openMfsSubSheet({ title, subtitle = '', bodyHtml = '', footerHtml = '', onMount = null }) {
+    const sheet = document.getElementById('mfs-sub-sheet');
+    const titleEl = document.getElementById('mfs-sub-title');
+    const subEl = document.getElementById('mfs-sub-subtitle');
+    const bodyEl = document.getElementById('mfs-sub-body');
+    const footerEl = document.getElementById('mfs-sub-footer');
+    if (!sheet || !titleEl || !bodyEl || !footerEl) return;
+
+    titleEl.textContent = title || '设置';
+    if (subEl) {
+      subEl.textContent = subtitle;
+      subEl.classList.toggle('hidden', !subtitle);
+    }
+    bodyEl.innerHTML = bodyHtml;
+    footerEl.innerHTML = footerHtml;
+    footerEl.classList.toggle('hidden', !footerHtml);
+    sheet.classList.remove('hidden');
+
+    if (typeof onMount === 'function') {
+      onMount({ sheet, bodyEl, footerEl, close: closeMfsSubSheet });
+    }
+  }
+
+  function renderMfsOptionListHtml(options, selectedId) {
+    const checkSvg = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
+    return `<div class="mfs-opt-list">${options
+      .map(
+        (opt) => `
+        <button type="button" class="mfs-opt-item${opt.id === selectedId ? ' is-selected' : ''}" data-opt-id="${escapeHtml(opt.id)}">
+          <div class="mfs-opt-main">
+            <span class="mfs-opt-title">${escapeHtml(opt.title)}</span>
+            ${opt.desc ? `<span class="mfs-opt-desc">${escapeHtml(opt.desc)}</span>` : ''}
+          </div>
+          <span class="mfs-opt-check" aria-hidden="true">${checkSvg}</span>
+        </button>`
+      )
+      .join('')}</div>`;
   }
 
   function initMobileFullscreenSettings() {
     const mfs = document.getElementById('mobile-fullscreen-settings');
     if (!mfs) return;
 
-    // 返回按钮
     document.getElementById('mfs-back-btn')?.addEventListener('click', () => {
+      closeMfsSubSheet();
       mfs.classList.add('hidden');
     });
+    document.getElementById('mfs-sub-backdrop')?.addEventListener('click', closeMfsSubSheet);
+    document.getElementById('mfs-sub-close')?.addEventListener('click', closeMfsSubSheet);
 
-    // 账户点击：修改昵称
-    document.getElementById('mfs-item-profile')?.addEventListener('click', async () => {
-      const curName = state.user?.nickname || state.user?.username || '';
-      const newName = prompt('修改你的用户昵称：', curName);
-      if (newName && newName.trim() && newName.trim() !== curName) {
-        try {
-          const res = await apiJson('/api/auth/profile', {
-            method: 'PATCH',
-            body: JSON.stringify({ nickname: newName.trim() })
+    const openMfsApiKeySheet = () => {
+      const savedKey = localStorage.getItem('deepseek_user_api_key') || localStorage.getItem('own_deepseek_api_key') || '';
+      const eyeOpenSvg = `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>`;
+      const eyeOffSvg = `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>`;
+      openMfsSubSheet({
+        title: '个人 API 密钥',
+        subtitle: '使用你自己的 DeepSeek 官网密钥直连推理，密钥仅存本地沙盒',
+        bodyHtml: `
+          <div class="mfs-official-guide-box">
+            <ol class="mfs-official-steps">
+              <li>打开 DeepSeek 官方控制台，在左侧「API keys」创建并复制 <code>sk-...</code> 密钥；</li>
+              <li>粘贴到下方输入框并保存，即可解锁直连对话与手机辅助规划。</li>
+            </ol>
+            <button type="button" class="mfs-official-link-btn" id="mfs-sheet-official-btn">
+              <span>前往 DeepSeek 官网获取密钥 (platform.deepseek.com) ↗</span>
+            </button>
+          </div>
+          <div class="mfs-field-block">
+            <label class="mfs-field-label" for="mfs-sheet-apikey-input">DeepSeek API Key</label>
+            <div class="mfs-sheet-input-wrap">
+              <input type="password" class="mfs-sheet-input" id="mfs-sheet-apikey-input" value="${escapeHtml(savedKey)}" placeholder="粘贴 sk-... 开头的官网密钥" autocomplete="off" />
+              <button type="button" class="mfs-sheet-eye-btn" id="mfs-sheet-eye-btn" aria-label="显示或隐藏密钥">${eyeOpenSvg}</button>
+            </div>
+          </div>`,
+        footerHtml: `
+          <button type="button" class="mfs-sheet-btn-secondary" id="mfs-sheet-key-clear">清除密钥</button>
+          <button type="button" class="mfs-sheet-btn-primary" id="mfs-sheet-key-save">保存直连密钥</button>`,
+        onMount: ({ bodyEl, footerEl, close }) => {
+          const inp = bodyEl.querySelector('#mfs-sheet-apikey-input');
+          const eyeBtn = bodyEl.querySelector('#mfs-sheet-eye-btn');
+          bodyEl.querySelector('#mfs-sheet-official-btn')?.addEventListener('click', openDeepSeekOfficialKeyPage);
+          eyeBtn?.addEventListener('click', () => {
+            if (!inp) return;
+            const show = inp.type === 'password';
+            inp.type = show ? 'text' : 'password';
+            eyeBtn.innerHTML = show ? eyeOffSvg : eyeOpenSvg;
           });
-          if (res.ok && res.user) {
-            state.user = res.user;
-            const accountLabel = document.getElementById('mfs-account-label');
-            if (accountLabel) accountLabel.textContent = res.user.nickname || res.user.username;
-            showToast('昵称已更新为：' + res.user.nickname);
-          }
-        } catch {
-          showToast('已在本地更新昵称：' + newName.trim());
-          const accountLabel = document.getElementById('mfs-account-label');
-          if (accountLabel) accountLabel.textContent = newName.trim();
+          const applyKey = (val) => {
+            const clean = String(val || '').trim();
+            if (clean) {
+              localStorage.setItem('deepseek_user_api_key', clean);
+              localStorage.setItem('own_deepseek_api_key', clean);
+            } else {
+              localStorage.removeItem('deepseek_user_api_key');
+              localStorage.removeItem('own_deepseek_api_key');
+            }
+            const desktopInput = document.getElementById('st-own-ds-key');
+            if (desktopInput) desktopInput.value = clean;
+            const oldInput = document.getElementById('mfs-apikey-input');
+            if (oldInput) oldInput.value = clean;
+            const keyVal = document.getElementById('mfs-apikey-value');
+            if (keyVal) keyVal.textContent = clean ? '已配置 (sk-...)' : '点击直连';
+            if (window.PhoneAgent && typeof window.PhoneAgent.setDirectApiKey === 'function') {
+              window.PhoneAgent.setDirectApiKey(clean);
+            }
+            close();
+            showToast(clean ? 'DeepSeek 官方 API 密钥已保存至本地沙盒' : '已清除个人 API 密钥');
+          };
+          footerEl.querySelector('#mfs-sheet-key-clear')?.addEventListener('click', () => applyKey(''));
+          footerEl.querySelector('#mfs-sheet-key-save')?.addEventListener('click', () => applyKey(inp?.value || ''));
+          setTimeout(() => inp?.focus(), 60);
         }
-      }
+      });
+    };
+    window.__openMfsApiKeySheet = openMfsApiKeySheet;
+
+    // 1. 账户点击：修改昵称
+    document.getElementById('mfs-item-profile')?.addEventListener('click', () => {
+      const curName = state.user?.nickname || state.user?.username || '';
+      openMfsSubSheet({
+        title: '修改用户昵称',
+        subtitle: '角色与系统将记住你的专属称呼',
+        bodyHtml: `
+          <div class="mfs-field-block">
+            <label class="mfs-field-label" for="mfs-sheet-nickname-input">当前昵称</label>
+            <input type="text" class="mfs-sheet-input" id="mfs-sheet-nickname-input" maxlength="24" value="${escapeHtml(curName)}" placeholder="输入新的昵称" />
+          </div>`,
+        footerHtml: `
+          <button type="button" class="mfs-sheet-btn-secondary" id="mfs-sheet-nick-cancel">取消</button>
+          <button type="button" class="mfs-sheet-btn-primary" id="mfs-sheet-nick-save">保存昵称</button>`,
+        onMount: ({ bodyEl, footerEl, close }) => {
+          const inp = bodyEl.querySelector('#mfs-sheet-nickname-input');
+          footerEl.querySelector('#mfs-sheet-nick-cancel')?.addEventListener('click', close);
+          footerEl.querySelector('#mfs-sheet-nick-save')?.addEventListener('click', async () => {
+            const nextName = (inp?.value || '').trim();
+            if (!nextName) {
+              showToast('请输入有效的昵称');
+              return;
+            }
+            if (nextName === curName) {
+              close();
+              return;
+            }
+            try {
+              const res = await apiJson('/api/auth/profile', {
+                method: 'PATCH',
+                body: JSON.stringify({ nickname: nextName })
+              });
+              const finalName = res.ok && res.user ? res.user.nickname || res.user.username : nextName;
+              if (res.ok && res.user) state.user = res.user;
+              const accountLabel = document.getElementById('mfs-account-label');
+              if (accountLabel) accountLabel.textContent = finalName;
+              showToast('昵称已更新为：' + finalName);
+            } catch {
+              const accountLabel = document.getElementById('mfs-account-label');
+              if (accountLabel) accountLabel.textContent = nextName;
+              showToast('已在本地更新昵称：' + nextName);
+            }
+            close();
+          });
+          setTimeout(() => inp?.focus(), 60);
+        }
+      });
     });
 
-    // 语言
+    // 2. 语言选择
     document.getElementById('mfs-item-lang')?.addEventListener('click', () => {
-      showToast('当前系统已使用 中文 (简体中文)');
+      openMfsSubSheet({
+        title: '界面语言',
+        subtitle: '设置应用界面与提示的默认显示语言',
+        bodyHtml: renderMfsOptionListHtml(
+          [{ id: 'zh-CN', title: '中文 (简体中文)', desc: '全中文沉浸对话界面与专属本地化提示' }],
+          'zh-CN'
+        ),
+        onMount: ({ bodyEl, close }) => {
+          bodyEl.querySelectorAll('.mfs-opt-item').forEach((btn) => {
+            btn.addEventListener('click', () => {
+              close();
+              showToast('当前系统已使用 中文 (简体中文)');
+            });
+          });
+        }
+      });
     });
 
-    // 切换外观（系统 -> 浅色 -> 深色 轮换）
+    // 3. 外观模式
     document.getElementById('mfs-item-theme')?.addEventListener('click', () => {
       const curScheme = localStorage.getItem('color-scheme') || 'system';
-      let nextScheme = 'light';
-      if (curScheme === 'system') nextScheme = 'light';
-      else if (curScheme === 'light') nextScheme = 'dark';
-      else nextScheme = 'system';
-
-      localStorage.setItem('color-scheme', nextScheme);
-      const metaEl = document.querySelector('meta[name="color-scheme"]');
-      if (metaEl) metaEl.content = nextScheme === 'system' ? 'light dark' : nextScheme;
-      document.documentElement.style.colorScheme = nextScheme === 'system' ? 'light dark' : nextScheme;
-
-      const themeVal = document.getElementById('mfs-theme-value');
-      if (themeVal) themeVal.textContent = nextScheme === 'dark' ? '深色' : (nextScheme === 'light' ? '浅色' : '系统');
-      showToast('已切换外观为：' + (nextScheme === 'dark' ? '深色模式' : (nextScheme === 'light' ? '浅色模式' : '跟随系统')));
+      openMfsSubSheet({
+        title: '外观主题',
+        subtitle: '选择浅色、深色或跟随设备系统自动切换',
+        bodyHtml: renderMfsOptionListHtml(
+          [
+            { id: 'system', title: '跟随系统', desc: '自动匹配设备当前的浅色与深色外观' },
+            { id: 'light', title: '浅色模式', desc: '明亮通透画布，适合白天阅读与创作' },
+            { id: 'dark', title: '深色模式', desc: '低眩光柔和暗调，夜间阅读更护眼' }
+          ],
+          curScheme
+        ),
+        onMount: ({ bodyEl, close }) => {
+          const labelMap = { system: '系统', light: '浅色', dark: '深色' };
+          bodyEl.querySelectorAll('.mfs-opt-item').forEach((btn) => {
+            btn.addEventListener('click', () => {
+              const nextScheme = btn.dataset.optId || 'system';
+              localStorage.setItem('color-scheme', nextScheme);
+              const metaEl = document.querySelector('meta[name="color-scheme"]');
+              if (metaEl) metaEl.content = nextScheme === 'system' ? 'light dark' : nextScheme;
+              document.documentElement.style.colorScheme = nextScheme === 'system' ? 'light dark' : nextScheme;
+              const themeVal = document.getElementById('mfs-theme-value');
+              if (themeVal) themeVal.textContent = labelMap[nextScheme] || '系统';
+              close();
+              showToast('已切换外观为：' + (nextScheme === 'dark' ? '深色模式' : nextScheme === 'light' ? '浅色模式' : '跟随系统'));
+            });
+          });
+        }
+      });
     });
 
-    // 字体大小（标准 -> 大 -> 小 轮换）
+    // 4. 字体大小（含实时预览卡片）
     document.getElementById('mfs-item-fontsize')?.addEventListener('click', () => {
-      const curFont = localStorage.getItem('mfs_font_size') || 'normal';
-      let nextFont = 'large';
-      if (curFont === 'normal') nextFont = 'large';
-      else if (curFont === 'large') nextFont = 'small';
-      else nextFont = 'normal';
-
-      localStorage.setItem('mfs_font_size', nextFont);
-      const fontVal = document.getElementById('mfs-fontsize-value');
-      if (fontVal) fontVal.textContent = nextFont === 'large' ? '大' : (nextFont === 'small' ? '小' : '标准');
-      document.documentElement.style.fontSize = nextFont === 'large' ? '17px' : (nextFont === 'small' ? '14px' : '15px');
-      showToast('已切换字体大小：' + (nextFont === 'large' ? '大号字体' : (nextFont === 'small' ? '小号字体' : '标准字体')));
+      let draftFont = localStorage.getItem('mfs_font_size') || 'normal';
+      const pxMap = { small: '14px', normal: '15px', large: '17px' };
+      const labelMap = { small: '小', normal: '标准', large: '大' };
+      openMfsSubSheet({
+        title: '字体大小',
+        subtitle: '调整对话消息与正文的全局阅读字号',
+        bodyHtml: `
+          <div class="mfs-font-preview-card">
+            <span class="mfs-font-preview-tag">效果实时预览</span>
+            <p class="mfs-font-preview-text" id="mfs-font-preview-text" style="font-size:${pxMap[draftFont] || '15px'};">星语恋庭：调整合适的字号，让每一次对话与故事阅读都舒适自然。</p>
+          </div>
+          ${renderMfsOptionListHtml(
+            [
+              { id: 'small', title: '小号 (14px)', desc: '单屏显示更多行，信息更紧凑' },
+              { id: 'normal', title: '标准 (15px)', desc: '官方默认舒适字阶，推荐日常使用' },
+              { id: 'large', title: '大号 (17px)', desc: '文字更大更醒目，长时间阅读更轻松' }
+            ],
+            draftFont
+          )}`,
+        footerHtml: `
+          <button type="button" class="mfs-sheet-btn-secondary" id="mfs-font-cancel">取消</button>
+          <button type="button" class="mfs-sheet-btn-primary" id="mfs-font-apply">应用字号</button>`,
+        onMount: ({ bodyEl, footerEl, close }) => {
+          const previewEl = bodyEl.querySelector('#mfs-font-preview-text');
+          bodyEl.querySelectorAll('.mfs-opt-item').forEach((btn) => {
+            btn.addEventListener('click', () => {
+              draftFont = btn.dataset.optId || 'normal';
+              bodyEl.querySelectorAll('.mfs-opt-item').forEach((o) => o.classList.toggle('is-selected', o === btn));
+              if (previewEl) previewEl.style.fontSize = pxMap[draftFont] || '15px';
+            });
+          });
+          footerEl.querySelector('#mfs-font-cancel')?.addEventListener('click', close);
+          footerEl.querySelector('#mfs-font-apply')?.addEventListener('click', () => {
+            localStorage.setItem('mfs_font_size', draftFont);
+            document.documentElement.style.fontSize = pxMap[draftFont] || '15px';
+            const fontVal = document.getElementById('mfs-fontsize-value');
+            if (fontVal) fontVal.textContent = labelMap[draftFont] || '标准';
+            close();
+            showToast(`已应用${labelMap[draftFont] || '标准'}号字体`);
+          });
+        }
+      });
     });
 
-    // 个性化设定
+    // 5. 个性化设定
     document.getElementById('mfs-item-persona')?.addEventListener('click', () => {
       const curPrompt = localStorage.getItem('ds_custom_sys_prompt') || '';
-      const newPrompt = prompt('输入 DeepSeek 个性化系统指令或对话偏好（留空使用默认）：', curPrompt);
-      if (newPrompt !== null) {
-        if (newPrompt.trim()) {
-          localStorage.setItem('ds_custom_sys_prompt', newPrompt.trim());
-          showToast('已保存专属个性化指令！');
-        } else {
-          localStorage.removeItem('ds_custom_sys_prompt');
-          showToast('已恢复默认 DeepSeek 官方通用人设');
+      const presets = [
+        { label: '简洁直给', text: '请用简洁、条理清晰的中文直接给出结论和可执行方案，减少客套废话。' },
+        { label: '温暖陪伴', text: '请保持温和、体贴与鼓励的语气交流，回复细腻有温度。' },
+        { label: '严谨专业', text: '请从工程严谨性出发，给出分步骤分析、边界条件与风险提示。' }
+      ];
+      openMfsSubSheet({
+        title: 'DeepSeek 个性化指令',
+        subtitle: '自定义回答语气、风格或专属系统偏好，留空则使用官方默认',
+        bodyHtml: `
+          <div class="mfs-field-block">
+            <span class="mfs-field-label">快捷风格模板（点击填入）</span>
+            <div class="mfs-preset-chips">
+              ${presets.map((p, idx) => `<button type="button" class="mfs-preset-chip" data-preset-idx="${idx}">${escapeHtml(p.label)}</button>`).join('')}
+            </div>
+          </div>
+          <div class="mfs-field-block">
+            <label class="mfs-field-label" for="mfs-sheet-persona-input">自定义系统指令</label>
+            <textarea class="mfs-sheet-textarea" id="mfs-sheet-persona-input" placeholder="例如：回复尽量分点归纳，重点内容加粗提醒…">${escapeHtml(curPrompt)}</textarea>
+          </div>`,
+        footerHtml: `
+          <button type="button" class="mfs-sheet-btn-secondary" id="mfs-persona-reset">恢复默认</button>
+          <button type="button" class="mfs-sheet-btn-primary" id="mfs-persona-save">保存指令</button>`,
+        onMount: ({ bodyEl, footerEl, close }) => {
+          const area = bodyEl.querySelector('#mfs-sheet-persona-input');
+          bodyEl.querySelectorAll('.mfs-preset-chip').forEach((chip) => {
+            chip.addEventListener('click', () => {
+              const idx = Number(chip.dataset.presetIdx);
+              if (area && presets[idx]) area.value = presets[idx].text;
+            });
+          });
+          footerEl.querySelector('#mfs-persona-reset')?.addEventListener('click', () => {
+            localStorage.removeItem('ds_custom_sys_prompt');
+            close();
+            showToast('已恢复默认 DeepSeek 官方通用人设');
+          });
+          footerEl.querySelector('#mfs-persona-save')?.addEventListener('click', () => {
+            const val = (area?.value || '').trim();
+            if (val) {
+              localStorage.setItem('ds_custom_sys_prompt', val);
+              showToast('已保存专属个性化指令！');
+            } else {
+              localStorage.removeItem('ds_custom_sys_prompt');
+              showToast('已恢复默认 DeepSeek 官方通用人设');
+            }
+            close();
+          });
+          setTimeout(() => area?.focus(), 60);
         }
-      }
+      });
     });
 
-    // 展开/收起 API Key 输入抽屉
-    document.getElementById('mfs-item-apikey')?.addEventListener('click', () => {
-      const drawer = document.getElementById('mfs-apikey-drawer');
-      if (drawer) {
-        drawer.classList.toggle('hidden');
-        if (!drawer.classList.contains('hidden')) {
-          document.getElementById('mfs-apikey-input')?.focus();
-        }
-      }
-    });
+    // 6. 个人 API 密钥（带官网直达入口）
+    document.getElementById('mfs-item-apikey')?.addEventListener('click', openMfsApiKeySheet);
 
-    // 保存 API Key
-    document.getElementById('mfs-save-apikey-btn')?.addEventListener('click', () => {
-      const input = document.getElementById('mfs-apikey-input');
-      const val = (input?.value || '').trim();
-      if (val) {
-        localStorage.setItem('deepseek_user_api_key', val);
-        localStorage.setItem('own_deepseek_api_key', val);
-        const desktopInput = document.getElementById('st-own-ds-key');
-        if (desktopInput) desktopInput.value = val;
-        const keyVal = document.getElementById('mfs-apikey-value');
-        if (keyVal) keyVal.textContent = '已配置 (sk-...)';
-        document.getElementById('mfs-apikey-drawer')?.classList.add('hidden');
-        if (window.PhoneAgent && typeof window.PhoneAgent.setDirectApiKey === 'function') {
-          window.PhoneAgent.setDirectApiKey(val);
-        }
-        showToast('DeepSeek 官方 API 密钥已保存至本地沙盒');
-      } else {
-        localStorage.removeItem('deepseek_user_api_key');
-        localStorage.removeItem('own_deepseek_api_key');
-        const keyVal = document.getElementById('mfs-apikey-value');
-        if (keyVal) keyVal.textContent = '点击直连';
-        showToast('已清除个人 API Key，可随时在手机辅助面板切回云端或本地模式');
-      }
-    });
-
-    // 手机端 Phone Agent 控制入口（轻量开关悬浮球 / 无障碍检测）
+    // 7. 手机端 Phone Agent 控制入口（轻量开关悬浮球 / 无障碍检测）
     document.getElementById('mfs-item-phoneagent')?.addEventListener('click', () => {
       const isNative = window.AndroidAppBridge && window.AndroidAppBridge.isNativeApk();
       if (!isNative) {
@@ -6889,29 +7919,47 @@
       openMobileFullscreenSettings();
     });
 
-    // 手机辅助默认执行引擎轮换（DeepSeek 直连 API <-> 云端托管 API <-> 本地免 API）
+    // 8. 手机辅助默认执行引擎选择器
     document.getElementById('mfs-item-phone-engine')?.addEventListener('click', () => {
-      const order = ['api_direct', 'api_cloud', 'local'];
       const cur =
         (window.PhoneAgent && typeof window.PhoneAgent.getExecMode === 'function'
           ? window.PhoneAgent.getExecMode()
           : localStorage.getItem('pa_exec_mode_v1')) || 'api_direct';
-      const next = order[(order.indexOf(cur) + 1) % order.length];
-      if (window.PhoneAgent && typeof window.PhoneAgent.setExecMode === 'function') {
-        window.PhoneAgent.setExecMode(next);
-      } else {
-        localStorage.setItem('pa_exec_mode_v1', next);
-      }
-      openMobileFullscreenSettings();
       const labelMap = {
         api_direct: 'DeepSeek 直连 API',
         api_cloud: '云端托管 API',
-        local: '本地免 API 指令'
+        local: '本地免 API'
       };
-      showToast(`手机辅助默认引擎已切换为：${labelMap[next]}`);
+      openMfsSubSheet({
+        title: '手机辅助默认引擎',
+        subtitle: '复合任务支持「本地首步加速 + 大模型接力规划」',
+        bodyHtml: renderMfsOptionListHtml(
+          [
+            { id: 'api_direct', title: 'DeepSeek 直连 API', desc: '使用个人官网密钥直连 DeepSeek 模型识屏规划，响应极快' },
+            { id: 'api_cloud', title: '云端托管 API', desc: '免填个人密钥，由云端服务托管智能规划识屏操作' },
+            { id: 'local', title: '本地免 API 指令', desc: '零网络依赖，纯离线毫秒级直控刷视频、打字与手势宏' }
+          ],
+          cur
+        ),
+        onMount: ({ bodyEl, close }) => {
+          bodyEl.querySelectorAll('.mfs-opt-item').forEach((btn) => {
+            btn.addEventListener('click', () => {
+              const next = btn.dataset.optId || 'api_direct';
+              if (window.PhoneAgent && typeof window.PhoneAgent.setExecMode === 'function') {
+                window.PhoneAgent.setExecMode(next);
+              } else {
+                localStorage.setItem('pa_exec_mode_v1', next);
+              }
+              close();
+              openMobileFullscreenSettings();
+              showToast(`手机辅助默认引擎已切换为：${labelMap[next] || next}`);
+            });
+          });
+        }
+      });
     });
 
-    // 自动语音播报总开关
+    // 9. 自动语音播报总开关
     document.getElementById('mfs-item-tts-toggle')?.addEventListener('click', () => {
       const curOn = localStorage.getItem('auto_tts_reply') !== '0';
       const nextOn = !curOn;
@@ -6922,47 +7970,160 @@
       showToast(nextOn ? '已开启回复自动语音播报' : '已关闭回复自动语音播报');
     });
 
-    // 朗读音色
+    // 10. 朗读音色面板
     document.getElementById('mfs-item-voice')?.addEventListener('click', () => {
-      showToast('当前音色：微软晓晓 (官方真声)，已开启自然流畅朗读');
+      const ttsOn = localStorage.getItem('auto_tts_reply') !== '0';
+      openMfsSubSheet({
+        title: '朗读音色设置',
+        subtitle: '角色与问答回复均默认使用高清真声合成',
+        bodyHtml: `
+          ${renderMfsOptionListHtml(
+            [{ id: 'xiaoxiao', title: '微软晓晓 (官方真声)', desc: '自然清亮女声，支持情感语调与长文本流式播报' }],
+            'xiaoxiao'
+          )}
+          <div class="mfs-info-block">
+            <h4>当前自动播报状态</h4>
+            <p>${ttsOn ? '已开启「自动语音播报」，收到回复后将自动朗读。' : '当前处于静音状态，可在上方开关随时开启自动朗读。'}</p>
+          </div>`,
+        footerHtml: `<button type="button" class="mfs-sheet-btn-primary" id="mfs-voice-ok">知道了</button>`,
+        onMount: ({ footerEl, close }) => {
+          footerEl.querySelector('#mfs-voice-ok')?.addEventListener('click', close);
+        }
+      });
     });
 
-    // 检查更新
+    // 11. 检查更新
     document.getElementById('mfs-item-checkupdate')?.addEventListener('click', () => {
       if (window.PhoneAgent) {
         window.PhoneAgent.checkUpdate(false);
       }
     });
 
-    // 服务协议
+    // 12. 服务协议与开源参考
     document.getElementById('mfs-item-dshgo')?.addEventListener('click', () => {
-      alert('【星语恋庭 · 服务协议与 dsh-Go 开源参考声明】\n1. 本项目基于合法授权的前沿大模型与开放架构，所有数据本地安全存储；\n2. 手机端 AI 辅助助理参考 dsh-Go 极简聊天规划架构，操作均需用户授权并支持一键停止与免确认切换；\n3. 回答由 AI 生成，仅供学习与娱乐参考。');
-    });
-
-    // 数据管理（导出历史记录）
-    document.getElementById('mfs-item-datamanage')?.addEventListener('click', () => {
-      if (confirm('是否导出当前所有会话历史记录为 Markdown 文档？')) {
-        document.getElementById('export-history-btn')?.click();
-      }
-    });
-
-    // 帮助与反馈（三档引擎与免 API 手机控制口令手册）
-    document.getElementById('mfs-item-help')?.addEventListener('click', () => {
-      alert('【Phone Agent 手机辅助模式说明】\n支持「DeepSeek API 直连 / 云端托管 / 本地免 API」三档无缝切换：\n\n1. API 模式：在手机辅助面板输入自然语言复杂任务（如“帮我在设置里查看系统版本”），AI 自动读取屏幕节点逐步规划执行，重要操作弹出 dsh-Go 确认卡；\n2. 本地免 API 离线指令库（无需密钥直接执行）：\n- 刷视频：自动刷视频、刷抖音、下一个视频、双击点赞、暂停视频、看评论、停止刷视频\n- 智能打字：打字 [内容]、输入并发送 [内容]、追加输入 [内容]、清空输入框、粘贴、搜索 [词]\n- 手势/系统：回桌面、返回、截屏、锁屏、控制中心、音量加/减、下滑3次、回到顶部\n- 应用直达：打开 微信/抖音/快手/小红书/B站/淘宝/支付宝/高德地图 等 35+ 应用\n- 组合宏：支持用“然后/接着/；”串联多步，如“打开抖音然后自动刷视频”\n\n点击桌面悬浮胶囊「星语 AI」可展开 4 分类多功能悬浮工作台。');
-    });
-
-    // 退出登录
-    document.getElementById('mfs-logout-btn')?.addEventListener('click', () => {
-      if (confirm('确定要退出当前账号吗？退出后需重新登录。')) {
-        mfs.classList.add('hidden');
-        if (typeof logoutUser === 'function') {
-          logoutUser();
-        } else {
-          localStorage.removeItem('star_whisper_token');
-          localStorage.removeItem('persona_studio_token');
-          window.location.reload();
+      openMfsSubSheet({
+        title: '服务协议与开源参考',
+        subtitle: '星语恋庭 · 安全沙盒与 dsh-Go 架构声明',
+        bodyHtml: `
+          <div class="mfs-info-block">
+            <h4>1. 本地沙盒与密钥隐私</h4>
+            <p>您配置的个人 DeepSeek API Key 与个性化偏好均保存在设备本地沙盒，不会用于其他无关用途。</p>
+          </div>
+          <div class="mfs-info-block">
+            <h4>2. dsh-Go 手机辅助安全架构</h4>
+            <p>手机端辅助参考 dsh-Go 规划循环架构设计，支持「逐步安全确认 / 免确认」切换，并通过悬浮球急停随时中止操作。</p>
+          </div>
+          <div class="mfs-info-block">
+            <h4>3. 内容生成免责提示</h4>
+            <p>所有对话与自动化建议均由 AI 生成，仅供学习、效率辅助与沉浸剧情体验参考。</p>
+          </div>`,
+        footerHtml: `<button type="button" class="mfs-sheet-btn-primary" id="mfs-dshgo-ok">关闭</button>`,
+        onMount: ({ footerEl, close }) => {
+          footerEl.querySelector('#mfs-dshgo-ok')?.addEventListener('click', close);
         }
-      }
+      });
+    });
+
+    // 13. 数据管理（导出历史记录确认卡片）
+    document.getElementById('mfs-item-datamanage')?.addEventListener('click', () => {
+      openMfsSubSheet({
+        title: '数据与会话导出',
+        subtitle: '将当前对话历史备份导出为本地 Markdown (.md) 文档',
+        bodyHtml: `
+          <div class="mfs-info-block">
+            <h4>导出说明</h4>
+            <p>导出文件将完整保留角色人设名称、消息时间戳与正文，便于长期保存或在其他对话中重新导入。</p>
+          </div>`,
+        footerHtml: `
+          <button type="button" class="mfs-sheet-btn-secondary" id="mfs-export-cancel">取消</button>
+          <button type="button" class="mfs-sheet-btn-primary" id="mfs-export-confirm">导出 Markdown</button>`,
+        onMount: ({ footerEl, close }) => {
+          footerEl.querySelector('#mfs-export-cancel')?.addEventListener('click', close);
+          footerEl.querySelector('#mfs-export-confirm')?.addEventListener('click', () => {
+            close();
+            document.getElementById('export-history-btn')?.click();
+          });
+        }
+      });
+    });
+
+    // 14. 帮助与反馈（结构化指令手册）
+    document.getElementById('mfs-item-help')?.addEventListener('click', () => {
+      openMfsSubSheet({
+        title: '帮助与手机辅助口令手册',
+        subtitle: '支持 API 识屏规划、本地免 API 直控与混合接力执行',
+        bodyHtml: `
+          <div class="mfs-info-block">
+            <h4>AI 大模型规划 & 混合接力</h4>
+            <p>在「DeepSeek API / 云端 API」模式下，输入复杂任务（如“打开微信然后给张三发一条晚安”），系统将先用本地秒执行前置动作，再由大模型读取屏幕逐步推进直到完成。</p>
+          </div>
+          <div class="mfs-info-block">
+            <h4>本地免 API · 短视频直控</h4>
+            <div class="mfs-help-tags">
+              <span class="mfs-help-tag">自动刷视频</span>
+              <span class="mfs-help-tag">下一个视频</span>
+              <span class="mfs-help-tag">双击点赞</span>
+              <span class="mfs-help-tag">看评论</span>
+              <span class="mfs-help-tag">停止刷视频</span>
+            </div>
+          </div>
+          <div class="mfs-info-block">
+            <h4>本地免 API · 智能打字与搜索</h4>
+            <div class="mfs-help-tags">
+              <span class="mfs-help-tag">打字 [内容]</span>
+              <span class="mfs-help-tag">输入并发送 [内容]</span>
+              <span class="mfs-help-tag">搜索 [关键词]</span>
+              <span class="mfs-help-tag">粘贴</span>
+              <span class="mfs-help-tag">清空输入框</span>
+            </div>
+          </div>
+          <div class="mfs-info-block">
+            <h4>系统手势与多步组合宏</h4>
+            <div class="mfs-help-tags">
+              <span class="mfs-help-tag">回桌面 / 返回</span>
+              <span class="mfs-help-tag">截屏 / 锁屏</span>
+              <span class="mfs-help-tag">音量加 / 减</span>
+              <span class="mfs-help-tag">打开 微信/抖音/淘宝</span>
+              <span class="mfs-help-tag">打开抖音然后自动刷视频</span>
+            </div>
+          </div>`,
+        footerHtml: `<button type="button" class="mfs-sheet-btn-primary" id="mfs-help-ok">我了解了</button>`,
+        onMount: ({ footerEl, close }) => {
+          footerEl.querySelector('#mfs-help-ok')?.addEventListener('click', close);
+        }
+      });
+    });
+
+    // 15. 退出登录高危二次确认 Sheet
+    document.getElementById('mfs-logout-btn')?.addEventListener('click', () => {
+      openMfsSubSheet({
+        title: '退出当前账号',
+        subtitle: '确认后将清除本机登录会话凭证',
+        bodyHtml: `
+          <div class="mfs-danger-hero">
+            <div class="mfs-danger-icon" aria-hidden="true">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+            </div>
+            <p>退出登录后需要重新登录账号才可继续云端对话；本地个人 API 密钥仍可在下次登录后重新配置或使用。</p>
+          </div>`,
+        footerHtml: `
+          <button type="button" class="mfs-sheet-btn-secondary" id="mfs-logout-cancel">取消</button>
+          <button type="button" class="mfs-sheet-btn-danger" id="mfs-logout-confirm">确认退出登录</button>`,
+        onMount: ({ footerEl, close }) => {
+          footerEl.querySelector('#mfs-logout-cancel')?.addEventListener('click', close);
+          footerEl.querySelector('#mfs-logout-confirm')?.addEventListener('click', () => {
+            close();
+            mfs.classList.add('hidden');
+            if (typeof logoutUser === 'function') {
+              logoutUser();
+            } else {
+              localStorage.removeItem('star_whisper_token');
+              localStorage.removeItem('persona_studio_token');
+              window.location.reload();
+            }
+          });
+        }
+      });
     });
   }
 
@@ -7015,6 +8176,7 @@
           return;
         }
         const isHidden = quickDrawer.classList.toggle('hidden');
+        plusBtn.classList.toggle('is-active', !isHidden);
         document.getElementById('pa-open-cmdlib-btn')?.classList.toggle('is-active', !isHidden);
       });
     }
@@ -9144,17 +10306,19 @@
       tabPa.setAttribute('aria-selected', String(isPhoneAgent));
     }
 
+    const paNativeAvailable = Boolean(window.PhoneAgent && window.PhoneAgent.isNative);
     // 控制聊天窗口顶部的单行紧凑控制栏、加号按钮与空态引导
     const plusBtnEl = document.getElementById('mobile-tools-plus-btn');
     if (plusBtnEl) {
-      plusBtnEl.classList.toggle('hidden', !isPhoneAgent);
+      plusBtnEl.classList.toggle('hidden', !isPhoneAgent || !paNativeAvailable);
     }
-    if (!isPhoneAgent) {
+    if (!isPhoneAgent || !paNativeAvailable) {
       document.getElementById('phone-cmd-quick-drawer')?.classList.add('hidden');
       document.getElementById('pa-open-cmdlib-btn')?.classList.remove('is-active');
+      plusBtnEl?.classList.remove('is-active');
     }
     if (paBanner) {
-      paBanner.classList.toggle('hidden', !isPhoneAgent);
+      paBanner.classList.toggle('hidden', !isPhoneAgent || !paNativeAvailable);
       if (isPhoneAgent && window.PhoneAgent) {
         window.PhoneAgent.syncStatus();
       } else if (!isPhoneAgent) {
@@ -9164,8 +10328,9 @@
     const paEmptyGuide = document.getElementById('pa-empty-guide');
     if (paEmptyGuide) {
       const hasMsgs = state.messages.length > 0 || (messagesContainer && messagesContainer.children.length > 0);
-      paEmptyGuide.classList.toggle('hidden', !isPhoneAgent || hasMsgs);
+      paEmptyGuide.classList.toggle('hidden', !isPhoneAgent || !paNativeAvailable || hasMsgs);
     }
+    updateScrollBottomBtnVisibility();
     const chatStageDom = document.querySelector('.chat-stage');
     if (chatStageDom) {
       if (isPhoneAgent) {
@@ -9195,12 +10360,7 @@
         : '当前为星语恋庭剧本模式，点击切换到 DeepSeek 问答模式';
     }
 
-    const pronoun = getPersonaPronoun(state.activePersona);
-    chatInput.placeholder = isPhoneAgent
-      ? '输入自然语言手机任务或本地口令（如：打开微信、回桌面、点击 设置）…'
-      : (isDs
-        ? '给 DeepSeek 发送消息（支持深度思考、联网搜索、代码生成与网页预览）…'
-        : `和${pronoun}说点什么吧…（可用 *星号* 描写动作细节，Enter 发送）`);
+    syncChatInputPlaceholder();
 
     const prefixInput = document.getElementById('ds-prefix-input');
     if (prefixInput) {
@@ -9249,7 +10409,9 @@
       if (window.PhoneAgent && typeof window.PhoneAgent.onEnterMode === 'function') {
         window.PhoneAgent.onEnterMode();
       }
-      showToast('已进入手机辅助独立工作台（与 DeepSeek 问答会话完全隔离）');
+      if (window.PhoneAgent && window.PhoneAgent.isNative) {
+        showToast('已进入手机辅助独立工作台（与 DeepSeek 问答会话完全隔离）');
+      }
       return;
     }
 
@@ -9336,6 +10498,9 @@
       }
     }
   }
+
+  document.getElementById('ds-toggle-llm-mode')?.addEventListener('click', toggleLlmMode);
+  document.getElementById('ds-model-pill')?.addEventListener('click', toggleLlmMode);
 
   document.getElementById('ds-toggle-think').addEventListener('click', () => {
     const next = state.activeSession?.ds_thinking === 0;
@@ -11060,7 +12225,13 @@
   }, 10000);
 
   // ================= 14. 进入工作台与首次登录检测 =================
-  async function enterWorkspace() {
+  async function enterWorkspace(prefetchedBoot = null, opts = {}) {
+    const silentReconcile = Boolean(opts && opts.silentReconcile);
+    const fromSwr = Boolean(opts && opts.fromSwr);
+    if (!silentReconcile) {
+      bootEnterStartedAt = Date.now();
+    }
+
     isSwitchingAccountOverlay = false;
     document.getElementById('auth-back-to-chat-btn')?.classList.add('hidden');
     document.getElementById('auth-close-x-btn')?.classList.add('hidden');
@@ -11074,7 +12245,9 @@
     appShell.style.removeProperty('display');
     dismissBootSplash();
 
-    const boot = await apiJson('/api/bootstrap');
+    const boot = prefetchedBoot || (await apiJson(`/api/bootstrap?${buildBootstrapQueryParams(false)}`));
+    if (!boot || !boot.user) return;
+
     state.user = boot.user;
     window.__STAR_CURRENT_USER__ = boot.user;
     window.__showAuthScreen = showAuthScreen;
@@ -11082,73 +12255,106 @@
       window.__starAuthStore?.setActiveUserId(boot.user.id);
     }
     state.scripts = boot.scripts || [];
-    state.squareItems = boot.square_items || [];
+    if (Array.isArray(boot.square_items) && (boot.square_items.length > 0 || state.squareItems.length === 0)) {
+      state.squareItems = boot.square_items;
+    }
     state.personas = boot.personas || [];
     state.sessions = boot.sessions || [];
     state.settings = boot.settings || {};
     state.membership = boot.membership || state.membership;
     state.wallet = boot.wallet || null;
+    if (boot.app_version) {
+      state.appVersion = String(boot.app_version).replace(/^v/i, '');
+    }
+    syncWebVersionBadges(state.appVersion);
 
     if (state.scripts.length > 0 && !state.scripts.some((s) => s.id === state.activeScriptId)) {
       state.activeScriptId = state.scripts[0].id;
     }
 
-    applyUiModeVisuals(state.uiMode);
-    // 桌面宽屏下恢复或默认展开恋庭右侧面板（展示 💞养成 / 🧠记忆 / 🎯设定，与陪伴立绘优雅共存）
-    try {
-      const isDesktopWide = window.matchMedia('(min-width: 1180px)').matches;
-      const savedRightPref = localStorage.getItem('right_panel_collapsed_v1');
-      if (state.uiMode === 'roleplay' && isDesktopWide && savedRightPref !== '1') {
-        openRightTab('nurture-tab', false);
-      } else if (savedRightPref === '0' && !window.matchMedia('(max-width: 860px)').matches) {
-        openRightTab(state.uiMode === 'roleplay' ? 'nurture-tab' : 'memory-tab', false);
-      }
-    } catch {}
+    if (!silentReconcile) {
+      applyUiModeVisuals(state.uiMode);
+      // 桌面宽屏下恢复或默认展开恋庭右侧面板（展示 💞养成 / 🧠记忆 / 🎯设定，与陪伴立绘优雅共存）
+      try {
+        const isDesktopWide = window.matchMedia('(min-width: 1180px)').matches;
+        const savedRightPref = localStorage.getItem('right_panel_collapsed_v1');
+        if (state.uiMode === 'roleplay' && isDesktopWide && savedRightPref !== '1') {
+          openRightTab('nurture-tab', false);
+        } else if (savedRightPref === '0' && !window.matchMedia('(max-width: 860px)').matches) {
+          openRightTab(state.uiMode === 'roleplay' ? 'nurture-tab' : 'memory-tab', false);
+        }
+      } catch {}
+    }
+
     syncActiveScriptVisuals();
     renderUserAndMembership();
-    if (state.wallet) renderWalletOverview();
+    if (state.wallet && typeof refreshWalletOverview === 'function') {
+      Promise.resolve(refreshWalletOverview()).catch(() => {});
+    }
     renderPersonaList();
     renderSessionList();
 
-    const isPhoneAgentBoot = state.uiMode === 'phone-agent';
-    const isDsBoot = state.uiMode === 'deepseek';
-    const preferredSessions = state.sessions.filter((s) =>
-      isDsBoot ? s.session_mode === 'deepseek_native' : s.session_mode !== 'deepseek_native'
-    );
-
-    if (isPhoneAgentBoot) {
-      applyUiModeVisuals('phone-agent');
-      if (window.PhoneAgent && typeof window.PhoneAgent.onEnterMode === 'function') {
-        window.PhoneAgent.onEnterMode();
-      }
-    } else if (isDsBoot) {
-      const reusableBlank = preferredSessions.find(
-        (s) => s.title === '新对话' && s.persona_id === 'persona_deepseek_official'
+    // 若后台对账返回期间用户已主动切换了其他会话或正在流式回复，仅更新侧栏列表，不覆盖当前会话
+    const userMovedAway = silentReconcile && (userManualSessionSwitchAt > bootEnterStartedAt || state.isStreaming);
+    if (!userMovedAway) {
+      const isPhoneAgentBoot = state.uiMode === 'phone-agent';
+      const isDsBoot = state.uiMode === 'deepseek';
+      const preferredSessions = state.sessions.filter((s) =>
+        isDsBoot ? s.session_mode === 'deepseek_native' : s.session_mode !== 'deepseek_native'
       );
-      if (reusableBlank) {
-        await loadSession(reusableBlank.id);
+
+      const inlinePayload = boot.initial_session_payload;
+      const inlineModeMatch =
+        inlinePayload &&
+        inlinePayload.session &&
+        !isPhoneAgentBoot &&
+        (isDsBoot
+          ? inlinePayload.session.session_mode === 'deepseek_native'
+          : inlinePayload.session.session_mode !== 'deepseek_native');
+
+      if (isPhoneAgentBoot) {
+        if (!silentReconcile) {
+          applyUiModeVisuals('phone-agent');
+          if (window.PhoneAgent && typeof window.PhoneAgent.onEnterMode === 'function') {
+            window.PhoneAgent.onEnterMode();
+          }
+        }
+      } else if (inlineModeMatch) {
+        await applySessionDetailPayload(inlinePayload.session.id, inlinePayload, {
+          fromCache: fromSwr,
+          silentReconcile
+        });
+      } else if (isDsBoot) {
+        const reusableBlank =
+          preferredSessions.find((s) => s.title === '新对话' && s.persona_id === 'persona_deepseek_official') ||
+          preferredSessions[0];
+        if (reusableBlank) {
+          await loadSession(reusableBlank.id);
+        } else if (!fromSwr) {
+          await startNativeDeepSeekSession('persona_deepseek_official');
+        }
       } else {
-        await startNativeDeepSeekSession('persona_deepseek_official');
-      }
-    } else {
-      // 优先进入当前所选剧本下的会话或首位主角（新默认直接进入《樱坂坡道上的风》）
-      const activeScriptSess = preferredSessions.find((s) => {
-        const pObj = state.personas.find((x) => x.id === s.persona_id);
-        return (s.script_id || resolvePersonaScriptId(pObj)) === state.activeScriptId;
-      });
-      if (activeScriptSess) {
-        await loadSession(activeScriptSess.id);
-      } else {
-        const firstCast = state.personas.find(
-          (p) => p.id !== 'persona_deepseek_official' && resolvePersonaScriptId(p) === state.activeScriptId
-        );
-        if (firstCast) {
-          await startSessionWithPersona(firstCast.id);
-        } else if (preferredSessions.length > 0) {
-          await loadSession(preferredSessions[0].id);
+        // 优先进入当前所选剧本下的会话或首位主角（新默认直接进入《樱坂坡道上的风》）
+        const activeScriptSess = preferredSessions.find((s) => {
+          const pObj = state.personas.find((x) => x.id === s.persona_id);
+          return (s.script_id || resolvePersonaScriptId(pObj)) === state.activeScriptId;
+        });
+        if (activeScriptSess) {
+          await loadSession(activeScriptSess.id);
+        } else if (!fromSwr) {
+          const firstCast = state.personas.find(
+            (p) => p.id !== 'persona_deepseek_official' && resolvePersonaScriptId(p) === state.activeScriptId
+          );
+          if (firstCast) {
+            await startSessionWithPersona(firstCast.id);
+          } else if (preferredSessions.length > 0) {
+            await loadSession(preferredSessions[0].id);
+          }
         }
       }
     }
+
+    if (fromSwr) return;
 
     const urlParams = new URLSearchParams(window.location.search);
     const isLiveDemoEntry =
@@ -11178,6 +12384,55 @@
         showToast('欢迎来到星语恋庭 · 点击左侧任意角色即可开启沉浸对话与真声陪伴');
       }
     }
+
+    setTimeout(() => {
+      checkAnnouncementOnStartup();
+      checkLocalAntigravityStatus();
+    }, 800);
+  }
+
+  async function checkAnnouncementOnStartup() {
+    try {
+      const res = await apiJson('/api/announcement');
+      const ann = res?.announcement;
+      if (!ann || !ann.enabled || !ann.title || !ann.content) return;
+
+      const lastRead = localStorage.getItem('star_last_read_ann_id');
+      const annKey = `${ann.id}_${ann.updated_at || ann.version || 1}`;
+      if (lastRead === annKey) return;
+
+      const dlg = document.getElementById('site-announcement-dialog');
+      if (!dlg) return;
+
+      const tEl = document.getElementById('site-ann-title');
+      const timeEl = document.getElementById('site-ann-time');
+      const cEl = document.getElementById('site-ann-content');
+      if (tEl) tEl.textContent = ann.title;
+      if (timeEl && ann.updated_at) {
+        timeEl.textContent = new Date(ann.updated_at).toLocaleDateString('zh-CN', {
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric'
+        });
+      }
+      if (cEl) {
+        cEl.innerHTML = ann.content
+          .split('\n')
+          .filter(Boolean)
+          .map((p) => `<p style="margin:0 0 8px 0;line-height:1.65;">${escapeHtml(p)}</p>`)
+          .join('');
+      }
+
+      const closeAnn = () => {
+        try { localStorage.setItem('star_last_read_ann_id', annKey); } catch {}
+        if (dlg.open) dlg.close();
+      };
+
+      document.getElementById('site-ann-close-btn')?.addEventListener('click', closeAnn, { once: true });
+      document.getElementById('site-ann-confirm-btn')?.addEventListener('click', closeAnn, { once: true });
+
+      if (!dlg.open) dlg.showModal();
+    } catch {}
   }
 
   async function bootCheck() {
@@ -11194,8 +12449,44 @@
     const hasLocalToken = Boolean(window.__starAuthStore?.getToken());
     const isStandaloneDemo = Boolean(window.__isStaticLiveDemo) || window.location.protocol === 'file:';
 
-    // 若本地无任何已保存的登录凭证且非独立离线模式，0ms 立即撤除推门遮罩并展示登录门扉，免除网络等待！
-    if (!hasLocalToken && !isStandaloneDemo) {
+    // 1. 离线单机演示模式
+    if (isStandaloneDemo) {
+      try {
+        const boot = await apiJson('/api/bootstrap');
+        if (boot && boot.authenticated !== false && boot.user) {
+          applyAuthLoginPayload(
+            { authenticated: true, user: boot.user, token: boot.token },
+            { persistDefault: false, rememberGuest: false }
+          );
+          await enterWorkspace(boot);
+          dismissBootSplash();
+          return;
+        }
+        resetClientWorkspaceState();
+        showAuthScreen();
+      } catch {
+        resetClientWorkspaceState();
+        showAuthScreen();
+      } finally {
+        clearTimeout(safetySplashTimer);
+        dismissBootSplash();
+      }
+      return;
+    }
+
+    // 2. 若本地已有令牌：立即尝试 0ms SWR 快照秒开，同时并发 1 次聚合请求无感对账
+    let snapshotApplied = false;
+    if (hasLocalToken) {
+      const snap = loadBootSnapshot();
+      if (snap) {
+        snapshotApplied = true;
+        applyAuthLoginPayload({ authenticated: true, user: snap.user }, { persistDefault: false, rememberGuest: false });
+        await enterWorkspace(snap, { fromSwr: true });
+        dismissBootSplash();
+        clearTimeout(safetySplashTimer);
+      }
+    } else {
+      // 无本地凭证：0ms 立即撤除推门遮罩并展示登录门扉，免除网络等待；同时静默探测 Cookie 登录态
       resetClientWorkspaceState();
       showAuthScreen();
       dismissBootSplash();
@@ -11203,31 +12494,56 @@
 
     try {
       const abortCtrl = new AbortController();
-      const timeoutId = setTimeout(() => abortCtrl.abort(), 4500);
-      let me;
+      const timeoutId = setTimeout(() => abortCtrl.abort(), 8000);
+      let boot;
       try {
-        me = await apiJson('/api/auth/me', { signal: abortCtrl.signal });
+        boot = await apiJson(`/api/bootstrap?${buildBootstrapQueryParams(true)}`, { signal: abortCtrl.signal });
       } finally {
         clearTimeout(timeoutId);
       }
-      if (me && me.authenticated && me.user) {
-        applyAuthLoginPayload(me, { persistDefault: false, rememberGuest: false });
-        await enterWorkspace();
+
+      if (!hasLocalToken && state.user) {
+        // 请求期间用户可能已通过登录表单手动登入，避免旧探针覆盖新账号态
+        return;
+      }
+
+      if (boot && boot.authenticated !== false && boot.user) {
+        applyAuthLoginPayload(
+          {
+            authenticated: true,
+            user: boot.user,
+            token: boot.token || window.__starAuthStore?.getToken()
+          },
+          { persistDefault: false, rememberGuest: false }
+        );
+        await enterWorkspace(boot, { silentReconcile: snapshotApplied });
         dismissBootSplash();
         return;
       }
-      // 严格认证防护：免注册通道已关闭，所有未登录访客强制进入注册/登录门扉
-      resetClientWorkspaceState();
-      showAuthScreen();
+
+      // 服务端明确返回未认证：清理快照；若已在登录门扉且未显示登录工作台，避免重置用户正在输入的表单/错误提示
+      clearBootSnapshot();
+      if (!appShell.classList.contains('hidden') || authGate.classList.contains('hidden')) {
+        resetClientWorkspaceState();
+        showAuthScreen();
+      }
       dismissBootSplash();
       if (needLoginMsg) {
         setTimeout(() => {
           setAuthError('【严格安全提示】请先注册或登录正式账号，以获取 APK 客户端下载权限');
         }, 100);
       }
-    } catch {
-      resetClientWorkspaceState();
-      showAuthScreen();
+    } catch (bootErr) {
+      console.warn('[BootCheck] bootstrap sync error:', bootErr);
+      if (!hasLocalToken && state.user) return;
+      if (snapshotApplied && state.user) {
+        showToast('当前网络较慢，已优先展示本地缓存对话');
+        return;
+      }
+      if (!appShell.classList.contains('hidden') || authGate.classList.contains('hidden')) {
+        resetClientWorkspaceState();
+        showAuthScreen();
+      }
       dismissBootSplash();
       if (needLoginMsg) {
         setTimeout(() => {

@@ -15,12 +15,13 @@ const { estimateTokens, normalizeMessagesForStrictLLM } = require('./memoryEngin
 const { getLocalBridgeSuiteCredentials, tryStreamViaAntigravityBridge } = require('./antigravityBridge');
 
 class NativeThinkSplitter {
-  constructor({ onReasoning, onContent, enableThinking }) {
+  constructor({ onReasoning, onContent, enableThinking } = {}) {
     this.onReasoning = typeof onReasoning === 'function' ? onReasoning : () => {};
     this.onContent = typeof onContent === 'function' ? onContent : () => {};
     this.enableThinking = Boolean(enableThinking);
     this.buffer = '';
     this.mode = 'detect';
+    this.activeCloseTag = '</think>';
     this.sawNativeReasoning = false;
     this.strippedLeadingThinkInContent = false;
   }
@@ -36,22 +37,37 @@ class NativeThinkSplitter {
   feedContent(chunk) {
     if (!chunk) return;
 
-    // 若上游已通过独立字段返回了 reasoning_content，仅需防范部分兼容网关在正文开头重复带入空 <think></think>
+    // 若上游已通过独立字段返回了 reasoning/thought，仅需防范部分网关在正文开头重复带入空标签
     if (this.sawNativeReasoning) {
       if (!this.strippedLeadingThinkInContent) {
         this.buffer += chunk;
         const trimmed = this.buffer.trimStart();
         if (!trimmed) return;
-        if ('<think>'.startsWith(trimmed) && trimmed.length < 7) return;
-        if (trimmed.startsWith('<think>')) {
-          const closeIdx = this.buffer.indexOf('</think>');
-          if (closeIdx === -1) return;
-          const after = this.buffer.slice(closeIdx + 8).replace(/^\s+/, '');
-          this.buffer = '';
-          this.strippedLeadingThinkInContent = true;
-          if (after) this.onContent(after);
-          return;
+
+        const tagPairs = [
+          { open: '<think>', close: '</think>' },
+          { open: '<thought>', close: '</thought>' },
+          { open: '<thinking>', close: '</thinking>' }
+        ];
+
+        let matchedPartial = false;
+        for (const pair of tagPairs) {
+          if (pair.open.startsWith(trimmed) && trimmed.length < pair.open.length) {
+            matchedPartial = true;
+            break;
+          }
+          if (trimmed.startsWith(pair.open)) {
+            const closeIdx = this.buffer.indexOf(pair.close);
+            if (closeIdx === -1) return;
+            const after = this.buffer.slice(closeIdx + pair.close.length).replace(/^\s+/, '');
+            this.buffer = '';
+            this.strippedLeadingThinkInContent = true;
+            if (after) this.onContent(after);
+            return;
+          }
         }
+        if (matchedPartial) return;
+
         this.strippedLeadingThinkInContent = true;
         const out = this.buffer.replace(/^\n+/, '');
         this.buffer = '';
@@ -64,18 +80,38 @@ class NativeThinkSplitter {
 
     this.buffer += chunk;
 
+    const tagPairs = [
+      { open: '<think>', close: '</think>' },
+      { open: '<thought>', close: '</thought>' },
+      { open: '<thinking>', close: '</thinking>' }
+    ];
+
     if (this.mode === 'detect') {
       const trimmed = this.buffer.trimStart();
       if (trimmed.length === 0) return;
 
-      if ('<think>'.startsWith(trimmed) && trimmed.length < 7) {
+      let matchedPartial = false;
+      let matchedOpen = null;
+      for (const pair of tagPairs) {
+        if (pair.open.startsWith(trimmed) && trimmed.length < pair.open.length) {
+          matchedPartial = true;
+          break;
+        }
+        if (trimmed.startsWith(pair.open)) {
+          matchedOpen = pair;
+          break;
+        }
+      }
+
+      if (matchedPartial) {
         return;
       }
 
-      if (trimmed.startsWith('<think>')) {
+      if (matchedOpen) {
         this.mode = 'in_think';
-        const idx = this.buffer.indexOf('<think>');
-        this.buffer = this.buffer.slice(idx + 7).replace(/^\r?\n/, '');
+        this.activeCloseTag = matchedOpen.close;
+        const idx = this.buffer.indexOf(matchedOpen.open);
+        this.buffer = this.buffer.slice(idx + matchedOpen.open.length).replace(/^\r?\n/, '');
       } else {
         this.mode = 'in_content';
         const out = this.buffer;
@@ -86,18 +122,19 @@ class NativeThinkSplitter {
     }
 
     if (this.mode === 'in_think') {
-      const closeIdx = this.buffer.indexOf('</think>');
+      const closeTag = this.activeCloseTag || '</think>';
+      const closeIdx = this.buffer.indexOf(closeTag);
       if (closeIdx !== -1) {
         const thoughtPart = this.buffer.slice(0, closeIdx);
         if (thoughtPart && this.enableThinking) {
           this.onReasoning(thoughtPart);
         }
-        const rest = this.buffer.slice(closeIdx + 8).replace(/^\s+/, '');
+        const rest = this.buffer.slice(closeIdx + closeTag.length).replace(/^\s+/, '');
         this.buffer = '';
         this.mode = 'in_content';
         if (rest) this.onContent(rest);
       } else {
-        const safeLen = Math.max(0, this.buffer.length - 8);
+        const safeLen = Math.max(0, this.buffer.length - (closeTag.length + 1));
         if (safeLen > 0) {
           const emitPart = this.buffer.slice(0, safeLen);
           this.buffer = this.buffer.slice(safeLen);
@@ -119,10 +156,10 @@ class NativeThinkSplitter {
   flush() {
     if (!this.buffer) return;
     if (this.mode === 'in_think') {
-      const cleaned = this.buffer.replace(/<\/?think>/g, '');
+      const cleaned = this.buffer.replace(/<\/?(?:think|thought|thinking)>/gi, '');
       if (cleaned && this.enableThinking) this.onReasoning(cleaned);
     } else {
-      const cleaned = this.buffer.replace(/^<think>\s*<\/think>\s*/, '');
+      const cleaned = this.buffer.replace(/^<(?:think|thought|thinking)>\s*<\/(?:think|thought|thinking)>\s*/gi, '');
       if (cleaned) this.onContent(cleaned);
     }
     this.buffer = '';
@@ -1414,13 +1451,18 @@ async function streamSingleCompletionRound({
           /flash/i.test(String(requestBody.model || ''));
         if (isModelMissing && attempt < maxAttempts && !signal?.aborted) {
           const lowerTarget = String(url || '').toLowerCase();
-          requestBody.model = lowerTarget.includes('siliconflow.cn')
-            ? (enableThinking ? 'deepseek-ai/DeepSeek-R1' : 'deepseek-ai/DeepSeek-V3.2')
-            : lowerTarget.includes('aliyuncs.com')
-            ? (enableThinking ? 'deepseek-r1' : 'deepseek-v3')
-            : lowerTarget.includes('openrouter.ai')
-            ? (enableThinking ? 'deepseek/deepseek-r1' : 'deepseek/deepseek-chat')
-            : (enableThinking ? 'deepseek-reasoner' : 'deepseek-chat');
+          const isGeminiTarget = lowerTarget.includes('googleapis.com') || /gemini/i.test(String(requestBody.model || ''));
+          if (isGeminiTarget) {
+            requestBody.model = 'gemini-2.5-flash';
+          } else {
+            requestBody.model = lowerTarget.includes('siliconflow.cn')
+              ? (enableThinking ? 'deepseek-ai/DeepSeek-R1' : 'deepseek-ai/DeepSeek-V3.2')
+              : lowerTarget.includes('aliyuncs.com')
+              ? (enableThinking ? 'deepseek-r1' : 'deepseek-v3')
+              : lowerTarget.includes('openrouter.ai')
+              ? (enableThinking ? 'deepseek/deepseek-r1' : 'deepseek/deepseek-chat')
+              : (enableThinking ? 'deepseek-reasoner' : 'deepseek-chat');
+          }
           delete requestBody.thinking;
           delete requestBody.enable_thinking;
           continue;
@@ -1507,8 +1549,14 @@ async function streamSingleCompletionRound({
     if (!choice) return;
     const delta = choice.delta || choice.message || {};
 
-    if (delta.reasoning_content) {
-      splitter.feedNativeReasoning(delta.reasoning_content);
+    const reasoningChunk =
+      delta.reasoning_content ||
+      delta.reasoning ||
+      (typeof delta.thought === 'string' ? delta.thought : '') ||
+      (typeof delta.thinking === 'string' ? delta.thinking : '');
+
+    if (reasoningChunk) {
+      splitter.feedNativeReasoning(reasoningChunk);
     }
     if (delta.content) {
       splitter.feedContent(delta.content);
@@ -1684,21 +1732,21 @@ async function streamDeepSeekNativeSuite({
     }
   }
 
-  // 统一约束正版 DeepSeek-R1 深度思考流风格与 <think> 兼容协议
+  // 统一约束正版 DeepSeek-R1 / Gemini 深度思考流风格与标签兼容协议
   if (workingMessages.length > 0 && workingMessages[0].role === 'system') {
     if (enableThinking) {
       const actorName = String(persona?.name || '').split(/[·\s]/)[0] || '我';
       const isOfficial = cred.hasKey && cred.endpoints?.isOfficialDeepSeek;
       const fallbackTagHint = !isOfficial && !jsonMode
-        ? '若你当前所处接口通道不会单独返回 reasoning_content 字段，请在输出最开头先用 `<think>...</think>` 标签包裹这段思考过程，随后在 `</think>` 之后输出正式回答正文（若你已原生支持独立 reasoning_content 则无需再写 `<think>` 标签）。'
+        ? '若你当前所处接口通道不会单独返回 reasoning_content 或 reasoning 字段，请在输出最开头先用 `<thought>...</thought>` 或 `<think>...</think>` 标签包裹这段思考过程，随后在结束标签之后输出正式回答正文（若你已原生支持独立 reasoning 字段则无需再写思考标签）。'
         : '';
 
       const zhThoughtNote =
-        `\n\n## 深度思考阶段规范\n在思考推理阶段，请全程使用**纯简体中文**，采用正版 DeepSeek-R1 清晰自然的第一人称思维流剖析问题核心、推敲边界条件、权衡方案并校验关键步骤，严禁整段英文思考，不要使用剧本扮演独白腔调。${fallbackTagHint}`;
+        `\n\n## 深度思考阶段规范\n在思考推理阶段，请全程使用**纯简体中文**，展开清晰自然的第一人称思维流剖析问题核心、推敲边界条件、权衡方案并校验关键步骤，严禁整段英文思考，不要使用剧本扮演独白腔调。${fallbackTagHint}`;
       workingMessages[0].content += zhThoughtNote;
     } else {
       workingMessages[0].content +=
-        '\n\n## 极速直出要求\n当前未开启思考过程展示，请直接输出干净清晰、贴合当前对话系统指令与记忆的正式中文回答，不要在正文中输出 `<think>...</think>` 标签。';
+        '\n\n## 极速直出要求\n当前未开启思考过程展示，请直接输出干净清晰、贴合当前对话系统指令与记忆的正式中文回答，不要在正文中输出 `<think>` 或 `<thought>` 思考标签。';
     }
   }
 
@@ -1726,10 +1774,28 @@ async function streamDeepSeekNativeSuite({
     };
   }
 
-  // 真实直连 DeepSeek V4.1 Flash / 兼容 API / 本地 Antigravity 双核底座！
+  // 真实直连 DeepSeek V4.1 Flash / Google Gemini / 兼容 API / 本地 Antigravity 双核底座！
   const isOfficial = cred.endpoints.isOfficialDeepSeek;
   let targetModel = cred.preferredModel || 'deepseek-flash';
-  if (isOfficial) {
+  const lowerEndpointUrl = (cred.endpoints.chatUrl || '').toLowerCase();
+  const isGoogleGemini =
+    lowerEndpointUrl.includes('googleapis.com') ||
+    /gemini/i.test(targetModel) ||
+    Boolean(cred.endpoints.isGoogleGemini);
+
+  if (isGoogleGemini) {
+    // 自动将通用别名或 Antigravity 宿主别名映射为 Google 官方支持的生产级旗舰思考模型
+    if (
+      !targetModel ||
+      targetModel === 'deepseek-flash' ||
+      targetModel === 'deepseek-chat' ||
+      targetModel === 'deepseek-reasoner' ||
+      /gemini[-_]?3(?:\.8)?[-_]?flash/i.test(targetModel) ||
+      /^gemini[-_]?flash$/i.test(targetModel)
+    ) {
+      targetModel = 'gemini-2.5-flash';
+    }
+  } else if (isOfficial) {
     if (/^deepseek[-_]?v?4(?:\.1)?[-_]?flash$/i.test(targetModel)) {
       targetModel = 'deepseek-flash';
     } else if (targetModel === 'deepseek-chat' || targetModel === 'deepseek-reasoner') {
@@ -1737,10 +1803,9 @@ async function streamDeepSeekNativeSuite({
     }
   }
 
-  const isV4FlashFamily = /deepseek-flash|v4(?:\.1)?[-_]?flash/i.test(targetModel);
+  const isV4FlashFamily = !isGoogleGemini && /deepseek-flash|v4(?:\.1)?[-_]?flash/i.test(targetModel);
   const useBetaEndpoint = Boolean(cleanPrefix) && isOfficial;
   const endpointUrl = useBetaEndpoint ? cred.endpoints.betaChatUrl : cred.endpoints.chatUrl;
-  const lowerEndpointUrl = endpointUrl.toLowerCase();
 
   const toolCallsLog = [];
   let aggregatedUsage = null;
@@ -1783,15 +1848,22 @@ async function streamDeepSeekNativeSuite({
         stream: true
       };
       if (
-        isOfficial ||
-        lowerEndpointUrl.includes('siliconflow.cn') ||
-        lowerEndpointUrl.includes('aliyuncs.com') ||
-        lowerEndpointUrl.includes('openrouter.ai')
+        !isGoogleGemini &&
+        (isOfficial ||
+          lowerEndpointUrl.includes('siliconflow.cn') ||
+          lowerEndpointUrl.includes('aliyuncs.com') ||
+          lowerEndpointUrl.includes('openrouter.ai'))
       ) {
         body.stream_options = { include_usage: true };
       }
 
-      if (isV4FlashFamily) {
+      if (isGoogleGemini) {
+        // Google Gemini 官方 OpenAI 兼容接口：保持标准字段，绝不附带 thinking / enable_thinking 专有字段
+        body.temperature = parseFloat(settings.temperature || '0.85');
+        if (jsonMode) {
+          body.response_format = { type: 'json_object' };
+        }
+      } else if (isV4FlashFamily) {
         if (isOfficial) {
           body.thinking = { type: enableThinking ? 'enabled' : 'disabled' };
         } else if (lowerEndpointUrl.includes('siliconflow.cn') || lowerEndpointUrl.includes('aliyuncs.com')) {
@@ -2221,6 +2293,7 @@ async function runDeepSeekFimCompletion({
 }
 
 module.exports = {
+  NativeThinkSplitter,
   resolveDeepSeekEndpoints,
   getEffectiveApiCredentials,
   resolveSuiteOrBridgeCredentials,

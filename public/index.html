@@ -28,15 +28,9 @@
       pointer-events: none !important;
     }
   </style>
-  <link rel="preload" href="./styles.css?v=20261120_v194_fix_loop" as="style" />
-  <link rel="preload" href="./clean-ui.css?v=20261120_v194_fix_loop" as="style" />
-  <link rel="preload" href="./app.js?v=20261120_v194_fix_loop" as="script" />
-  <link rel="stylesheet" href="./styles.css?v=20261120_v194_fix_loop" />
-  <link rel="stylesheet" href="./companion3d.css?v=20261120_v194_fix_loop" />
-  <link rel="stylesheet" href="./clean-ui.css?v=20261120_v194_fix_loop" />
-  <link rel="stylesheet" href="./mobile-responsive.css?v=20261120_v194_fix_loop" />
-  <link rel="stylesheet" href="./phone-agent.css?v=20261120_v194_fix_loop" />
-  <link rel="stylesheet" href="./mobile-deepseek.css?v=20261120_v194_fix_loop" />
+  <link rel="preload" href="./dist/app.bundle.css?v=20261121_v206_sticky_locate_198" as="style" />
+  <link rel="preload" href="./dist/app.bundle.js?v=20261121_v206_sticky_locate_198" as="script" />
+  <link rel="stylesheet" href="./dist/app.bundle.css?v=20261121_v206_sticky_locate_198" />
 </head>
 <body data-ui-mode="deepseek">
   <!-- 首屏零白屏过渡欢迎层（工作台或登录门扉就绪后立即平滑隐藏） -->
@@ -386,9 +380,6 @@
           <button type="button" class="pa-sidebar-tool-btn" id="pa-sidebar-open-sheet-btn">
             <span>引擎与权限控制台</span>
           </button>
-          <button type="button" class="pa-sidebar-tool-btn" id="pa-sidebar-open-cmdlib-btn">
-            <span>本地离线指令库</span>
-          </button>
         </div>
         <div class="pa-history-section">
           <div class="pa-history-head">
@@ -396,6 +387,10 @@
             <button type="button" class="pa-history-clear-btn" id="pa-clear-history-btn">清空</button>
           </div>
           <div class="pa-task-history-list" id="pa-task-history-list" role="list"></div>
+        </div>
+        <div class="pa-sidebar-web-notice" id="pa-sidebar-web-notice">
+          <strong>网页端暂未开放</strong>
+          <p>手机辅助仅限在 Android 随身版 App 内开放使用，请下载 App 解锁完整控制能力。</p>
         </div>
       </div>
 
@@ -423,6 +418,23 @@
         </div>
         <div class="session-list" id="session-list" role="list"></div>
       </section>
+
+      <!-- 网页端醒目 App 下载入口卡片（原生 Android APK 内自动隐藏） -->
+      <div class="web-app-download-wrap" id="sidebar-web-download-wrap">
+        <button type="button" class="web-app-download-card" id="sidebar-web-download-card" title="下载 Android 随身版 App，解锁手机辅助功能">
+          <span class="wad-icon" aria-hidden="true">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect>
+              <line x1="12" y1="18" x2="12.01" y2="18"></line>
+            </svg>
+          </span>
+          <span class="wad-text">
+            <strong>下载随身版 App</strong>
+            <small>解锁手机辅助 · 悬浮窗直控</small>
+          </span>
+          <span class="wad-badge">下载</span>
+        </button>
+      </div>
 
       <!-- 原生 DeepSeek 左下角极简用户栏 + ⋯ 弹出菜单 -->
       <div class="ds-bottom-profile ds-only-flex">
@@ -541,7 +553,15 @@
           <!-- 原生 DeepSeek 模式顶栏信息 -->
           <div class="ds-topbar-meta ds-only-flex">
             <span class="ds-topbar-title" id="ds-topbar-title">新对话</span>
-            <span class="ds-model-badge" id="ds-model-pill">DeepSeek · 深度思考</span>
+            <button
+              type="button"
+              class="ds-model-badge ds-model-badge-interactive"
+              id="ds-model-pill"
+              title="点击在「⚡ 本地直连 (Antigravity)」与「☁️ 云端 API 模式」之间快速切换"
+            >
+              <span class="ds-badge-dot"></span>
+              <span id="ds-model-pill-text">⚡ Antigravity · 深度思考</span>
+            </button>
             <span class="ds-soul-pill hidden" id="ds-session-setting-pill">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
               <span>本对话系统指令</span>
@@ -589,21 +609,22 @@
             <span>养成</span>
           </button>
 
-          <!-- Android 原生随身版 (APK) 下载与 Phone Agent 控制入口（主界面零版本号暴露） -->
+          <!-- Android 随身版 App 醒目下载入口（原生 APK 内自动隐藏，网页端主界面零版本号暴露） -->
           <button
             type="button"
-            class="soft-tool-btn apk-topbar-pill-btn hidden"
+            class="soft-tool-btn apk-topbar-pill-btn"
             id="topbar-apk-download-btn"
-            title="安卓随身版与 Phone Agent 控制台"
-            aria-label="安卓随身版"
+            title="下载 Android 随身版 App"
+            aria-label="下载 App"
           >
             <span class="apk-pill-icon" aria-hidden="true">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect>
-                <line x1="12" y1="18" x2="12.01" y2="18"></line>
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="7 10 12 15 17 10"></polyline>
+                <line x1="12" y1="15" x2="12" y2="3"></line>
               </svg>
             </span>
-            <span class="apk-pill-label">随身版</span>
+            <span class="apk-pill-label">下载 App</span>
           </button>
 
           <!-- 移动端原生级快捷按钮（极简克制：DeepSeek/手机模式仅保留新对话+设置，绝不堆砌） -->
@@ -742,20 +763,6 @@
                   </svg>
                   <span id="pa-float-btn-label">悬浮窗</span>
                 </button>
-                <button type="button" class="pa-mini-pill" id="pa-open-cmdlib-btn" title="展开本地离线指令库">
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
-                  </svg>
-                  <span>指令库</span>
-                </button>
-                <button type="button" class="pa-cfg-toggle-btn" id="pa-cfg-toggle-btn" title="引擎与权限设置" aria-expanded="false" aria-label="引擎设置">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <line x1="4" y1="21" x2="4" y2="14"></line><line x1="4" y1="10" x2="4" y2="3"></line>
-                    <line x1="12" y1="21" x2="12" y2="12"></line><line x1="12" y1="8" x2="12" y2="3"></line>
-                    <line x1="20" y1="21" x2="20" y2="16"></line><line x1="20" y1="12" x2="20" y2="3"></line>
-                    <line x1="1" y1="14" x2="7" y2="14"></line><line x1="9" y1="8" x2="15" y2="8"></line><line x1="17" y1="16" x2="23" y2="16"></line>
-                  </svg>
-                </button>
               </div>
             </div>
           </div>
@@ -849,6 +856,40 @@
           </svg>
           <span class="scroll-bottom-lbl">回到底部</span>
         </button>
+
+        <!-- 全聊天通用悬浮导航胶囊：返回最上方 + 定位聊天 -->
+        <div class="chat-quick-nav hidden" id="chat-quick-nav" aria-label="聊天快速导航">
+          <button
+            type="button"
+            class="chat-nav-pill hidden"
+            id="chat-scroll-top-btn"
+            aria-label="返回最上方"
+            title="返回最上方"
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <line x1="12" y1="19" x2="12" y2="5"></line>
+              <polyline points="5 12 12 5 19 12"></polyline>
+            </svg>
+            <span>顶部</span>
+          </button>
+          <button
+            type="button"
+            class="chat-nav-pill hidden"
+            id="chat-locate-btn"
+            aria-label="定位聊天记录"
+            title="定位聊天"
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <line x1="8" y1="6" x2="21" y2="6"></line>
+              <line x1="8" y1="12" x2="21" y2="12"></line>
+              <line x1="8" y1="18" x2="21" y2="18"></line>
+              <circle cx="3.5" cy="6" r="1.2"></circle>
+              <circle cx="3.5" cy="12" r="1.2"></circle>
+              <circle cx="3.5" cy="18" r="1.2"></circle>
+            </svg>
+            <span>定位</span>
+          </button>
+        </div>
 
         <!-- 原生 DeepSeek 空对话居中问候标题行 -->
         <div class="ds-home-greeting ds-only-flex" id="ds-home-greeting">
@@ -988,8 +1029,19 @@
               </button>
             </div>
 
-            <!-- 原生 DeepSeek 左下角胶囊（「深度思考」+「智能搜索」+「指定开头」） -->
+            <!-- 原生 DeepSeek 左下角胶囊（「模式切换」+「深度思考」+「智能搜索」+「指定开头」） -->
             <div class="composer-toggles ds-only-flex">
+              <button
+                type="button"
+                class="ds-pill-toggle ds-mode-toggle active"
+                id="ds-toggle-llm-mode"
+                aria-pressed="true"
+                title="点击切换：⚡ 本地直连 (Antigravity) / ☁️ 云端 API 模式"
+              >
+                <span class="ds-mode-dot"></span>
+                <span id="ds-llm-mode-label">⚡ 本地直连</span>
+              </button>
+
               <button
                 type="button"
                 class="ds-pill-toggle active"
@@ -1132,7 +1184,6 @@
         <!-- 底部极简提示行 -->
         <div class="composer-disclaimer ds-only-block" style="text-align:center;font-size:11px;color:light-dark(#94a3b8,#64748b);margin-top:6px;">
           回答由 AI 生成，仅供参考
-        </div>
         </div>
       </div>
     </main>
@@ -1748,10 +1799,10 @@
               <div class="conn-choice-grid" role="group" aria-label="选择聊天连接方式">
                 <button type="button" class="conn-choice-card active" id="mode-card-free" data-conn-mode="free">
                   <div class="conn-card-top">
-                    <strong>默认对话引擎</strong>
-                    <span class="conn-recommend-tag">开箱即用</span>
+                    <strong id="mode-card-free-title">⚡ 本地直连 / 默认引擎</strong>
+                    <span class="conn-recommend-tag" id="mode-card-free-tag">开箱即用</span>
                   </div>
-                  <p>不用填任何东西，关闭窗口即可直接聊天</p>
+                  <p id="mode-card-free-desc">优先直连本地 Antigravity 底座（Gemini 3.8 Flash 深度思考），免 Key 高速</p>
                 </button>
 
                 <button type="button" class="conn-choice-card" id="mode-card-own" data-conn-mode="own_deepseek">
@@ -1891,6 +1942,16 @@
                         >
                           OpenRouter
                         </button>
+                        <button
+                          type="button"
+                          class="api-preset-chip"
+                          data-preset="gemini"
+                          data-url="https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
+                          data-model="gemini-2.5-flash"
+                          data-tip="✓ 已切换为「Google Gemini · 2.5 Flash 旗舰思考模型」（支持深度思考与多模态视觉）"
+                        >
+                          Google Gemini
+                        </button>
                       </div>
                       <div class="spacious-field">
                         <label for="st-own-api-url">API 接口地址（默认已是 DeepSeek 官网）</label>
@@ -1919,6 +1980,9 @@
                         />
                         <datalist id="own-model-presets">
                           <option value="deepseek-flash">DeepSeek 官网 · DeepSeek V4.1 Flash（最新默认）</option>
+                          <option value="gemini-2.5-flash">Google Gemini · 2.5 Flash（官方推荐思考模型）</option>
+                          <option value="gemini-2.5-pro">Google Gemini · 2.5 Pro（深度思考旗舰）</option>
+                          <option value="gemini-2.0-flash">Google Gemini · 2.0 Flash</option>
                           <option value="deepseek-ai/DeepSeek-V4.1-Flash">硅基流动 · DeepSeek V4.1 Flash</option>
                           <option value="deepseek-v4.1-flash">阿里云百炼 · DeepSeek V4.1 Flash</option>
                           <option value="deepseek/deepseek-v4.1-flash">OpenRouter · DeepSeek V4.1 Flash</option>
@@ -2731,8 +2795,8 @@
         <div class="apk-hero-card" id="apk-web-download-card">
           <div class="apk-hero-top">
             <div class="apk-meta-pills">
-              <span class="apk-meta-pill">版本 v1.9.2 (支持 60fps 极速流式、语音输入与可靠自动更新)</span>
-              <span class="apk-meta-pill">极速包体 8.45 MB</span>
+              <span class="apk-meta-pill" id="apk-modal-version-pill">版本 v2.0.0 (支持本地 Antigravity 宿主直连、Gemini 深度思考、60fps 极速流式与双模式切换)</span>
+              <span class="apk-meta-pill">极速包体 9.47 MB</span>
               <span class="apk-meta-pill">官方纯净 · 签名校验</span>
               <span class="apk-meta-pill" id="pa-device-info-pill">支持 Android 7.0 ~ 15+</span>
             </div>
@@ -2775,7 +2839,7 @@
           <div class="anv-head">
             <div class="anv-title-row">
               <span class="anv-badge">已安装原生随身版</span>
-              <span class="anv-version" id="anv-current-version">v1.9.2 (已就绪)</span>
+              <span class="anv-version" id="anv-current-version">v2.0.0 (已就绪)</span>
             </div>
             <p class="anv-desc">您已在 Android 原生 APK 中运行。可在「手机辅助」工作台或桌面悬浮窗中使用 DeepSeek API 智能识屏操控或本地免 API 直控。</p>
           </div>
@@ -3091,7 +3155,7 @@
             </div>
             <div class="mfs-item-right">
               <span class="mfs-update-dot hidden" id="mfs-update-dot" aria-label="发现新版本"></span>
-              <span class="mfs-value" id="mfs-version-value">v1.9.2</span>
+              <span class="mfs-value" id="mfs-version-value">v2.0.0</span>
               <span class="mfs-arrow">›</span>
             </div>
           </div>
@@ -3131,6 +3195,28 @@
         </button>
       </div>
     </div>
+
+    <!-- 统一高质感设置二级面板（替换原生 alert/confirm/prompt，遵循 myui 规范） -->
+    <div id="mfs-sub-sheet" class="mfs-sub-sheet hidden" role="dialog" aria-modal="true" aria-labelledby="mfs-sub-title">
+      <div class="mfs-sub-backdrop" id="mfs-sub-backdrop"></div>
+      <div class="mfs-sub-card" id="mfs-sub-card">
+        <div class="mfs-sub-grabber" aria-hidden="true"></div>
+        <div class="mfs-sub-head">
+          <div class="mfs-sub-title-group">
+            <h3 class="mfs-sub-title" id="mfs-sub-title">设置项</h3>
+            <p class="mfs-sub-subtitle hidden" id="mfs-sub-subtitle"></p>
+          </div>
+          <button type="button" class="mfs-sub-close" id="mfs-sub-close" aria-label="关闭子面板">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+        </div>
+        <div class="mfs-sub-body" id="mfs-sub-body"></div>
+        <div class="mfs-sub-footer hidden" id="mfs-sub-footer"></div>
+      </div>
+    </div>
   </div>
 
   <!-- 模态弹窗 15：应用检查更新与安全覆盖安装弹窗 (myui 极简规范，零 Emoji) -->
@@ -3153,7 +3239,7 @@
         <div class="upd-ver-compare">
           <div class="upd-ver-box">
             <span class="upd-ver-label">当前已安装</span>
-            <strong class="upd-ver-num" id="upd-local-ver">v1.9.2</strong>
+            <strong class="upd-ver-num" id="upd-local-ver">v2.0.0</strong>
           </div>
           <div class="upd-ver-arrow" aria-hidden="true">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
@@ -3195,6 +3281,26 @@
           <button type="button" class="pa-banner-btn subtle" id="upd-cancel-btn">关闭</button>
           <button type="button" class="pa-banner-btn" id="upd-primary-btn">重新检查</button>
         </div>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- 模态弹窗 16：星语全站系统公告与开屏通知卡片 -->
+  <dialog id="site-announcement-dialog" class="modal-dialog site-ann-modal" closedby="any" aria-labelledby="site-ann-title">
+    <div class="site-ann-inner">
+      <div class="site-ann-header">
+        <div class="site-ann-title-wrap">
+          <div class="site-ann-icon-pill" aria-hidden="true">📢 全站公告</div>
+          <h3 id="site-ann-title" class="site-ann-title">星语全站通知</h3>
+          <p id="site-ann-time" class="site-ann-time">刚刚发布</p>
+        </div>
+        <button type="button" class="modal-close" id="site-ann-close-btn" aria-label="关闭公告">✕</button>
+      </div>
+      <div class="site-ann-body" id="site-ann-body">
+        <div class="site-ann-content" id="site-ann-content"></div>
+      </div>
+      <div class="site-ann-footer">
+        <button type="button" class="pa-banner-btn" id="site-ann-confirm-btn" style="width:100%;justify-content:center;padding:10px 16px;">我已了解 · 开启星语</button>
       </div>
     </div>
   </dialog>
@@ -3247,20 +3353,15 @@
         </div>
       </div>
 
-      <div class="pa-sheet-section">
-        <div class="pa-sheet-autoswipe-row">
-          <div>
-            <div class="pa-sheet-label" style="margin-bottom:2px;">自动刷视频调度器</div>
-            <div class="pa-sheet-hint" id="pa-sheet-autoswipe-hint">每 8 秒自动切换，支持随机点赞与随时急停</div>
-          </div>
-          <button type="button" class="pa-banner-btn" id="pa-sheet-autoswipe-btn">开始连刷</button>
-        </div>
-      </div>
-
       <div class="pa-config-drawer" id="pa-inline-config-drawer">
         <div class="pa-cfg-grid">
           <div class="pa-cfg-field">
-            <label for="pa-cfg-apikey">DeepSeek API Key（仅存本地沙盒）</label>
+            <div class="pa-cfg-label-row">
+              <label for="pa-cfg-apikey">DeepSeek API Key（仅存本地沙盒）</label>
+              <button type="button" class="pa-official-link-btn" id="pa-open-ds-official-btn" title="前往 DeepSeek 官方控制台获取 API Key">
+                <span>前往 DeepSeek 官网获取密钥 ↗</span>
+              </button>
+            </div>
             <input type="password" id="pa-cfg-apikey" class="pa-cfg-input" placeholder="sk-... (直连模式必填，本地/云端可留空)" autocomplete="off" />
           </div>
           <div class="pa-cfg-row-2">
@@ -3288,22 +3389,55 @@
     </div>
   </section>
 
+  <!-- 全对话通用「定位聊天」消息目录与关键词定位面板 -->
+  <div id="chat-locator-sheet" class="chat-locator-sheet hidden" role="dialog" aria-modal="true" aria-labelledby="chat-locator-title">
+    <div class="chat-locator-backdrop" id="chat-locator-backdrop"></div>
+    <div class="chat-locator-card">
+      <div class="mfs-sub-grabber" aria-hidden="true"></div>
+      <div class="mfs-sub-head">
+        <div class="mfs-sub-title-group">
+          <h3 class="mfs-sub-title" id="chat-locator-title">定位聊天</h3>
+          <p class="mfs-sub-subtitle" id="chat-locator-sub">按关键词或发送者快速定位到指定对话楼层</p>
+        </div>
+        <button type="button" class="mfs-sub-close" id="chat-locator-close" aria-label="关闭定位聊天面板">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+      <div class="chat-locator-tools">
+        <div class="chat-locator-search-wrap">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="11" cy="11" r="7"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+          <input type="search" id="chat-locator-search" class="chat-locator-search" placeholder="搜索聊天内容关键词快速定位…" autocomplete="off" />
+        </div>
+        <div class="chat-locator-filters" role="tablist" aria-label="筛选消息发送者">
+          <button type="button" class="chat-loc-filter-btn active" data-loc-filter="all">全部消息</button>
+          <button type="button" class="chat-loc-filter-btn" data-loc-filter="user">我的提问</button>
+          <button type="button" class="chat-loc-filter-btn" data-loc-filter="assistant">AI 回复</button>
+        </div>
+      </div>
+      <div class="chat-locator-list" id="chat-locator-list" role="list"></div>
+      <div class="chat-locator-footer">
+        <button type="button" class="mfs-sheet-btn-secondary" id="chat-locator-top-btn">返回最上方</button>
+        <button type="button" class="mfs-sheet-btn-primary" id="chat-locator-bottom-btn">前往最底部</button>
+      </div>
+    </div>
+  </div>
+
   <!-- 全局 Top-Layer 顶层轻提示胶囊（popover="manual" 确保在任何模态 <dialog> 打开时依然 100% 可见，遵循 persistent-toast-notifications 规范） -->
   <div id="global-top-toast" popover="manual" class="global-top-toast" role="status" aria-live="polite"></div>
 
-  <script defer src="./standaloneAdapter.js?v=20261120_v194_fix_loop"></script>
-  <script defer src="./mobileAdapter.js?v=20261120_v194_fix_loop"></script>
-  <script defer src="./plugins/deepseekUsageMonitor.js?v=20261120_v194_fix_loop"></script>
-  <script defer src="./app.js?v=20261120_v194_fix_loop"></script>
-  <script defer src="./companion3d.js?v=20261120_v194_fix_loop"></script>
-  <script defer src="./companionVoice.js?v=20261120_v194_fix_loop"></script>
-  <script defer src="./phoneAgent.js?v=20261120_v194_fix_loop"></script>
+  <script defer src="./dist/app.bundle.js?v=20261121_v206_sticky_locate_198"></script>
   <script>
     if ('serviceWorker' in navigator && window.location.protocol.startsWith('http')) {
       window.addEventListener('load', () => {
         navigator.serviceWorker.register('./sw.js', { scope: './' })
           .then(reg => {
-            try { reg.update(); } catch (e) {}
+            setTimeout(() => { try { reg.update(); } catch (e) {} }, 4000);
             if (reg.installing || reg.waiting) {
               console.log('[SW] 星语离线与边缘加速引擎已就绪');
             }

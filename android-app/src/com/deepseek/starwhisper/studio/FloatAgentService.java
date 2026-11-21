@@ -10,6 +10,7 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
+import android.os.Vibrator;
 import android.text.TextUtils;
 import android.util.DisplayMetrics;
 import android.util.TypedValue;
@@ -71,8 +72,45 @@ public class FloatAgentService extends Service {
     private int savedPillY = 260;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
 
+    private LinearLayout confirmBannerView = null;
+    private WindowManager.LayoutParams confirmLayoutParams = null;
+
     public static boolean isRunning() {
         return sInstance != null;
+    }
+
+    public static void showConfirmPrompt(final String summary, final String actionDesc) {
+        final FloatAgentService instance = sInstance;
+        if (instance != null) {
+            instance.mainHandler.post(new Runnable() {
+                @Override
+                public void run() {
+                    instance.displayConfirmBanner(summary, actionDesc);
+                }
+            });
+        }
+    }
+
+    public static void dismissConfirmPrompt() {
+        final FloatAgentService instance = sInstance;
+        if (instance != null) {
+            instance.mainHandler.post(new Runnable() {
+                @Override
+                public void run() {
+                    instance.hideConfirmBanner();
+                }
+            });
+        }
+    }
+
+    public static void requestNormalStop() {
+        sEmergencyStopRequested = false;
+        AgentAccessibilityService a11y = AgentAccessibilityService.getInstance();
+        if (a11y != null) {
+            a11y.stopAllBackgroundTasks("悬浮窗普通停止");
+        }
+        updateState("idle", "星语 AI");
+        MainActivity.dispatchNormalStopToWebView();
     }
 
     public static void updateState(String state, String text) {
@@ -370,9 +408,22 @@ public class FloatAgentService extends Service {
             }
         });
 
+        TextView normalStopBtn = createActionBtn("停止", "#334155", "#E2E8F0");
+        LinearLayout.LayoutParams normalStopLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        normalStopLp.leftMargin = dp(4);
+        normalStopBtn.setLayoutParams(normalStopLp);
+        normalStopBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                requestNormalStop();
+                showFeedback("已停止当前任务，恢复待命");
+                Toast.makeText(FloatAgentService.this, "已停止当前任务，恢复待命", Toast.LENGTH_SHORT).show();
+            }
+        });
+
         TextView stopBtn = createActionBtn("急停", "#EF4444", "#FFFFFF");
         LinearLayout.LayoutParams stopLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        stopLp.leftMargin = dp(5);
+        stopLp.leftMargin = dp(4);
         stopBtn.setLayoutParams(stopLp);
         stopBtn.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -385,6 +436,7 @@ public class FloatAgentService extends Service {
 
         inputRow.addView(cmdEditText);
         inputRow.addView(sendBtn);
+        inputRow.addView(normalStopBtn);
         inputRow.addView(stopBtn);
         panel.addView(inputRow);
 
@@ -984,11 +1036,17 @@ public class FloatAgentService extends Service {
     }
 
     private void handleBubbleClick() {
+        if ("confirming".equals(sCurrentStatus)) {
+            if (confirmBannerView == null) {
+                displayConfirmBanner("即将执行高风险操作，请确认", null);
+            }
+            return;
+        }
         AgentAccessibilityService a11y = AgentAccessibilityService.getInstance();
         boolean swiping = (a11y != null && a11y.isAutoSwipeRunning());
         if (swiping || "thinking".equals(sCurrentStatus) || "executing".equals(sCurrentStatus) || "acting".equals(sCurrentStatus)) {
-            requestStop();
-            Toast.makeText(this, "已触发急停，自动化辅助已暂停", Toast.LENGTH_SHORT).show();
+            requestNormalStop();
+            Toast.makeText(this, "已停止当前任务，恢复待命", Toast.LENGTH_SHORT).show();
         } else {
             expandPanel();
         }
@@ -1097,27 +1155,38 @@ public class FloatAgentService extends Service {
 
         String displayTxt = (text != null && !text.trim().isEmpty()) ? text.trim() : "星语 AI";
         switch (state) {
+            case "confirming":
+                pillBg.setStroke(dp(2), Color.parseColor("#F59E0B"));
+                pillBg.setColor(Color.parseColor("#E6451A03"));
+                dotShape.setColor(Color.parseColor("#F59E0B"));
+                statusTextView.setText(displayTxt);
+                statusTextView.setTextColor(Color.parseColor("#FDE68A"));
+                break;
             case "thinking":
                 pillBg.setStroke(dp(1), Color.parseColor("#4D6BFE"));
                 dotShape.setColor(Color.parseColor("#60A5FA"));
                 statusTextView.setText(displayTxt);
+                statusTextView.setTextColor(Color.parseColor("#F8FAFC"));
                 break;
             case "executing":
             case "acting":
                 pillBg.setStroke(dp(1), Color.parseColor("#F59E0B"));
                 dotShape.setColor(Color.parseColor("#F59E0B"));
                 statusTextView.setText(displayTxt);
+                statusTextView.setTextColor(Color.parseColor("#F8FAFC"));
                 break;
             case "stopped":
                 pillBg.setStroke(dp(1), Color.parseColor("#EF4444"));
                 dotShape.setColor(Color.parseColor("#EF4444"));
                 statusTextView.setText(displayTxt);
+                statusTextView.setTextColor(Color.parseColor("#F8FAFC"));
                 break;
             case "idle":
             default:
                 pillBg.setStroke(dp(1), Color.parseColor("#334155"));
                 dotShape.setColor(Color.parseColor("#10B981"));
                 statusTextView.setText(displayTxt);
+                statusTextView.setTextColor(Color.parseColor("#F8FAFC"));
                 break;
         }
 
@@ -1127,8 +1196,143 @@ public class FloatAgentService extends Service {
         setViewBg(statusPillView, pillBg);
     }
 
+    private void displayConfirmBanner(String summary, String actionDesc) {
+        if (windowManager == null) return;
+        hideConfirmBanner();
+
+        applyStatusStyle("confirming", "⚠️ 需确认: " + (summary != null ? summary : "高风险操作"));
+
+        try {
+            Vibrator v = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
+            if (v != null && v.hasVibrator()) {
+                v.vibrate(220);
+            }
+        } catch (Exception ignored) {}
+
+        DisplayMetrics dm = getResources().getDisplayMetrics();
+        int bannerWidth = Math.min((int) (dm.widthPixels * 0.94f), dp(360));
+
+        confirmBannerView = new LinearLayout(this);
+        confirmBannerView.setOrientation(LinearLayout.VERTICAL);
+        confirmBannerView.setPadding(dp(14), dp(12), dp(14), dp(12));
+        setViewBg(confirmBannerView, createRoundRect("#F20F172A", 16, "#F59E0B", 2));
+
+        LinearLayout titleRow = new LinearLayout(this);
+        titleRow.setOrientation(LinearLayout.HORIZONTAL);
+        titleRow.setGravity(Gravity.CENTER_VERTICAL);
+
+        TextView iconTv = new TextView(this);
+        iconTv.setText("⚠️");
+        iconTv.setTextSize(14);
+        iconTv.setPadding(0, 0, dp(6), 0);
+
+        TextView titleTv = new TextView(this);
+        titleTv.setText("星语手机辅助 · 安全执行确认");
+        titleTv.setTextColor(Color.parseColor("#FDE68A"));
+        titleTv.setTextSize(13);
+        titleTv.setTypeface(null, android.graphics.Typeface.BOLD);
+
+        titleRow.addView(iconTv);
+        titleRow.addView(titleTv);
+        confirmBannerView.addView(titleRow);
+
+        TextView sumTv = new TextView(this);
+        sumTv.setText(summary != null ? summary : "执行下一步操作");
+        sumTv.setTextColor(Color.WHITE);
+        sumTv.setTextSize(12.5f);
+        sumTv.setPadding(0, dp(6), 0, dp(2));
+        confirmBannerView.addView(sumTv);
+
+        if (actionDesc != null && !actionDesc.trim().isEmpty()) {
+            TextView codeTv = new TextView(this);
+            codeTv.setText("指令: " + actionDesc.trim());
+            codeTv.setTextColor(Color.parseColor("#94A3B8"));
+            codeTv.setTextSize(11);
+            codeTv.setPadding(0, 0, 0, dp(8));
+            confirmBannerView.addView(codeTv);
+        }
+
+        LinearLayout btnRow = new LinearLayout(this);
+        btnRow.setOrientation(LinearLayout.HORIZONTAL);
+        btnRow.setGravity(Gravity.CENTER_VERTICAL);
+
+        TextView allowBtn = createActionBtn("允许本次", "#10B981", "#FFFFFF");
+        allowBtn.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams allowLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.2f);
+        allowLp.rightMargin = dp(6);
+        allowBtn.setLayoutParams(allowLp);
+        allowBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                hideConfirmBanner();
+                updateState("executing", "已确认执行...");
+                MainActivity.dispatchConfirmDecisionToWebView("allow");
+            }
+        });
+
+        TextView cancelBtn = createActionBtn("取消", "#334155", "#E2E8F0");
+        cancelBtn.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams cancelLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 0.9f);
+        cancelLp.rightMargin = dp(6);
+        cancelBtn.setLayoutParams(cancelLp);
+        cancelBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                hideConfirmBanner();
+                updateState("idle", "星语 AI");
+                MainActivity.dispatchConfirmDecisionToWebView("cancel");
+            }
+        });
+
+        TextView backAppBtn = createActionBtn("回星语", "#1E293B", "#93C5FD");
+        backAppBtn.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams backLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 0.9f);
+        backAppBtn.setLayoutParams(backLp);
+        backAppBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                bringMainActivityToFront(null);
+            }
+        });
+
+        btnRow.addView(allowBtn);
+        btnRow.addView(cancelBtn);
+        btnRow.addView(backAppBtn);
+        confirmBannerView.addView(btnRow);
+
+        int layoutFlag;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            layoutFlag = WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY;
+        } else {
+            layoutFlag = WindowManager.LayoutParams.TYPE_PHONE;
+        }
+        confirmLayoutParams = new WindowManager.LayoutParams(
+                bannerWidth,
+                WindowManager.LayoutParams.WRAP_CONTENT,
+                layoutFlag,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+                PixelFormat.TRANSLUCENT
+        );
+        confirmLayoutParams.gravity = Gravity.TOP | Gravity.CENTER_HORIZONTAL;
+        confirmLayoutParams.y = dp(75);
+
+        try {
+            windowManager.addView(confirmBannerView, confirmLayoutParams);
+        } catch (Exception ignored) {}
+    }
+
+    private void hideConfirmBanner() {
+        if (confirmBannerView != null && windowManager != null) {
+            try {
+                windowManager.removeView(confirmBannerView);
+            } catch (Exception ignored) {}
+            confirmBannerView = null;
+        }
+    }
+
     @Override
     public void onDestroy() {
+        hideConfirmBanner();
         AgentAccessibilityService a11y = AgentAccessibilityService.getInstance();
         if (a11y != null) {
             a11y.stopAllBackgroundTasks("悬浮窗关闭");

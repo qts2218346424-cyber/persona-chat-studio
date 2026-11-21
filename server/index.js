@@ -55,7 +55,10 @@ const {
   adminResetUserPassword,
   adminToggleUserBan,
   adminSetUserRole,
-  adminDeleteUser
+  adminDeleteUser,
+  getLatestAnnouncement,
+  getAdminAnnouncementsList,
+  saveAdminAnnouncement
 } = require('./db');
 const {
   replaceRoleplayMacros,
@@ -94,10 +97,16 @@ const {
   resolveSuiteOrBridgeCredentials,
   fetchDeepSeekBalance,
   fetchDeepSeekModels,
+  NativeThinkSplitter,
   streamDeepSeekNativeSuite,
   runDeepSeekFimCompletion
 } = require('./deepseekApiSuite');
-const { loadBridgeRuntime } = require('./antigravityBridge');
+const {
+  loadBridgeRuntime,
+  detectLocalAntigravityStatus,
+  streamViaLocalAntigravityCli,
+  getLocalAntigravityCliPath
+} = require('./antigravityBridge');
 const {
   buildProactiveTriggerInstruction,
   generateDemoProactiveTurn,
@@ -235,14 +244,38 @@ function sanitizeCustomImageInput(rawImg) {
 }
 
 function sendJson(res, statusCode, payload, extraHeaders = {}) {
-  const body = JSON.stringify(payload);
-  res.writeHead(statusCode, {
+  const rawBuf = Buffer.from(JSON.stringify(payload), 'utf8');
+  const headers = {
     'Content-Type': 'application/json; charset=utf-8',
     'Cache-Control': 'no-store',
     ...SECURITY_HEADERS,
     ...extraHeaders
-  });
-  res.end(body);
+  };
+  const hasExplicitEncoding = Object.keys(extraHeaders).some(
+    (k) => k.toLowerCase() === 'content-encoding'
+  );
+  let outBuf = rawBuf;
+  if (!hasExplicitEncoding && rawBuf.length >= 1024) {
+    const acceptEncoding = String(res._acceptEncoding || '');
+    if (/\bbr\b/i.test(acceptEncoding)) {
+      outBuf = zlib.brotliCompressSync(rawBuf, {
+        params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 4 }
+      });
+      headers['Content-Encoding'] = 'br';
+      headers['Vary'] = 'Accept-Encoding';
+    } else if (/\bgzip\b/i.test(acceptEncoding)) {
+      outBuf = zlib.gzipSync(rawBuf, { level: 6 });
+      headers['Content-Encoding'] = 'gzip';
+      headers['Vary'] = 'Accept-Encoding';
+    }
+  }
+  headers['Content-Length'] = outBuf.length;
+  res.writeHead(statusCode, headers);
+  if (res._reqMethod === 'HEAD') {
+    res.end();
+    return;
+  }
+  res.end(outBuf);
 }
 
 function sanitizePublicErrorMessage(err, fallback = '请求处理失败，请稍后重试') {
@@ -336,7 +369,13 @@ function listPersonasForUser(userId) {
 function listSessionsForUser(userId) {
   const rows = db
     .prepare(`
-      SELECT s.*, p.name AS persona_name, p.avatar AS persona_avatar, p.script_id AS script_id,
+      SELECT s.id, s.user_id, s.persona_id, s.title, s.title_locked, s.session_mode, s.pinned,
+             s.affection, s.trust, s.intimacy, s.current_mood, s.proactive_enabled,
+             s.enable_inner_thought, s.enable_auto_memory, s.ds_thinking, s.ds_search,
+             s.ds_json_mode, s.ds_tools_enabled, s.summarized_until_msg_id,
+             s.updated_at, s.created_at, s.custom_persona_override,
+             (TRIM(COALESCE(s.session_prompt, '')) != '' OR TRIM(COALESCE(s.director_note, '')) != '') AS has_session_prompt,
+             p.name AS persona_name, p.avatar AS persona_avatar, p.script_id AS script_id,
              (SELECT COUNT(*) FROM messages m WHERE m.session_id = s.id) AS message_count,
              (SELECT COUNT(*) FROM memories mem WHERE mem.session_id = s.id) AS memory_count
       FROM sessions s
@@ -360,17 +399,94 @@ function listSessionsForUser(userId) {
         }
       } catch {}
     }
-    const hasSessionPrompt = Boolean(
-      (row.session_prompt && String(row.session_prompt).trim()) ||
-        (row.director_note && String(row.director_note).trim())
-    );
+    const { custom_persona_override: _droppedOverride, has_session_prompt: hasSessionPrompt, ...slimRow } = row;
     return {
-      ...row,
+      ...slimRow,
       persona_name: personaName,
       persona_avatar: personaAvatar,
+      has_persona_override: hasOverride,
       has_custom_setting: Boolean(hasOverride || hasSessionPrompt)
     };
   });
+}
+
+function buildSessionDetailPayload(session, userId, opts = {}) {
+  const safeLimit = Math.min(200, Math.max(10, parseInt(opts.limit || '60', 10) || 60));
+  const beforeId = Math.max(0, parseInt(opts.beforeId || '0', 10) || 0);
+  const loadAll = Boolean(opts.loadAll);
+  const sessionId = session.id;
+
+  const totalMessages = Number(
+    db.prepare('SELECT COUNT(*) AS cnt FROM messages WHERE session_id = ?').get(sessionId)?.cnt || 0
+  );
+
+  let messages;
+  if (loadAll) {
+    messages = db
+      .prepare('SELECT * FROM messages WHERE session_id = ? ORDER BY id ASC')
+      .all(sessionId);
+  } else if (beforeId > 0) {
+    messages = db
+      .prepare('SELECT * FROM (SELECT * FROM messages WHERE session_id = ? AND id < ? ORDER BY id DESC LIMIT ?) ORDER BY id ASC')
+      .all(sessionId, beforeId, safeLimit);
+  } else {
+    messages = db
+      .prepare('SELECT * FROM (SELECT * FROM messages WHERE session_id = ? ORDER BY id DESC LIMIT ?) ORDER BY id ASC')
+      .all(sessionId, safeLimit);
+  }
+
+  const oldestMessageId = messages.length > 0 ? Number(messages[0].id || 0) : 0;
+  const hasMoreMessages = !loadAll && oldestMessageId > 0
+    ? Boolean(db.prepare('SELECT 1 FROM messages WHERE session_id = ? AND id < ? LIMIT 1').get(sessionId, oldestMessageId))
+    : false;
+
+  const persona = formatPersonaRow(resolveEffectivePersona(session));
+  const rawMemories = db
+    .prepare('SELECT * FROM memories WHERE session_id = ? ORDER BY pinned DESC, importance DESC, updated_at DESC')
+    .all(sessionId);
+  const lorebooks = db
+    .prepare("SELECT * FROM lorebook_entries WHERE persona_id = ? AND (user_id = 'system' OR user_id = ?) ORDER BY created_at DESC")
+    .all(session.persona_id, userId);
+  const settings = opts.settings || getSafeClientSettings(userId);
+  const winLimit = Math.max(8, parseInt(settings.sliding_window_turns || '40', 10) || 40);
+  const activeWinMsgs = messages.slice(-winLimit);
+  const estLen = (str) => Math.ceil(String(str || '').length * 0.65);
+  const tier1Est = estLen(`${persona.name || ''}${persona.personality || ''}${persona.backstory || ''}${persona.speaking_style || ''}${session.session_prompt || ''}`);
+  const tier2Est =
+    estLen(session.rolling_summary || '') +
+    rawMemories.slice(0, 16).reduce((s, m) => s + estLen(m.content), 0);
+  const tier3Est = activeWinMsgs.reduce((s, m) => s + estLen(m.content), 0);
+  const fastTelemetry = {
+    tier1PersonaTokens: tier1Est,
+    tier2MemoryTokens: tier2Est,
+    tier3WindowTokens: tier3Est,
+    totalTokens: tier1Est + tier2Est + tier3Est,
+    activeWindowCount: activeWinMsgs.length,
+    totalHistoryCount: totalMessages,
+    recalledMemoryCount: Math.min(rawMemories.length, parseInt(settings.max_recalled_memories || '16', 10) || 16),
+    triggeredLoreCount: 0
+  };
+
+  let savedComp = null;
+  try {
+    if (session.companion_config) savedComp = JSON.parse(session.companion_config);
+  } catch {}
+  const companion = resolveOrGenerateCompanion({ persona, currentConfig: savedComp });
+
+  return {
+    session,
+    persona,
+    messages,
+    total_messages: totalMessages,
+    has_more_messages: hasMoreMessages,
+    oldest_message_id: oldestMessageId,
+    memories: decorateMemoriesWithRetention(rawMemories),
+    lorebooks,
+    nurturing: formatNurturingSnapshot(session),
+    companion,
+    telemetry: fastTelemetry,
+    membership: opts.membership || getMembership(userId)
+  };
 }
 
 function extractAuthToken(req, parsedUrl = null) {
@@ -388,8 +504,8 @@ function extractAuthToken(req, parsedUrl = null) {
   return '';
 }
 
-const APP_LATEST_VERSION = '1.9.2';
-const APP_LATEST_VERSION_CODE = 122;
+const APP_LATEST_VERSION = '2.0.0';
+const APP_LATEST_VERSION_CODE = 130;
 const APP_OFFICIAL_CERT_SHA256 = '6fd05e32a3cabf327140129d866e55a342fe30daa3384c67aad4b3cbdd98a17b';
 const APP_UPDATE_TICKET_SECRET = crypto
   .createHash('sha256')
@@ -491,6 +607,11 @@ async function handleApi(req, res, pathname, parsedUrl) {
     });
   }
 
+  // ========= 0.0 本地 Antigravity 宿主智能体底座状态探针 =========
+  if (method === 'GET' && pathname === '/api/antigravity/status') {
+    return sendJson(res, 200, detectLocalAntigravityStatus());
+  }
+
   // ========= 0.1 客户端版本更新检查公开接口 =========
   if (method === 'OPTIONS' && (pathname === '/api/app-version' || pathname === '/api/version' || pathname === '/api/app-update/download')) {
     res.writeHead(204, {
@@ -513,12 +634,15 @@ async function handleApi(req, res, pathname, parsedUrl) {
       .trim()
       .toLowerCase();
 
+    const diffGenerations = curCode > 0 ? Math.max(0, APP_LATEST_VERSION_CODE - curCode) : 0;
+    const forceUpdate = curCode > 0 && diffGenerations >= 3;
+
     const payload = {
       ok: true,
       latestVersion: APP_LATEST_VERSION,
       versionCode: APP_LATEST_VERSION_CODE,
       minSupportedVersion: '1.0.0',
-      releaseDate: '2026-11-20',
+      releaseDate: '2026-11-21',
       fileSize: (apkSizeBytes / (1024 * 1024)).toFixed(2) + ' MB',
       fileSizeBytes: apkSizeBytes,
       sha256: apkMeta.sha256 || '',
@@ -527,12 +651,13 @@ async function handleApi(req, res, pathname, parsedUrl) {
       fallbackDownloadUrl: 'https://star.claudexxb.online/api/download/apk',
       githubReleasesUrl: 'https://github.com/qts2218346424-cyber/persona-chat-studio/releases',
       serverTime: Date.now(),
+      forceUpdate,
+      diffGenerations,
       changelog: [
-        '网页端与移动端全链路 60fps 流畅度优化：流式输出 rAF 帧合批与原地 DOM 升级、2.5D 立绘按需休眠、静态资源预压缩 .gz 直出与 immutable 强缓存',
-        '修复手机端点击「养成」面板空白或溢出屏幕外的问题：锁定单列视口、提升右侧固定抽屉层级 (z-index: 120) 并在打开时即时刷新羁绊与日记数据',
-        '上线真正可用的双引擎混合语音输入：支持浏览器原生 Web Speech 实时听写 + 麦克风录音转硅基流动 Qwen3-ASR-1.7B 高精度语音识别',
-        '严格按模式隔离输入栏控件：在剧本模式与 DeepSeek 模式下彻底隐藏 + 号手机指令抽屉按钮，仅在手机辅助模式下展示',
-        '手机辅助模式与 DeepSeek 问答模式 100% 物理隔离：配备 38px 紧凑状态栏、4 分类多功能悬浮窗、50+ 离线指令库与原生 SHA-256 校验自动更新'
+        '手机端登录持久化深度加固：账户信息与真实昵称实现 Android 原生落盘，解决登录后退回默认名字问题',
+        '手机辅助执行需确认步骤悬浮窗强提醒：悬浮窗即刻弹出横幅与呼吸灯，支持在其他应用中一键允许或取消',
+        '悬浮窗面板新增「停止」按钮：清晰区分常规停止与红色最高优先级安全急停',
+        '开屏阶梯式更新与系统公告：落后 3 代强制更新保障核心安全，站长可在线发布全站公告'
       ]
     };
 
@@ -547,6 +672,12 @@ async function handleApi(req, res, pathname, parsedUrl) {
     }
 
     return sendJson(res, 200, payload, APP_VERSION_CORS_HEADERS);
+  }
+
+  // ========= 0.1a 全站公开系统公告查询接口 =========
+  if (method === 'GET' && (pathname === '/api/announcement' || pathname === '/api/site-announcement')) {
+    const ann = getLatestAnnouncement();
+    return sendJson(res, 200, { ok: true, announcement: ann }, APP_VERSION_CORS_HEADERS);
   }
 
   // ========= 0.1b 原生客户端签名票据专用安全更新下载接口 (支持 HEAD / Range / 流式校验) =========
@@ -719,6 +850,11 @@ async function handleApi(req, res, pathname, parsedUrl) {
     return sendJson(res, 200, { ok: true }, { 'Set-Cookie': buildClearCookie() });
   }
 
+  // 允许通过单次 /api/bootstrap?check_auth=1 探明登录态并顺带取回工作台与首会话，消除 auth/me 串行 RTT
+  if (method === 'GET' && pathname === '/api/bootstrap' && parsedUrl.searchParams.get('check_auth') === '1' && !currentUser) {
+    return sendJson(res, 200, { authenticated: false });
+  }
+
   // ========= 登录态守卫：以下业务接口均需已登录账号 =========
   if (!currentUser) {
     return sendJson(res, 401, { error: '请先登录您的星语恋庭账号', code: 'AUTH_REQUIRED' });
@@ -775,7 +911,8 @@ async function handleApi(req, res, pathname, parsedUrl) {
       '1. 优先使用 launch_app 打开第三方应用，优先级高于回桌面翻找图标；点选屏幕已有控件时优先用 click_node 或其 bounds 中心点 click。',
       '2. 若控件列表中出现需要向下滚动才能看见的内容，请返回 swipe 向上滑动（例如 y1=1600 -> y2=600）。',
       '3. 若即将触发支付、转账、确认下单、发红包、删除数据、卸载应用、发送消息/邮件/评论、修改系统密码或退出登录等高风险动作，必须将 needConfirm 设为 true。',
-      '4. 若处于网页预览或桌面端（无真实屏幕节点，screenNodes 为空且明确说明未在 APK 中运行），可直接给出逻辑演练步骤或 return action="done"。'
+      '4. 如果连续 2 次 wait 后屏幕界面节点仍无变化或节点极少（例如自绘弹窗或复杂规格面板），严禁继续返回 wait 或输出纯文字解释，必须尝试 click/swipe 或返回 {"thought":"当前面板控件未暴露","action":"ask_user","params":{"message":"请手动点选规格或完成当前操作后继续"},"summary":"等待手动点选规格","needConfirm":false}。',
+      '5. 若处于网页预览或桌面端（无真实屏幕节点，screenNodes 为空且明确说明未在 APK 中运行），可直接给出逻辑演练步骤或 return action="done"。'
     ].join('\n');
 
     const compactNodes = screenNodes.map((n, idx) => ({
@@ -806,20 +943,54 @@ async function handleApi(req, res, pathname, parsedUrl) {
 
     const extractPlanJson = (raw) => {
       const cleaned = String(raw || '')
+        .replace(/<think>[\s\S]*?<\/think>/gi, '')
         .trim()
         .replace(/^```(?:json)?\s*/i, '')
         .replace(/\s*```$/i, '')
         .trim();
-      try {
-        return JSON.parse(cleaned);
-      } catch {
-        const start = cleaned.indexOf('{');
-        const end = cleaned.lastIndexOf('}');
-        if (start >= 0 && end > start) {
-          return JSON.parse(cleaned.slice(start, end + 1));
+      const tryParseClean = (txt) => {
+        try {
+          return JSON.parse(txt);
+        } catch {
+          const noTrailingComma = txt.replace(/,\s*([}\]])/g, '$1');
+          return JSON.parse(noTrailingComma);
         }
-        throw new Error('大模型未返回有效的 JSON 操作指令');
+      };
+      if (cleaned) {
+        try {
+          const obj = tryParseClean(cleaned);
+          if (obj && typeof obj === 'object' && !Array.isArray(obj)) return obj;
+        } catch {}
+        for (let i = 0; i < cleaned.length; i++) {
+          if (cleaned[i] !== '{') continue;
+          let depth = 0;
+          let inStr = false;
+          let esc = false;
+          for (let j = i; j < cleaned.length; j++) {
+            const ch = cleaned[j];
+            if (inStr) {
+              if (esc) esc = false;
+              else if (ch === '\\') esc = true;
+              else if (ch === '"') inStr = false;
+              continue;
+            }
+            if (ch === '"') inStr = true;
+            else if (ch === '{') depth += 1;
+            else if (ch === '}') {
+              depth -= 1;
+              if (depth === 0) {
+                const slice = cleaned.slice(i, j + 1);
+                try {
+                  const obj = tryParseClean(slice);
+                  if (obj && typeof obj === 'object' && obj.action) return obj;
+                } catch {}
+                break;
+              }
+            }
+          }
+        }
       }
+      throw new Error('模型响应未返回合法 JSON 动作指令');
     };
 
     const normalizePlan = (obj) => {
@@ -932,7 +1103,7 @@ async function handleApi(req, res, pathname, parsedUrl) {
             headers: { 'Content-Type': 'application/json', ...cand.headers },
             body: JSON.stringify({
               model: cand.model,
-              max_tokens: 600,
+              max_tokens: 1024,
               temperature: 0.15,
               system: sysPrompt,
               messages: [{ role: 'user', content: userMsg }]
@@ -950,34 +1121,64 @@ async function handleApi(req, res, pathname, parsedUrl) {
           return sendJson(res, 200, { ok: true, plan: parsed, model: cand.model, engine: cand.engineName });
         }
 
-        const payload = {
-          model: cand.model,
-          messages: [
+        const isReasonerModel = /reasoner|r1/i.test(String(cand.model || ''));
+        const runOpenAiAttempt = async (modelToUse, extraRetryHint = '') => {
+          const msgs = [
             { role: 'system', content: sysPrompt },
             { role: 'user', content: userMsg }
-          ],
-          temperature: 0.15,
-          max_tokens: 600,
-          stream: false
+          ];
+          if (extraRetryHint) {
+            msgs.push({ role: 'user', content: extraRetryHint });
+          }
+          const useReasoner = /reasoner|r1/i.test(String(modelToUse || ''));
+          const payload = {
+            model: modelToUse,
+            messages: msgs,
+            temperature: useReasoner ? 0.2 : 0.15,
+            max_tokens: useReasoner ? 2048 : 1024,
+            stream: false
+          };
+          if (!useReasoner && (cand.url.includes('deepseek.com') || /deepseek/i.test(modelToUse))) {
+            payload.response_format = { type: 'json_object' };
+          }
+          const resp = await fetch(cand.url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...cand.headers },
+            body: JSON.stringify(payload),
+            signal: AbortSignal.timeout(25000)
+          });
+          if (!resp.ok) {
+            const errTxt = await resp.text().catch(() => '');
+            throw new Error(`模型网关返回 (${resp.status}): ${errTxt.slice(0, 120)}`);
+          }
+          const data = await resp.json();
+          const msgObj = data?.choices?.[0]?.message || {};
+          const rawText = String(msgObj.content || '').trim();
+          try {
+            return extractPlanJson(rawText);
+          } catch (parseErr) {
+            const reasonTxt = String(msgObj.reasoning_content || '').trim();
+            if (reasonTxt) {
+              return extractPlanJson(reasonTxt);
+            }
+            throw parseErr;
+          }
         };
-        if (cand.url.includes('deepseek.com') || /deepseek/i.test(cand.model)) {
-          payload.response_format = { type: 'json_object' };
+
+        let rawPlan;
+        let usedModel = cand.model;
+        try {
+          rawPlan = await runOpenAiAttempt(cand.model);
+        } catch (firstErr) {
+          const fallbackModel = isReasonerModel ? 'deepseek-chat' : cand.model;
+          usedModel = fallbackModel;
+          rawPlan = await runOpenAiAttempt(
+            fallbackModel,
+            '请严格只输出一个合法 JSON 动作对象（不要输出任何思考说明），如果连续等待后界面无新控件，请返回 click/swipe 或 ask_user。'
+          );
         }
-        const resp = await fetch(cand.url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...cand.headers },
-          body: JSON.stringify(payload),
-          signal: AbortSignal.timeout(25000)
-        });
-        if (!resp.ok) {
-          const errTxt = await resp.text().catch(() => '');
-          lastErr = `模型网关返回 (${resp.status}): ${errTxt.slice(0, 120)}`;
-          continue;
-        }
-        const data = await resp.json();
-        const rawText = data?.choices?.[0]?.message?.content || '';
-        const parsed = normalizePlan(extractPlanJson(rawText));
-        return sendJson(res, 200, { ok: true, plan: parsed, model: cand.model, engine: cand.engineName });
+        const parsed = normalizePlan(rawPlan);
+        return sendJson(res, 200, { ok: true, plan: parsed, model: usedModel, engine: cand.engineName });
       } catch (err) {
         lastErr = err?.message || '规划请求超时或解析异常';
       }
@@ -1047,18 +1248,82 @@ async function handleApi(req, res, pathname, parsedUrl) {
     return sendJson(res, 200, { user: updatedUser });
   }
 
-  // ========= 2. 首屏初始化聚合接口（严格脱敏，绝不向前端暴露任何网关地址或密钥） =========
+  // ========= 2. 首屏初始化聚合接口（单次往返直出工作台 + 首个会话消息，大幅降低启动等待） =========
   if (method === 'GET' && pathname === '/api/bootstrap') {
+    const lite = parsedUrl.searchParams.get('lite') === '1';
+    const uiMode = String(parsedUrl.searchParams.get('ui_mode') || '').trim();
+    const activeScriptIdParam = String(parsedUrl.searchParams.get('active_script_id') || '').trim();
+    const preferredSessionId = String(parsedUrl.searchParams.get('preferred_session_id') || '').trim();
+    const msgLimit = Math.min(200, Math.max(20, parseInt(parsedUrl.searchParams.get('msg_limit') || '60', 10) || 60));
+
     const wallet = getWalletOverview(userId);
+    const scripts = listScriptsForUser(userId);
+    const personas = listPersonasForUser(userId);
+    const sessions = listSessionsForUser(userId);
+    const settings = getSafeClientSettings(userId);
+
+    let initialSessionId = null;
+    let initialSessionPayload = null;
+
+    if (uiMode !== 'phone-agent' && sessions.length > 0) {
+      const isDsBoot = uiMode === 'deepseek';
+      const preferredSessions = sessions.filter((s) =>
+        isDsBoot ? s.session_mode === 'deepseek_native' : s.session_mode !== 'deepseek_native'
+      );
+      let targetSessRow = null;
+      if (preferredSessionId) {
+        targetSessRow = preferredSessions.find((s) => s.id === preferredSessionId) || null;
+      }
+      if (!targetSessRow) {
+        if (isDsBoot) {
+          targetSessRow =
+            preferredSessions.find((s) => s.title === '新对话' && s.persona_id === 'persona_deepseek_official') ||
+            preferredSessions[0] ||
+            null;
+        } else {
+          const effectiveScriptId =
+            activeScriptIdParam && scripts.some((sc) => sc.id === activeScriptIdParam)
+              ? activeScriptIdParam
+              : scripts[0]?.id || '';
+          targetSessRow =
+            preferredSessions.find((s) => {
+              const pObj = personas.find((x) => x.id === s.persona_id);
+              return (s.script_id || pObj?.script_id || '') === effectiveScriptId;
+            }) ||
+            preferredSessions[0] ||
+            null;
+        }
+      }
+      if (targetSessRow) {
+        const fullSess = db
+          .prepare('SELECT * FROM sessions WHERE id = ? AND user_id = ?')
+          .get(targetSessRow.id, userId);
+        if (fullSess) {
+          initialSessionId = fullSess.id;
+          initialSessionPayload = buildSessionDetailPayload(fullSess, userId, {
+            limit: msgLimit,
+            settings,
+            membership: wallet.membership
+          });
+        }
+      }
+    }
+
     return sendJson(res, 200, {
+      authenticated: true,
+      app_version: APP_LATEST_VERSION,
+      app_version_code: APP_LATEST_VERSION_CODE,
       user: currentUser,
-      scripts: listScriptsForUser(userId),
-      square_items: listCommunityShares({ userId }),
-      personas: listPersonasForUser(userId),
-      sessions: listSessionsForUser(userId),
-      settings: getSafeClientSettings(userId),
+      token: currentToken,
+      scripts,
+      square_items: lite ? [] : listCommunityShares({ userId }),
+      personas,
+      sessions,
+      settings,
       membership: wallet.membership,
-      wallet
+      wallet,
+      initial_session_id: initialSessionId,
+      initial_session_payload: initialSessionPayload
     });
   }
 
@@ -1269,6 +1534,24 @@ async function handleApi(req, res, pathname, parsedUrl) {
 
     if (method === 'GET' && pathname === '/api/admin/dashboard') {
       return sendJson(res, 200, getAdminDashboardData());
+    }
+
+    if (method === 'GET' && pathname === '/api/admin/announcement') {
+      return sendJson(res, 200, {
+        ok: true,
+        current: getLatestAnnouncement(),
+        list: getAdminAnnouncementsList()
+      });
+    }
+
+    if (method === 'POST' && pathname === '/api/admin/announcement') {
+      const body = await readJsonBody(req, 64 * 1024);
+      try {
+        const ann = saveAdminAnnouncement(userId, body);
+        return sendJson(res, 200, { ok: true, announcement: ann });
+      } catch (err) {
+        return sendJson(res, 400, { error: err.message });
+      }
     }
 
     if (method === 'PUT' && pathname === '/api/admin/platform-config') {
@@ -1685,13 +1968,17 @@ async function handleApi(req, res, pathname, parsedUrl) {
     const dsSearch = body.ds_search !== undefined ? (body.ds_search ? 1 : 0) : 0;
     const initProactive = body.proactive_enabled === true ? 1 : 0;
 
+    const llmMode = body.llm_mode === 'api' ? 'api' : 'local_antigravity';
+    const localModel = String(body.local_model || 'gemini-3.8-flash-high').trim();
+
     db.prepare(`
       INSERT INTO sessions (
         id, user_id, persona_id, title, session_mode, ds_thinking, ds_search, ds_json_mode, ds_tools_enabled, proactive_enabled,
+        llm_mode, local_model,
         rolling_summary, summarized_until_msg_id, enable_inner_thought, enable_auto_memory,
         affection, trust, intimacy, current_mood, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 1, ?, '', 0, 1, 1, 22, 26, 18, '温柔浅笑', ?, ?)
-    `).run(sessionId, userId, personaId, title, sessionMode, dsThinking, dsSearch, initProactive, now, now);
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 1, ?, ?, ?, '', 0, 1, 1, 22, 26, 18, '温柔浅笑', ?, ?)
+    `).run(sessionId, userId, personaId, title, sessionMode, dsThinking, dsSearch, initProactive, llmMode, localModel, now, now);
 
     // 原生 DeepSeek 模式保持官方 App 纯净新对话欢迎态；仅在恋庭沉浸模式注入初遇开场白与贴合人设的初遇心声独白
     if (sessionMode !== 'deepseek_native' && persona.greeting && persona.greeting.trim()) {
@@ -2536,53 +2823,14 @@ async function handleApi(req, res, pathname, parsedUrl) {
     if (!session) return sendJson(res, 404, { error: '未找到该会话' });
 
     if (method === 'GET') {
-      const persona = formatPersonaRow(resolveEffectivePersona(session));
-      const messages = db
-        .prepare('SELECT * FROM messages WHERE session_id = ? ORDER BY id ASC')
-        .all(sessionId);
-      const rawMemories = db
-        .prepare('SELECT * FROM memories WHERE session_id = ? ORDER BY pinned DESC, importance DESC, updated_at DESC')
-        .all(sessionId);
-      const lorebooks = db
-        .prepare("SELECT * FROM lorebook_entries WHERE persona_id = ? AND (user_id = 'system' OR user_id = ?) ORDER BY created_at DESC")
-        .all(session.persona_id, userId);
-      const settings = getSafeClientSettings(userId);
-      const winLimit = Math.max(8, parseInt(settings.sliding_window_turns || '40', 10) || 40);
-      const activeWinMsgs = messages.slice(-winLimit);
-      const estLen = (str) => Math.ceil(String(str || '').length * 0.65);
-      const tier1Est = estLen(`${persona.name || ''}${persona.personality || ''}${persona.backstory || ''}${persona.speaking_style || ''}${session.session_prompt || ''}`);
-      const tier2Est =
-        estLen(session.rolling_summary || '') +
-        rawMemories.slice(0, 16).reduce((s, m) => s + estLen(m.content), 0);
-      const tier3Est = activeWinMsgs.reduce((s, m) => s + estLen(m.content), 0);
-      const fastTelemetry = {
-        tier1PersonaTokens: tier1Est,
-        tier2MemoryTokens: tier2Est,
-        tier3WindowTokens: tier3Est,
-        totalTokens: tier1Est + tier2Est + tier3Est,
-        activeWindowCount: activeWinMsgs.length,
-        totalHistoryCount: messages.length,
-        recalledMemoryCount: Math.min(rawMemories.length, parseInt(settings.max_recalled_memories || '16', 10) || 16),
-        triggeredLoreCount: 0
-      };
-
-      let savedComp = null;
-      try {
-        if (session.companion_config) savedComp = JSON.parse(session.companion_config);
-      } catch {}
-      const companion = resolveOrGenerateCompanion({ persona, currentConfig: savedComp });
-
-      return sendJson(res, 200, {
-        session,
-        persona,
-        messages,
-        memories: decorateMemoriesWithRetention(rawMemories),
-        lorebooks,
-        nurturing: formatNurturingSnapshot(session),
-        companion,
-        telemetry: fastTelemetry,
-        membership: getMembership(userId)
-      });
+      const msgLimit = Math.min(200, Math.max(10, parseInt(parsedUrl.searchParams.get('limit') || '60', 10) || 60));
+      const beforeId = Math.max(0, parseInt(parsedUrl.searchParams.get('before_id') || '0', 10) || 0);
+      const loadAll = parsedUrl.searchParams.get('all') === '1';
+      return sendJson(
+        res,
+        200,
+        buildSessionDetailPayload(session, userId, { limit: msgLimit, beforeId, loadAll })
+      );
     }
 
     if (method === 'PATCH') {
@@ -2659,10 +2907,18 @@ async function handleApi(req, res, pathname, parsedUrl) {
         if (checkP) nextPersonaId = checkP.id;
       }
 
+      const nextLlmMode =
+        body.llm_mode !== undefined
+          ? (body.llm_mode === 'api' ? 'api' : 'local_antigravity')
+          : session.llm_mode || 'local_antigravity';
+      const nextLocalModel =
+        body.local_model !== undefined ? String(body.local_model).trim() : session.local_model || 'gemini-3.8-flash-high';
+
       db.prepare(`
         UPDATE sessions
         SET title = ?, title_locked = ?, pinned = ?, persona_id = ?, session_mode = ?, ds_thinking = ?, ds_search = ?, ds_json_mode = ?, ds_tools_enabled = ?,
-            proactive_enabled = ?, rolling_summary = ?, director_note = ?, session_prompt = ?, custom_persona_override = ?, enable_inner_thought = ?, enable_auto_memory = ?, updated_at = ?
+            proactive_enabled = ?, rolling_summary = ?, director_note = ?, session_prompt = ?, custom_persona_override = ?, enable_inner_thought = ?, enable_auto_memory = ?,
+            llm_mode = ?, local_model = ?, updated_at = ?
         WHERE id = ? AND user_id = ?
       `).run(
         title,
@@ -2681,6 +2937,8 @@ async function handleApi(req, res, pathname, parsedUrl) {
         nextCustomOverride,
         enableThought,
         enableAutoMem,
+        nextLlmMode,
+        nextLocalModel,
         nextUpdatedAt,
         sessionId,
         userId
@@ -3145,13 +3403,16 @@ async function handleApi(req, res, pathname, parsedUrl) {
       // 通用对话端点握手探测（兼容官方及硅基流动/百炼/OpenRouter等任意平台）
       const t0 = Date.now();
       const lowerProbeUrl = targetBaseUrl.toLowerCase();
+      const isGeminiProbe = lowerProbeUrl.includes('googleapis.com') || /gemini/i.test(targetModel);
       const probeBody = {
         model: targetModel,
         messages: [{ role: 'user', content: '你好，请回复“已连接”三个字' }],
         max_tokens: 16,
         stream: false
       };
-      if (isOfficialDs && targetModel.toLowerCase().includes('flash')) {
+      if (isGeminiProbe) {
+        // Google Gemini 官方 OpenAI 兼容接口：保持干净标准载荷，绝不附带 thinking 专有参数
+      } else if (isOfficialDs && targetModel.toLowerCase().includes('flash')) {
         probeBody.thinking = { type: 'disabled' };
       } else if ((lowerProbeUrl.includes('siliconflow.cn') || lowerProbeUrl.includes('aliyuncs.com')) && targetModel.toLowerCase().includes('flash')) {
         probeBody.enable_thinking = false;
@@ -3332,9 +3593,14 @@ async function handleApi(req, res, pathname, parsedUrl) {
     const settings = getExecutionSettingsForUser(userId);
     const usingMemberOwnKey = Boolean(settings._using_member_own_key);
 
-    if (settings._own_key_unavailable_reason === 'KEY_MISSING') {
+    const requestedLlmMode = body.llm_mode || session.llm_mode || 'local_antigravity';
+    const localCliPath = getLocalAntigravityCliPath();
+    const isLocalAvailable = Boolean(localCliPath);
+    const usingLocalAntigravity = requestedLlmMode === 'local_antigravity' && isLocalAvailable;
+
+    if (!usingLocalAntigravity && settings._own_key_unavailable_reason === 'KEY_MISSING') {
       return sendJson(res, 400, {
-        error: '您已选择个人 DeepSeek 官方 API 直连，但尚未填写有效密钥，请先在「⚙️ 设置」中填入您的 sk-... 密钥。',
+        error: '您已选择个人 API 直连，但尚未填写有效密钥，请先在「⚙️ 设置」中填入您的密钥，或切换为「⚡ 本地直连模式」。',
         code: 'OWN_KEY_MISSING'
       });
     }
@@ -3558,7 +3824,29 @@ async function handleApi(req, res, pathname, parsedUrl) {
         session_mode: session.session_mode
       });
 
-      if (isNativeMode) {
+      if (usingLocalAntigravity) {
+        const localTargetModel = body.local_model || session.local_model || 'gemini-3.8-flash-high';
+        const enableThinking = isNativeMode
+          ? (body.ds_thinking !== undefined ? Boolean(body.ds_thinking) : session.ds_thinking === 1)
+          : true;
+
+        nativeMeta = await streamViaLocalAntigravityCli({
+          messagesPayload: contextBundle.messagesPayload,
+          personaName: contextBundle.persona?.name || (isNativeMode ? 'DeepSeek' : '当前角色'),
+          model: localTargetModel,
+          enableThinking,
+          SplitterClass: NativeThinkSplitter,
+          onReasoning: (delta) => {
+            fullReasoning += delta;
+            sendEvent('reasoning', { delta });
+          },
+          onContent: (delta) => {
+            fullContent += delta;
+            sendEvent('content', { delta });
+          },
+          signal: abortController.signal
+        });
+      } else if (isNativeMode) {
         const enableThinking =
           body.ds_thinking !== undefined ? Boolean(body.ds_thinking) : session.ds_thinking === 1;
         const enableSearch =
@@ -4115,6 +4403,33 @@ async function handleApi(req, res, pathname, parsedUrl) {
   return sendJson(res, 404, { error: '未找到请求的 API 路径' });
 }
 
+const STATIC_MEM_CACHE = new Map();
+const MAX_STATIC_MEM_CACHE_ENTRIES = 64;
+const MAX_STATIC_MEM_CACHE_BYTES = 1024 * 1024;
+
+function getStaticMemCache(key, mtimeStamp) {
+  const entry = STATIC_MEM_CACHE.get(key);
+  if (!entry) return null;
+  if (entry.mtimeStamp !== mtimeStamp) {
+    STATIC_MEM_CACHE.delete(key);
+    return null;
+  }
+  STATIC_MEM_CACHE.delete(key);
+  STATIC_MEM_CACHE.set(key, entry);
+  return entry.buf;
+}
+
+function setStaticMemCache(key, mtimeStamp, buf) {
+  if (!buf || buf.length > MAX_STATIC_MEM_CACHE_BYTES) return;
+  if (STATIC_MEM_CACHE.has(key)) {
+    STATIC_MEM_CACHE.delete(key);
+  } else if (STATIC_MEM_CACHE.size >= MAX_STATIC_MEM_CACHE_ENTRIES) {
+    const oldestKey = STATIC_MEM_CACHE.keys().next().value;
+    if (oldestKey !== undefined) STATIC_MEM_CACHE.delete(oldestKey);
+  }
+  STATIC_MEM_CACHE.set(key, { mtimeStamp, buf });
+}
+
 function serveStatic(req, res, pathname) {
   let decodedPath = '/';
   try {
@@ -4181,13 +4496,24 @@ function serveStatic(req, res, pathname) {
       cacheHeader = 'no-cache, no-store, must-revalidate';
     }
 
-    const etag = `W/"${stats.size.toString(16)}-${Math.floor(stats.mtimeMs).toString(16)}"`;
-    const lastModified = stats.mtime.toUTCString();
+    const etag = `"${stats.size.toString(16)}-${Math.floor(stats.mtimeMs).toString(16)}"`;
+    const fileMtimeSec = Math.floor(stats.mtimeMs / 1000) * 1000;
+    const lastModified = new Date(fileMtimeSec).toUTCString();
 
-    const ifNoneMatch = req.headers['if-none-match'];
-    const ifModifiedSince = req.headers['if-modified-since'];
+    const ifNoneMatch = String(req.headers['if-none-match'] || '').trim();
+    const ifModifiedSince = String(req.headers['if-modified-since'] || '').trim();
+    const etagCore = etag.replace(/^W\//, '');
+    const etagMatched = Boolean(
+      ifNoneMatch &&
+      ifNoneMatch.split(',').some((tag) => {
+        const t = tag.trim();
+        return t === '*' || t === etag || t.replace(/^W\//, '') === etagCore;
+      })
+    );
+    const imsTime = ifModifiedSince ? Date.parse(ifModifiedSince) : NaN;
+    const imsMatched = !Number.isNaN(imsTime) && imsTime >= fileMtimeSec;
 
-    if (ifNoneMatch === etag || (ifModifiedSince && new Date(ifModifiedSince) >= stats.mtime)) {
+    if (etagMatched || imsMatched) {
       res.writeHead(304, {
         'ETag': etag,
         'Last-Modified': lastModified,
@@ -4198,9 +4524,11 @@ function serveStatic(req, res, pathname) {
       return;
     }
 
-    const acceptEncoding = req.headers['accept-encoding'] || '';
-    const compressible = /^(text\/|application\/(javascript|json)|image\/svg\+xml)/.test(contentType) && stats.size > 1024;
-    const canGzip = compressible && acceptEncoding.includes('gzip');
+    const isHead = req.method === 'HEAD';
+    const acceptEncoding = String(req.headers['accept-encoding'] || '');
+    const compressible = /^(text\/|application\/(javascript|json)|image\/svg\+xml)/.test(contentType) && stats.size > 512;
+    const acceptsBr = compressible && /\bbr\b/i.test(acceptEncoding);
+    const acceptsGzip = compressible && /\bgzip\b/i.test(acceptEncoding);
 
     const headers = {
       'Content-Type': contentType,
@@ -4211,41 +4539,84 @@ function serveStatic(req, res, pathname) {
       ...SECURITY_HEADERS
     };
 
-    if (canGzip) {
-      const precompressedGzPath = `${resolvedPath}.gz`;
-      fs.stat(precompressedGzPath, (gzErr, gzStats) => {
-        if (!gzErr && gzStats.isFile() && gzStats.mtimeMs >= stats.mtimeMs) {
-          headers['Content-Encoding'] = 'gzip';
-          headers['Content-Length'] = gzStats.size;
-          res.writeHead(200, headers);
-          const gzFileStream = fs.createReadStream(precompressedGzPath);
-          gzFileStream.on('error', () => {
-            if (!res.writableEnded) res.end();
-          });
-          gzFileStream.pipe(res);
-          return;
-        }
-        headers['Content-Encoding'] = 'gzip';
+    const sendEncodedBufferOrFile = (encoding, filePathToRead, fileSize) => {
+      if (encoding) headers['Content-Encoding'] = encoding;
+      const cacheKey = `${resolvedPath}|${encoding || 'raw'}`;
+      const stamp = `${stats.mtimeMs}:${fileSize}`;
+      const cachedBuf = getStaticMemCache(cacheKey, stamp);
+      if (cachedBuf) {
+        headers['Content-Length'] = cachedBuf.length;
         res.writeHead(200, headers);
-        const rawStream = fs.createReadStream(resolvedPath);
-        const gzipStream = zlib.createGzip({ level: 6 });
-        rawStream.on('error', () => { if (!res.writableEnded) res.end(); });
-        gzipStream.on('error', () => { if (!res.writableEnded) res.end(); });
-        rawStream.pipe(gzipStream).pipe(res);
-      });
-    } else {
-      headers['Content-Length'] = stats.size;
+        res.end(isHead ? undefined : cachedBuf);
+        return;
+      }
+      headers['Content-Length'] = fileSize;
       res.writeHead(200, headers);
-      const stream = fs.createReadStream(resolvedPath);
+      if (isHead) {
+        res.end();
+        return;
+      }
+      if (fileSize <= MAX_STATIC_MEM_CACHE_BYTES) {
+        fs.readFile(filePathToRead, (readErr, buf) => {
+          if (readErr) {
+            if (!res.writableEnded) res.end();
+            return;
+          }
+          setStaticMemCache(cacheKey, stamp, buf);
+          res.end(buf);
+        });
+        return;
+      }
+      const stream = fs.createReadStream(filePathToRead);
       stream.on('error', () => {
         if (!res.writableEnded) res.end();
       });
       stream.pipe(res);
+    };
+
+    const tryGzipOrRaw = () => {
+      if (acceptsGzip) {
+        const precompressedGzPath = `${resolvedPath}.gz`;
+        fs.stat(precompressedGzPath, (gzErr, gzStats) => {
+          if (!gzErr && gzStats.isFile() && gzStats.mtimeMs + 2000 >= stats.mtimeMs) {
+            sendEncodedBufferOrFile('gzip', precompressedGzPath, gzStats.size);
+            return;
+          }
+          headers['Content-Encoding'] = 'gzip';
+          res.writeHead(200, headers);
+          if (isHead) {
+            res.end();
+            return;
+          }
+          const rawStream = fs.createReadStream(resolvedPath);
+          const gzipStream = zlib.createGzip({ level: 6 });
+          rawStream.on('error', () => { if (!res.writableEnded) res.end(); });
+          gzipStream.on('error', () => { if (!res.writableEnded) res.end(); });
+          rawStream.pipe(gzipStream).pipe(res);
+        });
+        return;
+      }
+      sendEncodedBufferOrFile('', resolvedPath, stats.size);
+    };
+
+    if (acceptsBr) {
+      const precompressedBrPath = `${resolvedPath}.br`;
+      fs.stat(precompressedBrPath, (brErr, brStats) => {
+        if (!brErr && brStats.isFile() && brStats.mtimeMs + 2000 >= stats.mtimeMs) {
+          sendEncodedBufferOrFile('br', precompressedBrPath, brStats.size);
+          return;
+        }
+        tryGzipOrRaw();
+      });
+    } else {
+      tryGzipOrRaw();
     }
   });
 }
 
 const server = http.createServer(async (req, res) => {
+  res._acceptEncoding = String(req.headers['accept-encoding'] || '');
+  res._reqMethod = req.method || 'GET';
   try {
     const parsedUrl = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
     const pathname = parsedUrl.pathname;

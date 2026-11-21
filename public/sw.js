@@ -1,5 +1,5 @@
 // 星语恋庭 · PWA 极速离线与边缘加速 Service Worker
-const CACHE_VERSION = 'star-whisper-v20261120-instant-boot-v5';
+const CACHE_VERSION = 'star-whisper-v20261121-nav198-v16';
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const ASSETS_CACHE = `${CACHE_VERSION}-assets`;
 const MAX_STATIC_CACHE_ENTRIES = 80;
@@ -39,6 +39,7 @@ self.addEventListener('fetch', (event) => {
   if (req.method !== 'GET') return;
 
   const url = new URL(req.url);
+  if (url.origin !== self.location.origin) return;
 
   // 1. 动态接口、主页面 HTML 导航与 APK 大文件下载直连绕过（避免 SW 唤醒等待阻塞首屏推门渲染）
   if (
@@ -60,7 +61,7 @@ self.addEventListener('fetch', (event) => {
         return cache.match(req).then((cached) => {
           if (cached) return cached;
           return fetch(req).then((networkRes) => {
-            if (networkRes && networkRes.status === 200) {
+            if (networkRes && networkRes.status === 200 && networkRes.type === 'basic') {
               cache.put(req, networkRes.clone());
             }
             return networkRes;
@@ -69,5 +70,50 @@ self.addEventListener('fetch', (event) => {
       })
     );
     return;
+  }
+
+  // 3. JS 脚本与 CSS 样式表缓存策略
+  if (url.pathname.endsWith('.js') || url.pathname.endsWith('.css')) {
+    const hasVersionFingerprint = Boolean(url.searchParams.get('v'));
+
+    // 带版本指纹：Cache-First 零等待本地秒开
+    if (hasVersionFingerprint) {
+      event.respondWith(
+        caches.open(STATIC_CACHE).then((cache) => {
+          return cache.match(req).then((cached) => {
+            if (cached) return cached;
+            return fetch(req).then((networkRes) => {
+              if (networkRes && networkRes.status === 200 && networkRes.type === 'basic') {
+                event.waitUntil(putAndTrimStaticCache(req, networkRes.clone()).catch(() => {}));
+              }
+              return networkRes;
+            });
+          });
+        })
+      );
+      return;
+    }
+
+    // 无版本指纹：Stale-While-Revalidate 优先返回缓存并后台静默刷新
+    event.respondWith(
+      caches.open(STATIC_CACHE).then((cache) => {
+        return cache.match(req).then((cached) => {
+          const networkFetch = fetch(req)
+            .then((networkRes) => {
+              if (networkRes && networkRes.status === 200 && networkRes.type === 'basic') {
+                event.waitUntil(putAndTrimStaticCache(req, networkRes.clone()).catch(() => {}));
+              }
+              return networkRes;
+            })
+            .catch(() => cached);
+
+          if (cached) {
+            event.waitUntil(networkFetch.catch(() => {}));
+            return cached;
+          }
+          return networkFetch;
+        });
+      })
+    );
   }
 });

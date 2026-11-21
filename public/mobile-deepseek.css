@@ -255,6 +255,499 @@
 }
 
 /* --------------------------------------------------------------------------
+   1.5 统一高质感设置二级 Sheet (#mfs-sub-sheet · 遵循 myui 8px 栅格与同心圆角规范)
+   -------------------------------------------------------------------------- */
+.mfs-sub-sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 100020;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.mfs-sub-sheet.hidden {
+  display: none !important;
+}
+
+.mfs-sub-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+.mfs-sub-card {
+  position: relative;
+  width: min(100vw, 480px);
+  max-height: min(86dvh, 680px);
+  background: light-dark(#ffffff, #1b1e29);
+  color: light-dark(#0f172a, #f1f5f9);
+  border-radius: 22px 22px 0 0;
+  border-top: 1px solid light-dark(rgba(15, 23, 42, 0.06), rgba(255, 255, 255, 0.1));
+  box-shadow: 0 -10px 36px rgba(15, 23, 42, 0.16);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+@media (min-width: 640px) {
+  .mfs-sub-sheet {
+    justify-content: center;
+    padding: 20px;
+  }
+  .mfs-sub-card {
+    border-radius: 22px;
+    border: 1px solid light-dark(rgba(15, 23, 42, 0.08), rgba(255, 255, 255, 0.1));
+    box-shadow: 0 20px 54px rgba(15, 23, 42, 0.22);
+    padding-bottom: 0;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .mfs-sub-card {
+    animation: mfsSheetUp 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+}
+
+@keyframes mfsSheetUp {
+  from {
+    transform: translateY(26px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.mfs-sub-grabber {
+  width: 36px;
+  height: 4px;
+  border-radius: 999px;
+  background: light-dark(#cbd5e1, rgba(255, 255, 255, 0.2));
+  margin: 10px auto 2px;
+  flex-shrink: 0;
+}
+
+@media (min-width: 640px) {
+  .mfs-sub-grabber {
+    display: none;
+  }
+}
+
+.mfs-sub-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 18px 12px;
+  border-bottom: 1px solid light-dark(rgba(15, 23, 42, 0.06), rgba(255, 255, 255, 0.08));
+  flex-shrink: 0;
+}
+
+.mfs-sub-title-group {
+  flex: 1;
+  min-width: 0;
+}
+
+.mfs-sub-title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.3;
+  color: light-dark(#0f172a, #f8fafc);
+}
+
+.mfs-sub-subtitle {
+  margin: 4px 0 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: light-dark(#64748b, #94a3b8);
+}
+
+.mfs-sub-close {
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: none;
+  background: light-dark(#f1f5f9, rgba(255, 255, 255, 0.08));
+  color: light-dark(#475569, #cbd5e1);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background-color 0.15s ease, transform 0.15s ease;
+}
+
+.mfs-sub-close:active {
+  transform: scale(0.92);
+}
+
+.mfs-sub-body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.mfs-sub-footer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 18px 16px;
+  border-top: 1px solid light-dark(rgba(15, 23, 42, 0.06), rgba(255, 255, 255, 0.08));
+  background: light-dark(#fafbfc, rgba(0, 0, 0, 0.14));
+  flex-shrink: 0;
+}
+
+.mfs-sub-footer.hidden {
+  display: none !important;
+}
+
+/* 单选卡片列表 */
+.mfs-opt-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.mfs-opt-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 13px 14px;
+  min-height: 52px;
+  border-radius: 14px;
+  border: 1px solid light-dark(rgba(15, 23, 42, 0.08), rgba(255, 255, 255, 0.09));
+  background: light-dark(#f8fafc, rgba(255, 255, 255, 0.03));
+  color: light-dark(#0f172a, #f1f5f9);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.16s ease, background-color 0.16s ease, transform 0.14s ease;
+}
+
+.mfs-opt-item:active {
+  transform: scale(0.985);
+}
+
+.mfs-opt-item.is-selected {
+  border-color: #4d6bfe;
+  background: light-dark(rgba(77, 107, 254, 0.08), rgba(77, 107, 254, 0.16));
+}
+
+.mfs-opt-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.mfs-opt-title {
+  font-size: 14.5px;
+  font-weight: 600;
+  color: light-dark(#0f172a, #f8fafc);
+}
+
+.mfs-opt-desc {
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: light-dark(#64748b, #94a3b8);
+}
+
+.mfs-opt-check {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border: 1.5px solid light-dark(#cbd5e1, rgba(255, 255, 255, 0.22));
+  color: transparent;
+  transition: all 0.16s ease;
+}
+
+.mfs-opt-item.is-selected .mfs-opt-check {
+  background: #4d6bfe;
+  border-color: #4d6bfe;
+  color: #ffffff;
+}
+
+/* 表单输入与焦点环 */
+.mfs-field-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mfs-field-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: light-dark(#334155, #cbd5e1);
+}
+
+.mfs-sheet-input-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.mfs-sheet-input,
+.mfs-sheet-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border-radius: 12px;
+  border: 1px solid light-dark(rgba(15, 23, 42, 0.12), rgba(255, 255, 255, 0.16));
+  background: light-dark(#f8fafc, #131620);
+  color: light-dark(#0f172a, #f8fafc);
+  font-size: 14.5px;
+  line-height: 1.5;
+  padding: 11px 14px;
+  transition: border-color 0.16s ease, box-shadow 0.16s ease, background-color 0.16s ease;
+}
+
+.mfs-sheet-input-wrap .mfs-sheet-input {
+  padding-right: 44px;
+}
+
+.mfs-sheet-textarea {
+  min-height: 110px;
+  resize: vertical;
+  font-family: inherit;
+}
+
+.mfs-sheet-input:focus,
+.mfs-sheet-textarea:focus {
+  outline: none;
+  border-color: #4d6bfe;
+  background: light-dark(#ffffff, #161925);
+  box-shadow: 0 0 0 3px rgba(77, 107, 254, 0.18);
+}
+
+.mfs-sheet-eye-btn {
+  position: absolute;
+  right: 6px;
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  border: none;
+  background: transparent;
+  color: light-dark(#64748b, #94a3b8);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+/* 快捷预设胶囊 & 字号实时预览卡 */
+.mfs-preset-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.mfs-preset-chip {
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid light-dark(rgba(15, 23, 42, 0.1), rgba(255, 255, 255, 0.14));
+  background: light-dark(#f1f5f9, rgba(255, 255, 255, 0.06));
+  color: light-dark(#334155, #e2e8f0);
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.mfs-preset-chip:hover {
+  border-color: #4d6bfe;
+  color: #4d6bfe;
+}
+
+.mfs-font-preview-card {
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: light-dark(#f8fafc, rgba(255, 255, 255, 0.04));
+  border: 1px solid light-dark(rgba(15, 23, 42, 0.07), rgba(255, 255, 255, 0.08));
+}
+
+.mfs-font-preview-tag {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  color: #4d6bfe;
+  margin-bottom: 6px;
+}
+
+.mfs-font-preview-text {
+  margin: 0;
+  color: light-dark(#1e293b, #e2e8f0);
+  line-height: 1.6;
+}
+
+/* DeepSeek 官网获取密钥引导卡片与直达按钮 */
+.mfs-official-guide-box {
+  padding: 14px 15px;
+  border-radius: 14px;
+  background: light-dark(rgba(77, 107, 254, 0.06), rgba(77, 107, 254, 0.12));
+  border: 1px solid light-dark(rgba(77, 107, 254, 0.18), rgba(77, 107, 254, 0.28));
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.mfs-official-steps {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: light-dark(#334155, #cbd5e1);
+}
+
+.mfs-official-link-btn {
+  width: 100%;
+  min-height: 42px;
+  padding: 9px 14px;
+  border-radius: 11px;
+  border: none;
+  background: linear-gradient(135deg, #4d6bfe, #6366f1);
+  color: #ffffff;
+  font-size: 13.5px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(77, 107, 254, 0.24);
+  transition: filter 0.15s ease, transform 0.15s ease;
+}
+
+.mfs-official-link-btn:active {
+  transform: scale(0.98);
+}
+
+/* 结构化协议/帮助信息块 */
+.mfs-info-block {
+  padding: 13px 14px;
+  border-radius: 14px;
+  background: light-dark(#f8fafc, rgba(255, 255, 255, 0.04));
+  border: 1px solid light-dark(rgba(15, 23, 42, 0.07), rgba(255, 255, 255, 0.08));
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.mfs-info-block h4 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: light-dark(#0f172a, #f8fafc);
+}
+
+.mfs-info-block p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: light-dark(#475569, #cbd5e1);
+}
+
+.mfs-help-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.mfs-help-tag {
+  padding: 4px 9px;
+  border-radius: 8px;
+  background: light-dark(#ffffff, rgba(255, 255, 255, 0.06));
+  border: 1px solid light-dark(rgba(15, 23, 42, 0.08), rgba(255, 255, 255, 0.1));
+  font-size: 12px;
+  color: light-dark(#334155, #e2e8f0);
+}
+
+/* 高危操作确认提示图标 */
+.mfs-danger-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 8px;
+  padding: 8px 6px 4px;
+}
+
+.mfs-danger-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  background: rgba(239, 68, 68, 0.12);
+  color: #ef4444;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mfs-danger-hero p {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: light-dark(#475569, #cbd5e1);
+}
+
+/* Sheet 底部操作按钮 */
+.mfs-sheet-btn-primary,
+.mfs-sheet-btn-secondary,
+.mfs-sheet-btn-danger {
+  flex: 1;
+  min-height: 44px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  font-size: 14.5px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: filter 0.15s ease, transform 0.14s ease, background-color 0.15s ease;
+}
+
+.mfs-sheet-btn-primary {
+  border: none;
+  background: #4d6bfe;
+  color: #ffffff;
+}
+
+.mfs-sheet-btn-secondary {
+  border: 1px solid light-dark(rgba(15, 23, 42, 0.12), rgba(255, 255, 255, 0.15));
+  background: light-dark(#ffffff, rgba(255, 255, 255, 0.06));
+  color: light-dark(#334155, #e2e8f0);
+}
+
+.mfs-sheet-btn-danger {
+  border: none;
+  background: #ef4444;
+  color: #ffffff;
+}
+
+.mfs-sheet-btn-primary:active,
+.mfs-sheet-btn-secondary:active,
+.mfs-sheet-btn-danger:active {
+  transform: scale(0.98);
+}
+
+/* --------------------------------------------------------------------------
    2. 手机端（<=860px）极简三段顶栏 + 按模式严格隔离的全屏聊天规范
    -------------------------------------------------------------------------- */
 @media (max-width: 860px) {
@@ -268,7 +761,6 @@
   .ds-preview-icon-btn,
   .studio-drawer-toggle,
   .proactive-trigger-btn,
-  #topbar-apk-download-btn,
   .apk-pill-tag,
   #topbar-companion-btn,
   #topbar-script-switch-btn,
@@ -343,14 +835,14 @@
     display: none !important;
   }
 
-  /* 绝对居中单行对话标题 */
+  /* 绝对居中单行对话标题（避让左侧汉堡与右侧下载/操作按钮，防止窄屏重叠） */
   .ds-topbar-meta,
   .active-persona-chip {
     position: absolute !important;
-    left: 50% !important;
+    left: calc(48px + (100vw - 208px) / 2) !important;
     top: 50% !important;
     transform: translate(-50%, -50%) !important;
-    max-width: calc(100vw - 172px) !important;
+    max-width: calc(100vw - 216px) !important;
     margin: 0 !important;
     pointer-events: none !important;
     justify-content: center !important;
@@ -359,7 +851,7 @@
   .ds-topbar-title,
   .persona-chip-name {
     display: block !important;
-    max-width: calc(100vw - 172px) !important;
+    max-width: calc(100vw - 216px) !important;
     font-size: 15.5px !important;
     font-weight: 700 !important;
     color: light-dark(#0f172a, #f8fafc) !important;
@@ -367,6 +859,38 @@
     overflow: hidden !important;
     text-overflow: ellipsis !important;
     text-align: center !important;
+  }
+
+  /* 手机端网页版顶栏醒目下载 App 紧凑胶囊按钮（原生 APK 内自动隐藏） */
+  #topbar-apk-download-btn.apk-topbar-pill-btn {
+    display: inline-flex !important;
+    height: 30px !important;
+    min-height: 30px !important;
+    padding: 0 9px !important;
+    gap: 4px !important;
+    border-radius: 999px !important;
+    font-size: 12px !important;
+  }
+
+  #topbar-apk-download-btn.apk-topbar-pill-btn .apk-pill-label {
+    font-size: 11.5px !important;
+  }
+
+  #topbar-apk-download-btn.hidden,
+  .in-native-apk #topbar-apk-download-btn {
+    display: none !important;
+  }
+
+  /* 当处于原生 APK 时（无下载胶囊），恢复更大居中标题空间 */
+  .in-native-apk .ds-topbar-meta,
+  .in-native-apk .active-persona-chip {
+    left: 50% !important;
+    max-width: calc(100vw - 172px) !important;
+  }
+
+  .in-native-apk .ds-topbar-title,
+  .in-native-apk .persona-chip-name {
+    max-width: calc(100vw - 172px) !important;
   }
 
   .app-shell[data-ui-mode="phone-agent"] .ds-topbar-meta {
@@ -435,6 +959,9 @@
     justify-content: flex-end !important;
     padding: 4px 10px max(6px, env(safe-area-inset-bottom, 0px)) !important;
   }
+  .app-shell[data-ui-mode="phone-agent"].pa-web-unavailable .composer-dock {
+    display: none !important;
+  }
   .app-shell[data-ui-mode="phone-agent"] .ds-home-greeting {
     display: none !important;
   }
@@ -448,23 +975,27 @@
     height: 100dvh !important;
   }
 
-  .messages-viewport {
-    padding: 10px 12px 96px 12px !important;
+  .messages-viewport,
+  .app-shell[data-ui-mode="roleplay"] .messages-viewport,
+  .app-shell[data-ui-mode="deepseek"] .messages-viewport,
+  .app-shell[data-ui-mode="phone-agent"] .messages-viewport {
+    padding: 10px 12px calc(var(--mobile-composer-h, 78px) + 28px + env(safe-area-inset-bottom, 0px)) 12px !important;
+    scroll-padding-bottom: calc(var(--mobile-composer-h, 78px) + 28px + env(safe-area-inset-bottom, 0px)) !important;
     width: 100% !important;
     max-width: 100% !important;
     box-sizing: border-box !important;
   }
 
-  .app-shell[data-ui-mode="phone-agent"] .messages-viewport {
-    padding: 8px 12px 72px 12px !important;
-  }
-
-  .messages-container {
+  .messages-container,
+  .app-shell[data-ui-mode="roleplay"] .messages-container,
+  .app-shell[data-ui-mode="deepseek"] .messages-container,
+  .app-shell[data-ui-mode="phone-agent"] .messages-container {
     width: 100% !important;
     max-width: 100% !important;
     display: flex !important;
     flex-direction: column !important;
     gap: 16px !important;
+    padding-bottom: 12px !important;
   }
 
   /* DeepSeek & Phone Agent 气泡规范 */
@@ -646,16 +1177,16 @@
     opacity: 1 !important;
   }
 
-  /* 底部悬浮输入舱（移动端整体瘦身，释放更多阅读视口） */
+  /* 底部悬浮输入舱（移动端超紧凑瘦身，降低上下占用并确保不遮挡回复） */
   .composer-dock {
     position: fixed !important;
     bottom: 0 !important;
     left: 0 !important;
     right: 0 !important;
-    padding: 4px 10px calc(env(safe-area-inset-bottom, 6px) + 4px) 10px !important;
+    padding: 2px 10px calc(env(safe-area-inset-bottom, 0px) + 4px) 10px !important;
     background: light-dark(
-      linear-gradient(180deg, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0.96) 28%, #ffffff 100%),
-      linear-gradient(180deg, rgba(18, 20, 26, 0) 0%, rgba(18, 20, 26, 0.96) 28%, #12141a 100%)
+      linear-gradient(180deg, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0.96) 24%, #ffffff 100%),
+      linear-gradient(180deg, rgba(18, 20, 26, 0) 0%, rgba(18, 20, 26, 0.96) 24%, #12141a 100%)
     ) !important;
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
@@ -664,24 +1195,34 @@
   }
 
   .composer-card {
-    border-radius: 18px !important;
-    padding: 7px 11px 6px 11px !important;
+    border-radius: 16px !important;
+    padding: 4px 10px 3px 10px !important;
+    gap: 2px !important;
     background: light-dark(#ffffff, #1a1d27) !important;
     border: 1px solid light-dark(rgba(0, 0, 0, 0.08), rgba(255, 255, 255, 0.12)) !important;
     box-shadow: 0 3px 16px rgba(0, 0, 0, 0.06) !important;
   }
 
-  .composer-card textarea#chat-input {
+  .composer-card textarea#chat-input,
+  .app-shell[data-ui-mode="roleplay"] .composer-card textarea#chat-input,
+  .app-shell[data-ui-mode="deepseek"] .composer-card textarea#chat-input {
     border: none !important;
     background: transparent !important;
-    font-size: 14.5px !important;
-    line-height: 1.42 !important;
-    padding: 2px 0 3px 0 !important;
-    min-height: 24px !important;
-    min-block-size: 1.35lh !important;
-    max-block-size: 4.5lh !important;
+    font-size: 14px !important;
+    line-height: 1.3 !important;
+    padding: 0 2px !important;
+    margin: 0 !important;
+    min-height: 19px !important;
+    min-block-size: 1.05lh !important;
+    max-block-size: 4lh !important;
     box-shadow: none !important;
     color: light-dark(#0f172a, #f8fafc) !important;
+  }
+
+  .composer-card textarea#chat-input:placeholder-shown {
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
   }
 
   .composer-card textarea#chat-input::placeholder {
@@ -692,23 +1233,42 @@
     display: flex !important;
     align-items: center !important;
     justify-content: space-between !important;
-    padding-top: 4px !important;
+    padding-top: 2px !important;
+    margin-top: 0 !important;
+    min-height: 26px !important;
     border-top: 1px solid light-dark(rgba(0, 0, 0, 0.04), rgba(255, 255, 255, 0.05)) !important;
   }
 
-  .ds-pill-toggle {
+  .composer-toggles .pill-btn,
+  .ds-pill-toggle,
+  .app-shell[data-ui-mode="deepseek"] .ds-pill-toggle,
+  .app-shell[data-ui-mode="roleplay"] .composer-toggles .pill-btn {
     display: inline-flex !important;
     align-items: center !important;
     gap: 4px !important;
-    height: 28px !important;
-    padding: 0 9px !important;
+    height: 24px !important;
+    min-height: 24px !important;
+    padding: 0 8px !important;
     border-radius: 9999px !important;
-    font-size: 11.5px !important;
+    font-size: 11px !important;
     font-weight: 600 !important;
     border: 1px solid light-dark(rgba(0, 0, 0, 0.1), rgba(255, 255, 255, 0.15)) !important;
     background: light-dark(#f8fafc, rgba(255, 255, 255, 0.06)) !important;
     color: light-dark(#475569, #cbd5e1) !important;
     transition: background-color 0.18s ease, border-color 0.18s ease, color 0.18s ease !important;
+  }
+
+  .composer-actions .icon-btn,
+  .composer-actions .attach-icon-btn,
+  .composer-actions .send-btn,
+  .app-shell[data-ui-mode="roleplay"] .composer-actions .send-btn,
+  .app-shell[data-ui-mode="deepseek"] .composer-actions .send-btn,
+  .app-shell[data-ui-mode="deepseek"] .composer-actions .attach-icon-btn {
+    width: 28px !important;
+    height: 28px !important;
+    min-width: 28px !important;
+    min-height: 28px !important;
+    padding: 0 !important;
   }
 
   .ds-pill-toggle.active,
@@ -723,14 +1283,14 @@
     display: none !important;
   }
 
-  /* phone-agent 模式专用超薄单行胶囊输入舱（总高度约 50px） */
+  /* phone-agent 模式专用超薄单行胶囊输入舱（总高度约 46px） */
   .app-shell[data-ui-mode="phone-agent"] .composer-card {
     display: flex !important;
     flex-direction: row !important;
     align-items: flex-end !important;
     gap: 6px !important;
-    padding: 5px 7px 5px 12px !important;
-    border-radius: 22px !important;
+    padding: 4px 7px 4px 11px !important;
+    border-radius: 20px !important;
   }
 
   .app-shell[data-ui-mode="phone-agent"] .composer-card textarea#chat-input {

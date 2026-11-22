@@ -794,6 +794,13 @@
     display: none !important;
   }
 
+  /* 移动端顶栏已有唯一设置齿轮入口，收口左下角菜单中重复的设置/皮肤/头像项，避免多处重复 */
+  #ds-user-popover #ds-menu-settings-btn,
+  #ds-user-popover #ds-menu-skin-studio-btn,
+  #ds-user-popover #ds-menu-avatar-studio-btn {
+    display: none !important;
+  }
+
   /* 剧场模式：右侧仅留「养成」与「⋯」2 个按钮，隐藏 DeepSeek 新对话与全局设置图标 */
   .app-shell[data-ui-mode="roleplay"] #ds-topbar-new-btn,
   .app-shell[data-ui-mode="roleplay"] #ds-topbar-mobile-settings-btn {

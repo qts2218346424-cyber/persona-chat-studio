@@ -374,8 +374,48 @@ function listPersonasForUser(userId) {
   const rows = db
     .prepare("SELECT * FROM personas WHERE user_id = ? OR user_id = 'system' ORDER BY CASE WHEN user_id = ? THEN 0 ELSE 1 END, updated_at DESC")
     .all(userId, userId);
-  return rows.map(formatPersonaRow);
+  let avMap = new Map();
+  try {
+    const ovRows = db
+      .prepare('SELECT persona_id, avatar_url FROM user_persona_avatars WHERE user_id = ?')
+      .all(userId);
+    avMap = new Map(ovRows.map((r) => [r.persona_id, r.avatar_url]));
+  } catch {}
+  return rows.map((r) => {
+    const formatted = formatPersonaRow(r);
+    if (avMap.has(formatted.id)) {
+      formatted.avatar = avMap.get(formatted.id);
+    }
+    return formatted;
+  });
 }
+
+const BUILTIN_ANIME_AVATARS = [
+  { id: 'anime_shenxinghui', name: '沈星回 · 星穹占星师', url: '/assets/avatars/shenxinghui.jpg', category: 'male' },
+  { id: 'anime_luchen', name: '陆沉 · 暗夜执行官', url: '/assets/avatars/luchen.jpg', category: 'male' },
+  { id: 'anime_xieqingyan', name: '谢清晏 · 长安谋士', url: '/assets/avatars/xieqingyan.jpg', category: 'ancient' },
+  { id: 'anime_jiangyubai', name: '江逾白 · 霜华剑尊', url: '/assets/avatars/jiangyubai.jpg', category: 'ancient' },
+  { id: 'anime_jiran', name: '季燃 · 电竞少年', url: '/assets/avatars/jiran.jpg', category: 'modern' },
+  { id: 'anime_guxiuyuan', name: '顾修远 · 都市家主', url: '/assets/avatars/guxiuyuan.jpg', category: 'male' },
+  { id: 'anime_suwanqing', name: '苏晚晴 · 高冷御姐', url: '/assets/avatars/suwanqing.jpg', category: 'female' },
+  { id: 'anime_yunzhiyao', name: '云知遥 · 仙侠师姐', url: '/assets/avatars/yunzhiyao.jpg', category: 'ancient' },
+  { id: 'anime_xia_ningmeng', name: '夏柠萌 · 元气甜妹', url: '/assets/avatars/xia_ningmeng.jpg', category: 'female' },
+  { id: 'anime_yan_feiyu', name: '燕绯羽 · 魅惑歌姬', url: '/assets/avatars/yan_feiyu.jpg', category: 'female' },
+  { id: 'anime_nagisa', name: '星野汐 · 樱花少女', url: '/assets/avatars/nagisa_sakura.jpg', category: 'female' },
+  { id: 'anime_kyou', name: '藤井杏奈 · 元气班长', url: '/assets/avatars/kagaribi_kyou.jpg', category: 'female' },
+  { id: 'anime_kotomi', name: '一之濑琴音 · 图书室少女', url: '/assets/avatars/ichinose_kotomi.jpg', category: 'female' },
+  { id: 'anime_rin', name: '白石凛 · 观测者少年', url: '/assets/avatars/shiraishi_rin.jpg', category: 'male' },
+  { id: 'anime_makise', name: '牧濑栖 · 天才研究员', url: '/assets/avatars/makise_sei.jpg', category: 'female' },
+  { id: 'anime_mio', name: '朝雾澪 · 神社青梅', url: '/assets/avatars/asagiri_mio.jpg', category: 'female' },
+  { id: 'anime_violet', name: '伊芙琳 · 代笔少女', url: '/assets/avatars/violet_eve.jpg', category: 'female' },
+  { id: 'anime_hodgins', name: '霍金斯 · 绅士社长', url: '/assets/avatars/hodgins_landon.jpg', category: 'male' },
+  { id: 'anime_shuer', name: '修尔 · 半精灵旅人', url: '/assets/avatars/frieren_shuer.jpg', category: 'ancient' },
+  { id: 'anime_fer', name: '菲尔 · 少年剑士', url: '/assets/avatars/stark_fer.jpg', category: 'ancient' },
+  { id: 'anime_char_linzhi', name: '林知夏 · 插画师室友', url: '/assets/avatars/char_linzhi.jpg', category: 'modern' },
+  { id: 'anime_char_chenmo', name: '陈默 · 温柔程序员', url: '/assets/avatars/char_chenmo.jpg', category: 'modern' },
+  { id: 'anime_char_shiyu', name: '诗语 · 邻家闺蜜', url: '/assets/avatars/char_shiyu.jpg', category: 'modern' },
+  { id: 'anime_char_zhouyan', name: '周晏 · 阳光发小', url: '/assets/avatars/char_zhouyan.jpg', category: 'modern' }
+];
 
 function listSessionsForUser(userId) {
   const rows = db
@@ -2011,26 +2051,39 @@ async function handleApi(req, res, pathname, parsedUrl) {
       : [];
     const rawGender = String(body.gender || '').trim().toLowerCase();
     const cleanGender = rawGender === 'female' || rawGender === 'male' ? rawGender : '';
-    const defaultAvatar = cleanGender === 'male' ? '✨' : '🌸';
-    // 独立自建角色默认归入通用「心动角色全集」，防止误继承其他主题剧本的特定身份导致串戏
-    const rawScriptId = String(body.script_id || 'script_classic').trim();
+    const cardMode = body.card_mode === 'character' ? 'character' : 'script';
+    const userCallName = String(body.user_call_name || '').trim().slice(0, 32);
+    const defaultAvatar =
+      cardMode === 'character'
+        ? cleanGender === 'male'
+          ? '/assets/avatars/char_chenmo.jpg'
+          : '/assets/avatars/char_linzhi.jpg'
+        : cleanGender === 'male'
+        ? '/assets/avatars/shenxinghui.jpg'
+        : '/assets/avatars/xia_ningmeng.jpg';
+    // 独立自建角色默认归入通用「心动角色全集」或「角色演绎」，防止误继承其他主题剧本的特定身份导致串戏
+    const rawScriptId = String(body.script_id || (cardMode === 'character' ? 'script_character_mode' : 'script_classic')).trim();
     const isAdoptedScript = Boolean(
       db.prepare('SELECT 1 FROM user_scripts WHERE id = ? AND source_share_id IS NOT NULL').get(rawScriptId)
     );
     const safeScriptId =
-      rawScriptId.startsWith('usc_') && !isAdoptedScript && /【所属剧本/.test(String(body.backstory || ''))
+      cardMode === 'character'
+        ? 'script_character_mode'
+        : rawScriptId.startsWith('usc_') && !isAdoptedScript && /【所属剧本/.test(String(body.backstory || ''))
         ? rawScriptId
         : 'script_classic';
 
     db.prepare(`
       INSERT INTO personas (
-        id, user_id, script_id, gender, name, avatar, tagline, personality, backstory, speaking_style, greeting, starter_prompts, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        id, user_id, script_id, gender, card_mode, user_call_name, name, avatar, tagline, personality, backstory, speaking_style, greeting, starter_prompts, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id,
       userId,
       safeScriptId,
       cleanGender,
+      cardMode,
+      userCallName,
       name,
       (body.avatar || defaultAvatar).trim(),
       (body.tagline || '').trim(),
@@ -2114,15 +2167,27 @@ async function handleApi(req, res, pathname, parsedUrl) {
         body.category_tag !== undefined
           ? String(body.category_tag).trim() || existing.category_tag || '温柔治愈'
           : existing.category_tag || '温柔治愈';
+      const nextCardMode =
+        body.card_mode !== undefined
+          ? body.card_mode === 'character'
+            ? 'character'
+            : 'script'
+          : existing.card_mode || 'script';
+      const nextUserCallName =
+        body.user_call_name !== undefined
+          ? String(body.user_call_name || '').trim().slice(0, 32)
+          : existing.user_call_name || '';
 
       db.prepare(`
         UPDATE personas
-        SET script_id = ?, gender = ?, category_tag = ?, name = ?, avatar = ?, tagline = ?, personality = ?, backstory = ?, speaking_style = ?, greeting = ?, starter_prompts = ?, updated_at = ?
+        SET script_id = ?, gender = ?, category_tag = ?, card_mode = ?, user_call_name = ?, name = ?, avatar = ?, tagline = ?, personality = ?, backstory = ?, speaking_style = ?, greeting = ?, starter_prompts = ?, updated_at = ?
         WHERE id = ?
       `).run(
         nextScriptId,
         nextGender,
         nextCategoryTag,
+        nextCardMode,
+        nextUserCallName,
         (body.name ?? existing.name).trim() || existing.name,
         (body.avatar ?? existing.avatar).trim() || '🌸',
         (body.tagline ?? existing.tagline).trim(),

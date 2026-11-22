@@ -100,9 +100,9 @@
       pointer-events: none !important;
     }
   </style>
-  <link rel="preload" href="./dist/app.bundle.css?v=20261122_v205_release" as="style" />
-  <link rel="preload" href="./dist/app.bundle.js?v=20261122_v205_release" as="script" />
-  <link rel="stylesheet" href="./dist/app.bundle.css?v=20261122_v205_release" />
+  <link rel="preload" href="./dist/app.bundle.css?v=20261122_v205_fix_skin_dedup" as="style" />
+  <link rel="preload" href="./dist/app.bundle.js?v=20261122_v205_fix_skin_dedup" as="script" />
+  <link rel="stylesheet" href="./dist/app.bundle.css?v=20261122_v205_fix_skin_dedup" />
 </head>
 <body data-ui-mode="deepseek">
   <div id="skin-wallpaper-layer" class="skin-wallpaper-layer" aria-hidden="true"></div>
@@ -577,7 +577,7 @@
             <button type="button" class="admin-entry-mini-btn hidden" id="open-admin-console-btn" title="站长管理后台" aria-label="管理后台">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
             </button>
-            <button type="button" class="icon-btn" id="sidebar-apk-download-btn" title="下载 Android 原生随身版 (APK) · 含 Phone Agent" aria-label="安卓随身版">
+            <button type="button" class="icon-btn hidden" id="sidebar-apk-download-btn" title="下载 Android 原生随身版 (APK) · 含 Phone Agent" aria-label="安卓随身版">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect><line x1="12" y1="18" x2="12.01" y2="18"></line></svg>
             </button>
             <button type="button" class="icon-btn" id="sidebar-skin-studio-btn" title="免费皮肤与外观工坊" aria-label="外观工坊">
@@ -769,8 +769,8 @@
               </svg>
               <span style="font-weight: 600; color: #b45309;">👑 站长管理后台</span>
             </button>
-            <!-- 随身版快速下载与控制入口 -->
-            <button type="button" class="popover-action-item" id="more-apk-download-btn">
+            <!-- 随身版快速下载与控制入口（已由顶栏与侧栏卡片承载，此处隐藏去重） -->
+            <button type="button" class="popover-action-item hidden" id="more-apk-download-btn">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect>
                 <line x1="12" y1="18" x2="12.01" y2="18"></line>
@@ -801,8 +801,8 @@
               <span>记忆与记录导入导出</span>
             </button>
 
-            <!-- 通用设置入口 -->
-            <button type="button" class="popover-action-item" id="more-open-prefs-btn">
+            <!-- 通用设置入口（已收口至唯一齿轮设置按钮，此处隐藏去重） -->
+            <button type="button" class="popover-action-item hidden" id="more-open-prefs-btn">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <circle cx="12" cy="12" r="3"></circle>
                 <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
@@ -3453,27 +3453,27 @@
         </button>
       </div>
     </div>
+  </div>
 
-    <!-- 统一高质感设置二级面板（替换原生 alert/confirm/prompt，遵循 myui 规范） -->
-    <div id="mfs-sub-sheet" class="mfs-sub-sheet hidden" role="dialog" aria-modal="true" aria-labelledby="mfs-sub-title">
-      <div class="mfs-sub-backdrop" id="mfs-sub-backdrop"></div>
-      <div class="mfs-sub-card" id="mfs-sub-card">
-        <div class="mfs-sub-grabber" aria-hidden="true"></div>
-        <div class="mfs-sub-head">
-          <div class="mfs-sub-title-group">
-            <h3 class="mfs-sub-title" id="mfs-sub-title">设置项</h3>
-            <p class="mfs-sub-subtitle hidden" id="mfs-sub-subtitle"></p>
-          </div>
-          <button type="button" class="mfs-sub-close" id="mfs-sub-close" aria-label="关闭子面板">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <line x1="18" y1="6" x2="6" y2="18"></line>
-              <line x1="6" y1="6" x2="18" y2="18"></line>
-            </svg>
-          </button>
+  <!-- 统一高质感设置二级面板（独立挂载于 body 下，确保在主界面直达皮肤工坊时也能立即弹出） -->
+  <div id="mfs-sub-sheet" class="mfs-sub-sheet hidden" role="dialog" aria-modal="true" aria-labelledby="mfs-sub-title">
+    <div class="mfs-sub-backdrop" id="mfs-sub-backdrop"></div>
+    <div class="mfs-sub-card" id="mfs-sub-card">
+      <div class="mfs-sub-grabber" aria-hidden="true"></div>
+      <div class="mfs-sub-head">
+        <div class="mfs-sub-title-group">
+          <h3 class="mfs-sub-title" id="mfs-sub-title">设置项</h3>
+          <p class="mfs-sub-subtitle hidden" id="mfs-sub-subtitle"></p>
         </div>
-        <div class="mfs-sub-body" id="mfs-sub-body"></div>
-        <div class="mfs-sub-footer hidden" id="mfs-sub-footer"></div>
+        <button type="button" class="mfs-sub-close" id="mfs-sub-close" aria-label="关闭子面板">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
       </div>
+      <div class="mfs-sub-body" id="mfs-sub-body"></div>
+      <div class="mfs-sub-footer hidden" id="mfs-sub-footer"></div>
     </div>
   </div>
 
@@ -3699,7 +3699,7 @@
   <!-- 全局 Top-Layer 顶层轻提示胶囊（popover="manual" 确保在任何模态 <dialog> 打开时依然 100% 可见，遵循 persistent-toast-notifications 规范） -->
   <div id="global-top-toast" popover="manual" class="global-top-toast" role="status" aria-live="polite"></div>
 
-  <script defer src="./dist/app.bundle.js?v=20261122_v205_release"></script>
+  <script defer src="./dist/app.bundle.js?v=20261122_v205_fix_skin_dedup"></script>
   <script>
     if ('serviceWorker' in navigator && window.location.protocol.startsWith('http')) {
       window.addEventListener('load', () => {

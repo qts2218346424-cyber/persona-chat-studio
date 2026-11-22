@@ -2997,6 +2997,7 @@ target.closest('#sidebar-open-workshop-btn') ||
 target.closest('#create-persona-btn') ||
 target.closest('#sidebar-import-history-btn') ||
 target.closest('#open-user-persona-btn') ||
+target.closest('#sidebar-skin-studio-btn') ||
 target.closest('#open-settings-btn') ||
 target.closest('#open-admin-console-btn') ||
 target.closest('#logout-btn') ||

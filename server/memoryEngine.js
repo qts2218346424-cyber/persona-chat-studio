@@ -756,6 +756,16 @@ function resolveEffectivePersona(session) {
       greeting: '你好，我们可以开始对话了。'
     };
   }
+  if (session.user_id) {
+    try {
+      const ovAv = db
+        .prepare('SELECT avatar_url FROM user_persona_avatars WHERE user_id = ? AND persona_id = ?')
+        .get(session.user_id, basePersona.id);
+      if (ovAv?.avatar_url) {
+        basePersona = { ...basePersona, avatar: ovAv.avatar_url };
+      }
+    } catch {}
+  }
   if (session.custom_persona_override) {
     try {
       const override = JSON.parse(session.custom_persona_override);
@@ -918,6 +928,7 @@ function buildThreeTierContext({
   const userNick = userRow?.nickname || '旅人';
 
   const isNativeMode = session.session_mode === 'deepseek_native';
+  const isCharacterChat = session.session_mode === 'character_chat';
   const configuredTurns = Math.max(6, parseInt(settings.sliding_window_turns || '40', 10));
   // DeepSeek 原生模式默认启用更深的长上下文记忆窗口（至少 48 条完整消息，除非用户手动调得更高）
   const slidingTurns = isNativeMode ? Math.max(48, configuredTurns) : configuredTurns;
@@ -1002,6 +1013,16 @@ function buildThreeTierContext({
   }
 
   let hasCustomPersonaOverride = false;
+  if (session.user_id) {
+    try {
+      const ovAv = db
+        .prepare('SELECT avatar_url FROM user_persona_avatars WHERE user_id = ? AND persona_id = ?')
+        .get(session.user_id, basePersona.id);
+      if (ovAv?.avatar_url) {
+        basePersona = { ...basePersona, avatar: ovAv.avatar_url };
+      }
+    } catch {}
+  }
   if (session.custom_persona_override) {
     try {
       const parsedOv = JSON.parse(session.custom_persona_override);
@@ -1037,6 +1058,39 @@ function buildThreeTierContext({
       `1. **直击本质、拒绝寒暄套话**：严禁使用“好的，没问题！”、“下面我将从以下几个方面展开”等机械开场白。面对知识、技术、代码或分析类问题，首段直接用 1~3 句话给出核心结论或本质定义，再展开细节。`,
       `2. **按需结构化输出**：简单事实与日常问题用清晰简短的自然段落作答；复杂工程设计、数学推导与方案对比请使用严谨的 Markdown 标题、列表、表格与 LaTeX 公式（行内 \`$...$\`，块级 \`$$...$$\`）；前端可视化需求优先提供完整可运行的单文件 HTML/Canvas/SVG 代码以便用户直接右侧实时预览。`,
       `3. **专业克制与上下文一致**：严禁擅自使用剧本扮演的 \`*星号动作描写*\` 或角色扮演腔调；严格遵循本对话长期记忆与前情摘要中的用户偏好与项目背景约束。`
+    ]
+      .filter(Boolean)
+      .join('\n');
+  } else if (isCharacterChat) {
+    const callName = (rawPersona.user_call_name || '').trim() || (isCustomUserNick ? userNick : '你');
+    const cleanField = (txt) =>
+      String(txt || '')
+        .replace(/【(?:所属剧本|共创剧本)[^】]*】/g, '')
+        .trim();
+    tier1PersonaBlock = [
+      `# 角色演绎 · 真人模拟对话核心协议（最高优先级 · 绝不跳戏、绝不写旁白）`,
+      `你就是「${persona.name}」本人，正在与「${callName}」进行真实、自然、生活化的人类日常对话（就像两个熟悉或刚刚熟络起来的真人在微信聊天或面对面随意交谈）。`,
+      persona.tagline ? `- **你的日常形象与标签**：${cleanField(persona.tagline)}` : '',
+      persona.personality ? `- **你的真实性格与脾气**：${cleanField(persona.personality)}` : '',
+      persona.backstory ? `- **你与对方的关系与生活背景**：${cleanField(persona.backstory)}` : '',
+      persona.speaking_style ? `- **你的说话风格与口癖**：${cleanField(persona.speaking_style)}` : '',
+      `- **你对聊天对象的称呼**：${callName}`,
+      renderedSessionPrompt
+        ? `\n## 🎯 本对话专属设定（仅当前对话生效，优先级最高）\n${renderedSessionPrompt}`
+        : '',
+      `\n## 真人模拟对话三大铁律（违者直接失败，务必严格遵守）`,
+      `1. **🚫 绝对禁止旁白、动作描写与舞台腔**：**严禁出现 \`*任何星号动作描写*\`、\`（任何括号神态/动作旁白）\`、第三人称心理叙述或小说体环境渲染！** 只输出真人嘴巴里直接说出来的话（或直接发出去的微信消息文字）。`,
+      `2. **真实人类聊天节奏与口语呼吸感**：像真人发消息/日常唠嗑一样说话！通常 **1~3 句、10~75 字左右** 即可（只有聊到走心话题或认真分享故事时才自然展开长一点），自带自然口语词、停顿、调侃、反问、接梗或小情绪；禁止写排比抒情小作文，禁止每句末尾都强行抛“A还是B”的选择题。`,
+      `3. **独立活人感与真实边界**：你有自己的真实生活、工作琐事、作息习惯、小脾气和独立观点，不是顺从的 AI 客服。必须第一时间接住「${callName}」刚才说的具体话茬做出真实人类反应；严禁暴露 AI 身份、严禁出现“请问有什么可以帮您”等机械词、严禁编造未曾聊过的虚假记忆。`
+    ]
+      .filter(Boolean)
+      .join('\n');
+
+    dynamicTailStatusBlock = [
+      `## 当前真实相处状态`,
+      `- 亲密程度与关系基调：${nurturing.stage.promptDirective}`,
+      `- 你此刻的心情：${nurturing.current_mood}`,
+      renderedDirectorNote ? `- 当下聊天的补充背景提示：${renderedDirectorNote}` : ''
     ]
       .filter(Boolean)
       .join('\n');
@@ -1084,7 +1138,11 @@ function buildThreeTierContext({
   const thoughtProtocolBlock = isNativeMode
     ? ''
     : enableThought
-    ? `## 角色心声独白协议\n正式回复前先在最开头用 \`<think>...</think>\` 写一小段第一人称真实心理反应（25~70字，紧扣对方刚说的话产生即时情绪波动或吐槽，自然口语化、不要总结规则或写八股），然后在 \`</think>\` 后直接自然接上对话与动作。${followUpTailProtocol}`
+    ? isCharacterChat
+      ? `## 角色即时内心 OS 协议\n正式回复前先在最开头用 \`<think>...</think>\` 写一小段真实的第一人称内心瞬间念头（15~45字，纯口语化心理波动，不要写动作或规则），然后在 \`</think>\` 后直接自然接上你的口语回复。${followUpTailProtocol}`
+      : `## 角色心声独白协议\n正式回复前先在最开头用 \`<think>...</think>\` 写一小段第一人称真实心理反应（25~70字，紧扣对方刚说的话产生即时情绪波动或吐槽，自然口语化、不要总结规则或写八股），然后在 \`</think>\` 后直接自然接上对话与动作。${followUpTailProtocol}`
+    : isCharacterChat
+    ? `## 输出格式要求\n请直接输出真人口语回复内容，绝不输出 \`<think>\` 标签、星号动作或旁白。${followUpTailProtocol}`
     : `## 输出格式要求\n请直接输出角色台词与神态描写，不要输出 \`<think>\` 标签。${followUpTailProtocol}`;
 
   // 第二层：会话级独立长期记忆锚点 + 分层滚动前情摘要 + 世界书词条 + 当前剧本幕次导演指引
@@ -1092,7 +1150,7 @@ function buildThreeTierContext({
   const pinnedMems = recalledMemories.filter((m) => m.pinned === 1);
   const dynamicMems = recalledMemories.filter((m) => m.pinned !== 1);
 
-  if (!isNativeMode) {
+  if (!isNativeMode && !isCharacterChat) {
     const chapters = resolveScriptChaptersForSession(session, rawPersona);
     if (chapters.length > 0) {
       const chapIdx = Math.max(0, Math.min(chapters.length - 1, Number(session.current_chapter_index) || 0));

@@ -357,6 +357,7 @@ body[data-ui-mode="phone-agent"] .auth-gate .info-callout {
   body:has(#auth-gate:not(.hidden)) .chat-stage,
   body:has(#auth-gate:not(.hidden)) #phone-cmd-quick-drawer,
   body:has(#auth-gate:not(.hidden)) #mobile-fullscreen-settings,
+  body:has(#auth-gate:not(.hidden)) #mfs-sub-sheet,
   body:has(#auth-gate:not(.hidden)) .pa-float-btn,
   body:has(#auth-gate:not(.hidden)) .tour-popover,
   body:has(#auth-gate:not(.hidden)) [popover] {

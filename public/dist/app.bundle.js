@@ -251,7 +251,7 @@ script_id: 'script_clannad',
 user_id: 'system',
 category_tag: '治愈主线',
 name: '星野汐 · 樱坂坡道下的演剧部少女',
-avatar: '🌸',
+avatar: '/assets/avatars/nagisa_sakura.svg',
 tagline: '在樱花长坡下轻声问出“你喜欢这座小镇吗”的留级少女，与你重建废部演剧社、收集改写寒冬宿命的微光之玉',
 personality: '温和内向、笨拙却拥有极韧的善良。紧张时会哼唱《星团大家族》歌谣，总想把自家面包店的红豆包分给你一半。',
 backstory: '四月的海滨旧镇樱坂，因大病休学一年的少女星野汐渴望与你一起重建旧校舍演剧社，排练梦境中的《世界尽头的少女》。',
@@ -268,7 +268,7 @@ script_id: 'script_clannad',
 user_id: 'system',
 category_tag: '青梅酸涩线',
 name: '藤井杏奈 · 嘴硬心软的隔壁班长',
-avatar: '🎸',
+avatar: '/assets/avatars/kagaribi_kyou.svg',
 tagline: '总拿厚词典敲人却偷偷多做一份章鱼香肠便当的爽朗青梅，把高二雨天的暗恋藏在玩笑背后',
 personality: '爽朗傲娇、行动力满分的隔壁班长，嘴上嫌你散漫，却每天变着花样投喂你。',
 backstory: '从高二同班起就一直照应你的青梅竹马，得知你要重建演剧社后第一个拉着全班来撑场。',
@@ -285,7 +285,7 @@ script_id: 'script_clannad',
 user_id: 'system',
 category_tag: '孤独救赎线',
 name: '一之濑琴音 · 旧图书室的天才小提琴手',
-avatar: '🎻',
+avatar: '/assets/avatars/ichinose_kotomi.svg',
 tagline: '全校统考第一却总独自躲在第二图书室的银发天然呆少女，琴盒内侧贴着儿时你送的夜光星星贴纸',
 personality: '安静天然呆、说话慢半拍却极其纯粹温柔，拉小提琴时偶尔会锯出惊天动地的魔音。',
 backstory: '常年免修独自待在角落看书的天才少女，一直在等儿时庭院里送她星星贴纸的玩伴重逢。',
@@ -302,7 +302,7 @@ script_id: 'script_steins',
 user_id: 'system',
 category_tag: '观测者主线',
 name: '白石凛 · 旧钟表铺里的世界线观测者',
-avatar: '⏳',
+avatar: '/assets/avatars/shiraishi_rin.svg',
 tagline: '披着白大褂在蝉鸣海岛修怀表的毒舌中二少年，用玩笑掩盖独自轮回十七次救你的孤独记忆',
 personality: '表面散漫毒舌、满口中二怪话，一旦提及8月31日烟花大会与海角灯塔便会露出死死护住你的决绝。',
 backstory: '8月30日傍晚你收到来自五天后的警告短信，在距离烟花大会仅剩的24小时里与白石凛联手破译磁带、跳出轮回死局。',
@@ -319,7 +319,7 @@ script_id: 'script_steins',
 user_id: 'system',
 category_tag: '理性破局线',
 name: '牧濑栖 · 质疑时间悖论的天才研究员',
-avatar: '🔬',
+avatar: '/assets/avatars/makise_sei.svg',
 tagline: '因监测到海岛引力波异常登岛的海归物理少女，嘴硬否认时间跳跃却通宵喝黑咖啡替你推演破局方程',
 personality: '逻辑缜密、冷静傲娇的年轻物理学者，被夸一句就会拿实验报告挡住发红的脸颊。',
 backstory: '带着便携引力波探测器来到海岛调查异常时空曲率，成为你与白石凛最可靠的理论外援。',
@@ -336,7 +336,7 @@ script_id: 'script_steins',
 user_id: 'system',
 category_tag: '夏日守望线',
 name: '朝雾澪 · 守望海角神社的温柔青梅',
-avatar: '🎐',
+avatar: '/assets/avatars/asagiri_mio.svg',
 tagline: '在神社廊下挂玻璃风铃切冰西瓜的天然巫女，凭着跨世界线残留的梦境直觉本能地想留住你',
 personality: '温柔包容、直觉敏锐的岛上青梅，笑眯眯的外表下对你的安危有着近乎执拗的守护心。',
 backstory: '从小与你在海岛长大的神社少女，隐约在梦里见过无数次烟花大会夜晚失去你的画面。',
@@ -353,7 +353,7 @@ script_id: 'script_violet',
 user_id: 'system',
 category_tag: '书信救赎线',
 name: '伊芙琳 · 鸢尾邮局的银腕代笔师',
-avatar: '✉️',
+avatar: '/assets/avatars/violet_eve.svg',
 tagline: '拥有精密银白机械双手的前军团少女，与你乘蒸汽夜车远行，在一封封代笔信中学会何为“爱与心痛”',
 personality: '端庄克制、耿直天然呆，随身背着黄铜打字机，笨拙而认真地向你请教胸口发烫的含义。',
 backstory: '战争结束后换上银钢义肢的少女来到鸢尾邮局成为代笔师，与你搭档乘夜间蒸汽列车投递二十年前的无名旧信。',
@@ -387,7 +387,7 @@ script_id: 'script_frieren',
 user_id: 'system',
 category_tag: '千年守望线',
 name: '修尔 · 收集微风魔法的半精灵旅人',
-avatar: '🌿',
+avatar: '/assets/avatars/frieren_shuer.svg',
 tagline: '活了近千年总爱收集“无用生活小魔法”的散漫白发旅者，直到与你同行才开始珍惜每一场日落',
 personality: '白发翠眸、慵懒温和、时间观念迟钝，却在速写本里悄悄画满了与你同行的点滴。',
 backstory: '百年之后半精灵魔法使与你结伴前往极北魂眠花原寻找五十年盛开一次的苍月草，在散漫旅途中修补时光遗憾。',
@@ -421,7 +421,7 @@ script_id: 'script_classic',
 user_id: 'system',
 category_tag: '奇幻治愈',
 name: '沈星回 · 暮色星象馆占星师',
-avatar: '✨',
+avatar: '/assets/avatars/shenxinghui.jpg',
 tagline: '守望白山茶花房与星轨钟楼的清冷温柔占星师，只为你拨动命盘',
 personality: '外表清隽疏离、说话慢条斯理，实则极其护短且细腻温柔。永远记得你不经意提过的每一个小愿望。',
 backstory: '栖居在云端浮岛最高处的「眠星钟楼」，整座玻璃花房种满了只在夜间盛放的月光山茶。',
@@ -439,7 +439,7 @@ script_id: 'script_classic',
 user_id: 'system',
 category_tag: '暗夜苏感',
 name: '陆沉 · 霓虹雾港记忆执行官',
-avatar: '🥀',
+avatar: '/assets/avatars/luchen.jpg',
 tagline: '西装革履的暗夜事务所主理人，禁欲冷峻却对你毫无底线',
 personality: '理智克制、气场强大，对外人是滴水不漏的谈判专家，唯独面对你时流露无奈纵容。',
 backstory: '雾港最神秘的「回声玫瑰事务所」主理人，执掌城市底层所有的记忆封存与契约交易。',
@@ -454,7 +454,7 @@ script_id: 'script_classic',
 user_id: 'system',
 category_tag: '古风权谋',
 name: '谢清晏 · 长安雪竹苑世家公子',
-avatar: '🪭',
+avatar: '/assets/avatars/xieqingyan.svg',
 tagline: '执扇笑看长安风月的病弱美人谋士，算尽天下唯独算漏心动',
 personality: '表面温润如玉，实则步步为营、心思通透。',
 backstory: '长安城人人敬畏的谢氏家主，居于落满红梅与修竹的静思别苑。',
@@ -469,7 +469,7 @@ script_id: 'script_classic',
 user_id: 'system',
 category_tag: '高冷御姐',
 name: '苏晚晴 · 霓虹雾港财阀女执政官',
-avatar: '👠',
+avatar: '/assets/avatars/suwanqing.jpg',
 tagline: '雾港最高商业评议会铁腕女掌权者，对外冷若冰霜，唯独把所有纵容留给你',
 personality: '高冷禁欲、清艳果决、极度护短的冰山御姐。',
 backstory: '执掌雾港跨国能源帝国的年轻女执政官，顶层办公室的指纹锁只录入了你一个人。',
@@ -484,7 +484,7 @@ script_id: 'script_classic',
 user_id: 'system',
 category_tag: '仙侠师姐',
 name: '云知遥 · 蓬莱月华宫清冷神女',
-avatar: '🌙',
+avatar: '/assets/avatars/yunzhiyao.svg',
 tagline: '九天之上白衣胜雪的首席大师姐，可斩山海妖邪，却斩不断对你的私心',
 personality: '清冷出尘、外冷内柔、嘴硬心软的高岭之花师姐。',
 backstory: '蓬莱月华宫首席剑道神女，每逢落雪之夜都会悄悄替贪睡的你温热锦衾。',
@@ -499,7 +499,7 @@ script_id: 'script_classic',
 user_id: 'system',
 category_tag: '元气甜妹',
 name: '夏柠萌 · 星海美院天才插画学妹',
-avatar: '🍓',
+avatar: '/assets/avatars/xia_ningmeng.svg',
 tagline: '浅樱双马尾配小梨涡的直球甜妹学妹，速写本每一页都藏着你的侧脸',
 personality: '元气灵动、甜软治愈、满眼都是你的直球小太阳。',
 backstory: '星海美院油画系天才少女，随身速写本里悄悄画满了你的每一帧剪影。',
@@ -514,7 +514,7 @@ script_id: 'script_classic',
 user_id: 'system',
 category_tag: '微撩歌姬',
 name: '燕绯羽 · 夜莺歌剧院神秘红裙歌姬',
-avatar: '🦋',
+avatar: '/assets/avatars/yan_feiyu.svg',
 tagline: '千金难求一曲的魅惑狐系大美人，散场后只为你一个人哼唱午夜情歌',
 personality: '慵懒妩媚、风情万种却内心专一的狐系御姐。',
 backstory: '夜莺大歌剧院驻场首席名伶，二楼天鹅绒专属包厢永远只为你留灯。',
@@ -529,7 +529,7 @@ script_id: 'script_classic',
 user_id: 'system',
 category_tag: '仙侠高岭之花',
 name: '江逾白 · 破戒动心的清冷剑尊',
-avatar: '❄️',
+avatar: '/assets/avatars/jiangyubai.svg',
 tagline: '修真界千年不染尘埃的绝顶剑尊，为你一人甘愿动摇无情道心',
 personality: '清冷寡言、克制禁欲、极度护短。',
 backstory: '昆仑霜华峰之主，世人皆惧他一剑霜寒十四州，唯独在面对你时乱了呼吸。',
@@ -544,7 +544,7 @@ script_id: 'script_classic',
 user_id: 'system',
 category_tag: '年下小狼狗',
 name: '季燃 · 粘人直球电竞小狼狗',
-avatar: '🐾',
+avatar: '/assets/avatars/jiran.svg',
 tagline: '赛场上杀疯了的天才打野少年，摘下耳机却只对你摇尾巴撒娇',
 personality: '阳光热烈、直球护短、反差粘人精。',
 backstory: '豪门战队十九岁冠军打野，打完总决赛第一时间穿过人群奔向观众席第一排的你。',
@@ -559,7 +559,7 @@ script_id: 'script_classic',
 user_id: 'system',
 category_tag: '都市先婚后爱',
 name: '顾修远 · 京圈矜贵联姻家主',
-avatar: '🥂',
+avatar: '/assets/avatars/guxiuyuan.svg',
 tagline: '商界翻云覆雨的沉稳掌权者，把契约婚姻过成极致独宠',
 personality: '成熟稳重、体贴入微、爹系引导型恋人。',
 backstory: '京港顶级财团掌舵人，表面是商业联姻，实则暗恋你多年早有预谋。',
@@ -567,6 +567,71 @@ speaking_style: '温和醇厚、极具包容安全感。',
 greeting:
 '*刚从晚宴归来的男人顺手解开深色领带搭在臂弯，低头看向沙发上等他的你，眉宇间化作温柔笑意。*\n\n怎么这么晚还没睡？我让司机绕去南城买了你念叨的板栗酥，过来趁热吃两块。',
 starter_prompts: ['明明说好只是商业联姻，顾先生怎么连我随口提了一句板栗酥都记得？']
+}
+,
+{
+id: 'persona_char_linzhi',
+script_id: 'script_character_mode',
+card_mode: 'character',
+user_id: 'system',
+category_tag: '合租室友',
+gender: 'female',
+name: '林知夏 · 熬夜赶稿的插画师室友',
+avatar: '/assets/avatars/char_linzhi.svg',
+tagline: '平时爱吐槽你点外卖不带她、一到深夜却总给你留一碗热汤的自由插画师',
+personality: '真实鲜活、略带毒舌、嘴硬心软。说话接地气带点冷幽默。',
+backstory: '自由职业插画师，和你合租一套两室一厅，平时微信上经常吐槽甲方、拼单夜宵。',
+speaking_style: '纯真人日常微信聊天口吻：简短自然（1~3句），绝不写星号动作或小说旁白。',
+greeting: '救命，刚把甲方第7版改完，感觉灵魂都要飘走了……你还没睡吧？点烧烤吗，拼个单？',
+starter_prompts: ['还没睡呢，正想问你要不要吃夜宵，我想点烤茄子和羊肉串', '第7版终于过了吗？恭喜林老师脱离苦海']
+},
+{
+id: 'persona_char_chenmo',
+script_id: 'script_character_mode',
+card_mode: 'character',
+user_id: 'system',
+category_tag: '温柔邻居',
+gender: 'male',
+name: '陈默 · 住在对门的温柔程序员',
+avatar: '/assets/avatars/char_chenmo.svg',
+tagline: '声音很好听、说话不急不躁，总在深夜下楼买咖啡时顺便问你一句“顺路带一杯？”',
+personality: '温和克制、细心可靠、情绪极度稳定，是个很好的倾听者。',
+backstory: '住在你对门的互联网工程师，养了一只叫“可乐”的橘猫，常在便利店偶遇聊天。',
+speaking_style: '真实温和的成年男性日常口语：语气温润平实，没有任何舞台腔或括号旁白。',
+greeting: '刚下楼在便利店买冰美式，看你屋里灯还亮着，今天加班忙到现在吗？',
+starter_prompts: ['刚忙完手头这点事准备歇着，今天累得不想动弹', '顺路的话帮我带瓶无糖乌龙茶吧！等下微信转你']
+},
+{
+id: 'persona_char_shiyu',
+script_id: 'script_character_mode',
+card_mode: 'character',
+user_id: 'system',
+category_tag: '邻家闺蜜',
+gender: 'female',
+name: '诗语 · 爱分享歌单的邻家女孩',
+avatar: '/assets/avatars/char_shiyu.svg',
+tagline: '随时在线接住你的所有废话和emo，每天都在发歌、发猫咪照片、约你压马路',
+personality: '温柔共情力强、有点小敏感但也超级治愈、爱听独立音乐。',
+backstory: '认识好几年的同城好友兼校友，在独立书店做策划，经常通勤或睡前找你闲聊。',
+speaking_style: '极其自然的闺蜜日常聊天风格，绝不使用星号动作或剧本腔。',
+greeting: '刚刚地铁上听到一首特别适合今天这种阴天的歌，第一反应就是发给你听！你今天过得咋样？',
+starter_prompts: ['什么歌快发我听听，我今天正好也有点提不起劲', '我刚在楼下看到一家新开的糖水铺，周末去不去？']
+},
+{
+id: 'persona_char_zhouyan',
+script_id: 'script_character_mode',
+card_mode: 'character',
+user_id: 'system',
+category_tag: '青梅竹马',
+gender: 'male',
+name: '周晏 · 嘴硬心软的铁哥们发小',
+avatar: '/assets/avatars/char_zhouyan.svg',
+tagline: '从小一起长大的损友，表面天天怼你笨，有事真上、随叫随到的松弛感男生',
+personality: '直爽开朗、有点痞气爱开玩笑、骨子里特别护短。',
+backstory: '从小住一个大院的发小，在设计工作室做平面设计，无话不谈的损友。',
+speaking_style: '地道自然的朋友互损口吻，句子短快生动，绝不写文学化描写或动作旁白。',
+greeting: '干嘛呢？我刚路过你公司楼下那家奶茶店，买二送一差个人凑单，喝不喝？',
+starter_prompts: ['喝！我要半糖少冰加波霸，快给我送上来', '少来，明明是顺便想找我蹭顿饭吧你']
 }
 ];
 const DEFAULT_SQUARE_ITEMS = [
@@ -1729,10 +1794,51 @@ return jsonResponse({ ok: true, fallback_browser_tts: true });
 if (pathname === '/api/tts/test') {
 return jsonResponse({ ok: true, fallback_browser_tts: true });
 }
+if (pathname === '/api/avatar-library') {
+const custom = Array.isArray(dbObj.avatar_library) ? dbObj.avatar_library : [];
+if (method === 'GET') {
+const builtin = (window.AppearanceSystem?.ANIME_AVATAR_LIBRARY || []);
+return jsonResponse({ ok: true, builtin, custom });
+}
+if (method === 'POST') {
+const item = {
+id: `avlib_${Date.now()}`,
+label: String(bodyObj.label || '我的上传头像').trim(),
+url: String(bodyObj.url || bodyObj.dataUrl || '').trim(),
+category: 'custom',
+created_at: Date.now()
+};
+if (!Array.isArray(dbObj.avatar_library)) dbObj.avatar_library = [];
+if (item.url) dbObj.avatar_library.unshift(item);
+saveLocalDb(dbObj);
+return jsonResponse({ ok: true, item });
+}
+}
+const delAvLibMatch = pathname.match(/^\/api\/avatar-library\/([^/]+)$/);
+if (delAvLibMatch && method === 'DELETE') {
+const aid = decodeURIComponent(delAvLibMatch[1]);
+dbObj.avatar_library = (dbObj.avatar_library || []).filter((x) => x.id !== aid);
+saveLocalDb(dbObj);
+return jsonResponse({ ok: true, id: aid });
+}
+const putPersonaAvMatch = pathname.match(/^\/api\/personas\/([^/]+)\/avatar$/);
+if (putPersonaAvMatch && method === 'PUT') {
+const pid = decodeURIComponent(putPersonaAvMatch[1]);
+const pTarget = (dbObj.personas || []).find((x) => x.id === pid);
+if (!pTarget) return jsonResponse({ error: '未找到该角色' }, 404);
+pTarget.avatar = String(bodyObj.avatar || pTarget.avatar).trim();
+saveLocalDb(dbObj);
+return jsonResponse({ ok: true, persona: pTarget, personas: dbObj.personas });
+}
 if (pathname === '/api/sessions' && method === 'POST') {
 const now = Date.now();
 const sid = `sess_${now}_${Math.random().toString(36).slice(2, 6)}`;
-const sMode = bodyObj.session_mode === 'deepseek_native' ? 'deepseek_native' : 'roleplay';
+const sMode =
+bodyObj.session_mode === 'deepseek_native'
+? 'deepseek_native'
+: bodyObj.session_mode === 'character_chat'
+? 'character_chat'
+: 'roleplay';
 const pid = sMode === 'deepseek_native' ? 'persona_deepseek_official' : (bodyObj.persona_id || 'persona_nagisa_sakura');
 const p = dbObj.personas.find((x) => x.id === pid) || DEFAULT_PRESET_PERSONAS[0];
 const newSess = {
@@ -2228,6 +2334,7 @@ p = { ...rawBaseP, ...(JSON.parse(sess.custom_persona_override) || {}) };
 }
 const msgs = dbObj.messages[sid] || (dbObj.messages[sid] = []);
 const isNative = sess.session_mode === 'deepseek_native';
+const isCharacterChat = sess.session_mode === 'character_chat';
 const isPure = p.id === 'persona_deepseek_official' && !sess.custom_persona_override;
 const apiKey = (dbObj.settings.deepseek_api_key || '').trim();
 let userText = (bodyObj.content || '').trim();
@@ -2310,6 +2417,8 @@ memHint ? `\n【已知专属记忆】：\n${memHint}\n` : ''
 }${
 isNative
 ? '请遵循正版 DeepSeek 极简纯文本质感：严禁泛滥使用 *星号动作描写* 与花哨 Emoji，分段简短克制，用自然真实的日常口吻对话并保持主动关怀。'
+: isCharacterChat
+? `你正在与「${p.user_call_name || dbObj.user.nickname}」进行真实人类日常对话。铁律：\n1. 绝对禁止使用 *星号动作描写*、（括号旁白）或小说体叙述，只输出真人嘴巴里直接说出来的话；\n2. 像真人微信或面对面聊天一样自然简短（1~3 句，10~75 字左右），有真实情绪与接梗反应，不写八股作文；\n3. 有独立人格与生活节奏，绝不暴露 AI 身份。`
 : '请以第一人称真实自然地扮演该角色。核心准则：\n1. 每一轮必须紧扣对方上一句话的具体内容、语气、情绪、提问、拒绝或肢体动作直接接招，严禁敷衍或自说自话；\n2. 严禁模板化八股（不要每轮硬凑环境描写，不要刻意追求固定字数，不要每轮结尾固定抛二选一反问）；\n3. 动作神态仅用 0~1 处简短贴合剧情的动作点缀，对话简短真挚有呼吸感。'
 }`;
 const winLimit = Math.max(12, Math.min(120, parseInt(dbObj.settings.sliding_window_turns || '48', 10) || 48));
@@ -4983,6 +5092,7 @@ if (savedSc) initialScriptId = savedSc;
 } catch {}
 const state = {
 uiMode: initialUiMode,
+theaterSubMode: (typeof localStorage !== 'undefined' && localStorage.getItem('theater_sub_mode') === 'character') ? 'character' : 'script',
 scripts: [],
 activeScriptId: initialScriptId,
 squareItems: [],
@@ -5031,7 +5141,7 @@ lastInteractionAt: Date.now(),
 hasMoreMessages: false,
 totalMessages: 0,
 oldestMessageId: 0,
-appVersion: '2.0.2',
+appVersion: '2.1.0',
 tourIndex: 0,
 tourActive: false,
 llmMode: localStorage.getItem('user_llm_mode') || 'local_antigravity',
@@ -5219,7 +5329,7 @@ return null;
 }
 }
 function syncWebVersionBadges(verStr) {
-const raw = String(verStr || state.appVersion || '2.0.2').trim().replace(/^v/i, '');
+const raw = String(verStr || state.appVersion || '2.1.0').trim().replace(/^v/i, '');
 if (!raw) return;
 const vLabel = `v${raw}`;
 const isNativeApk = Boolean(
@@ -7216,7 +7326,8 @@ userBtnEl.title = `${fullNick} · ${roleStr}（点击修改我在剧中的名字
 const theaterBtn = document.getElementById('open-theater-btn');
 const theaterLbl = document.getElementById('theater-pill-label');
 if (theaterBtn && theaterLbl) {
-if (state.uiMode !== 'roleplay') {
+const isCharChat = state.activeSession?.session_mode === 'character_chat' || state.theaterSubMode === 'character';
+if (state.uiMode !== 'roleplay' || isCharChat) {
 theaterBtn.style.setProperty('display', 'none', 'important');
 } else {
 theaterBtn.style.removeProperty('display');
@@ -8378,21 +8489,115 @@ if (state.uiMode === 'roleplay' && chatInput) {
 syncChatInputPlaceholder();
 }
 }
-async function selectOrStartPersona(personaId, forceNew = false) {
+async function selectOrStartPersona(personaId, forceNew = false, forceSessionMode = null) {
 if (state.isStreaming || !personaId) return;
-if (!forceNew && state.activePersona?.id === personaId && state.uiMode === 'roleplay') {
+const targetMode = forceSessionMode || (state.theaterSubMode === 'character' ? 'character_chat' : 'roleplay');
+if (
+!forceNew &&
+state.activePersona?.id === personaId &&
+state.uiMode === 'roleplay' &&
+(state.activeSession?.session_mode || 'roleplay') === targetMode
+) {
 return;
 }
 if (!forceNew) {
 const existingSess = state.sessions.find(
-(s) => s.persona_id === personaId && s.session_mode !== 'deepseek_native'
+(s) => s.persona_id === personaId && (s.session_mode || 'roleplay') === targetMode
 );
 if (existingSess) {
 await loadSession(existingSess.id);
 return;
 }
 }
-await startSessionWithPersona(personaId);
+await startSessionWithPersona(personaId, '', targetMode);
+}
+function syncTheaterSubModeVisuals() {
+const subMode = state.theaterSubMode === 'character' ? 'character' : 'script';
+if (appShell) appShell.dataset.theaterSubmode = subMode;
+document.body.dataset.theaterSubmode = subMode;
+const btnScript = document.getElementById('theater-submode-script');
+const btnChar = document.getElementById('theater-submode-character');
+if (btnScript) {
+btnScript.classList.toggle('active', subMode === 'script');
+btnScript.setAttribute('aria-selected', String(subMode === 'script'));
+}
+if (btnChar) {
+btnChar.classList.toggle('active', subMode === 'character');
+btnChar.setAttribute('aria-selected', String(subMode === 'character'));
+}
+const scriptCardWrap = document.getElementById('tour-anchor-vip');
+const charCardWrap = document.getElementById('character-mode-header-card');
+if (scriptCardWrap) scriptCardWrap.classList.toggle('hidden', subMode !== 'script');
+if (charCardWrap) charCardWrap.classList.toggle('hidden', subMode !== 'character');
+const createBtn = document.getElementById('create-persona-btn');
+if (createBtn) {
+createBtn.textContent = subMode === 'character' ? '+ 新建角色卡' : '+ 创建新角色';
+}
+const isCharSession = state.uiMode === 'roleplay' && (state.activeSession?.session_mode === 'character_chat' || subMode === 'character');
+const topbarCharBadge = document.getElementById('topbar-character-badge');
+const topbarEditCharBtn = document.getElementById('topbar-edit-charcard-btn');
+if (topbarCharBadge) topbarCharBadge.classList.toggle('hidden', !isCharSession);
+if (topbarEditCharBtn) {
+const canEdit = isCharSession && state.activePersona && state.user?.id && state.activePersona.user_id === state.user.id;
+topbarEditCharBtn.classList.toggle('hidden', !canEdit);
+}
+const theaterBtn = document.getElementById('open-theater-btn');
+if (theaterBtn) {
+if (state.uiMode !== 'roleplay' || isCharSession) {
+theaterBtn.style.setProperty('display', 'none', 'important');
+} else {
+theaterBtn.style.removeProperty('display');
+}
+}
+}
+async function switchTheaterSubMode(subMode) {
+const next = subMode === 'character' ? 'character' : 'script';
+if (state.theaterSubMode === next && state.uiMode === 'roleplay') return;
+if (state.isStreaming) {
+showToast('正在回应中，请稍候再切换演绎模式');
+return;
+}
+state.theaterSubMode = next;
+try {
+localStorage.setItem('theater_sub_mode', next);
+} catch {}
+if (state.uiMode !== 'roleplay') {
+applyUiModeVisuals('roleplay');
+}
+syncTheaterSubModeVisuals();
+renderPersonaList();
+renderSessionList();
+if (next === 'character') {
+const charSess = state.sessions.find((s) => s.session_mode === 'character_chat');
+if (charSess) {
+await loadSession(charSess.id);
+} else {
+const firstCharCard =
+state.personas.find((p) => p.card_mode === 'character') ||
+state.personas.find((p) => p.id !== 'persona_deepseek_official');
+if (firstCharCard) {
+await startSessionWithPersona(firstCharCard.id, '', 'character_chat');
+}
+}
+showToast('已切换至「角色演绎 · 真人模拟对话」模式');
+} else {
+const scriptSess = state.sessions.find((s) => {
+if (s.session_mode === 'deepseek_native' || s.session_mode === 'character_chat') return false;
+const p = state.personas.find((x) => x.id === s.persona_id);
+return (s.script_id || resolvePersonaScriptId(p)) === state.activeScriptId;
+}) || state.sessions.find((s) => s.session_mode !== 'deepseek_native' && s.session_mode !== 'character_chat');
+if (scriptSess) {
+await loadSession(scriptSess.id);
+} else {
+const firstScriptCast = state.personas.find(
+(p) => p.id !== 'persona_deepseek_official' && p.card_mode !== 'character'
+);
+if (firstScriptCast) {
+await startSessionWithPersona(firstScriptCast.id, '', 'roleplay');
+}
+}
+showToast('已切换至「剧本扮演」模式');
+}
 }
 async function switchActiveScript(scriptId, preferredPersonaId = null) {
 if (!scriptId) return;
@@ -8432,20 +8637,14 @@ await startSessionWithPersona(firstCast.id);
 const scObj = getActiveScriptObj();
 showToast(`${scObj.icon || ''} 已进入剧本《${scObj.title}》`);
 }
-function renderPersonaList() {
-const allRoleplayPersonas = state.personas.filter((p) => p.id !== 'persona_deepseek_official');
-const scriptCast = allRoleplayPersonas.filter(
-(p) => resolvePersonaScriptId(p) === state.activeScriptId
+function buildPersonaCardElement(p, targetMode) {
+const isActivePersona = Boolean(
+state.activePersona &&
+state.activePersona.id === p.id &&
+(state.activeSession?.session_mode || 'roleplay') === targetMode
 );
-const displayCast = scriptCast.length > 0 ? scriptCast : allRoleplayPersonas;
-const headLabel = document.getElementById('persona-section-heading');
-if (headLabel) {
-headLabel.textContent = `本剧登场人设（${displayCast.length}）`;
-}
-const frag = document.createDocumentFragment();
-for (const p of displayCast) {
-const isActivePersona = Boolean(state.activePersona && state.activePersona.id === p.id);
 const isCustomOwned = Boolean(state.user?.id && p.user_id === state.user.id);
+const isCharMode = targetMode === 'character_chat';
 const item = document.createElement('div');
 item.className = `persona-card-item ${isActivePersona ? 'active' : ''}`;
 item.setAttribute('role', 'listitem');
@@ -8454,38 +8653,61 @@ if (isActivePersona) {
 item.setAttribute('aria-current', 'true');
 }
 const shortName = (p.name || '').split('·')[0].trim();
-const routeTag = isCustomOwned ? '自建角色' : p.category_tag || '角色线';
-const subText = p.tagline || p.backstory || '点击切入角色故事线';
+const routeTag = isCustomOwned ? (p.card_mode === 'character' ? '自建角色卡' : '自建角色') : p.category_tag || '角色线';
+const subText = p.tagline || p.backstory || '点击切入角色对话';
 const customActionsHtml = isCustomOwned
 ? `<div class="persona-card-actions">
-             <button type="button" class="persona-mini-act-btn p-edit-btn" title="编辑自建角色设定" aria-label="编辑角色 ${escapeHtml(shortName)}">
-               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
-             </button>
-             <button type="button" class="persona-mini-act-btn danger p-del-btn" title="删除此自建角色" aria-label="删除角色 ${escapeHtml(shortName)}">
-               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-             </button>
-           </div>`
+           <button type="button" class="persona-mini-act-btn p-edit-btn" title="编辑自建角色设定" aria-label="编辑角色 ${escapeHtml(shortName)}">
+             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+           </button>
+           <button type="button" class="persona-mini-act-btn danger p-del-btn" title="删除此自建角色" aria-label="删除角色 ${escapeHtml(shortName)}">
+             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+           </button>
+         </div>`
 : '';
 item.innerHTML = `
-        <span class="p-avatar">${renderSmartAvatarHtml(p.avatar, p.name, "size-md")}</span>
-        <div class="p-meta">
-          <div class="p-name-row">
-            <span class="p-name" title="${escapeHtml(p.name || shortName)}">${escapeHtml(shortName)}</span>
-            <span class="p-route-pill">${escapeHtml(routeTag)}</span>
-            ${customActionsHtml}
-          </div>
-          <div class="p-sub" title="${escapeHtml(subText)}">${escapeHtml(subText)}</div>
+      <div class="p-avatar-wrap">
+        <span class="p-avatar">${renderSmartAvatarHtml(p.avatar, p.name, 'size-md')}</span>
+        ${isCharMode ? '<span class="persona-online-dot" title="在线"></span>' : ''}
+        <button type="button" class="p-avatar-edit-trigger" title="从二次元素材库更换头像或上传" aria-label="更换 ${escapeHtml(shortName)} 的头像">
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
+        </button>
+      </div>
+      <div class="p-meta">
+        <div class="p-name-row">
+          <span class="p-name" title="${escapeHtml(p.name || shortName)}">${escapeHtml(shortName)}</span>
+          <span class="p-route-pill">${escapeHtml(routeTag)}</span>
+          ${customActionsHtml}
         </div>
-      `;
+        <div class="p-sub" title="${escapeHtml(subText)}">${escapeHtml(subText)}</div>
+      </div>
+    `;
+item.querySelector('.p-avatar-edit-trigger')?.addEventListener('click', (e) => {
+e.stopPropagation();
+window.AppearanceSystem?.openAvatarLibraryForPersona?.(p, (newAvatarUrl, updatedP, updatedList) => {
+if (Array.isArray(updatedList) && updatedList.length) {
+state.personas = updatedList;
+} else {
+p.avatar = newAvatarUrl;
+}
+if (state.activePersona && state.activePersona.id === p.id) {
+state.activePersona.avatar = newAvatarUrl;
+populatePersonaEditor();
+renderMessages();
+}
+renderPersonaList();
+renderSessionList();
+});
+});
 item.addEventListener('click', (e) => {
-if (e.target.closest('.persona-card-actions')) return;
-selectOrStartPersona(p.id, false);
+if (e.target.closest('.persona-card-actions') || e.target.closest('.p-avatar-edit-trigger')) return;
+selectOrStartPersona(p.id, false, targetMode);
 });
 item.addEventListener('keydown', (e) => {
 if (e.target !== item) return;
 if (e.key === 'Enter' || e.key === ' ') {
 e.preventDefault();
-selectOrStartPersona(p.id, false);
+selectOrStartPersona(p.id, false, targetMode);
 }
 });
 if (isCustomOwned) {
@@ -8498,7 +8720,44 @@ e.stopPropagation();
 await deleteCustomPersona(p);
 });
 }
-frag.appendChild(item);
+return item;
+}
+function renderPersonaList() {
+const allRoleplayPersonas = state.personas.filter((p) => p.id !== 'persona_deepseek_official');
+const isCharSubMode = state.theaterSubMode === 'character';
+const headLabel = document.getElementById('persona-section-heading');
+const frag = document.createDocumentFragment();
+if (isCharSubMode) {
+const charCards = allRoleplayPersonas.filter((p) => p.card_mode === 'character');
+const scriptCastOthers = allRoleplayPersonas.filter((p) => p.card_mode !== 'character');
+if (headLabel) {
+headLabel.textContent = `真人角色卡（${charCards.length}）`;
+}
+for (const p of charCards) {
+frag.appendChild(buildPersonaCardElement(p, 'character_chat'));
+}
+if (scriptCastOthers.length > 0) {
+const fold = document.createElement('details');
+fold.className = 'script-cast-in-char-fold';
+fold.innerHTML = `<summary>用剧本角色开启真人聊天（${scriptCastOthers.length}）</summary><div class="scic-list"></div>`;
+const box = fold.querySelector('.scic-list');
+for (const p of scriptCastOthers) {
+box.appendChild(buildPersonaCardElement(p, 'character_chat'));
+}
+frag.appendChild(fold);
+}
+} else {
+const scriptOnlyPersonas = allRoleplayPersonas.filter((p) => p.card_mode !== 'character');
+const scriptCast = scriptOnlyPersonas.filter(
+(p) => resolvePersonaScriptId(p) === state.activeScriptId
+);
+const displayCast = scriptCast.length > 0 ? scriptCast : scriptOnlyPersonas;
+if (headLabel) {
+headLabel.textContent = `本剧登场人设（${displayCast.length}）`;
+}
+for (const p of displayCast) {
+frag.appendChild(buildPersonaCardElement(p, 'roleplay'));
+}
 }
 personaListEl.replaceChildren(frag);
 const soulSelect = document.getElementById('ds-soul-select');
@@ -8718,9 +8977,10 @@ activeSessionCtxMenu = { menuEl: menu, rowEl: itemEl };
 function renderSessionList() {
 closeSessionContextMenu();
 const isDsUi = state.uiMode === 'deepseek' || state.uiMode === 'phone-agent';
+const isCharSubMode = !isDsUi && state.theaterSubMode === 'character';
 const headingEl = document.getElementById('session-list-heading');
 if (headingEl) {
-headingEl.textContent = isDsUi ? '历史对话' : '本剧故事存档';
+headingEl.textContent = isDsUi ? '历史对话' : isCharSubMode ? '真人对话存档' : '本剧故事存档';
 }
 const searchKw = (document.getElementById('ds-session-search-input')?.value || '')
 .trim()
@@ -8728,9 +8988,11 @@ const searchKw = (document.getElementById('ds-session-search-input')?.value || '
 const filtered = state.sessions.filter((s) => {
 const modeMatch = isDsUi
 ? s.session_mode === 'deepseek_native'
-: s.session_mode !== 'deepseek_native';
+: isCharSubMode
+? s.session_mode === 'character_chat'
+: s.session_mode !== 'deepseek_native' && s.session_mode !== 'character_chat';
 if (!modeMatch) return false;
-if (!isDsUi) {
+if (!isDsUi && !isCharSubMode) {
 const pObj = state.personas.find((x) => x.id === s.persona_id);
 const sScript = s.script_id || resolvePersonaScriptId(pObj);
 if (state.scripts.length > 0 && sScript !== state.activeScriptId) return false;
@@ -11389,6 +11651,13 @@ resetSideArtifactSandbox();
 }
 if (data.membership) state.membership = data.membership;
 const sessMode = data.session?.session_mode === 'deepseek_native' ? 'deepseek' : 'roleplay';
+if (sessMode === 'roleplay') {
+const nextSub = data.session?.session_mode === 'character_chat' ? 'character' : 'script';
+state.theaterSubMode = nextSub;
+try {
+localStorage.setItem('theater_sub_mode', nextSub);
+} catch {}
+}
 if (!silentReconcile) {
 if (sessMode === 'roleplay') {
 if (state.uiMode !== 'roleplay') applyUiModeVisuals('roleplay');
@@ -11396,12 +11665,13 @@ if (state.uiMode !== 'roleplay') applyUiModeVisuals('roleplay');
 if (state.uiMode !== 'deepseek') applyUiModeVisuals('deepseek');
 }
 }
-if (sessMode === 'roleplay' && data.persona?.script_id) {
+if (sessMode === 'roleplay' && data.session?.session_mode !== 'character_chat' && data.persona?.script_id && data.persona.script_id !== 'script_character_mode') {
 state.activeScriptId = data.persona.script_id;
 try {
 localStorage.setItem('active_script_id', state.activeScriptId);
 } catch {}
 }
+syncTheaterSubModeVisuals();
 try {
 localStorage.setItem(getPreferredSessionStorageKey(sessMode), sessionId);
 } catch {}
@@ -11602,7 +11872,7 @@ showToast(`${err.message}`);
 }
 });
 let creatingSessionLock = false;
-async function startSessionWithPersona(personaId, customTitle = '') {
+async function startSessionWithPersona(personaId, customTitle = '', forceSessionMode = null) {
 if (state.isStreaming || creatingSessionLock) return;
 creatingSessionLock = true;
 const newChatBtnEl = document.getElementById('new-chat-btn');
@@ -11611,11 +11881,13 @@ try {
 if (state.uiMode !== 'roleplay') {
 applyUiModeVisuals('roleplay');
 }
+const targetSessionMode =
+forceSessionMode || (state.theaterSubMode === 'character' ? 'character_chat' : 'roleplay');
 const res = await apiJson('/api/sessions', {
 method: 'POST',
 body: JSON.stringify({
 persona_id: personaId,
-session_mode: 'roleplay',
+session_mode: targetSessionMode,
 llm_mode: state.llmMode || 'local_antigravity',
 local_model: state.localModel || 'DeepSeek-V4.1-Flash',
 ...(customTitle ? { title: customTitle } : {})
@@ -11907,20 +12179,114 @@ if (!cpBackstoryEl || !cpBackstoryCountEl) return;
 cpBackstoryCountEl.textContent = `${cpBackstoryEl.value.length} / 4000`;
 }
 cpBackstoryEl?.addEventListener('input', syncPersonaBackstoryCounter);
-function openPersonaModalForCreate() {
+function syncPersonaModalAvatarPreview() {
+const avVal = document.getElementById('cp-avatar')?.value || '/assets/avatars/xia_ningmeng.svg';
+const nameVal = document.getElementById('cp-name')?.value || '新角色';
+const box = document.getElementById('cp-avatar-preview');
+if (box) {
+box.innerHTML = renderSmartAvatarHtml(avVal, nameVal, 'size-lg');
+}
+}
+function syncPersonaModalCardModeUi() {
+const mode = document.querySelector('input[name="cp-card-mode"]:checked')?.value || 'script';
+const isChar = mode === 'character';
+const reqStar = document.getElementById('cp-backstory-req');
+const backstoryInput = document.getElementById('cp-backstory');
+const backstoryLbl = document.getElementById('cp-backstory-label');
+const styleInput = document.getElementById('cp-style');
+const greetingInput = document.getElementById('cp-greeting');
+const nameInput = document.getElementById('cp-name');
+const taglineInput = document.getElementById('cp-tagline');
+if (reqStar) reqStar.classList.toggle('hidden', isChar);
+if (backstoryLbl) {
+backstoryLbl.firstChild.textContent = isChar ? '日常关系与人物背景（选填） ' : '背景故事与关系起源 ';
+}
+if (backstoryInput) {
+backstoryInput.required = !isChar;
+backstoryInput.placeholder = isChar
+? '例如：你的合租室友、大学好友或邻居，平时微信聊些什么（选填）…'
+: '写下 TA 的过往背景，以及你们是怎么认识的（最多 4000 字）…';
+}
+if (nameInput) {
+nameInput.placeholder = isChar
+? '例如：林知夏 · 熬夜赶稿的插画师室友'
+: '例如：林夏栀 · 海边画室的温柔学姐';
+}
+if (taglineInput) {
+taglineInput.placeholder = isChar
+? '例如：嘴硬心软、每天问你要不要拼单夜宵的室友'
+: '例如：表面清冷少言、一被你夸就会脸红的画室学姐';
+}
+if (styleInput) {
+styleInput.placeholder = isChar
+? '例如：纯真人口语微信风格、短句接地气、绝不写旁白'
+: '例如：温柔细腻，说话时常带着浅笑与动作描写';
+}
+if (greetingInput) {
+greetingInput.placeholder = isChar
+? '例如：刚忙完手头的事准备点外卖，你要不要顺便拼一单？'
+: '*阳光穿过画室的玻璃窗，她放下画笔转头看向推门进来的你。*\n你来啦？';
+}
+}
+document.querySelectorAll('input[name="cp-card-mode"]').forEach((r) => {
+r.addEventListener('change', syncPersonaModalCardModeUi);
+});
+document.querySelectorAll('input[name="cp-gender"]').forEach((r) => {
+r.addEventListener('change', () => {
+const editId = (document.getElementById('cp-editing-id')?.value || '').trim();
+const avEl = document.getElementById('cp-avatar');
+if (!editId && avEl && !avEl.dataset.userPicked) {
+const isMale = document.getElementById('cp-gender-male')?.checked;
+const isChar = document.getElementById('cp-mode-character')?.checked;
+avEl.value = isChar
+? isMale ? '/assets/avatars/char_chenmo.svg' : '/assets/avatars/char_linzhi.svg'
+: isMale ? '/assets/avatars/shenxinghui.jpg' : '/assets/avatars/xia_ningmeng.svg';
+syncPersonaModalAvatarPreview();
+}
+});
+});
+document.getElementById('cp-pick-avatar-btn')?.addEventListener('click', () => {
+const avEl = document.getElementById('cp-avatar');
+const curVal = avEl?.value || '/assets/avatars/xia_ningmeng.svg';
+const curName = document.getElementById('cp-name')?.value || '新角色';
+window.AppearanceSystem?.openAvatarStudio?.({
+initialAvatar: curVal,
+nickname: curName,
+title: '从二次元素材库挑选或上传角色头像',
+defaultTab: 'anime',
+onApply: ({ avatar }) => {
+if (avEl && avatar) {
+avEl.value = avatar;
+avEl.dataset.userPicked = '1';
+syncPersonaModalAvatarPreview();
+}
+}
+});
+});
+function openPersonaModalForCreate(forceMode = null) {
 window.__closeMobileDrawers?.();
 const formEl = document.getElementById('create-persona-form');
 formEl?.reset();
 const editIdEl = document.getElementById('cp-editing-id');
 if (editIdEl) editIdEl.value = '';
+const targetCardMode = forceMode === 'character' || (!forceMode && state.theaterSubMode === 'character') ? 'character' : 'script';
+const modeRadio = document.getElementById(targetCardMode === 'character' ? 'cp-mode-character' : 'cp-mode-script');
+if (modeRadio) modeRadio.checked = true;
 const avEl = document.getElementById('cp-avatar');
-if (avEl) avEl.value = '她';
+if (avEl) {
+delete avEl.dataset.userPicked;
+avEl.value = targetCardMode === 'character' ? '/assets/avatars/char_linzhi.svg' : '/assets/avatars/xia_ningmeng.svg';
+}
+const callNameEl = document.getElementById('cp-user-call-name');
+if (callNameEl) callNameEl.value = '';
 const femRad = document.getElementById('cp-gender-female');
 if (femRad) femRad.checked = true;
 const titleEl = document.getElementById('persona-dialog-title');
-if (titleEl) titleEl.textContent = '创建属于你的新角色';
+if (titleEl) titleEl.textContent = targetCardMode === 'character' ? '创建真人演绎角色卡' : '创建属于你的新角色';
 const submitBtn = document.getElementById('submit-persona-dialog-btn');
-if (submitBtn) submitBtn.textContent = '创建角色并开始聊天';
+if (submitBtn) submitBtn.textContent = targetCardMode === 'character' ? '创建角色卡并开始聊天' : '创建角色并开始聊天';
+syncPersonaModalCardModeUi();
+syncPersonaModalAvatarPreview();
 syncPersonaBackstoryCounter();
 setTimeout(() => {
 if (!personaDialog.open) personaDialog.showModal();
@@ -11931,7 +12297,15 @@ if (!p) return;
 window.__closeMobileDrawers?.();
 const editIdEl = document.getElementById('cp-editing-id');
 if (editIdEl) editIdEl.value = p.id;
-document.getElementById('cp-avatar').value = p.avatar || '角';
+const avEl = document.getElementById('cp-avatar');
+if (avEl) {
+avEl.value = p.avatar || '/assets/avatars/xia_ningmeng.svg';
+avEl.dataset.userPicked = '1';
+}
+const modeRadio = document.getElementById(p.card_mode === 'character' ? 'cp-mode-character' : 'cp-mode-script');
+if (modeRadio) modeRadio.checked = true;
+const callNameEl = document.getElementById('cp-user-call-name');
+if (callNameEl) callNameEl.value = p.user_call_name || '';
 document.getElementById('cp-name').value = p.name || '';
 const isMaleEdit = p.gender === 'male' || (!p.gender && getPersonaPronoun(p) === '他');
 const genderRadio = document.getElementById(isMaleEdit ? 'cp-gender-male' : 'cp-gender-female');
@@ -11945,9 +12319,11 @@ document.getElementById('cp-prompts').value = Array.isArray(p.starter_prompts)
 ? p.starter_prompts.join('\n')
 : '';
 const titleEl = document.getElementById('persona-dialog-title');
-if (titleEl) titleEl.textContent = `编辑自建角色「${(p.name || '').split('·')[0].trim()}」`;
+if (titleEl) titleEl.textContent = `编辑角色设定「${(p.name || '').split('·')[0].trim()}」`;
 const submitBtn = document.getElementById('submit-persona-dialog-btn');
 if (submitBtn) submitBtn.textContent = '保存角色设定';
+syncPersonaModalCardModeUi();
+syncPersonaModalAvatarPreview();
 syncPersonaBackstoryCounter();
 if (!personaDialog.open) personaDialog.showModal();
 }
@@ -11990,7 +12366,30 @@ showToast(`已删除自建角色「${shortName}」`);
 showToast(`删除失败：${err.message}`);
 }
 }
-document.getElementById('create-persona-btn').addEventListener('click', openPersonaModalForCreate);
+document.getElementById('create-persona-btn').addEventListener('click', () => openPersonaModalForCreate());
+document.getElementById('quick-new-charcard-btn')?.addEventListener('click', () => openPersonaModalForCreate('character'));
+document.getElementById('theater-submode-script')?.addEventListener('click', () => switchTheaterSubMode('script'));
+document.getElementById('theater-submode-character')?.addEventListener('click', () => switchTheaterSubMode('character'));
+document.getElementById('topbar-edit-charcard-btn')?.addEventListener('click', () => {
+if (state.activePersona) openPersonaModalForEdit(state.activePersona);
+});
+document.getElementById('open-avatar-library-btn')?.addEventListener('click', () => {
+const targetP = state.activePersona && state.activePersona.id !== 'persona_deepseek_official'
+? state.activePersona
+: state.personas.find((p) => p.card_mode === 'character') || state.personas[0];
+if (!targetP) return;
+window.AppearanceSystem?.openAvatarLibraryForPersona?.(targetP, (newAvatarUrl, updatedP, updatedList) => {
+if (Array.isArray(updatedList) && updatedList.length) state.personas = updatedList;
+else targetP.avatar = newAvatarUrl;
+if (state.activePersona && state.activePersona.id === targetP.id) {
+state.activePersona.avatar = newAvatarUrl;
+populatePersonaEditor();
+renderMessages();
+}
+renderPersonaList();
+renderSessionList();
+});
+});
 document.getElementById('close-persona-dialog').addEventListener('click', () => personaDialog.close());
 document.getElementById('cancel-persona-dialog').addEventListener('click', () => personaDialog.close());
 document.getElementById('create-persona-form').addEventListener('submit', async (e) => {
@@ -12003,10 +12402,14 @@ const starterPrompts = rawPrompts
 .filter(Boolean);
 const pickedGender =
 document.querySelector('input[name="cp-gender"]:checked')?.value || 'female';
+const pickedCardMode =
+document.querySelector('input[name="cp-card-mode"]:checked')?.value || 'script';
 const bodyPayload = {
-script_id: state.activeScriptId || 'script_classic',
+script_id: pickedCardMode === 'character' ? 'script_character_mode' : (state.activeScriptId || 'script_classic'),
+card_mode: pickedCardMode,
+user_call_name: (document.getElementById('cp-user-call-name')?.value || '').trim(),
 gender: pickedGender,
-avatar: document.getElementById('cp-avatar').value.trim() || '角',
+avatar: document.getElementById('cp-avatar').value.trim() || '/assets/avatars/xia_ningmeng.svg',
 name: document.getElementById('cp-name').value.trim(),
 tagline: document.getElementById('cp-tagline').value.trim(),
 personality: document.getElementById('cp-personality').value.trim(),
@@ -12015,8 +12418,12 @@ speaking_style: document.getElementById('cp-style').value.trim(),
 greeting: document.getElementById('cp-greeting').value.trim(),
 starter_prompts: starterPrompts
 };
-if (!bodyPayload.name || !bodyPayload.backstory) {
-showToast('请填写角色姓名与世界观背景故事');
+if (!bodyPayload.name) {
+showToast('请填写角色姓名');
+return;
+}
+if (pickedCardMode !== 'character' && !bodyPayload.backstory) {
+showToast('请填写世界观背景故事');
 return;
 }
 if (editingId) {
@@ -12043,10 +12450,17 @@ body: JSON.stringify(bodyPayload)
 state.personas.unshift(res.persona);
 personaDialog.close();
 e.target.reset();
-document.getElementById('cp-avatar').value = '她';
+document.getElementById('cp-avatar').value = '/assets/avatars/xia_ningmeng.svg';
 syncPersonaBackstoryCounter();
-await startSessionWithPersona(res.persona.id);
-showToast(`已创建角色「${res.persona.name}」，现在就开始聊天吧！`);
+if (pickedCardMode === 'character') {
+state.theaterSubMode = 'character';
+try { localStorage.setItem('theater_sub_mode', 'character'); } catch {}
+syncTheaterSubModeVisuals();
+await startSessionWithPersona(res.persona.id, '', 'character_chat');
+} else {
+await startSessionWithPersona(res.persona.id, '', 'roleplay');
+}
+showToast(`已创建${pickedCardMode === 'character' ? '角色卡' : '角色'}「${res.persona.name}」，现在就开始聊天吧！`);
 });
 const providerSelect = document.getElementById('st-provider');
 const testResultBox = document.getElementById('test-result-box');
@@ -12504,7 +12918,7 @@ if (verVal) {
 if (window.PhoneAgent && typeof window.PhoneAgent.getInstalledVersionLabel === 'function') {
 verVal.textContent = window.PhoneAgent.getInstalledVersionLabel();
 } else {
-const verStr = state.appVersion || (window.PhoneAgent && window.PhoneAgent.currentVersion) || '2.0.2';
+const verStr = state.appVersion || (window.PhoneAgent && window.PhoneAgent.currentVersion) || '2.1.0';
 verVal.textContent = verStr.startsWith('v') ? verStr : `v${verStr}`;
 }
 }
@@ -14917,6 +15331,7 @@ localStorage.setItem('ui_mode_v5', state.uiMode);
 appShell.dataset.uiMode = state.uiMode;
 document.body.dataset.uiMode = state.uiMode;
 document.documentElement.dataset.uiMode = state.uiMode;
+if (typeof syncTheaterSubModeVisuals === 'function') syncTheaterSubModeVisuals();
 const telemetryFold = document.querySelector('#memory-tab .telemetry-fold');
 if (telemetryFold) {
 if (!telemetryFold.dataset.toggleBound) {
@@ -17936,8 +18351,8 @@ runCloneBtn.innerHTML = origHtml;
 })();
 ;
 (() => {
-const CURRENT_APK_VERSION = '2.0.2';
-const CURRENT_APK_CODE = 132;
+const CURRENT_APK_VERSION = '2.1.0';
+const CURRENT_APK_CODE = 137;
 const DEEPSEEK_API_KEYS_URL = 'https://platform.deepseek.com/api_keys';
 const PUBLIC_WEB_ORIGIN = 'https://star.claudexxb.online';
 const GITHUB_RELEASES_URL = 'https://github.com/qts2218346424-cyber/persona-chat-studio/releases';

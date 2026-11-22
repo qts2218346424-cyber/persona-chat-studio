@@ -1471,5 +1471,18 @@ body[data-ui-mode="phone-agent"] .auth-gate .info-callout {
     color: #ffffff !important;
     box-shadow: 0 2px 10px rgba(77, 107, 254, 0.35) !important;
   }
+
+  .p-avatar-edit-trigger {
+    opacity: 0.85 !important;
+    transform: scale(1) !important;
+  }
+
+  .theater-submode-bar {
+    margin: 0 10px 8px !important;
+  }
+
+  .character-mode-card-wrap {
+    margin: 0 10px 8px !important;
+  }
 }
 

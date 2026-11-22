@@ -582,8 +582,8 @@ function extractAuthToken(req, parsedUrl = null) {
   return '';
 }
 
-const APP_LATEST_VERSION = '2.0.6';
-const APP_LATEST_VERSION_CODE = 136;
+const APP_LATEST_VERSION = '2.1.0';
+const APP_LATEST_VERSION_CODE = 137;
 const APP_OFFICIAL_CERT_SHA256 = '6fd05e32a3cabf327140129d866e55a342fe30daa3384c67aad4b3cbdd98a17b';
 const APP_UPDATE_TICKET_SECRET = crypto
   .createHash('sha256')
@@ -874,9 +874,9 @@ async function handleApi(req, res, pathname, parsedUrl) {
       forceUpdate,
       diffGenerations,
       changelog: [
-        '【本地极速直连全面修复】打通云端桥接端点与深度思考拆流，彻底解决服务端本地直连提示服务繁忙的问题',
-        '【双端体验全面同步】网页版与 Android 随身版同步对齐毛玻璃气泡、单行操作栏、皮肤外观工坊与角色卡模式',
-        '【随身版客户端升级】Android 原生随身版同步升级至 v2.0.6 (Build 136)，内置最新离线静态资产与性能提升'
+        '【新增角色演绎模式】星语剧场全新融入「剧本扮演 | 角色演绎」双子模式，内置 4 位真人感角色卡并支持自定义创建，无旁白、无舞台腔，模拟真实人类日常对话',
+        '【24 款二次元头像与素材库】全面告别纯文字头像！为全部 20 位剧本角色与 4 位角色卡配备专属二次元形象头像，开放分类素材库与本地裁剪上传收藏，支持为任意角色一键换头像',
+        '【纯净轻盈与双端同步】彻底清理旧版冗余立绘模块，强化神经语音朗读（TTS）与语音转写（ASR）静默降级通道，网页端与随身版同步升级至 v2.1.0 (Build 137)'
       ]
     };
 

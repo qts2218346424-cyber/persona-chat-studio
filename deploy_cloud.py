@@ -138,6 +138,7 @@ def main():
     remote_cmd = f"""
 set -e
 mkdir -p /opt/star-whisper/data/tts_cache
+rm -rf /opt/star-whisper/public/assets/companions /opt/star-whisper/public/companion3d.* /opt/star-whisper/public/*.tmp /opt/star-whisper/public/dist/*.tmp /opt/star-whisper/public/assets/screenshots/01-auth-gate.png /opt/star-whisper/public/assets/screenshots/03-memory-nurturing.png /opt/star-whisper/public/assets/screenshots/04-story-scripts.png /opt/star-whisper/public/assets/screenshots/05-community-square.png
 tar -xzf {remote_tar} -C /opt/star-whisper/
 rm -f {remote_tar}
 if [ -f /root/.star_whisper_env_tmp ]; then
@@ -155,7 +156,15 @@ fi
 
 # 同步刷新云端 SQLite 中的内置 API 配置：剥离聊天越权调用，聊天大脑全面交由 Antigravity 智能体底座深度承担
 node -e '
-const {{ db, getRawPlatformConfigInternal, updateAdminPlatformConfig }} = require("/opt/star-whisper/server/db");
+const {{ db, getRawPlatformConfigInternal, updateAdminPlatformConfig, saveAdminAnnouncement }} = require("/opt/star-whisper/server/db");
+db.prepare("DELETE FROM personas WHERE id = \\x27persona_linqi\\x27").run();
+db.prepare("UPDATE site_announcements SET enabled = 0").run();
+saveAdminAnnouncement("admin", {{
+  title: "星语恋庭 v2.1.0 重磅更新：二次元头像素材库 & 真人「角色演绎模式」上线",
+  content: "1. 新增【角色演绎模式】：在星语剧场内支持「剧本扮演 | 角色演绎」双模式秒切！内置 4 位真人感角色卡并支持自由创建，无旁白、无舞台腔，模拟真实人类日常对话。\\n2. 【24 款二次元人设头像 & 素材库】：全面告别纯文字头像！开放分类二次元素材库与本地裁剪上传收藏，支持为任意角色一键换头像。\\n3. 【双端同步升级】：网页版与 Android 随身版同步升级至 v2.1.0 (Build 137)，建议随身版用户点击「检查更新」体验最新版！",
+  enabled: true,
+  version: 137
+}});
 db.prepare("UPDATE sessions SET companion_config = NULL").run();
 db.prepare("UPDATE user_settings SET value = \\x27demo\\x27 WHERE key = \\x27provider\\x27").run();
 const c = getRawPlatformConfigInternal();

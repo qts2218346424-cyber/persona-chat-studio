@@ -403,3 +403,17 @@
     animation: none !important;
   }
 }
+
+/* 消息操作栏收纳：次要功能折叠到「⋯」 */
+.msg-footer-bar .msg-more-tools{display:none;}
+.msg-footer-bar.show-more .msg-more-tools{display:inline-flex;gap:2px;}
+@media (max-width: 768px){
+  .msg-footer-bar{display:flex!important;flex-wrap:nowrap!important;align-items:center;gap:2px!important;margin-top:4px!important;padding:2px 0 0!important;min-height:0!important;overflow-x:auto;scrollbar-width:none;opacity:1!important;}
+  .msg-footer-bar::-webkit-scrollbar{display:none;}
+  .msg-footer-bar .msg-tool-btn{font-size:11.5px!important;padding:3px 7px!important;min-height:24px!important;height:auto!important;line-height:1.2!important;flex:0 0 auto;opacity:.75;}
+  .msg-footer-bar .msg-recall-tag,.msg-footer-bar .theater-wave-bars{display:none!important;}
+  .msg-footer-bar.show-more .msg-more-tools{flex-wrap:nowrap;}
+  .msg-row.assistant .msg-body{padding:8px 10px!important;max-width:calc(100% - 36px)!important;}
+  .msg-row.assistant .thought-details>summary{padding:4px 10px!important;font-size:12px!important;}
+  .msg-row.assistant .thought-details{margin:0 0 6px!important;}
+}

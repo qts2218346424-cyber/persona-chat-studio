@@ -5271,7 +5271,7 @@
         rTok
       )}</span>`;
     } else if (!isDsUi) {
-      cacheTagHtml = `<span>呼应 ${msg.recalled_count || 0} 处</span>`;
+      cacheTagHtml = `<span class="msg-recall-tag">呼应 ${msg.recalled_count || 0} 处</span>`;
     }
 
     const versions = Array.isArray(meta.versions) ? meta.versions : [];
@@ -5335,12 +5335,23 @@
           <span class="theater-wave-bars" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
           <button type="button" class="msg-tool-btn tts-btn" title="自动静音旁白，仅用温柔声线朗读角色对白">听声</button>
         </span>
-        <button type="button" class="msg-tool-btn snap-btn" title="生成唯美心动语录珍藏海报">语录签</button>
-        <button type="button" class="msg-tool-btn branch-btn" title="从这一刻创建对话分支">分支</button>
-        <button type="button" class="msg-tool-btn edit-msg-btn" title="编辑修改本条回复">编辑</button>
         <button type="button" class="msg-tool-btn copy-btn">复制</button>
         ${canRegen ? `<button type="button" class="msg-tool-btn regen-btn" title="换一种剧情回答">重演</button>` : ''}
+        <span class="msg-more-tools">
+          <button type="button" class="msg-tool-btn snap-btn" title="生成唯美心动语录珍藏海报">语录签</button>
+          <button type="button" class="msg-tool-btn branch-btn" title="从这一刻创建对话分支">分支</button>
+          <button type="button" class="msg-tool-btn edit-msg-btn" title="编辑修改本条回复">编辑</button>
+        </span>
+        <button type="button" class="msg-tool-btn more-tools-btn" title="更多操作" aria-label="更多操作" aria-expanded="false">⋯</button>
       `;
+      const moreBtn = footer.querySelector('.more-tools-btn');
+      if (moreBtn) {
+        moreBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const open = footer.classList.toggle('show-more');
+          moreBtn.setAttribute('aria-expanded', String(open));
+        });
+      }
     }
 
     // 绑定 < 1 / 2 > 多版本切换（原地替换单条消息 DOM）

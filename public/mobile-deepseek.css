@@ -120,6 +120,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
   padding: 14px 16px;
   min-height: 52px;
   cursor: pointer;
@@ -158,17 +159,26 @@
   color: light-dark(#334155, #cbd5e1);
   font-size: 17px;
   line-height: 1;
+  flex-shrink: 0;
+  border-radius: 8px;
 }
 
 .mfs-label {
   font-size: 15px;
   font-weight: 500;
   color: light-dark(#1e293b, #f1f5f9);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.35;
 }
 
 .mfs-item-right {
   display: flex;
   align-items: center;
+  flex-shrink: 0;
+  max-width: 48%;
+  min-width: 0;
   gap: 6px;
   color: light-dark(#64748b, #94a3b8);
   font-size: 14px;
@@ -178,9 +188,12 @@
   font-size: 14px;
   color: light-dark(#64748b, #94a3b8);
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .mfs-arrow {
+  flex-shrink: 0;
   color: light-dark(#94a3b8, #64748b);
   font-size: 16px;
   line-height: 1;
@@ -1413,9 +1426,9 @@
     align-items: center !important;
     justify-content: center !important;
     gap: 4px !important;
-    height: 25px !important;
-    min-height: 25px !important;
-    padding: 0 8px !important;
+    height: 26px !important;
+    min-height: 26px !important;
+    padding: 0 9px !important;
     border-radius: 9999px !important;
     font-size: 11px !important;
     font-weight: 600 !important;
@@ -1425,6 +1438,57 @@
     background: light-dark(#f8fafc, rgba(255, 255, 255, 0.06)) !important;
     color: light-dark(#475569, #cbd5e1) !important;
     transition: background-color 0.18s ease, border-color 0.18s ease, color 0.18s ease !important;
+  }
+
+  .app-shell[data-ui-mode="roleplay"] .composer-toggles.rp-only-flex .magic-split-pill-group {
+    display: inline-flex !important;
+    align-items: center !important;
+    flex: 0 0 auto !important;
+    flex-shrink: 0 !important;
+    gap: 0 !important;
+    padding: 0 !important;
+    height: 26px !important;
+    min-height: 26px !important;
+    border-radius: 9999px !important;
+    overflow: hidden !important;
+    background: light-dark(#f8fafc, rgba(255, 255, 255, 0.06)) !important;
+    border: 1px solid light-dark(rgba(0, 0, 0, 0.1), rgba(255, 255, 255, 0.15)) !important;
+    box-sizing: border-box !important;
+  }
+
+  .app-shell[data-ui-mode="roleplay"] .composer-toggles.rp-only-flex .magic-split-pill-group .pill-toggle {
+    height: 24px !important;
+    min-height: 24px !important;
+    padding: 0 8px !important;
+    border: none !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+
+  .app-shell[data-ui-mode="roleplay"] .composer-toggles.rp-only-flex .magic-split-pill-group .magic-trigger-pill {
+    padding-left: 9px !important;
+    padding-right: 7px !important;
+  }
+
+  .app-shell[data-ui-mode="roleplay"] .composer-toggles.rp-only-flex .magic-split-pill-group .magic-library-btn {
+    padding-left: 7px !important;
+    padding-right: 9px !important;
+    border-left: 1px solid light-dark(rgba(0, 0, 0, 0.1), rgba(255, 255, 255, 0.15)) !important;
+  }
+
+  .app-shell[data-ui-mode="roleplay"] .composer-toggles.rp-only-flex .pill-icon {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    flex-shrink: 0 !important;
+    line-height: 1 !important;
+  }
+
+  .app-shell[data-ui-mode="roleplay"] .composer-toggles.rp-only-flex .pill-icon svg {
+    width: 13px !important;
+    height: 13px !important;
+    flex-shrink: 0 !important;
   }
 
   /* 右侧动作图标组：固定在右侧，单行对齐，绝不换行 */

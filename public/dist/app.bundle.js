@@ -12239,7 +12239,7 @@ letter: '复古信纸'
 };
 const pName = presetNames[curSkin.preset] || '精选皮肤';
 const bName = bubbleNames[curSkin.bubbleStyle] || '气泡';
-skinVal.textContent = `${pName} · ${bName}`;
+skinVal.textContent = pName;
 }
 const verVal = document.getElementById('mfs-version-value');
 if (verVal) {

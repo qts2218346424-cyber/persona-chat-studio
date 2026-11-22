@@ -417,3 +417,21 @@
   .msg-row.assistant .thought-details>summary{padding:4px 10px!important;font-size:12px!important;}
   .msg-row.assistant .thought-details{margin:0 0 6px!important;}
 }
+
+/* 手机端：紧凑化 + 半透明毛玻璃气泡 */
+@media (max-width: 768px){
+  .msg-row{margin-bottom:10px!important;gap:6px!important;}
+  .msg-row .msg-avatar{width:26px!important;height:26px!important;min-width:26px!important;font-size:12px!important;}
+  .msg-row.assistant .assistant-prose,.msg-row.assistant .assistant-prose p,.msg-row.assistant .msg-body{font-size:14px!important;line-height:1.6!important;}
+  .msg-row.user .msg-body{font-size:14px!important;padding:7px 11px!important;}
+  .msg-row.assistant .assistant-prose p{margin:0 0 6px!important;}
+  .msg-row.assistant .thought-details{font-size:12.5px!important;}
+  .msg-row.assistant .msg-body{background:rgba(255,255,255,.42)!important;-webkit-backdrop-filter:blur(14px) saturate(140%);backdrop-filter:blur(14px) saturate(140%);border:1px solid rgba(255,255,255,.35)!important;box-shadow:0 4px 18px rgba(0,0,0,.08)!important;}
+  .msg-row.assistant .assistant-prose{background:rgba(255,255,255,.5)!important;-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);padding:8px 10px!important;border-radius:12px;}
+  .msg-row.assistant .thought-details,.msg-row.assistant .thought-summary{background:rgba(255,255,255,.35)!important;}
+}
+@media (max-width: 768px) and (prefers-color-scheme: dark){
+  .msg-row.assistant .msg-body{background:rgba(20,20,30,.45)!important;border-color:rgba(255,255,255,.08)!important;}
+  .msg-row.assistant .assistant-prose{background:rgba(30,30,44,.5)!important;}
+  .msg-row.assistant .thought-details,.msg-row.assistant .thought-summary{background:rgba(30,30,44,.4)!important;}
+}

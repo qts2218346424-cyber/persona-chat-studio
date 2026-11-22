@@ -8248,7 +8248,7 @@
       };
       const pName = presetNames[curSkin.preset] || '精选皮肤';
       const bName = bubbleNames[curSkin.bubbleStyle] || '气泡';
-      skinVal.textContent = `${pName} · ${bName}`;
+      skinVal.textContent = pName;
     }
 
     // 7. 同步版本号（原生环境优先由 PackageManager 实时读取，不在主界面透出）

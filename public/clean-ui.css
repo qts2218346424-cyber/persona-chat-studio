@@ -5270,23 +5270,37 @@ dialog::backdrop {
 .magic-split-pill-group {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
-  padding: 1px;
+  flex: 0 0 auto;
+  flex-shrink: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  gap: 0;
+  padding: 0;
   border-radius: 999px;
   background: light-dark(rgba(248, 228, 241, 0.52), rgba(46, 38, 75, 0.52));
   border: 1px solid light-dark(rgba(236, 94, 167, 0.2), rgba(192, 132, 252, 0.24));
 }
 
-.magic-split-pill-group .pill-toggle {
+.magic-split-pill-group .pill-toggle,
+.app-shell[data-ui-mode="roleplay"] .magic-split-pill-group .pill-toggle {
   background: transparent !important;
   border: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
 }
 
-.magic-split-pill-group .magic-library-btn {
+.magic-split-pill-group .pill-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.magic-split-pill-group .magic-library-btn,
+.app-shell[data-ui-mode="roleplay"] .magic-split-pill-group .magic-library-btn {
   padding-left: 7px !important;
   padding-right: 9px !important;
   border-left: 1px solid light-dark(rgba(236, 94, 167, 0.22), rgba(192, 132, 252, 0.28)) !important;
-  border-radius: 0 999px 999px 0 !important;
   color: var(--text-secondary);
 }
 

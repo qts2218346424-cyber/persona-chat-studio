@@ -1564,6 +1564,7 @@ async function handleApi(req, res, pathname, parsedUrl) {
       settings,
       membership: wallet.membership,
       wallet,
+      local_antigravity_status: detectLocalAntigravityStatus(),
       initial_session_id: initialSessionId,
       initial_session_payload: initialSessionPayload
     });
@@ -4048,7 +4049,7 @@ async function handleApi(req, res, pathname, parsedUrl) {
       }
     };
 
-    // 每 12 秒发送 SSE 注释心跳帧，防止 R1 深度思考期间被 Nginx / Cloudflare / 移动蜂窝网关空闲断流
+    // 每 4 秒发送 SSE 注释心跳帧，防止深度思考期间被 Nginx / Cloudflare / 移动蜂窝网关空闲断流
     const keepAliveTimer = setInterval(() => {
       if (!res.writableEnded) {
         try {
@@ -4057,7 +4058,7 @@ async function handleApi(req, res, pathname, parsedUrl) {
           // ignore write error on closing socket
         }
       }
-    }, 12000);
+    }, 4000);
 
     const abortController = new AbortController();
     res.on('close', () => {
@@ -4492,14 +4493,19 @@ async function handleApi(req, res, pathname, parsedUrl) {
       } else {
         const rawErrMsg = String(err?.message || '');
         console.error('[ChatStream Error]', rawErrMsg);
-        const isLocalBusy = usingLocalAntigravity || /本地服务|本地 Antigravity|agy|服务繁忙/i.test(rawErrMsg);
-        const userFriendlyMsg = isLocalBusy
-          ? '当前本地服务繁忙或未响应，建议稍后重试，或临时切换为「☁️ 云端 API 模式」继续对话。'
-          : sanitizePublicErrorMessage(err, '生成回复时发生未知异常');
-        sendEvent('error', {
-          message: userFriendlyMsg,
-          code: isLocalBusy ? 'LOCAL_SERVICE_BUSY' : 'GENERATION_ERROR'
-        });
+        const isAborted = /abort|取消|中断/i.test(rawErrMsg) || abortController.signal.aborted;
+        if (!isAborted) {
+          const isRealBusy = /本地服务繁忙|ETIMEDOUT|ECONNRESET|print-timeout/i.test(rawErrMsg);
+          const userFriendlyMsg = isRealBusy
+            ? '当前本地服务繁忙或响应超时，建议稍后重试，或临时切换为「☁️ 云端 API 模式」继续对话。'
+            : (rawErrMsg.includes('未在电脑本地检测到') || rawErrMsg.includes('宿主异常')
+              ? rawErrMsg
+              : sanitizePublicErrorMessage(err, '生成回复时发生未知异常'));
+          sendEvent('error', {
+            message: userFriendlyMsg,
+            code: isRealBusy ? 'LOCAL_SERVICE_BUSY' : 'GENERATION_ERROR'
+          });
+        }
       }
     } finally {
       clearInterval(keepAliveTimer);

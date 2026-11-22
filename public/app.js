@@ -77,7 +77,7 @@
     tourActive: false,
     llmMode: localStorage.getItem('user_llm_mode') || 'local_antigravity',
     localModel: localStorage.getItem('user_local_model') || 'DeepSeek-V4.1-Flash',
-    antigravityStatus: { available: false, models: [], default_model: 'DeepSeek-V4.1-Flash' }
+    antigravityStatus: { available: true, models: [], default_model: 'DeepSeek-V4.1-Flash', checked: false }
   };
 
   // ================= 会话内存 LRU 缓存与 0ms 首屏 SWR 本地快照引擎 =================
@@ -2661,8 +2661,8 @@
 
     let switchNotice = '';
     if (isNextLocal) {
-      if (state.antigravityStatus && state.antigravityStatus.available === false) {
-        switchNotice = '已切换至【本地直连模式】。当前本地服务繁忙或未就绪，建议稍后重试或切回「云端 API 模式」';
+      if (state.antigravityStatus?.checked && state.antigravityStatus.available === false) {
+        switchNotice = '已切换至【本地直连模式】。未检测到本地引擎环境，建议切换为「云端 API 模式」';
       } else {
         switchNotice = '已切换至：本地极速直连模式 (DeepSeek-V4.1-Flash)';
       }
@@ -5978,10 +5978,6 @@
         showToast('⚠️ 您当前处于【云端 API 模式】，但尚未配置 API 密钥。已为您打开「设置」，填入密钥或切回「本地直连」即可开始对话', 5000);
         window.__dsOpenSettings();
         return;
-      }
-    } else if (activeLlmMode === 'local_antigravity') {
-      if (state.antigravityStatus && state.antigravityStatus.available === false) {
-        showToast('⚠️ 提示：当前本地服务繁忙或未就绪，建议点击左下角切换为「云端 API 模式」', 4000);
       }
     }
 
@@ -12961,6 +12957,10 @@
     state.personas = boot.personas || [];
     state.sessions = boot.sessions || [];
     state.settings = boot.settings || {};
+    if (boot.local_antigravity_status) {
+      state.antigravityStatus = { ...boot.local_antigravity_status, checked: true };
+      syncLlmModeUi();
+    }
     if (window.AppearanceSystem) {
       window.AppearanceSystem.syncFromServer(state.settings.skin_config);
       window.AppearanceSystem.initSkinStudio('skin-studio-root');

@@ -541,8 +541,8 @@ function extractAuthToken(req, parsedUrl = null) {
   return '';
 }
 
-const APP_LATEST_VERSION = '2.0.4';
-const APP_LATEST_VERSION_CODE = 134;
+const APP_LATEST_VERSION = '2.0.5';
+const APP_LATEST_VERSION_CODE = 135;
 const APP_OFFICIAL_CERT_SHA256 = '6fd05e32a3cabf327140129d866e55a342fe30daa3384c67aad4b3cbdd98a17b';
 const APP_UPDATE_TICKET_SECRET = crypto
   .createHash('sha256')
@@ -833,10 +833,10 @@ async function handleApi(req, res, pathname, parsedUrl) {
       forceUpdate,
       diffGenerations,
       changelog: [
-        '【深度思考极简折叠】深度思考过程默认折叠不展开，仅在用户主动点击时才展开，保持界面清爽专注',
+        '【移动端外观工坊全面打通】手机端与随身版设置页直接集成「皮肤与外观工坊」和「捏脸头像工坊」，7套主题、壁纸取色与毛玻璃调节全端一键生效',
         '【剧本扮演逐句分段】沉浸剧场升级即时通讯分句发消息卡片，每一句话独立半透明小气泡包裹，对话节奏明快灵动',
-        '【外观工坊上新】新增「逐句分段」聊天气泡风格，支持随时随心切换',
-        '【随身版客户端升级】Android 原生随身版同步升级至 v2.0.4 (Build 134)，内置最新离线静态资产与性能提升'
+        '【深度思考极简折叠】深度思考过程默认折叠不展开，仅在用户主动点击时才展开，保持界面清爽专注',
+        '【随身版客户端升级】Android 原生随身版同步升级至 v2.0.5 (Build 135)，内置最新离线静态资产与性能提升'
       ]
     };
 

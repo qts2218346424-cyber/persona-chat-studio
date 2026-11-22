@@ -1260,6 +1260,46 @@
       saveLocalDb(dbObj);
       return jsonResponse({ user: dbObj.user });
     }
+    if (pathname === '/api/antigravity/status' && method === 'GET') {
+      return jsonResponse({
+        available: true,
+        transport: 'standalone_local',
+        provider: 'local_antigravity',
+        name: '本机 DeepSeek 极速推理引擎',
+        version: 'DeepSeek-V4.1-Flash (本地直连)',
+        defaultModel: 'DeepSeek-V4.1-Flash',
+        models: [
+          { id: 'DeepSeek-V4.1-Flash', name: 'DeepSeek-V4.1-Flash · 深度思考' }
+        ],
+        detail: '已成功开启本地极速直连模式，免 API 密钥，原生支持 DeepSeek 深度思考！'
+      });
+    }
+
+    if (pathname === '/api/appearance/skin' && method === 'GET') {
+      return jsonResponse({
+        ok: true,
+        skin_config: dbObj.settings.skin_config || null
+      });
+    }
+
+    if (pathname === '/api/appearance/skin' && (method === 'PUT' || method === 'POST')) {
+      const nextSkin = bodyObj?.skin_config !== undefined ? bodyObj.skin_config : bodyObj;
+      dbObj.settings.skin_config = nextSkin || null;
+      saveLocalDb(dbObj);
+      return jsonResponse({
+        ok: true,
+        skin_config: dbObj.settings.skin_config
+      });
+    }
+
+    if (pathname === '/api/appearance/upload' && method === 'POST') {
+      const dataUrl = String(bodyObj?.data_url || bodyObj?.dataUrl || '').trim();
+      if (!dataUrl) {
+        return jsonResponse({ ok: false, error: '未检测到有效的图片数据' }, 400);
+      }
+      return jsonResponse({ ok: true, url: dataUrl });
+    }
+
     if (pathname === '/api/bootstrap') {
       const m = Object.assign(
         { free_experience_mode: true, billing_enabled: false, can_bind_own_api: true, can_use_online: true, tier_name: '🌟 星语旅人', remaining_text: '' },
@@ -1273,7 +1313,18 @@
         personas: dbObj.personas,
         sessions: decorateSessions(dbObj),
         settings: dbObj.settings,
-        membership: m
+        membership: m,
+        local_antigravity_status: {
+          available: true,
+          transport: 'standalone_local',
+          provider: 'local_antigravity',
+          name: '本机 DeepSeek 极速推理引擎',
+          version: 'DeepSeek-V4.1-Flash (本地直连)',
+          defaultModel: 'DeepSeek-V4.1-Flash',
+          models: [
+            { id: 'DeepSeek-V4.1-Flash', name: 'DeepSeek-V4.1-Flash · 深度思考' }
+          ]
+        }
       });
     }
 
@@ -1430,6 +1481,8 @@
         user_id: dbObj.user.id,
         script_id: bodyObj.script_id || 'script_clannad',
         category_tag: bodyObj.category_tag || '自建角色',
+        card_mode: bodyObj.card_mode === 'character' ? 'character' : 'script',
+        user_call_name: String(bodyObj.user_call_name || '').trim().slice(0, 32),
         name: bodyObj.name || '未命名角色',
         avatar: bodyObj.avatar || '✨',
         tagline: bodyObj.tagline || '与你独享一段专属故事',
@@ -1450,6 +1503,12 @@
       const baseP = dbObj.personas.find((x) => x.id === pid) || DEFAULT_PRESET_PERSONAS[0];
       const overrideObj = {
         avatar: bodyObj.avatar || baseP.avatar || '🌸',
+        card_mode: bodyObj.card_mode !== undefined
+          ? (bodyObj.card_mode === 'character' ? 'character' : 'script')
+          : (baseP.card_mode || 'script'),
+        user_call_name: bodyObj.user_call_name !== undefined
+          ? String(bodyObj.user_call_name || '').trim().slice(0, 32)
+          : (baseP.user_call_name || ''),
         name: bodyObj.name || baseP.name || '角色',
         tagline: bodyObj.tagline ?? baseP.tagline ?? '',
         personality: bodyObj.personality ?? baseP.personality ?? '',

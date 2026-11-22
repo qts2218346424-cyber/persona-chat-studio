@@ -22,7 +22,7 @@
 </p>
 
 <p>
-  <img src="https://img.shields.io/badge/Release-v2.0.5_Build_135-7C3AED?style=flat-square&logo=rocket&logoColor=white" alt="Version v2.0.5" />
+  <img src="https://img.shields.io/badge/Release-v2.0.6_Build_136-7C3AED?style=flat-square&logo=rocket&logoColor=white" alt="Version v2.0.6" />
   <img src="https://img.shields.io/badge/Node.js-%3E%3D22.5.0-339933?style=flat-square&logo=node.js&logoColor=white" alt="Node.js >= 22.5.0" />
   <img src="https://img.shields.io/badge/Dependencies-0_npm_Packages-FF6B6B?style=flat-square&logo=npm&logoColor=white" alt="Zero npm Dependencies" />
   <img src="https://img.shields.io/badge/Storage-node%3Asqlite-003B57?style=flat-square&logo=sqlite&logoColor=white" alt="Native SQLite" />
@@ -30,7 +30,7 @@
 </p>
 
 <p>
-  <a href="#-v205-最新版本核心特性">🚀 最新特性</a> •
+  <a href="#-v206-最新版本核心特性">🚀 最新特性</a> •
   <a href="#-三大工作台">🌐 三大工作台</a> •
   <a href="#-外观皮肤与头像工坊">🎨 外观工坊</a> •
   <a href="#-五大内置剧本与-20-位角色">🎬 剧本角色</a> •
@@ -47,12 +47,12 @@
 
 ---
 
-## 🚀 v2.0.5 最新版本核心特性
+## 🚀 v2.0.6 最新版本核心特性
 
 1. **移动端外观工坊全面打通**：手机端与随身版全屏设置抽屉直接集成「🎨 免费皮肤与外观工坊」与「🎭 捏脸与头像工坊」，7 套精选主题皮肤、壁纸取色、背景暗角与毛玻璃调节在移动端一键生效。
 2. **剧本扮演逐句分段小气泡**：沉浸剧场模式台词升级为即时通讯（IM）拟真发句风格，每个段落与句子独立包裹为半透明毛玻璃小气泡卡片，对话层次分明、生动灵动。
 3. **深度思考极简折叠**：所有深度思考过程默认折叠不展开，仅保留 `已思考（用时 X 秒）` 清爽胶囊，只有用户主动点击才会展开，彻底杜绝长思考链挤占视觉视口。
-4. **Android 原生随身版同步升级**：随身版 APK 升级至 `v2.0.5 (Build 135)`，内置最新离线静态资产与性能提升，支持应用内无感更新。
+4. **Android 原生随身版同步升级**：随身版 APK 升级至 `v2.0.6 (Build 136)`，内置最新离线静态资产与性能提升，支持应用内无感更新。
 5. **移动端深度适配与顶栏防遮挡**：重构手机端空对话与顶栏布局层级，锁定安全间距，彻底根治小屏汉堡按钮与标题遮挡问题。
 6. **三通道独立隔离连接中心**：本地直连 / DeepSeek 官方 API / 自定义云端 API 独立保存与无缝切换。
 7. **极速预压缩管线**：`scripts/build-static-assets.mjs` 合并构建前端 Bundle，全面提供 `.gz` 与 `.br` 极速加载。

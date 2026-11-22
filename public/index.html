@@ -100,9 +100,9 @@
       pointer-events: none !important;
     }
   </style>
-  <link rel="preload" href="./dist/app.bundle.css?v=20261122_v205_fix_skin_dedup" as="style" />
-  <link rel="preload" href="./dist/app.bundle.js?v=20261122_v205_fix_skin_dedup" as="script" />
-  <link rel="stylesheet" href="./dist/app.bundle.css?v=20261122_v205_fix_skin_dedup" />
+  <link rel="preload" href="./dist/app.bundle.css?v=20261122_v206_sync_bridge" as="style" />
+  <link rel="preload" href="./dist/app.bundle.js?v=20261122_v206_sync_bridge" as="script" />
+  <link rel="stylesheet" href="./dist/app.bundle.css?v=20261122_v206_sync_bridge" />
 </head>
 <body data-ui-mode="deepseek">
   <div id="skin-wallpaper-layer" class="skin-wallpaper-layer" aria-hidden="true"></div>
@@ -411,8 +411,18 @@
         </button>
       </div>
 
-      <!-- 第一层核心入口：当前所在剧本 -->
-      <div class="active-script-wrap rp-only-block" id="tour-anchor-vip">
+      <!-- 星语剧场内部分段子模式切换：剧本扮演 | 角色演绎（真人模拟对话） -->
+      <div class="theater-submode-bar rp-only-flex" id="theater-submode-bar" role="tablist" aria-label="切换剧场演绎模式">
+        <button type="button" class="theater-submode-btn active" id="theater-submode-script" data-submode="script" role="tab" aria-selected="true">
+          <span>📖 剧本扮演</span>
+        </button>
+        <button type="button" class="theater-submode-btn" id="theater-submode-character" data-submode="character" role="tab" aria-selected="false">
+          <span>💬 角色演绎</span>
+        </button>
+      </div>
+
+      <!-- 第一层核心入口：当前所在剧本（仅剧本扮演子模式显示） -->
+      <div class="active-script-wrap rp-only-block script-submode-only" id="tour-anchor-vip">
         <button type="button" class="active-script-card" id="open-plaza-btn" title="点击切换其他故事剧本或逛角色广场">
           <span class="asc-icon" id="sidebar-script-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg></span>
           <div class="asc-body">
@@ -420,6 +430,20 @@
             <strong class="asc-title" id="sidebar-script-title">心动角色全集</strong>
           </div>
         </button>
+      </div>
+
+      <!-- 角色演绎子模式专属顶部卡片（仅角色演绎子模式显示） -->
+      <div class="character-mode-card-wrap rp-only-block char-submode-only hidden" id="character-mode-header-card">
+        <div class="character-mode-card">
+          <div class="cmc-top">
+            <span class="cmc-badge"><span class="persona-online-dot"></span>真人模拟对话</span>
+            <div class="cmc-actions">
+              <button type="button" class="cmc-mini-btn" id="open-avatar-library-btn" title="打开二次元头像素材库与上传">素材库</button>
+              <button type="button" class="cmc-mini-btn primary" id="quick-new-charcard-btn" title="创建一张新的真人演绎角色卡">+ 角色卡</button>
+            </div>
+          </div>
+          <p class="cmc-desc">无旁白、无舞台腔，像真人微信/日常聊天一样自然互动</p>
+        </div>
       </div>
 
       <!-- 原生 DeepSeek 专属侧栏顶部 -->
@@ -626,6 +650,8 @@
             <div class="persona-chip-info">
               <div class="persona-name-line">
                 <span class="persona-chip-name" id="topbar-name">加载中…</span>
+                <span class="character-chat-badge hidden" id="topbar-character-badge">真人演绎</span>
+                <button type="button" class="topbar-edit-char-btn hidden" id="topbar-edit-charcard-btn" title="编辑当前角色卡设定与头像">编辑角色卡</button>
                 <span class="bond-heart-tag" id="bond-level-tag">初识破冰 Lv.1</span>
                 <span class="mood-live-chip" id="live-mood-chip">温柔浅笑</span>
               </div>
@@ -1696,14 +1722,40 @@
 
       <form id="create-persona-form" class="stack-form">
         <input type="hidden" id="cp-editing-id" value="" />
-        <div class="inline-row">
-          <div class="field-group avatar-field">
-            <label for="cp-avatar">头像徽记 <span class="req-star" aria-hidden="true">*</span></label>
-            <input id="cp-avatar" type="text" value="星" maxlength="4" required />
+        <input type="hidden" id="cp-avatar" value="/assets/avatars/xia_ningmeng.svg" />
+
+        <fieldset class="theme-fieldset" style="padding: 8px 12px;">
+          <legend>演绎模式类型</legend>
+          <div class="theme-radio-group">
+            <label class="theme-option">
+              <input type="radio" name="cp-card-mode" value="script" id="cp-mode-script" checked />
+              <span>📖 剧本扮演角色</span>
+            </label>
+            <label class="theme-option">
+              <input type="radio" name="cp-card-mode" value="character" id="cp-mode-character" />
+              <span>💬 真人角色卡（无旁白日常对话）</span>
+            </label>
           </div>
+        </fieldset>
+
+        <div class="cp-avatar-picker-row">
+          <div class="cp-avatar-preview-box" id="cp-avatar-preview"></div>
+          <div class="cp-avatar-picker-meta">
+            <div class="cp-avatar-picker-title">角色二次元头像</div>
+            <div class="cp-avatar-picker-actions">
+              <button type="button" class="secondary-btn" id="cp-pick-avatar-btn">从二次元素材库选择 / 上传</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="inline-row">
           <div class="field-group flex-1">
             <label for="cp-name">角色姓名与身份 <span class="req-star" aria-hidden="true">*</span></label>
             <input id="cp-name" type="text" maxlength="48" placeholder="例如：林夏栀 · 海边画室的温柔学姐" required />
+          </div>
+          <div class="field-group" style="width: 140px;">
+            <label for="cp-user-call-name">对方叫你（选填）</label>
+            <input id="cp-user-call-name" type="text" maxlength="20" placeholder="如：宝 / 小陈 / 哥" />
           </div>
         </div>
 
@@ -1722,31 +1774,31 @@
         </fieldset>
 
         <div class="field-group">
-          <label for="cp-tagline">一句话简介</label>
+          <label for="cp-tagline">一句话简介 / 关系标签</label>
           <input id="cp-tagline" type="text" maxlength="100" placeholder="例如：表面清冷少言、一被你夸就会脸红的画室学姐" />
         </div>
 
         <div class="field-group">
-          <label for="cp-personality">性格特点与相处习惯</label>
-          <textarea id="cp-personality" rows="2" maxlength="800" placeholder="描述 TA 的性格、小习惯与对你的态度…"></textarea>
+          <label for="cp-personality">性格特点与日常口癖</label>
+          <textarea id="cp-personality" rows="2" maxlength="800" placeholder="描述 TA 的性格、说话小习惯与对你的态度…"></textarea>
         </div>
 
         <div class="field-group">
           <div class="label-with-counter">
-            <label for="cp-backstory">背景故事与关系起源 <span class="req-star" aria-hidden="true">*</span></label>
+            <label for="cp-backstory" id="cp-backstory-label">背景故事与关系起源 <span class="req-star" id="cp-backstory-req" aria-hidden="true">*</span></label>
             <span class="char-counter" id="cp-backstory-count">0 / 4000</span>
           </div>
-          <textarea id="cp-backstory" rows="4" maxlength="4000" placeholder="写下 TA 的过往背景，以及你们是怎么认识的（最多 4000 字）…" required></textarea>
+          <textarea id="cp-backstory" rows="3" maxlength="4000" placeholder="写下 TA 的背景或你们是怎么认识的（角色卡模式下选填）…"></textarea>
         </div>
 
         <div class="field-group">
-          <label for="cp-style">说话语气与动作习惯</label>
-          <input id="cp-style" type="text" maxlength="300" placeholder="例如：温柔细腻，说话时常带着浅笑与动作描写" />
+          <label for="cp-style">说话语气与聊天习惯</label>
+          <input id="cp-style" type="text" maxlength="300" placeholder="例如：纯真人口语微信风格、自然简短、爱接梗" />
         </div>
 
         <div class="field-group">
           <label for="cp-greeting">见面第一句开场白</label>
-          <textarea id="cp-greeting" rows="3" maxlength="1200" placeholder="*阳光穿过画室的玻璃窗，她放下画笔转头看向推门进来的你，弯起眼睛笑了一下。*&#10;你来啦？外头风大不大，快过来坐下暖暖手。"></textarea>
+          <textarea id="cp-greeting" rows="2" maxlength="1200" placeholder="例如：刚忙完手头的事准备点外卖，你要不要顺便拼一单？"></textarea>
         </div>
 
         <div class="field-group">
@@ -3699,7 +3751,7 @@
   <!-- 全局 Top-Layer 顶层轻提示胶囊（popover="manual" 确保在任何模态 <dialog> 打开时依然 100% 可见，遵循 persistent-toast-notifications 规范） -->
   <div id="global-top-toast" popover="manual" class="global-top-toast" role="status" aria-live="polite"></div>
 
-  <script defer src="./dist/app.bundle.js?v=20261122_v205_fix_skin_dedup"></script>
+  <script defer src="./dist/app.bundle.js?v=20261122_v206_sync_bridge"></script>
   <script>
     if ('serviceWorker' in navigator && window.location.protocol.startsWith('http')) {
       window.addEventListener('load', () => {

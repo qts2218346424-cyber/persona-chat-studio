@@ -181,7 +181,7 @@ cat > /opt/star-whisper/data/antigravity_bridge.json << 'JSONEOF'
   "enabled": true,
   "takeoverDemoChannel": true,
   "preferLocalOfflineServer": false,
-  "firstTokenTimeoutMs": 15000,
+  "firstTokenTimeoutMs": 45000,
   "defaultReasoningEffort": "low",
   "knowledgeBaseConfigPaths": [
     "/opt/coreforge/server/config.json"

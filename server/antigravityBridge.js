@@ -19,7 +19,7 @@ const DEFAULT_BRIDGE_OPTIONS = {
   enabled: true,
   takeoverDemoChannel: false,
   preferLocalOfflineServer: false,
-  firstTokenTimeoutMs: 15000,
+  firstTokenTimeoutMs: 45000,
   defaultReasoningEffort: 'low',
   knowledgeBaseConfigPaths: [],
   localServers: {
@@ -225,7 +225,7 @@ function loadBridgeRuntime() {
     });
   }
 
-  const envDsKey = (process.env.PLATFORM_DEEPSEEK_API_KEY || '').trim();
+  const envDsKey = (process.env.PLATFORM_DEEPSEEK_API_KEY || process.env.DEEPSEEK_API_KEY || '').trim();
   if (envDsKey) {
     pushEndpoint({
       id: 'env_deepseek',
@@ -538,7 +538,8 @@ async function streamViaOpenAIProtocol({
   const splitter = new SplitterClass({
     onReasoning: enableThought ? onReasoning : () => {},
     onContent,
-    enableThought
+    enableThought,
+    enableThinking: enableThought
   });
   const decoder = new TextDecoder('utf-8');
   let lineBuffer = '';
@@ -641,7 +642,8 @@ async function streamViaAnthropicProtocol({
   const splitter = new SplitterClass({
     onReasoning: enableThought ? onReasoning : () => {},
     onContent,
-    enableThought
+    enableThought,
+    enableThinking: enableThought
   });
   const decoder = new TextDecoder('utf-8');
   let lineBuffer = '';
@@ -866,34 +868,59 @@ function getLocalBridgeSuiteCredentials() {
 }
 
 /**
- * 探测本机已安装的 Antigravity / agy CLI 原生二进制路径
+ * 探测本机已安装的 Antigravity / agy CLI 原生二进制路径（跨平台兼容 Windows 与 Linux）
  */
 function getLocalAntigravityCliPath() {
-  const localAppData = process.env.LOCALAPPDATA || '';
-  const appData = process.env.APPDATA || '';
   const userHome = process.env.USERPROFILE || process.env.HOME || '';
 
-  const candidates = [
-    path.join(localAppData, 'agy', 'bin', 'agy.exe'),
-    path.join(userHome, 'AppData', 'Local', 'agy', 'bin', 'agy.exe'),
-    path.join(appData, 'npm', 'agy.cmd'),
-    path.join(localAppData, 'Programs', 'antigravity', 'Antigravity.exe'),
-    path.join(userHome, '.gemini', 'antigravity', 'bin', 'agentapi.bat')
-  ];
+  if (process.platform === 'win32') {
+    const localAppData = process.env.LOCALAPPDATA || '';
+    const appData = process.env.APPDATA || '';
 
-  for (const c of candidates) {
+    const candidates = [
+      path.join(localAppData, 'agy', 'bin', 'agy.exe'),
+      path.join(userHome, 'AppData', 'Local', 'agy', 'bin', 'agy.exe'),
+      path.join(appData, 'npm', 'agy.cmd'),
+      path.join(localAppData, 'Programs', 'antigravity', 'Antigravity.exe'),
+      path.join(userHome, '.gemini', 'antigravity', 'bin', 'agentapi.bat')
+    ];
+
+    for (const c of candidates) {
+      if (c && fs.existsSync(c)) {
+        return c;
+      }
+    }
+
+    try {
+      const whereOut = execFileSync('where.exe', ['agy'], {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+        timeout: 3000
+      }).trim();
+      const firstLine = whereOut.split(/\r?\n/)[0];
+      if (firstLine && fs.existsSync(firstLine)) return firstLine;
+    } catch {}
+
+    return null;
+  }
+
+  const unixCandidates = [
+    '/usr/local/bin/agy',
+    userHome ? path.join(userHome, '.local', 'bin', 'agy') : ''
+  ];
+  for (const c of unixCandidates) {
     if (c && fs.existsSync(c)) {
       return c;
     }
   }
 
   try {
-    const whereOut = execFileSync('where.exe', ['agy'], {
+    const whichOut = execFileSync('which', ['agy'], {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'ignore'],
       timeout: 3000
     }).trim();
-    const firstLine = whereOut.split(/\r?\n/)[0];
+    const firstLine = whichOut.split(/\r?\n/)[0];
     if (firstLine && fs.existsSync(firstLine)) return firstLine;
   } catch {}
 
@@ -901,17 +928,28 @@ function getLocalAntigravityCliPath() {
 }
 
 /**
- * 获取本地 Antigravity 宿主底座的可用状态与模型清单
+ * 获取本地 Antigravity 宿主底座的可用状态与模型清单（兼容本地 CLI 与服务端桥接端点）
  */
 function detectLocalAntigravityStatus() {
   const cliPath = getLocalAntigravityCliPath();
-  const available = Boolean(cliPath && fs.existsSync(cliPath));
+  const hasCli = Boolean(cliPath && fs.existsSync(cliPath));
+  const runtime = loadBridgeRuntime();
+  const hasBridgeEndpoint = Boolean(runtime.options.enabled && runtime.endpoints.length > 0);
+  const available = hasCli || hasBridgeEndpoint;
+  const transport = hasCli ? 'local_cli' : (hasBridgeEndpoint ? 'bridge_endpoint' : 'none');
+
+  const resolvedPath = hasCli
+    ? cliPath
+    : (hasBridgeEndpoint
+      ? `bridge://${runtime.endpoints[0].name || runtime.endpoints[0].id}`
+      : '未检测到本地引擎环境');
 
   return {
     available,
+    transport,
     provider: 'local_antigravity',
     name: '本机 DeepSeek 极速推理引擎',
-    path: cliPath || '未检测到本地引擎环境',
+    path: resolvedPath,
     version: 'DeepSeek-V4.1-Flash (本地直连)',
     defaultModel: 'DeepSeek-V4.1-Flash',
     models: [

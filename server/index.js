@@ -106,6 +106,7 @@ const {
 } = require('./deepseekApiSuite');
 const {
   loadBridgeRuntime,
+  tryStreamViaAntigravityBridge,
   detectLocalAntigravityStatus,
   streamViaLocalAntigravityCli,
   getLocalAntigravityCliPath
@@ -393,28 +394,28 @@ function listPersonasForUser(userId) {
 const BUILTIN_ANIME_AVATARS = [
   { id: 'anime_shenxinghui', name: '沈星回 · 星穹占星师', url: '/assets/avatars/shenxinghui.jpg', category: 'male' },
   { id: 'anime_luchen', name: '陆沉 · 暗夜执行官', url: '/assets/avatars/luchen.jpg', category: 'male' },
-  { id: 'anime_xieqingyan', name: '谢清晏 · 长安谋士', url: '/assets/avatars/xieqingyan.jpg', category: 'ancient' },
-  { id: 'anime_jiangyubai', name: '江逾白 · 霜华剑尊', url: '/assets/avatars/jiangyubai.jpg', category: 'ancient' },
-  { id: 'anime_jiran', name: '季燃 · 电竞少年', url: '/assets/avatars/jiran.jpg', category: 'modern' },
-  { id: 'anime_guxiuyuan', name: '顾修远 · 都市家主', url: '/assets/avatars/guxiuyuan.jpg', category: 'male' },
+  { id: 'anime_xieqingyan', name: '谢清晏 · 长安谋士', url: '/assets/avatars/xieqingyan.svg', category: 'ancient' },
+  { id: 'anime_jiangyubai', name: '江逾白 · 霜华剑尊', url: '/assets/avatars/jiangyubai.svg', category: 'ancient' },
+  { id: 'anime_jiran', name: '季燃 · 电竞少年', url: '/assets/avatars/jiran.svg', category: 'modern' },
+  { id: 'anime_guxiuyuan', name: '顾修远 · 都市家主', url: '/assets/avatars/guxiuyuan.svg', category: 'male' },
   { id: 'anime_suwanqing', name: '苏晚晴 · 高冷御姐', url: '/assets/avatars/suwanqing.jpg', category: 'female' },
-  { id: 'anime_yunzhiyao', name: '云知遥 · 仙侠师姐', url: '/assets/avatars/yunzhiyao.jpg', category: 'ancient' },
-  { id: 'anime_xia_ningmeng', name: '夏柠萌 · 元气甜妹', url: '/assets/avatars/xia_ningmeng.jpg', category: 'female' },
-  { id: 'anime_yan_feiyu', name: '燕绯羽 · 魅惑歌姬', url: '/assets/avatars/yan_feiyu.jpg', category: 'female' },
-  { id: 'anime_nagisa', name: '星野汐 · 樱花少女', url: '/assets/avatars/nagisa_sakura.jpg', category: 'female' },
-  { id: 'anime_kyou', name: '藤井杏奈 · 元气班长', url: '/assets/avatars/kagaribi_kyou.jpg', category: 'female' },
-  { id: 'anime_kotomi', name: '一之濑琴音 · 图书室少女', url: '/assets/avatars/ichinose_kotomi.jpg', category: 'female' },
-  { id: 'anime_rin', name: '白石凛 · 观测者少年', url: '/assets/avatars/shiraishi_rin.jpg', category: 'male' },
-  { id: 'anime_makise', name: '牧濑栖 · 天才研究员', url: '/assets/avatars/makise_sei.jpg', category: 'female' },
-  { id: 'anime_mio', name: '朝雾澪 · 神社青梅', url: '/assets/avatars/asagiri_mio.jpg', category: 'female' },
-  { id: 'anime_violet', name: '伊芙琳 · 代笔少女', url: '/assets/avatars/violet_eve.jpg', category: 'female' },
-  { id: 'anime_hodgins', name: '霍金斯 · 绅士社长', url: '/assets/avatars/hodgins_landon.jpg', category: 'male' },
-  { id: 'anime_shuer', name: '修尔 · 半精灵旅人', url: '/assets/avatars/frieren_shuer.jpg', category: 'ancient' },
-  { id: 'anime_fer', name: '菲尔 · 少年剑士', url: '/assets/avatars/stark_fer.jpg', category: 'ancient' },
-  { id: 'anime_char_linzhi', name: '林知夏 · 插画师室友', url: '/assets/avatars/char_linzhi.jpg', category: 'modern' },
-  { id: 'anime_char_chenmo', name: '陈默 · 温柔程序员', url: '/assets/avatars/char_chenmo.jpg', category: 'modern' },
-  { id: 'anime_char_shiyu', name: '诗语 · 邻家闺蜜', url: '/assets/avatars/char_shiyu.jpg', category: 'modern' },
-  { id: 'anime_char_zhouyan', name: '周晏 · 阳光发小', url: '/assets/avatars/char_zhouyan.jpg', category: 'modern' }
+  { id: 'anime_yunzhiyao', name: '云知遥 · 仙侠师姐', url: '/assets/avatars/yunzhiyao.svg', category: 'ancient' },
+  { id: 'anime_xia_ningmeng', name: '夏柠萌 · 元气甜妹', url: '/assets/avatars/xia_ningmeng.svg', category: 'female' },
+  { id: 'anime_yan_feiyu', name: '燕绯羽 · 魅惑歌姬', url: '/assets/avatars/yan_feiyu.svg', category: 'female' },
+  { id: 'anime_nagisa', name: '星野汐 · 樱花少女', url: '/assets/avatars/nagisa_sakura.svg', category: 'female' },
+  { id: 'anime_kyou', name: '藤井杏奈 · 元气班长', url: '/assets/avatars/kagaribi_kyou.svg', category: 'female' },
+  { id: 'anime_kotomi', name: '一之濑琴音 · 图书室少女', url: '/assets/avatars/ichinose_kotomi.svg', category: 'female' },
+  { id: 'anime_rin', name: '白石凛 · 观测者少年', url: '/assets/avatars/shiraishi_rin.svg', category: 'male' },
+  { id: 'anime_makise', name: '牧濑栖 · 天才研究员', url: '/assets/avatars/makise_sei.svg', category: 'female' },
+  { id: 'anime_mio', name: '朝雾澪 · 神社青梅', url: '/assets/avatars/asagiri_mio.svg', category: 'female' },
+  { id: 'anime_violet', name: '伊芙琳 · 代笔少女', url: '/assets/avatars/violet_eve.svg', category: 'female' },
+  { id: 'anime_hodgins', name: '霍金斯 · 绅士社长', url: '/assets/avatars/hodgins_landon.svg', category: 'male' },
+  { id: 'anime_shuer', name: '修尔 · 半精灵旅人', url: '/assets/avatars/frieren_shuer.svg', category: 'ancient' },
+  { id: 'anime_fer', name: '菲尔 · 少年剑士', url: '/assets/avatars/stark_fer.svg', category: 'ancient' },
+  { id: 'anime_char_linzhi', name: '林知夏 · 插画师室友', url: '/assets/avatars/char_linzhi.svg', category: 'modern' },
+  { id: 'anime_char_chenmo', name: '陈默 · 温柔程序员', url: '/assets/avatars/char_chenmo.svg', category: 'modern' },
+  { id: 'anime_char_shiyu', name: '诗语 · 邻家闺蜜', url: '/assets/avatars/char_shiyu.svg', category: 'modern' },
+  { id: 'anime_char_zhouyan', name: '周晏 · 阳光发小', url: '/assets/avatars/char_zhouyan.svg', category: 'modern' }
 ];
 
 function listSessionsForUser(userId) {
@@ -581,8 +582,8 @@ function extractAuthToken(req, parsedUrl = null) {
   return '';
 }
 
-const APP_LATEST_VERSION = '2.0.5';
-const APP_LATEST_VERSION_CODE = 135;
+const APP_LATEST_VERSION = '2.0.6';
+const APP_LATEST_VERSION_CODE = 136;
 const APP_OFFICIAL_CERT_SHA256 = '6fd05e32a3cabf327140129d866e55a342fe30daa3384c67aad4b3cbdd98a17b';
 const APP_UPDATE_TICKET_SECRET = crypto
   .createHash('sha256')
@@ -873,10 +874,9 @@ async function handleApi(req, res, pathname, parsedUrl) {
       forceUpdate,
       diffGenerations,
       changelog: [
-        '【移动端外观工坊全面打通】手机端与随身版设置页直接集成「皮肤与外观工坊」和「捏脸头像工坊」，7套主题、壁纸取色与毛玻璃调节全端一键生效',
-        '【剧本扮演逐句分段】沉浸剧场升级即时通讯分句发消息卡片，每一句话独立半透明小气泡包裹，对话节奏明快灵动',
-        '【深度思考极简折叠】深度思考过程默认折叠不展开，仅在用户主动点击时才展开，保持界面清爽专注',
-        '【随身版客户端升级】Android 原生随身版同步升级至 v2.0.5 (Build 135)，内置最新离线静态资产与性能提升'
+        '【本地极速直连全面修复】打通云端桥接端点与深度思考拆流，彻底解决服务端本地直连提示服务繁忙的问题',
+        '【双端体验全面同步】网页版与 Android 随身版同步对齐毛玻璃气泡、单行操作栏、皮肤外观工坊与角色卡模式',
+        '【随身版客户端升级】Android 原生随身版同步升级至 v2.0.6 (Build 136)，内置最新离线静态资产与性能提升'
       ]
     };
 
@@ -2056,11 +2056,11 @@ async function handleApi(req, res, pathname, parsedUrl) {
     const defaultAvatar =
       cardMode === 'character'
         ? cleanGender === 'male'
-          ? '/assets/avatars/char_chenmo.jpg'
-          : '/assets/avatars/char_linzhi.jpg'
+          ? '/assets/avatars/char_chenmo.svg'
+          : '/assets/avatars/char_linzhi.svg'
         : cleanGender === 'male'
         ? '/assets/avatars/shenxinghui.jpg'
-        : '/assets/avatars/xia_ningmeng.jpg';
+        : '/assets/avatars/xia_ningmeng.svg';
     // 独立自建角色默认归入通用「心动角色全集」或「角色演绎」，防止误继承其他主题剧本的特定身份导致串戏
     const rawScriptId = String(body.script_id || (cardMode === 'character' ? 'script_character_mode' : 'script_classic')).trim();
     const isAdoptedScript = Boolean(
@@ -2237,18 +2237,49 @@ async function handleApi(req, res, pathname, parsedUrl) {
       db.prepare('DELETE FROM lorebook_entries WHERE persona_id = ? AND user_id = ?').run(personaId, userId);
       db.prepare('DELETE FROM sessions WHERE persona_id = ? AND user_id = ?').run(personaId, userId);
       db.prepare('DELETE FROM personas WHERE id = ? AND user_id = ?').run(personaId, userId);
-      const latestPersonas = db
-        .prepare("SELECT * FROM personas WHERE (user_id = 'system' OR user_id = ?) ORDER BY CASE WHEN user_id = 'system' THEN 0 ELSE 1 END, created_at ASC")
-        .all(userId)
-        .map(formatPersonaRow);
-      return sendJson(res, 200, { ok: true, personas: latestPersonas, sessions: listSessionsForUser(userId) });
+      return sendJson(res, 200, { ok: true, personas: listPersonasForUser(userId), sessions: listSessionsForUser(userId) });
     }
+  }
+
+  // ========= 5.5 单独为任意角色卡或预设角色更换头像 =========
+  const personaAvatarMatch = pathname.match(/^\/api\/personas\/([^/]+)\/avatar$/);
+  if (method === 'PUT' && personaAvatarMatch) {
+    const personaId = decodeURIComponent(personaAvatarMatch[1]);
+    const body = await readJsonBody(req);
+    const nextAvatar = String(body.avatar || '').trim();
+    if (!nextAvatar) return sendJson(res, 400, { error: '头像地址或徽记不能为空' });
+    const existing = db
+      .prepare("SELECT * FROM personas WHERE id = ? AND (user_id = ? OR user_id = 'system')")
+      .get(personaId, userId);
+    if (!existing) return sendJson(res, 404, { error: '未找到该角色人设' });
+
+    const now = Date.now();
+    if (existing.user_id === userId) {
+      db.prepare('UPDATE personas SET avatar = ?, updated_at = ? WHERE id = ? AND user_id = ?').run(
+        nextAvatar,
+        now,
+        personaId,
+        userId
+      );
+    } else {
+      db.prepare(`
+        INSERT OR REPLACE INTO user_persona_avatars (user_id, persona_id, avatar_url, updated_at)
+        VALUES (?, ?, ?, ?)
+      `).run(userId, personaId, nextAvatar, now);
+    }
+    const updatedPersona = listPersonasForUser(userId).find((p) => p.id === personaId) || formatPersonaRow({ ...existing, avatar: nextAvatar });
+    return sendJson(res, 200, { ok: true, persona: updatedPersona, personas: listPersonasForUser(userId) });
   }
 
   // ========= 6. 会话创建、导入历史记录与导出 =========
   if (method === 'POST' && pathname === '/api/sessions') {
     const body = await readJsonBody(req);
-    const sessionMode = body.session_mode === 'deepseek_native' ? 'deepseek_native' : 'roleplay';
+    const sessionMode =
+      body.session_mode === 'deepseek_native'
+        ? 'deepseek_native'
+        : body.session_mode === 'character_chat'
+        ? 'character_chat'
+        : 'roleplay';
     const personaId =
       sessionMode === 'deepseek_native'
         ? 'persona_deepseek_official'
@@ -2270,6 +2301,8 @@ async function handleApi(req, res, pathname, parsedUrl) {
         ? isPureOfficial
           ? '新对话'
           : `问答对话 · ${shortPersonaName}`
+        : sessionMode === 'character_chat'
+        ? `和${shortPersonaName}聊天`
         : `与${shortPersonaName}的心动篇章`;
     const title = (body.title || defaultTitle).trim();
     const dsThinking = body.ds_thinking !== undefined ? (body.ds_thinking ? 1 : 0) : 1;
@@ -2291,14 +2324,21 @@ async function handleApi(req, res, pathname, parsedUrl) {
     // 原生 DeepSeek 模式保持官方 App 纯净新对话欢迎态；仅在恋庭沉浸模式注入初遇开场白与贴合人设的初遇心声独白
     if (sessionMode !== 'deepseek_native' && persona.greeting && persona.greeting.trim()) {
       const userNickCall = (currentUser.nickname || '你').replace(/^星语旅人·.*$/, '你');
-      const renderedGreeting = replaceRoleplayMacros(
+      let renderedGreeting = replaceRoleplayMacros(
         persona.greeting.trim(),
         currentUser.nickname,
         persona.name
       );
+      if (sessionMode === 'character_chat') {
+        const stripped = renderedGreeting.replace(/\*[^*\n]+\*/g, '').replace(/\n{2,}/g, '\n').trim();
+        renderedGreeting = stripped || `嗨，${userNickCall === '星屿旅人' ? '最近' : userNickCall}在忙什么呢？`;
+      }
       const shortRoleName = (persona.name || '').split(/[·\s]/)[0].trim();
       const personaTraitHint = (persona.personality || persona.tagline || '温柔守候').split(/[，。；]/)[0].trim();
-      const openingThought = `终于把${userNickCall === '星屿旅人' ? '你' : `「${userNickCall}」`}盼来了……平时别人总觉得${shortRoleName || '我'}${personaTraitHint}，可一看到你推门进来，心里早就悄悄软了下来，得先把准备好的暖意递给你才行。`;
+      const openingThought =
+        sessionMode === 'character_chat'
+          ? `刚好空闲下来看到消息，顺口跟${userNickCall === '星屿旅人' ? '对方' : userNickCall}打个招呼聊聊近况吧。`
+          : `终于把${userNickCall === '星屿旅人' ? '你' : `「${userNickCall}」`}盼来了……平时别人总觉得${shortRoleName || '我'}${personaTraitHint}，可一看到你推门进来，心里早就悄悄软了下来，得先把准备好的暖意递给你才行。`;
       db.prepare(`
         INSERT INTO messages (session_id, role, reasoning, content, duration_ms, recalled_count, created_at)
         VALUES (?, 'assistant', ?, ?, 350, 1, ?)
@@ -3069,6 +3109,8 @@ async function handleApi(req, res, pathname, parsedUrl) {
         body.session_mode !== undefined
           ? body.session_mode === 'deepseek_native'
             ? 'deepseek_native'
+            : body.session_mode === 'character_chat'
+            ? 'character_chat'
             : 'roleplay'
           : session.session_mode || 'roleplay';
       const dsThinking =
@@ -3606,6 +3648,69 @@ async function handleApi(req, res, pathname, parsedUrl) {
     }
   }
 
+  // ========= 头像素材库接口（内置二次元头像 + 用户个人上传收藏） =========
+  if (method === 'GET' && pathname === '/api/avatar-library') {
+    const customRows = db
+      .prepare('SELECT id, label, url, category, created_at FROM user_avatar_library WHERE user_id = ? ORDER BY created_at DESC LIMIT 80')
+      .all(userId);
+    return sendJson(res, 200, {
+      ok: true,
+      builtin: BUILTIN_ANIME_AVATARS,
+      custom: customRows
+    });
+  }
+
+  if (method === 'POST' && pathname === '/api/avatar-library') {
+    if (!checkRateLimit(`avatar-lib:${userId}`, 30, 60000)) {
+      return sendJson(res, 429, { error: '操作过于频繁，请稍后再试' });
+    }
+    const body = await readJsonBody(req, 2 * 1024 * 1024);
+    const label = String(body.label || '我的上传头像').trim().slice(0, 32) || '我的上传头像';
+    let finalUrl = String(body.url || '').trim();
+
+    if (!finalUrl && body.dataUrl) {
+      const dataUrl = String(body.dataUrl || '').trim();
+      const match = dataUrl.match(/^data:image\/(webp|png|jpeg|jpg);base64,([A-Za-z0-9+/=]+)$/);
+      if (!match) {
+        return sendJson(res, 400, { error: '图片格式无效，仅支持 WebP / PNG / JPEG 图片' });
+      }
+      const rawExt = match[1].toLowerCase();
+      const ext = rawExt === 'jpeg' ? 'jpg' : rawExt;
+      const buffer = Buffer.from(match[2], 'base64');
+      if (!buffer.length || buffer.length > 1.5 * 1024 * 1024) {
+        return sendJson(res, 400, { error: '图片大小须在 1.5MB 以内' });
+      }
+      const safeUserPart = String(userId).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 24) || 'u';
+      const filename = `${safeUserPart}_${Date.now()}_${crypto.randomBytes(4).toString('hex')}.${ext}`;
+      const destPath = path.join(UPLOADS_ROOT, 'avatars', filename);
+      fs.writeFileSync(destPath, buffer);
+      finalUrl = `/api/uploads/avatars/${filename}`;
+    }
+
+    if (!finalUrl || (!finalUrl.startsWith('/api/uploads/avatars/') && !finalUrl.startsWith('/assets/avatars/'))) {
+      return sendJson(res, 400, { error: '缺少有效头像图片地址' });
+    }
+
+    const id = genId('avlib');
+    const now = Date.now();
+    db.prepare(`
+      INSERT INTO user_avatar_library (id, user_id, label, url, category, created_at)
+      VALUES (?, ?, ?, ?, 'custom', ?)
+    `).run(id, userId, label, finalUrl, now);
+
+    return sendJson(res, 201, {
+      ok: true,
+      item: { id, label, url: finalUrl, category: 'custom', created_at: now }
+    });
+  }
+
+  const avLibMatch = pathname.match(/^\/api\/avatar-library\/([^/]+)$/);
+  if (method === 'DELETE' && avLibMatch) {
+    const itemId = decodeURIComponent(avLibMatch[1]);
+    db.prepare('DELETE FROM user_avatar_library WHERE id = ? AND user_id = ?').run(itemId, userId);
+    return sendJson(res, 200, { ok: true, id: itemId });
+  }
+
   // 验证个人填写的 API Key 与兼容网关连通性（明确解耦：DeepSeek 专属极简 vs 云端 API 自由定制）
   if (method === 'POST' && pathname === '/api/settings/verify-own-key') {
     if (!checkRateLimit(`verify-own-key:${userId}`, 12, 60000)) {
@@ -3954,8 +4059,9 @@ async function handleApi(req, res, pathname, parsedUrl) {
     const usingMemberOwnKey = Boolean(settings._using_member_own_key);
 
     const requestedLlmMode = body.llm_mode || session.llm_mode || 'local_antigravity';
+    const localStatus = detectLocalAntigravityStatus();
     const localCliPath = getLocalAntigravityCliPath();
-    const isLocalAvailable = Boolean(localCliPath);
+    const isLocalAvailable = Boolean(localStatus.available);
 
     // 1. 本地直连模式检测：若选择本地模式但宿主不可用或失效，明确提示服务繁忙
     if (requestedLlmMode === 'local_antigravity' && !isLocalAvailable) {
@@ -4221,21 +4327,43 @@ async function handleApi(req, res, pathname, parsedUrl) {
           ? (body.ds_thinking !== undefined ? Boolean(body.ds_thinking) : session.ds_thinking === 1)
           : true;
 
-        nativeMeta = await streamViaLocalAntigravityCli({
-          messagesPayload: contextBundle.messagesPayload,
-          personaName: contextBundle.persona?.name || (isNativeMode ? 'DeepSeek' : '当前角色'),
-          model: localTargetModel,
-          enableThinking,
-          SplitterClass: NativeThinkSplitter,
-          onReasoning: (delta) => {
-            fullReasoning += delta;
-            sendEvent('reasoning', { delta });
-          },
-          onContent: (delta) => {
-            followupsFilter.push(delta);
-          },
-          signal: abortController.signal
-        });
+        if (localCliPath) {
+          nativeMeta = await streamViaLocalAntigravityCli({
+            messagesPayload: contextBundle.messagesPayload,
+            personaName: contextBundle.persona?.name || (isNativeMode ? 'DeepSeek' : '当前角色'),
+            model: localTargetModel,
+            enableThinking,
+            SplitterClass: NativeThinkSplitter,
+            onReasoning: (delta) => {
+              fullReasoning += delta;
+              sendEvent('reasoning', { delta });
+            },
+            onContent: (delta) => {
+              followupsFilter.push(delta);
+            },
+            signal: abortController.signal
+          });
+        } else {
+          const bridgedOk = await tryStreamViaAntigravityBridge({
+            channel: 'local_antigravity',
+            contextBundle,
+            temperature: Number(settings.temperature) || 0.85,
+            enableThought: enableThinking,
+            SplitterClass: NativeThinkSplitter,
+            onReasoning: (delta) => {
+              fullReasoning += delta;
+              sendEvent('reasoning', { delta });
+            },
+            onContent: (delta) => {
+              followupsFilter.push(delta);
+            },
+            signal: abortController.signal
+          });
+          if (!bridgedOk) {
+            throw new Error('当前本地服务繁忙或响应超时，请稍后重试或切换为「☁️ 云端 API 模式」');
+          }
+          nativeMeta = { model: 'DeepSeek-V4.1-Flash', isLocalAntigravity: true };
+        }
       } else if (isNativeMode) {
         const enableThinking =
           body.ds_thinking !== undefined ? Boolean(body.ds_thinking) : session.ds_thinking === 1;

@@ -1205,6 +1205,42 @@ bio: bodyObj.bio || ''
 saveLocalDb(dbObj);
 return jsonResponse({ user: dbObj.user });
 }
+if (pathname === '/api/antigravity/status' && method === 'GET') {
+return jsonResponse({
+available: true,
+transport: 'standalone_local',
+provider: 'local_antigravity',
+name: '本机 DeepSeek 极速推理引擎',
+version: 'DeepSeek-V4.1-Flash (本地直连)',
+defaultModel: 'DeepSeek-V4.1-Flash',
+models: [
+{ id: 'DeepSeek-V4.1-Flash', name: 'DeepSeek-V4.1-Flash · 深度思考' }
+],
+detail: '已成功开启本地极速直连模式，免 API 密钥，原生支持 DeepSeek 深度思考！'
+});
+}
+if (pathname === '/api/appearance/skin' && method === 'GET') {
+return jsonResponse({
+ok: true,
+skin_config: dbObj.settings.skin_config || null
+});
+}
+if (pathname === '/api/appearance/skin' && (method === 'PUT' || method === 'POST')) {
+const nextSkin = bodyObj?.skin_config !== undefined ? bodyObj.skin_config : bodyObj;
+dbObj.settings.skin_config = nextSkin || null;
+saveLocalDb(dbObj);
+return jsonResponse({
+ok: true,
+skin_config: dbObj.settings.skin_config
+});
+}
+if (pathname === '/api/appearance/upload' && method === 'POST') {
+const dataUrl = String(bodyObj?.data_url || bodyObj?.dataUrl || '').trim();
+if (!dataUrl) {
+return jsonResponse({ ok: false, error: '未检测到有效的图片数据' }, 400);
+}
+return jsonResponse({ ok: true, url: dataUrl });
+}
 if (pathname === '/api/bootstrap') {
 const m = Object.assign(
 { free_experience_mode: true, billing_enabled: false, can_bind_own_api: true, can_use_online: true, tier_name: '🌟 星语旅人', remaining_text: '' },
@@ -1218,7 +1254,18 @@ square_items: dbObj.square_items,
 personas: dbObj.personas,
 sessions: decorateSessions(dbObj),
 settings: dbObj.settings,
-membership: m
+membership: m,
+local_antigravity_status: {
+available: true,
+transport: 'standalone_local',
+provider: 'local_antigravity',
+name: '本机 DeepSeek 极速推理引擎',
+version: 'DeepSeek-V4.1-Flash (本地直连)',
+defaultModel: 'DeepSeek-V4.1-Flash',
+models: [
+{ id: 'DeepSeek-V4.1-Flash', name: 'DeepSeek-V4.1-Flash · 深度思考' }
+]
+}
 });
 }
 if (pathname === '/api/workshop/analyze' && method === 'POST') {
@@ -1369,6 +1416,8 @@ id: pid,
 user_id: dbObj.user.id,
 script_id: bodyObj.script_id || 'script_clannad',
 category_tag: bodyObj.category_tag || '自建角色',
+card_mode: bodyObj.card_mode === 'character' ? 'character' : 'script',
+user_call_name: String(bodyObj.user_call_name || '').trim().slice(0, 32),
 name: bodyObj.name || '未命名角色',
 avatar: bodyObj.avatar || '✨',
 tagline: bodyObj.tagline || '与你独享一段专属故事',
@@ -1388,6 +1437,12 @@ const pid = decodeURIComponent(personaEditMatch[1]);
 const baseP = dbObj.personas.find((x) => x.id === pid) || DEFAULT_PRESET_PERSONAS[0];
 const overrideObj = {
 avatar: bodyObj.avatar || baseP.avatar || '🌸',
+card_mode: bodyObj.card_mode !== undefined
+? (bodyObj.card_mode === 'character' ? 'character' : 'script')
+: (baseP.card_mode || 'script'),
+user_call_name: bodyObj.user_call_name !== undefined
+? String(bodyObj.user_call_name || '').trim().slice(0, 32)
+: (baseP.user_call_name || ''),
 name: bodyObj.name || baseP.name || '角色',
 tagline: bodyObj.tagline ?? baseP.tagline ?? '',
 personality: bodyObj.personality ?? baseP.personality ?? '',
@@ -3576,6 +3631,48 @@ const AVATAR_SHAPES = [
 { id: 'hex', name: '徽章六边' }
 ];
 const AVATAR_BADGES = ['', '✨', '🌸', '🌙', '💫', '🎀', '🦋', '🔥', '💎', '🐾'];
+const ANIME_AVATAR_LIBRARY = [
+{ id: 'anime_shenxinghui', name: '沈星回', url: '/assets/avatars/shenxinghui.jpg', category: 'male' },
+{ id: 'anime_luchen', name: '陆沉', url: '/assets/avatars/luchen.jpg', category: 'male' },
+{ id: 'anime_suwanqing', name: '苏晚晴', url: '/assets/avatars/suwanqing.jpg', category: 'female' },
+{ id: 'anime_xieqingyan', name: '谢清晏', url: '/assets/avatars/xieqingyan.svg', category: 'ancient' },
+{ id: 'anime_jiangyubai', name: '江逾白', url: '/assets/avatars/jiangyubai.svg', category: 'ancient' },
+{ id: 'anime_yunzhiyao', name: '云知遥', url: '/assets/avatars/yunzhiyao.svg', category: 'ancient' },
+{ id: 'anime_xia_ningmeng', name: '夏柠萌', url: '/assets/avatars/xia_ningmeng.svg', category: 'female' },
+{ id: 'anime_yan_feiyu', name: '燕绯羽', url: '/assets/avatars/yan_feiyu.svg', category: 'female' },
+{ id: 'anime_jiran', name: '季燃', url: '/assets/avatars/jiran.svg', category: 'modern' },
+{ id: 'anime_guxiuyuan', name: '顾修远', url: '/assets/avatars/guxiuyuan.svg', category: 'male' },
+{ id: 'anime_nagisa', name: '星野汐', url: '/assets/avatars/nagisa_sakura.svg', category: 'female' },
+{ id: 'anime_kyou', name: '藤井杏奈', url: '/assets/avatars/kagaribi_kyou.svg', category: 'female' },
+{ id: 'anime_kotomi', name: '一之濑琴音', url: '/assets/avatars/ichinose_kotomi.svg', category: 'female' },
+{ id: 'anime_rin', name: '白石凛', url: '/assets/avatars/shiraishi_rin.svg', category: 'male' },
+{ id: 'anime_makise', name: '牧濑栖', url: '/assets/avatars/makise_sei.svg', category: 'female' },
+{ id: 'anime_mio', name: '朝雾澪', url: '/assets/avatars/asagiri_mio.svg', category: 'female' },
+{ id: 'anime_violet', name: '伊芙琳', url: '/assets/avatars/violet_eve.svg', category: 'female' },
+{ id: 'anime_hodgins', name: '霍金斯', url: '/assets/avatars/hodgins_landon.svg', category: 'male' },
+{ id: 'anime_shuer', name: '修尔', url: '/assets/avatars/frieren_shuer.svg', category: 'ancient' },
+{ id: 'anime_fer', name: '菲尔', url: '/assets/avatars/stark_fer.svg', category: 'ancient' },
+{ id: 'anime_char_linzhi', name: '林知夏', url: '/assets/avatars/char_linzhi.svg', category: 'modern' },
+{ id: 'anime_char_chenmo', name: '陈默', url: '/assets/avatars/char_chenmo.svg', category: 'modern' },
+{ id: 'anime_char_shiyu', name: '诗语', url: '/assets/avatars/char_shiyu.svg', category: 'modern' },
+{ id: 'anime_char_zhouyan', name: '周晏', url: '/assets/avatars/char_zhouyan.svg', category: 'modern' }
+];
+let cachedCustomAvatars = [];
+let cachedBuiltinAvatars = ANIME_AVATAR_LIBRARY;
+async function refreshAvatarLibrary() {
+try {
+const resp = await fetch('/api/avatar-library', {
+headers: getAuthHeaders(),
+credentials: 'include'
+});
+if (resp.ok) {
+const data = await resp.json();
+if (Array.isArray(data.builtin) && data.builtin.length) cachedBuiltinAvatars = data.builtin;
+if (Array.isArray(data.custom)) cachedCustomAvatars = data.custom;
+}
+} catch {}
+return { builtin: cachedBuiltinAvatars, custom: cachedCustomAvatars };
+}
 const PRESET_AVATARS = [
 {
 id: 'preset_sakura_fox',
@@ -3883,7 +3980,7 @@ acc: 'none'
 src: ''
 };
 }
-function openAvatarStudio({ initialAvatar, initialConfig, nickname, onApply }) {
+function openAvatarStudio({ initialAvatar, initialConfig, nickname, title, defaultTab, onApply }) {
 const dialog = document.getElementById('avatar-studio-dialog');
 if (!dialog) return;
 const draft = Object.assign(
@@ -3893,14 +3990,30 @@ initialConfig && typeof initialConfig === 'object' ? JSON.parse(JSON.stringify(i
 if (!draft.parts) {
 draft.parts = createDefaultAvatarConfig(initialAvatar, nickname).parts;
 }
-if (initialAvatar && (initialAvatar.startsWith('/api/uploads/') || initialAvatar.startsWith('data:image/')) && !draft.src) {
+const isUrlImg = (s) =>
+typeof s === 'string' &&
+(s.startsWith('/api/uploads/') || s.startsWith('/assets/') || s.startsWith('data:image/') || s.startsWith('https://'));
+if (isUrlImg(initialAvatar) && !draft.src) {
 draft.type = 'upload';
 draft.src = initialAvatar;
 }
-let activeTab = draft.type === 'upload' ? 'upload'
-: draft.type === 'svg-builder' ? 'builder'
-: draft.type === 'preset' ? 'preset'
-: 'glyph';
+let activeTab =
+defaultTab ||
+(draft.type === 'upload'
+? isUrlImg(draft.src) && String(draft.src).startsWith('/assets/avatars/')
+? 'anime'
+: 'upload'
+: draft.type === 'svg-builder'
+? 'builder'
+: draft.type === 'preset'
+? 'preset'
+: 'anime');
+let animeCategory = 'all';
+refreshAvatarLibrary().then(() => {
+if (dialog.open && activeTab === 'anime') {
+renderTabBody();
+}
+});
 const cropState = {
 img: null,
 scale: 1,
@@ -3922,7 +4035,7 @@ draft
 dialog.innerHTML = `
         <div class="modal-inner">
           <div class="modal-header">
-            <h2>自定义头像工坊 <span class="skin-free-tag">全部免费开放</span></h2>
+            <h2>${escapeHtml(title || '二次元头像与素材库')} <span class="skin-free-tag">全部免费开放</span></h2>
             <button type="button" class="icon-btn" id="close-avatar-studio-btn" aria-label="关闭头像工坊">✕</button>
           </div>
           <div class="avatar-studio-shell">
@@ -3945,10 +4058,11 @@ dialog.innerHTML = `
             </div>
             <div>
               <div class="avatar-studio-tabs" role="tablist">
-                <button type="button" class="avatar-studio-tab ${activeTab === 'glyph' ? 'active' : ''}" data-tab="glyph">文字/Emoji</button>
-                <button type="button" class="avatar-studio-tab ${activeTab === 'preset' ? 'active' : ''}" data-tab="preset">精美预设</button>
-                <button type="button" class="avatar-studio-tab ${activeTab === 'builder' ? 'active' : ''}" data-tab="builder">捏脸工坊</button>
+                <button type="button" class="avatar-studio-tab ${activeTab === 'anime' ? 'active' : ''}" data-tab="anime">二次元素材库</button>
                 <button type="button" class="avatar-studio-tab ${activeTab === 'upload' ? 'active' : ''}" data-tab="upload">上传裁剪</button>
+                <button type="button" class="avatar-studio-tab ${activeTab === 'preset' ? 'active' : ''}" data-tab="preset">精美徽章</button>
+                <button type="button" class="avatar-studio-tab ${activeTab === 'builder' ? 'active' : ''}" data-tab="builder">捏脸工坊</button>
+                <button type="button" class="avatar-studio-tab ${activeTab === 'glyph' ? 'active' : ''}" data-tab="glyph">文字/Emoji</button>
                 <button type="button" class="avatar-studio-tab ${activeTab === 'frame' ? 'active' : ''}" data-tab="frame">免费头像框</button>
               </div>
               <div class="avatar-studio-panel" id="as-tab-panel"></div>
@@ -3977,7 +4091,102 @@ draft
 function renderTabBody() {
 const panel = dialog.querySelector('#as-tab-panel');
 if (!panel) return;
-if (activeTab === 'glyph') {
+if (activeTab === 'anime') {
+const cats = [
+{ id: 'all', label: '全部二次元' },
+{ id: 'female', label: '少女/御姐' },
+{ id: 'male', label: '少年/男主' },
+{ id: 'ancient', label: '古风仙侠' },
+{ id: 'modern', label: '现代日常' },
+{ id: 'custom', label: `我的上传 (${cachedCustomAvatars.length})` }
+];
+const builtinFiltered =
+animeCategory === 'all'
+? cachedBuiltinAvatars
+: animeCategory === 'custom'
+? []
+: cachedBuiltinAvatars.filter((item) => item.category === animeCategory);
+const showCustom = animeCategory === 'all' || animeCategory === 'custom';
+panel.innerHTML = `
+          <div class="anime-lib-cats">
+            ${cats
+.map(
+(c) =>
+`<button type="button" class="skin-pill-btn as-anime-cat-btn ${animeCategory === c.id ? 'active' : ''}" data-cat="${c.id}">${escapeHtml(c.label)}</button>`
+)
+.join('')}
+          </div>
+          ${
+showCustom && cachedCustomAvatars.length > 0
+? `<div class="builder-parts-title" style="margin-top:6px;">我上传收藏的头像</div>
+                 <div class="avatar-choice-grid anime-avatar-grid">
+                   ${cachedCustomAvatars
+.map(
+(item) => `
+                     <div class="avatar-choice-card anime-avatar-card ${draft.type === 'upload' && draft.src === item.url ? 'active' : ''}" data-url="${escapeHtml(item.url)}">
+                       <img src="${escapeHtml(item.url)}" class="anime-lib-thumb" alt="${escapeHtml(item.label || '自定义头像')}" loading="lazy" />
+                       <span class="anime-lib-name">${escapeHtml(item.label || '我的上传')}</span>
+                       <button type="button" class="anime-lib-del-btn" data-id="${escapeHtml(item.id)}" title="从素材库删除">×</button>
+                     </div>`
+)
+.join('')}
+                 </div>`
+: animeCategory === 'custom'
+? `<div style="padding:18px;text-align:center;color:var(--text-muted);font-size:12.5px;">暂无个人上传素材，点击上方「上传裁剪」Tab 上传图片即可自动收藏到这里 ✨</div>`
+: ''
+}
+          ${
+builtinFiltered.length > 0
+? `<div class="builder-parts-title" style="margin-top:6px;">官方精选二次元角色头像（点击即选）</div>
+                 <div class="avatar-choice-grid anime-avatar-grid">
+                   ${builtinFiltered
+.map(
+(item) => `
+                     <button type="button" class="avatar-choice-card anime-avatar-card as-anime-pick-btn ${draft.type === 'upload' && draft.src === item.url ? 'active' : ''}" data-url="${escapeHtml(item.url)}">
+                       <img src="${escapeHtml(item.url)}" class="anime-lib-thumb" alt="${escapeHtml(item.name)}" loading="lazy" />
+                       <span class="anime-lib-name">${escapeHtml((item.name || '').split('·')[0].trim())}</span>
+                     </button>`
+)
+.join('')}
+                 </div>`
+: ''
+}
+        `;
+panel.querySelectorAll('.as-anime-cat-btn').forEach((btn) => {
+btn.addEventListener('click', () => {
+animeCategory = btn.dataset.cat || 'all';
+renderTabBody();
+});
+});
+panel.querySelectorAll('.anime-avatar-card[data-url]').forEach((card) => {
+card.addEventListener('click', (e) => {
+if (e.target.closest('.anime-lib-del-btn')) return;
+const url = card.dataset.url;
+if (!url) return;
+draft.type = 'upload';
+draft.src = url;
+renderTabBody();
+updatePreviewOnly();
+});
+});
+panel.querySelectorAll('.anime-lib-del-btn').forEach((delBtn) => {
+delBtn.addEventListener('click', async (e) => {
+e.stopPropagation();
+const id = delBtn.dataset.id;
+if (!id) return;
+try {
+await fetch(`/api/avatar-library/${encodeURIComponent(id)}`, {
+method: 'DELETE',
+headers: getAuthHeaders(),
+credentials: 'include'
+});
+cachedCustomAvatars = cachedCustomAvatars.filter((x) => x.id !== id);
+renderTabBody();
+notify('已从我的头像素材库删除');
+} catch {}
+});
+});
+} else if (activeTab === 'glyph') {
 panel.innerHTML = `
           <div class="field-group">
             <label for="as-glyph-input">显示文字或 Emoji（最多 4 字）</label>
@@ -4238,12 +4447,27 @@ body: JSON.stringify({ category: 'avatars', dataUrl })
 const data = await resp.json();
 if (resp.ok && data?.url) {
 finalSrc = data.url;
+try {
+const libResp = await fetch('/api/avatar-library', {
+method: 'POST',
+headers: getAuthHeaders(),
+credentials: 'include',
+body: JSON.stringify({
+url: finalSrc,
+label: nickname ? `${String(nickname).slice(0, 12)}头像` : '我的上传头像'
+})
+});
+const libData = await libResp.json();
+if (libResp.ok && libData?.item) {
+cachedCustomAvatars = [libData.item, ...cachedCustomAvatars.filter((x) => x.id !== libData.item.id)];
+}
+} catch {}
 }
 } catch {}
 draft.type = 'upload';
 draft.src = finalSrc;
 updatePreviewOnly();
-notify('头像裁剪上传成功，点击“应用此头像配置”即可生效');
+notify('头像上传成功并已存入「我的素材库」，点击下方“应用此头像配置”即可生效');
 } finally {
 confirmBtn.disabled = false;
 confirmBtn.textContent = '裁剪并上传头像';
@@ -4690,10 +4914,43 @@ if (serverSkinConfig && typeof serverSkinConfig === 'object') {
 applySkin(serverSkinConfig, { persist: true, syncServer: false });
 }
 }
+function openAvatarLibraryForPersona(persona, onApplied) {
+if (!persona) return;
+const shortName = String(persona.name || '角色').split('·')[0].trim();
+openAvatarStudio({
+initialAvatar: persona.avatar,
+nickname: shortName,
+title: `为「${shortName}」更换二次元头像`,
+defaultTab: 'anime',
+onApply: async ({ avatar }) => {
+if (!avatar) return;
+if (persona.id && !String(persona.id).startsWith('__draft__')) {
+try {
+const resp = await fetch(`/api/personas/${encodeURIComponent(persona.id)}/avatar`, {
+method: 'PUT',
+headers: getAuthHeaders(),
+credentials: 'include',
+body: JSON.stringify({ avatar })
+});
+const data = await resp.json().catch(() => ({}));
+if (resp.ok) {
+if (typeof onApplied === 'function') onApplied(avatar, data.persona, data.personas);
+notify(`已更新「${shortName}」的头像`);
+return;
+}
+} catch {}
+}
+if (typeof onApplied === 'function') onApplied(avatar, null, null);
+}
+});
+}
 applySkin(currentSkin, { persist: false, syncServer: false });
 window.AppearanceSystem = {
 renderSmartAvatarHtml,
 openAvatarStudio,
+openAvatarLibraryForPersona,
+refreshAvatarLibrary,
+ANIME_AVATAR_LIBRARY,
 initSkinStudio,
 applySkin,
 syncFromServer,

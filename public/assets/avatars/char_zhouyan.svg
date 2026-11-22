@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <defs>
+    <linearGradient id="bg_char_zhouyan" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0f172a"/>
+      <stop offset="52%" stop-color="#1e293b"/>
+      <stop offset="100%" stop-color="#38bdf8"/>
+    </linearGradient>
+    <radialGradient id="glow_char_zhouyan" cx="50%" cy="42%" r="50%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.28"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="256" height="256" fill="url(#bg_char_zhouyan)"/>
+  <circle cx="128" cy="112" r="108" fill="url(#glow_char_zhouyan)"/>
+  
+      <g fill="#fef08a" opacity="0.72">
+        <circle cx="42" cy="54" r="2.6"/><circle cx="214" cy="58" r="3.2"/>
+        <circle cx="36" cy="168" r="2"/><circle cx="220" cy="152" r="2.4"/>
+        <path d="M198 38 L201 44 L207 47 L201 50 L198 56 L195 50 L189 47 L195 44 Z" opacity="0.85"/>
+      </g>
+  
+    <path d="M64 96 C58 134 64 170 76 188 L180 188 C192 170 198 134 192 96 C180 46 76 46 64 96 Z" fill="#18181b"/>
+  
+    <path d="M48 256 C52 210 86 196 128 196 C170 196 204 210 208 256 Z" fill="#18181b"/>
+    <path d="M98 198 Q128 220 158 198" stroke="#38bdf8" stroke-width="5" stroke-linecap="round" fill="none"/>
+  <!-- 颈部与阴影 -->
+  <rect x="114" y="170" width="28" height="32" rx="10" fill="#ffe8da"/>
+  <path d="M114 176 Q128 190 142 176 L142 186 Q128 196 114 186 Z" fill="#000000" opacity="0.1"/>
+  <!-- 耳朵（非精灵时） -->
+  <ellipse cx="76" cy="134" rx="7" ry="11" fill="#ffe8da"/><ellipse cx="180" cy="134" rx="7" ry="11" fill="#ffe8da"/>
+  <!-- 脸型 -->
+  <path d="M77 104 C77 68 179 68 179 104 L179 134 C179 164 150 184 128 184 C106 184 77 164 77 134 Z" fill="#ffe8da"/>
+  <!-- 腮红 -->
+  <ellipse cx="94" cy="147" rx="11" ry="5" fill="#fb7185" opacity="0.25"/>
+  <ellipse cx="162" cy="147" rx="11" ry="5" fill="#fb7185" opacity="0.25"/>
+  
+    <g>
+      <!-- 眉毛 -->
+      <path d="M84 111 Q98 105 112 114" stroke="#18181b" stroke-width="2.8" stroke-linecap="round" fill="none" opacity="0.88"/>
+      <path d="M144 114 Q158 105 172 111" stroke="#18181b" stroke-width="2.8" stroke-linecap="round" fill="none" opacity="0.88"/>
+
+      <!-- 左眼 -->
+      <ellipse cx="99" cy="131" rx="11.5" ry="11" fill="#ffffff"/>
+      <ellipse cx="99" cy="131.5" rx="8.8" ry="9.2" fill="#0284c7"/>
+      <ellipse cx="99" cy="133" rx="6.4" ry="6.5" fill="#0f172a" opacity="0.72"/>
+      <circle cx="95" cy="126" r="3.4" fill="#ffffff"/>
+      <circle cx="103" cy="136" r="1.8" fill="#ffffff" opacity="0.88"/>
+      <path d="M86 124 Q99 118 112 125" stroke="#1e1b2e" stroke-width="3.5" stroke-linecap="round" fill="none"/>
+
+      <!-- 右眼 -->
+      <ellipse cx="157" cy="131" rx="11.5" ry="11" fill="#ffffff"/>
+      <ellipse cx="157" cy="131.5" rx="8.8" ry="9.2" fill="#0284c7"/>
+      <ellipse cx="157" cy="133" rx="6.4" ry="6.5" fill="#0f172a" opacity="0.72"/>
+      <circle cx="153" cy="126" r="3.4" fill="#ffffff"/>
+      <circle cx="161" cy="136" r="1.8" fill="#ffffff" opacity="0.88"/>
+      <path d="M144 125 Q157 118 170 124" stroke="#1e1b2e" stroke-width="3.5" stroke-linecap="round" fill="none"/>
+    </g>
+  <!-- 鼻尖高光点 -->
+  <path d="M127 146 Q129 149 127 151" stroke="#d4a395" stroke-width="1.6" stroke-linecap="round" fill="none"/>
+  <path d="M119 160 Q128 169 137 160 Z" fill="#fb7185" stroke="#be123c" stroke-width="1.6" stroke-linejoin="round"/>
+  
+      <path d="M62 104 C62 50 194 50 194 104 C194 74 166 56 128 56 C90 56 62 74 62 104 Z" fill="#18181b"/>
+      <path d="M62 108 L74 72 L90 104 L106 66 L122 102 L140 66 L156 104 L174 70 L194 108 C184 54 72 54 62 108 Z" fill="#18181b"/>
+      <path d="M62 100 C56 124 62 146 74 156 L78 118 Z" fill="#18181b"/>
+      <path d="M194 100 C200 124 194 146 182 156 L178 118 Z" fill="#18181b"/>
+      <path d="M84 78 Q128 64 172 78" stroke="#3f3f46" stroke-width="5" stroke-linecap="round" fill="none" opacity="0.45"/>
+  
+</svg>

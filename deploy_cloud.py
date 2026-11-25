@@ -134,6 +134,40 @@ def main():
     sftp.close()
     print('  上传完成！')
 
+    bridge_secret_path = os.path.join(PROJECT_ROOT, 'data', 'bridge_tunnel.secret.json')
+    custom_endpoints = []
+    if os.path.isfile(bridge_secret_path):
+        try:
+            with open(bridge_secret_path, 'r', encoding='utf-8') as f:
+                sec = json.load(f)
+            if sec.get('token'):
+                t_port = int(sec.get('port') or 18765)
+                custom_endpoints.append({
+                    'id': 'home_pc_antigravity',
+                    'name': '本机电脑 Antigravity / Gemini 双核直连',
+                    'apiFormat': 'openai',
+                    'baseURL': f'http://127.0.0.1:{t_port}/v1/chat/completions',
+                    'apiKey': sec['token'],
+                    'defaultModel': 'agy-auto',
+                    'models': ['agy-auto', 'agy', 'gemini-cli']
+                })
+        except Exception:
+            pass
+
+    bridge_cfg_json = json.dumps({
+        'enabled': True,
+        'takeoverDemoChannel': True,
+        'preferLocalOfflineServer': False,
+        'firstTokenTimeoutMs': 60000,
+        'defaultReasoningEffort': 'low',
+        'knowledgeBaseConfigPaths': ['/opt/coreforge/server/config.json'],
+        'localServers': {
+            'ollamaBaseUrl': 'http://127.0.0.1:11434',
+            'lmStudioBaseUrl': 'http://127.0.0.1:1234'
+        },
+        'customEndpoints': custom_endpoints
+    }, ensure_ascii=False, indent=2)
+
     print('Step 3: 正在云端部署 /opt/star-whisper、同步内置 API 配置并启动 PM2 + Nginx...')
     remote_cmd = f"""
 set -e
@@ -184,23 +218,9 @@ updateAdminPlatformConfig({{
 console.log("CLOUD_DB_SYNC_OK: 聊天大脑已成功交还 Antigravity 智能体底座");
 '
 
-# 初始化或更新云端 Antigravity 桥接配置，自动联动同机 /opt/coreforge/server/config.json 密钥底座
+# 初始化或更新云端 Antigravity 桥接配置，优先接入本机隧道端点，同时保留 /opt/coreforge/server/config.json 兜底
 cat > /opt/star-whisper/data/antigravity_bridge.json << 'JSONEOF'
-{{
-  "enabled": true,
-  "takeoverDemoChannel": true,
-  "preferLocalOfflineServer": false,
-  "firstTokenTimeoutMs": 45000,
-  "defaultReasoningEffort": "low",
-  "knowledgeBaseConfigPaths": [
-    "/opt/coreforge/server/config.json"
-  ],
-  "localServers": {{
-    "ollamaBaseUrl": "http://127.0.0.1:11434",
-    "lmStudioBaseUrl": "http://127.0.0.1:1234"
-  }},
-  "customEndpoints": []
-}}
+{bridge_cfg_json}
 JSONEOF
 
 # 为 star.claudexxb.online / rp.claudexxb.online 签发独立 10 年期 SAN 源站证书（绝不改动 coreforge 原有证书）

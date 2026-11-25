@@ -4405,7 +4405,7 @@ async function handleApi(req, res, pathname, parsedUrl) {
             signal: abortController.signal
           });
         } else {
-          const bridgedOk = await tryStreamViaAntigravityBridge({
+          const bridgedRes = await tryStreamViaAntigravityBridge({
             channel: 'local_antigravity',
             contextBundle,
             temperature: Number(settings.temperature) || 0.85,
@@ -4420,10 +4420,14 @@ async function handleApi(req, res, pathname, parsedUrl) {
             },
             signal: abortController.signal
           });
-          if (!bridgedOk) {
+          if (!bridgedRes) {
             throw new Error('当前本地服务繁忙或响应超时，请稍后重试或切换为「☁️ 云端 API 模式」');
           }
-          nativeMeta = { model: 'DeepSeek-V4.1-Flash', isLocalAntigravity: true };
+          nativeMeta = {
+            model: 'DeepSeek-V4.1-Flash',
+            isLocalAntigravity: true,
+            ...(typeof bridgedRes === 'object' ? { bridge_endpoint: bridgedRes.endpointId, bridge_name: bridgedRes.endpointName } : {})
+          };
         }
       } else if (isNativeMode) {
         const enableThinking =

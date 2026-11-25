@@ -13,6 +13,7 @@ data/*.sqlite-shm
 data/*.sqlite-wal
 data/*.db
 data/antigravity_bridge.json
+data/bridge_tunnel.secret.json
 data/tts_cache/
 
 # 安卓安装包与签名文件（APK 通过 GitHub Releases 发布）

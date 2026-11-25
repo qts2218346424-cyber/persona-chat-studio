@@ -799,12 +799,14 @@ async function tryStreamViaAntigravityBridge({
       }
 
       if (hasEmittedContent) {
-        return true;
+        console.log('[Antigravity Bridge] 命中端点:', ep.id, ep.name);
+        return { ok: true, endpointId: ep.id, endpointName: ep.name, model: targetModel };
       }
     } catch (err) {
       if (signal?.aborted) throw err;
       // 若尚未向前端输出任何字符，继续尝试下一个备用端点或本地回退
       if (hasEmittedContent) throw err;
+      console.warn('[Antigravity Bridge] 端点不可用，尝试回退下一个:', ep.id, err.message);
     } finally {
       clearTimeout(firstTokenTimer);
       signal?.removeEventListener('abort', onParentAbort);

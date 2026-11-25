@@ -1018,30 +1018,78 @@ async function handleApi(req, res, pathname, parsedUrl) {
     let weatherData = null;
     try {
       const target = isLocalIp ? '' : encodeURIComponent(rawIp);
-      const url = `https://wttr.in/${target}?format=j1&lang=zh-cn`;
-      const resp = await fetch(url, {
+      // 优先使用 ip-api 定位经纬度 + Open-Meteo 实时天气（国内节点响应迅速且免 Key）
+      const ipInfoUrl = `http://ip-api.com/json/${target}?fields=status,city,regionName,lat,lon&lang=zh-CN`;
+      const ipResp = await fetch(ipInfoUrl, {
         headers: { 'User-Agent': 'StarWhisperPet/2.5.2' },
-        signal: AbortSignal.timeout(3500)
+        signal: AbortSignal.timeout(3000)
       });
-      if (resp.ok) {
-        const j = await resp.json();
-        const cur = Array.isArray(j?.current_condition) ? j.current_condition[0] : null;
-        const area = Array.isArray(j?.nearest_area) ? j.nearest_area[0] : null;
-        if (cur) {
-          const areaName = (area?.areaName?.[0]?.value || area?.region?.[0]?.value || '').trim();
-          const descZh = (cur?.lang_zh?.[0]?.value || cur?.weatherDesc?.[0]?.value || '').trim();
-          weatherData = {
-            ok: true,
-            city: areaName,
-            tempC: String(cur.temp_C ?? ''),
-            feelsLikeC: String(cur.FeelsLikeC ?? ''),
-            humidity: String(cur.humidity ?? ''),
-            windKmph: String(cur.windspeedKmph ?? ''),
-            weatherDesc: descZh
-          };
+      if (ipResp.ok) {
+        const ipJ = await ipResp.json();
+        if (ipJ && ipJ.status === 'success' && Number.isFinite(ipJ.lat) && Number.isFinite(ipJ.lon)) {
+          const omUrl = `https://api.open-meteo.com/v1/forecast?latitude=${ipJ.lat}&longitude=${ipJ.lon}&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m&timezone=auto`;
+          const omResp = await fetch(omUrl, {
+            headers: { 'User-Agent': 'StarWhisperPet/2.5.2' },
+            signal: AbortSignal.timeout(3500)
+          });
+          if (omResp.ok) {
+            const omJ = await omResp.json();
+            const c = omJ?.current;
+            if (c && Number.isFinite(c.temperature_2m)) {
+              const code = Number(c.weather_code ?? -1);
+              const wmoDesc = (wCode) => {
+                if (wCode === 0) return '晴朗';
+                if (wCode === 1 || wCode === 2) return '少云';
+                if (wCode === 3) return '多云转阴';
+                if (wCode === 45 || wCode === 48) return '有雾';
+                if (wCode >= 51 && wCode <= 57) return '毛毛雨';
+                if ((wCode >= 61 && wCode <= 67) || (wCode >= 80 && wCode <= 82)) return '下雨';
+                if ((wCode >= 71 && wCode <= 77) || wCode === 85 || wCode === 86) return '下雪';
+                if (wCode >= 95) return '雷阵雨';
+                return '多云';
+              };
+              weatherData = {
+                ok: true,
+                city: String(ipJ.city || ipJ.regionName || '').trim(),
+                tempC: String(Math.round(c.temperature_2m)),
+                feelsLikeC: String(Math.round(c.apparent_temperature ?? c.temperature_2m)),
+                windKmph: String(Math.round(c.wind_speed_10m ?? 0)),
+                weatherDesc: wmoDesc(code)
+              };
+            }
+          }
         }
       }
     } catch {}
+
+    if (!weatherData) {
+      try {
+        const target = isLocalIp ? '' : encodeURIComponent(rawIp);
+        const url = `https://wttr.in/${target}?format=j1&lang=zh-cn`;
+        const resp = await fetch(url, {
+          headers: { 'User-Agent': 'StarWhisperPet/2.5.2' },
+          signal: AbortSignal.timeout(4500)
+        });
+        if (resp.ok) {
+          const j = await resp.json();
+          const cur = Array.isArray(j?.current_condition) ? j.current_condition[0] : null;
+          const area = Array.isArray(j?.nearest_area) ? j.nearest_area[0] : null;
+          if (cur) {
+            const areaName = (area?.areaName?.[0]?.value || area?.region?.[0]?.value || '').trim();
+            const descZh = (cur?.lang_zh?.[0]?.value || cur?.weatherDesc?.[0]?.value || '').trim();
+            weatherData = {
+              ok: true,
+              city: areaName,
+              tempC: String(cur.temp_C ?? ''),
+              feelsLikeC: String(cur.FeelsLikeC ?? ''),
+              humidity: String(cur.humidity ?? ''),
+              windKmph: String(cur.windspeedKmph ?? ''),
+              weatherDesc: descZh
+            };
+          }
+        }
+      } catch {}
+    }
 
     const payload = weatherData || { ok: false, city: '', tempC: '', weatherDesc: '' };
     if (wCache.size > 200) {

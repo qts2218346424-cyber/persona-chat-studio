@@ -8,10 +8,12 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
+import android.database.Cursor;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.provider.OpenableColumns;
 import android.provider.Settings;
 import android.util.DisplayMetrics;
 import android.view.KeyEvent;
@@ -33,6 +35,8 @@ import android.widget.Toast;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
@@ -48,10 +52,12 @@ import java.util.Map;
 public class MainActivity extends Activity {
     public static final String EXTRA_PENDING_AGENT_TASK = "extra_pending_agent_task";
     public static final String EXTRA_REQUEST_AUDIO_PERM = "extra_request_audio_perm";
+    public static final String EXTRA_OPEN_SONG_IMPORTER = "extra_open_song_importer";
     private static final String VIRTUAL_HOST = "appassets.androidplatform.net";
     private static final String START_URL = "https://" + VIRTUAL_HOST + "/index.html";
     private static final int FILE_CHOOSER_REQ_CODE = 1001;
     private static final int AUDIO_PERM_REQ_CODE = 1002;
+    private static final int SONG_IMPORTER_REQ_CODE = 1004;
     private static final String PREF_AUTH = "star_whisper_auth";
     private static final String PREF_KEY_TOKEN = "auth_token";
     private static final String PREF_KEY_USER_JSON = "auth_user_json";
@@ -149,6 +155,19 @@ public class MainActivity extends Activity {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
                     && checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
                 requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, AUDIO_PERM_REQ_CODE);
+            }
+        }
+        if (intent.getBooleanExtra(EXTRA_OPEN_SONG_IMPORTER, false)) {
+            intent.removeExtra(EXTRA_OPEN_SONG_IMPORTER);
+            if (webView != null) {
+                webView.postDelayed(new Runnable() {
+                    @Override
+                    public void run() {
+                        launchSongAudioPicker();
+                    }
+                }, 220);
+            } else {
+                launchSongAudioPicker();
             }
         }
         String task = intent.getStringExtra(EXTRA_PENDING_AGENT_TASK);
@@ -440,6 +459,27 @@ public class MainActivity extends Activity {
             }
             return;
         }
+        if (requestCode == SONG_IMPORTER_REQ_CODE) {
+            if (resultCode == Activity.RESULT_OK && data != null) {
+                final List<Uri> pickedUris = new ArrayList<>();
+                try {
+                    ClipData clip = data.getClipData();
+                    if (clip != null) {
+                        for (int i = 0; i < clip.getItemCount(); i++) {
+                            Uri u = clip.getItemAt(i).getUri();
+                            if (u != null) pickedUris.add(u);
+                        }
+                    } else if (data.getData() != null) {
+                        pickedUris.add(data.getData());
+                    }
+                } catch (Exception ignored) {}
+                if (!pickedUris.isEmpty()) {
+                    Toast.makeText(this, "正在导入 " + pickedUris.size() + " 首实际歌声音频…", Toast.LENGTH_SHORT).show();
+                    importPickedSongUrisAsync(pickedUris);
+                }
+            }
+            return;
+        }
         if (requestCode == FILE_CHOOSER_REQ_CODE) {
             ValueCallback<Uri[]> cb = filePathCallback;
             filePathCallback = null;
@@ -472,6 +512,139 @@ public class MainActivity extends Activity {
             return;
         }
         super.onActivityResult(requestCode, resultCode, data);
+    }
+
+    private void launchSongAudioPicker() {
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
+                    intent.addCategory(Intent.CATEGORY_OPENABLE);
+                    intent.setType("audio/*");
+                    intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
+                    intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                    startActivityForResult(Intent.createChooser(intent, "选择大肥鱼要唱的实际声音/歌曲 (支持多选)"), SONG_IMPORTER_REQ_CODE);
+                } catch (Exception e) {
+                    Toast.makeText(MainActivity.this, "无法打开音频文件选择器: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                }
+            }
+        });
+    }
+
+    private String resolveDisplayName(Uri uri) {
+        String name = "";
+        Cursor cursor = null;
+        try {
+            cursor = getContentResolver().query(uri, null, null, null, null);
+            if (cursor != null && cursor.moveToFirst()) {
+                int idx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME);
+                if (idx >= 0) {
+                    name = cursor.getString(idx);
+                }
+            }
+        } catch (Exception ignored) {
+        } finally {
+            if (cursor != null) {
+                try { cursor.close(); } catch (Exception ignored) {}
+            }
+        }
+        if (name == null || name.trim().isEmpty()) {
+            String path = uri.getLastPathSegment();
+            name = (path != null && !path.trim().isEmpty()) ? path : ("导入歌声_" + System.currentTimeMillis());
+        }
+        int slash = name.lastIndexOf('/');
+        if (slash >= 0 && slash < name.length() - 1) {
+            name = name.substring(slash + 1);
+        }
+        return name.trim();
+    }
+
+    private void importPickedSongUrisAsync(final List<Uri> uris) {
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                File dir = new File(getFilesDir(), "whale_songs");
+                if (!dir.exists()) dir.mkdirs();
+                final List<JSONObject> imported = new ArrayList<>();
+                long seq = System.currentTimeMillis();
+
+                for (Uri uri : uris) {
+                    if (uri == null) continue;
+                    String origName = resolveDisplayName(uri);
+                    String ext = ".mp3";
+                    int dot = origName.lastIndexOf('.');
+                    String title = origName;
+                    if (dot > 0 && dot < origName.length() - 1) {
+                        String candExt = origName.substring(dot).toLowerCase(Locale.ROOT);
+                        if (candExt.length() <= 6) ext = candExt;
+                        title = origName.substring(0, dot).trim();
+                    }
+                    if (title.isEmpty()) title = "自定义歌曲_" + seq;
+
+                    String id = "song_" + seq + "_" + imported.size();
+                    File dest = new File(dir, id + ext);
+                    InputStream in = null;
+                    FileOutputStream out = null;
+                    boolean copied = false;
+                    try {
+                        in = getContentResolver().openInputStream(uri);
+                        if (in != null) {
+                            out = new FileOutputStream(dest);
+                            byte[] buf = new byte[16384];
+                            int len;
+                            long total = 0L;
+                            while ((len = in.read(buf)) > 0) {
+                                out.write(buf, 0, len);
+                                total += len;
+                            }
+                            out.flush();
+                            copied = total > 256;
+                        }
+                    } catch (Exception ignored) {
+                    } finally {
+                        try { if (in != null) in.close(); } catch (Exception ignored) {}
+                        try { if (out != null) out.close(); } catch (Exception ignored) {}
+                    }
+
+                    if (copied && dest.exists()) {
+                        try {
+                            JSONObject item = new JSONObject();
+                            item.put("id", id);
+                            item.put("title", title);
+                            item.put("filePath", dest.getAbsolutePath());
+                            item.put("addedAt", System.currentTimeMillis());
+                            imported.add(item);
+                        } catch (Exception ignored) {}
+                    } else if (dest.exists()) {
+                        dest.delete();
+                    }
+                    seq++;
+                }
+
+                if (!imported.isEmpty()) {
+                    final int count = FloatAgentService.addImportedSongsFromMain(MainActivity.this, imported);
+                    runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            Toast.makeText(MainActivity.this,
+                                    "🎵 已为大肥鱼导入 " + count + " 首实际歌声！点「🎤唱歌」立刻开唱",
+                                    Toast.LENGTH_LONG).show();
+                            if (webView != null) {
+                                webView.evaluateJavascript("window.dispatchEvent(new CustomEvent('pa-songs-updated'));", null);
+                            }
+                        }
+                    });
+                } else {
+                    runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            Toast.makeText(MainActivity.this, "导入失败：无法读取选中的音频文件", Toast.LENGTH_SHORT).show();
+                        }
+                    });
+                }
+            }
+        }).start();
     }
 
     @Override
@@ -1029,6 +1202,54 @@ public class MainActivity extends Activity {
         @JavascriptInterface
         public void openQuickTypingMode() {
             FloatAgentService.openQuickTypingBarFromBridge(MainActivity.this);
+        }
+
+        @JavascriptInterface
+        public void openSongImporter() {
+            launchSongAudioPicker();
+        }
+
+        @JavascriptInterface
+        public String getCustomSongsJson() {
+            return FloatAgentService.getCustomSongsJsonFromPrefs(MainActivity.this);
+        }
+
+        @JavascriptInterface
+        public boolean renameCustomSong(String songId, String newTitle) {
+            boolean ok = FloatAgentService.renameCustomSongFromBridge(MainActivity.this, songId, newTitle);
+            if (ok && webView != null) {
+                webView.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        webView.evaluateJavascript("window.dispatchEvent(new CustomEvent('pa-songs-updated'));", null);
+                    }
+                });
+            }
+            return ok;
+        }
+
+        @JavascriptInterface
+        public boolean deleteCustomSong(String songId) {
+            boolean ok = FloatAgentService.deleteCustomSongFromBridge(MainActivity.this, songId);
+            if (ok && webView != null) {
+                webView.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        webView.evaluateJavascript("window.dispatchEvent(new CustomEvent('pa-songs-updated'));", null);
+                    }
+                });
+            }
+            return ok;
+        }
+
+        @JavascriptInterface
+        public void playCustomSongNow(String songId) {
+            FloatAgentService.playSongByIdFromBridge(MainActivity.this, songId);
+        }
+
+        @JavascriptInterface
+        public void stopCustomSongNow() {
+            FloatAgentService.stopSongFromBridge();
         }
 
         @JavascriptInterface

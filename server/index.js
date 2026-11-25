@@ -602,8 +602,8 @@ function extractAuthToken(req, parsedUrl = null) {
   return '';
 }
 
-const APP_LATEST_VERSION = '2.4.5';
-const APP_LATEST_VERSION_CODE = 146;
+const APP_LATEST_VERSION = '2.5.1';
+const APP_LATEST_VERSION_CODE = 148;
 const APP_OFFICIAL_CERT_SHA256 = '6fd05e32a3cabf327140129d866e55a342fe30daa3384c67aad4b3cbdd98a17b';
 const APP_UPDATE_TICKET_SECRET = crypto
   .createHash('sha256')
@@ -894,9 +894,9 @@ async function handleApi(req, res, pathname, parsedUrl) {
       forceUpdate,
       diffGenerations,
       changelog: [
-        '【修复大肥鱼没声音问题】将大肥鱼 25 条原声语音与八音盒歌声从系统通知流恢复为媒体音量流（USAGE_MEDIA 且不申请音频焦点），彻底解决手机静音/振动或关闭通知铃声时大肥鱼变哑巴的问题',
-        '【修复连点静音与音乐状态误判】新增自身音频停止冷却窗与点歌预判状态自愈，避免连点喂饭/摸头/切歌时把自己的声音误判为外部音乐',
-        '【全功能整合升级】含外置肥鱼互动条、QQ 音乐自动搜歌连播、不抢焦点悬浮快捷打字条与常用聊天文字批量导入，双端同步升级至 v2.4.5 (Build 146)'
+        '【QQ 音乐点歌精确点中下方「单曲」区】修复综合搜索页上方误点歌手卡/歌单卡的问题：自动跳过上方推荐卡直达「单曲」分段下方第一首或切入「歌曲」Tab 开播，兜底点位下移至 0.50h',
+        '【告别电子哼调：导入手机实际歌声音频】支持在面板「📥导歌」或 App「肥鱼歌单」中一次多选导入手机本地 MP3/WAV/M4A 等实际声音歌曲，内置真人音色唱词示例',
+        '【全功能升级】含外置肥鱼直点互动条、无阻媒体流发声与悬浮快捷打字条，双端同步升级至 v2.5.1 (Build 148)'
       ]
     };
 

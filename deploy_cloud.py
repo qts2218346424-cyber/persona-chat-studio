@@ -194,10 +194,10 @@ const {{ db, getRawPlatformConfigInternal, updateAdminPlatformConfig, saveAdminA
 db.prepare("DELETE FROM personas WHERE id = \\x27persona_linqi\\x27").run();
 db.prepare("UPDATE site_announcements SET enabled = 0").run();
 saveAdminAnnouncement("admin", {{
-  title: "星语恋庭 v2.4.5 更新：彻底修复鲸鱼娘语音/唱歌无声，外置互动与QQ音乐连播全就绪！",
-  content: "1. 【修复大肥鱼语音与唱歌无声】：原声语音与八音盒歌声重回媒体音量流且不抢占音频焦点，彻底解决手机静音/振动或关闭通知音量时鲸鱼没声的问题，并消除连点时把自身音频误判为外部播歌的 bug。\\n2. 【悬浮窗外置肥鱼互动条】：点外面「🍚喂 / 👋摸 / 💃舞 / 🎤唱 / 🫧梗」小药丸即看大肥鱼实时表情动作与字幕反应。\\n3. 【集成 QQ 音乐自动搜歌连播 & 不抢焦点快捷打字条 & 常用聊天文字导入】：随身版升级至 v2.4.5 (Build 146)！",
+  title: "星语恋庭 v2.5.0 大版本发布：大肥鱼彻底告别电子哼调，支持导入手机真实歌声音频开唱！",
+  content: "1. 【导入实际歌声音频开唱】：不再用电子哼调！在大肥鱼面板点「📥导歌」或 App「肥鱼歌单」中一次多选导入手机本地 MP3/WAV/M4A 等实际声音，外置/面板点「🎤唱」即用真实声音欢唱并显示歌名进度！\\n2. 【内置真人音色唱词示例】：未导歌前亦使用真实甜美少女音色演唱《大白米饭之歌》《深海冒泡之歌》。\\n3. 【整合所有升级】：外置肥鱼互动条、QQ 音乐自动搜歌连播、悬浮快捷打字条与常用聊天文字批量导入，随身版升级至 v2.5.0 (Build 147)！",
   enabled: true,
-  version: 146
+  version: 147
 }});
 db.prepare("UPDATE sessions SET companion_config = NULL").run();
 db.prepare("UPDATE user_settings SET value = \\x27demo\\x27 WHERE key = \\x27provider\\x27").run();

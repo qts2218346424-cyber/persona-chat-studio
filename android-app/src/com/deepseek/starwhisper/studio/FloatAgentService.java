@@ -89,6 +89,7 @@ public class FloatAgentService extends Service {
     private static final String PREFS_NAME = "whale_float_prefs";
     private static final String PREF_KEY_QUICK_PHRASES = "quick_phrases_v1";
     private static final String PREF_KEY_QUICK_DIRECT = "quick_send_direct_v1";
+    private static final String PREF_KEY_CUSTOM_SONGS = "custom_songs_v1";
     private static final String ASR_ENDPOINT = "https://star.claudexxb.online/api/asr/transcribe";
     private static final String LYRICS_ENDPOINT = "https://star.claudexxb.online/api/music/lyrics";
 
@@ -175,6 +176,12 @@ public class FloatAgentService extends Service {
 
     // 快捷打字模式与常用聊天文字库（支持本地持久化、剪贴板/文本批量导入及与网页端同步）
     private final List<String> quickPhrases = new ArrayList<>();
+    private final List<CustomSongItem> customSongs = new ArrayList<>();
+    private static final class CustomSongItem {
+        String id;
+        String title;
+        String filePath;
+    }
     private boolean quickTypingDirectSend = true;
     private boolean quickTypingBarVisible = false;
     private LinearLayout quickTypingBarView;
@@ -728,6 +735,185 @@ public class FloatAgentService extends Service {
             quickTypingDirectSend = sp.getBoolean(PREF_KEY_QUICK_DIRECT, true);
         } catch (Exception ignored) {}
         reloadQuickPhrases();
+        reloadCustomSongs();
+    }
+
+    public static String getCustomSongsJsonFromPrefs(Context ctx) {
+        if (ctx == null) return "[]";
+        try {
+            String raw = ctx.getSharedPreferences(PREFS_NAME, MODE_PRIVATE).getString(PREF_KEY_CUSTOM_SONGS, "[]");
+            if (raw != null && raw.trim().startsWith("[")) {
+                JSONArray src = new JSONArray(raw);
+                JSONArray valid = new JSONArray();
+                for (int i = 0; i < src.length(); i++) {
+                    JSONObject o = src.optJSONObject(i);
+                    if (o == null) continue;
+                    String fp = o.optString("filePath", "");
+                    if (!fp.isEmpty() && new File(fp).exists()) {
+                        valid.put(o);
+                    }
+                }
+                return valid.toString();
+            }
+        } catch (Exception ignored) {}
+        return "[]";
+    }
+
+    public static int addImportedSongsFromMain(Context ctx, List<JSONObject> newlyImported) {
+        if (ctx == null || newlyImported == null || newlyImported.isEmpty()) return 0;
+        try {
+            JSONArray cur = new JSONArray(getCustomSongsJsonFromPrefs(ctx));
+            JSONArray next = new JSONArray();
+            for (JSONObject item : newlyImported) {
+                next.put(item);
+            }
+            for (int i = 0; i < cur.length() && next.length() < 60; i++) {
+                JSONObject old = cur.optJSONObject(i);
+                if (old != null) next.put(old);
+            }
+            ctx.getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+                    .edit()
+                    .putString(PREF_KEY_CUSTOM_SONGS, next.toString())
+                    .apply();
+            final FloatAgentService inst = sInstance;
+            if (inst != null) {
+                inst.mainHandler.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        inst.reloadCustomSongs();
+                    }
+                });
+            }
+            return newlyImported.size();
+        } catch (Exception e) {
+            return 0;
+        }
+    }
+
+    public static boolean renameCustomSongFromBridge(Context ctx, String songId, String newTitle) {
+        if (ctx == null || songId == null || newTitle == null || newTitle.trim().isEmpty()) return false;
+        try {
+            JSONArray cur = new JSONArray(getCustomSongsJsonFromPrefs(ctx));
+            boolean changed = false;
+            for (int i = 0; i < cur.length(); i++) {
+                JSONObject o = cur.optJSONObject(i);
+                if (o != null && songId.equals(o.optString("id", ""))) {
+                    o.put("title", newTitle.trim());
+                    changed = true;
+                    break;
+                }
+            }
+            if (changed) {
+                ctx.getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+                        .edit()
+                        .putString(PREF_KEY_CUSTOM_SONGS, cur.toString())
+                        .apply();
+                final FloatAgentService inst = sInstance;
+                if (inst != null) {
+                    inst.mainHandler.post(new Runnable() {
+                        @Override
+                        public void run() {
+                            inst.reloadCustomSongs();
+                        }
+                    });
+                }
+            }
+            return changed;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    public static boolean deleteCustomSongFromBridge(Context ctx, String songId) {
+        if (ctx == null || songId == null) return false;
+        try {
+            JSONArray cur = new JSONArray(getCustomSongsJsonFromPrefs(ctx));
+            JSONArray next = new JSONArray();
+            boolean removed = false;
+            for (int i = 0; i < cur.length(); i++) {
+                JSONObject o = cur.optJSONObject(i);
+                if (o == null) continue;
+                if (songId.equals(o.optString("id", ""))) {
+                    removed = true;
+                    String fp = o.optString("filePath", "");
+                    if (!fp.isEmpty()) {
+                        try { new File(fp).delete(); } catch (Exception ignored) {}
+                    }
+                } else {
+                    next.put(o);
+                }
+            }
+            if (removed) {
+                ctx.getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+                        .edit()
+                        .putString(PREF_KEY_CUSTOM_SONGS, next.toString())
+                        .apply();
+                final FloatAgentService inst = sInstance;
+                if (inst != null) {
+                    inst.mainHandler.post(new Runnable() {
+                        @Override
+                        public void run() {
+                            inst.reloadCustomSongs();
+                        }
+                    });
+                }
+            }
+            return removed;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    public static void playSongByIdFromBridge(final Context ctx, final String songId) {
+        final FloatAgentService inst = sInstance;
+        if (inst == null) {
+            if (ctx != null) {
+                Toast.makeText(ctx, "请先开启大肥鱼悬浮窗后再播放", Toast.LENGTH_SHORT).show();
+            }
+            return;
+        }
+        inst.mainHandler.post(new Runnable() {
+            @Override
+            public void run() {
+                inst.playCustomSongById(songId);
+            }
+        });
+    }
+
+    public static void stopSongFromBridge() {
+        final FloatAgentService inst = sInstance;
+        if (inst == null) return;
+        inst.mainHandler.post(new Runnable() {
+            @Override
+            public void run() {
+                if (inst.singerEngine != null && inst.singerEngine.isSinging()) {
+                    inst.singerEngine.stop();
+                    inst.setPetPoseDrawable(R.drawable.feiyu_happy);
+                    inst.showPetSubtitle("🎵 已暂停大肥鱼歌唱~", 2400);
+                }
+            }
+        });
+    }
+
+    private void reloadCustomSongs() {
+        customSongs.clear();
+        try {
+            JSONArray arr = new JSONArray(getCustomSongsJsonFromPrefs(this));
+            for (int i = 0; i < arr.length(); i++) {
+                JSONObject o = arr.optJSONObject(i);
+                if (o == null) continue;
+                String id = o.optString("id", "");
+                String title = o.optString("title", "未命名歌曲");
+                String fp = o.optString("filePath", "");
+                if (!id.isEmpty() && !fp.isEmpty() && new File(fp).exists()) {
+                    CustomSongItem item = new CustomSongItem();
+                    item.id = id;
+                    item.title = title;
+                    item.filePath = fp;
+                    customSongs.add(item);
+                }
+            }
+        } catch (Exception ignored) {}
     }
 
     private void reloadQuickPhrases() {
@@ -1682,7 +1868,17 @@ public class FloatAgentService extends Service {
             }
         });
 
-        TextView memeBtn = createGridBtn("🫧讲热梗");
+        TextView importSongBtn = createGridBtn("📥导歌");
+        importSongBtn.setTextColor(Color.parseColor("#A7F3D0"));
+        setViewBg(importSongBtn, createRoundRect("#064E3B", 8, "#10B981", 1));
+        importSongBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                bringMainActivityForSongImport();
+            }
+        });
+
+        TextView memeBtn = createGridBtn("🫧热梗");
         LinearLayout.LayoutParams memeLp = (LinearLayout.LayoutParams) memeBtn.getLayoutParams();
         memeLp.rightMargin = 0;
         memeBtn.setLayoutParams(memeLp);
@@ -1698,6 +1894,7 @@ public class FloatAgentService extends Service {
         petActionRow.addView(patBtn);
         petActionRow.addView(danceBtn);
         petActionRow.addView(singBtn);
+        petActionRow.addView(importSongBtn);
         petActionRow.addView(memeBtn);
         panel.addView(petActionRow);
 
@@ -2464,33 +2661,73 @@ public class FloatAgentService extends Service {
         );
     }
 
-    private void triggerSingSongAction() {
+    private void playCustomSongById(String songId) {
         if (singerEngine == null) {
             singerEngine = new WhaleSingerEngine();
         }
-        if (singerEngine.isSinging()) {
-            // 如果正在唱，切下一首或停止（循环3首后停止）
-            if (singSongIndex % 4 == 3) {
-                singerEngine.stop();
-                setPetPoseDrawable(R.drawable.feiyu_happy);
-                showPetSubtitle("🎵 鲸鱼娘唱完收工啦，快奖励一碗白米饭！🍚", 3200);
-                singSongIndex++;
-                return;
+        reloadCustomSongs();
+        if (customSongs.isEmpty()) {
+            Toast.makeText(this, "尚未导入本地实际歌声，先为你播放内置示例唱词~", Toast.LENGTH_SHORT).show();
+            triggerSingSongAction();
+            return;
+        }
+        CustomSongItem target = null;
+        for (int i = 0; i < customSongs.size(); i++) {
+            if (customSongs.get(i).id.equals(songId)) {
+                target = customSongs.get(i);
+                singSongIndex = i + 1;
+                break;
             }
+        }
+        if (target == null) {
+            target = customSongs.get(0);
         }
         if (isExternalMusicPlayingNow()) {
             setPetPoseDrawable(R.drawable.feiyu_dance);
             playPetBounceAnim("dance");
             showPetSubtitle("🎵 音乐正在播放中，大肥鱼安静伴舞不打扰你听歌~", 3200);
-            Toast.makeText(this, "🎵 QQ 音乐播放中已静音伴舞（暂停音乐后可听大肥鱼原声清唱）", Toast.LENGTH_SHORT).show();
             return;
         }
         stopWhaleVoicePlayer();
-        final int songId = singSongIndex % 3;
-        singSongIndex++;
         setPetPoseDrawable(R.drawable.feiyu_dance);
         playPetBounceAnim("dance");
-        singerEngine.startSong(songId);
+        singerEngine.startCustomFile(target.title, target.filePath);
+    }
+
+    private void triggerSingSongAction() {
+        if (singerEngine == null) {
+            singerEngine = new WhaleSingerEngine();
+        }
+        reloadCustomSongs();
+        final int totalTracks = !customSongs.isEmpty() ? customSongs.size() : 2;
+        if (singerEngine.isSinging() && singSongIndex > 0 && (singSongIndex % (totalTracks + 1) == totalTracks)) {
+            singerEngine.stop();
+            setPetPoseDrawable(R.drawable.feiyu_happy);
+            showPetSubtitle("🎵 鲸鱼娘唱完收工啦，快奖励一碗白米饭！🍚", 3200);
+            singSongIndex++;
+            return;
+        }
+        if (isExternalMusicPlayingNow()) {
+            setPetPoseDrawable(R.drawable.feiyu_dance);
+            playPetBounceAnim("dance");
+            showPetSubtitle("🎵 音乐正在播放中，大肥鱼安静伴舞不打扰你听歌~", 3200);
+            Toast.makeText(this, "🎵 QQ 音乐播放中已静音伴舞（暂停音乐后可听大肥鱼真实歌唱）", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        stopWhaleVoicePlayer();
+        setPetPoseDrawable(R.drawable.feiyu_dance);
+        playPetBounceAnim("dance");
+
+        if (!customSongs.isEmpty()) {
+            int idx = singSongIndex % customSongs.size();
+            singSongIndex++;
+            CustomSongItem item = customSongs.get(idx);
+            singerEngine.startCustomFile(item.title, item.filePath);
+        } else {
+            int builtInIdx = singSongIndex % 2;
+            singSongIndex++;
+            singerEngine.startBuiltInVocal(builtInIdx);
+        }
     }
 
     // ========= 语音指令智能识别处理（动作 + QQ音乐 + 控屏） =========
@@ -2509,6 +2746,10 @@ public class FloatAgentService extends Service {
         }
         if (t.contains("跳舞") || t.contains("跳个舞") || t.contains("摇尾巴")) {
             triggerDanceAction();
+            return true;
+        }
+        if (t.contains("导入歌声") || t.contains("导入歌曲") || t.contains("导入声音") || t.contains("导入实际声音") || t.contains("传歌")) {
+            bringMainActivityForSongImport();
             return true;
         }
         if (t.equals("唱歌") || t.equals("唱首歌") || t.equals("唱一首") || t.equals("唱一首歌") || t.contains("给我唱歌") || t.contains("哼首歌")) {
@@ -3949,6 +4190,16 @@ public class FloatAgentService extends Service {
         } catch (Exception ignored) {}
     }
 
+    private void bringMainActivityForSongImport() {
+        collapsePanel();
+        try {
+            Intent intent = new Intent(this, MainActivity.class);
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            intent.putExtra(MainActivity.EXTRA_OPEN_SONG_IMPORTER, true);
+            startActivity(intent);
+        } catch (Exception ignored) {}
+    }
+
     private void bringMainActivityToFront(String pendingTask, boolean requestAudioPerm) {
         collapsePanel();
         try {
@@ -4698,11 +4949,40 @@ public class FloatAgentService extends Service {
         }
     }
 
-    // ========= 鲸鱼娘水晶八音盒歌声引擎（内置 3 首米饭主题原创曲） =========
+    // ========= 鲸鱼娘真实声音歌唱引擎（支持本地导入 MP3/M4A/WAV + 内置甜美真人唱词，彻底告别电子哼调） =========
     private final class WhaleSingerEngine {
         private volatile boolean singing = false;
         private volatile String currentLine = "";
-        private Thread playThread = null;
+        private MediaPlayer songPlayer = null;
+        private final Runnable progressTickRunnable = new Runnable() {
+            @Override
+            public void run() {
+                if (!singing || songPlayer == null) return;
+                try {
+                    if (songPlayer.isPlaying()) {
+                        int pos = songPlayer.getCurrentPosition();
+                        int dur = songPlayer.getDuration();
+                        String titlePrefix = activeSongTitle.isEmpty() ? "大肥鱼歌唱中" : ("《" + activeSongTitle + "》");
+                        if (dur > 0) {
+                            currentLine = "🎵 " + titlePrefix + " (" + formatSec(pos / 1000) + "/" + formatSec(dur / 1000) + ")";
+                        } else {
+                            currentLine = "🎵 " + titlePrefix;
+                        }
+                        showPetSubtitle(currentLine, 3500);
+                    }
+                } catch (Exception ignored) {}
+                if (singing) {
+                    mainHandler.postDelayed(this, 600);
+                }
+            }
+        };
+        private String activeSongTitle = "";
+
+        private String formatSec(int sec) {
+            int m = Math.max(0, sec) / 60;
+            int s = Math.max(0, sec) % 60;
+            return String.format(Locale.ROOT, "%02d:%02d", m, s);
+        }
 
         boolean isSinging() {
             return singing;
@@ -4712,16 +4992,89 @@ public class FloatAgentService extends Service {
             return currentLine;
         }
 
-        void startSong(final int songId) {
+        void startBuiltInVocal(int builtInIdx) {
             stop();
-            singing = true;
-            playThread = new Thread(new Runnable() {
+            final int rawResId = (builtInIdx == 0) ? R.raw.feiyu_sing_rice : R.raw.feiyu_sing_bubble;
+            activeSongTitle = (builtInIdx == 0)
+                    ? "大白米饭之歌 (可点📥导歌导入实际声音)"
+                    : "深海冒泡之歌 (可点📥导歌导入实际声音)";
+            final String lyricText = (builtInIdx == 0)
+                    ? "🎤 《大白米饭之歌》：冒尖一碗大白米饭香喷喷！可点「📥导歌」导入真实歌声音频~"
+                    : "🎤 《深海冒泡之歌》：咕噜咕噜深海冒泡啦！可点「📥导歌」导入真实歌声音频~";
+            try {
+                AssetFileDescriptor afd = getResources().openRawResourceFd(rawResId);
+                if (afd == null) return;
+                MediaPlayer mp = new MediaPlayer();
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                    mp.setAudioAttributes(new AudioAttributes.Builder()
+                            .setUsage(AudioAttributes.USAGE_MEDIA)
+                            .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                            .build());
+                } else {
+                    mp.setAudioStreamType(AudioManager.STREAM_MUSIC);
+                }
+                mp.setDataSource(afd.getFileDescriptor(), afd.getStartOffset(), afd.getLength());
+                afd.close();
+                setupAndStartPlayer(mp, lyricText, true);
+            } catch (Throwable ignored) {
+                stop();
+            }
+        }
+
+        void startCustomFile(final String title, final String filePath) {
+            stop();
+            if (filePath == null || !new File(filePath).exists()) {
+                startBuiltInVocal(0);
+                return;
+            }
+            activeSongTitle = (title != null && !title.trim().isEmpty()) ? title.trim() : "导入歌声";
+            try {
+                MediaPlayer mp = new MediaPlayer();
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                    mp.setAudioAttributes(new AudioAttributes.Builder()
+                            .setUsage(AudioAttributes.USAGE_MEDIA)
+                            .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                            .build());
+                } else {
+                    mp.setAudioStreamType(AudioManager.STREAM_MUSIC);
+                }
+                mp.setDataSource(filePath);
+                setupAndStartPlayer(mp, "🎵 大肥鱼正在为你献唱：《" + activeSongTitle + "》~", false);
+            } catch (Throwable e) {
+                stop();
+                Toast.makeText(FloatAgentService.this, "音频格式暂不支持或文件损坏，已切换内置歌声", Toast.LENGTH_SHORT).show();
+                startBuiltInVocal(0);
+            }
+        }
+
+        private void setupAndStartPlayer(MediaPlayer mp, final String initialSub, final boolean isBuiltIn) throws Exception {
+            mp.setOnCompletionListener(new MediaPlayer.OnCompletionListener() {
                 @Override
-                public void run() {
-                    runMelody(songId);
+                public void onCompletion(MediaPlayer completedMp) {
+                    stop();
+                    setPetPoseDrawable(R.drawable.feiyu_happy);
+                    showPetSubtitle(isBuiltIn
+                            ? "🎵 唱完啦~ 可点面板「📥导歌」导入更多实际歌声！"
+                            : "🎵 《" + activeSongTitle + "》唱完收工啦，奖励一碗大白米饭！🍚", 3800);
+                    mainHandler.postDelayed(happyResetRunnable, 1800);
                 }
             });
-            playThread.start();
+            mp.setOnErrorListener(new MediaPlayer.OnErrorListener() {
+                @Override
+                public boolean onError(MediaPlayer mpErr, int what, int extra) {
+                    stop();
+                    return true;
+                }
+            });
+            mp.prepare();
+            mp.setVolume(1.0f, 1.0f);
+            songPlayer = mp;
+            singing = true;
+            currentLine = initialSub;
+            showPetSubtitle(initialSub, 4500);
+            mp.start();
+            mainHandler.removeCallbacks(progressTickRunnable);
+            mainHandler.postDelayed(progressTickRunnable, 700);
         }
 
         void stop() {
@@ -4730,113 +5083,15 @@ public class FloatAgentService extends Service {
             }
             singing = false;
             currentLine = "";
-            if (playThread != null) {
-                playThread.interrupt();
-                playThread = null;
-            }
-        }
-
-        private void runMelody(int songId) {
-            // 频率表 C5 ~ A5
-            final double C5 = 523.25, D5 = 587.33, E5 = 659.25, F5 = 698.46, G5 = 783.99, A5 = 880.00;
-            final double[] freqs;
-            final int[] durs;
-            final String[] lyrics;
-
-            if (songId == 0) {
-                freqs = new double[]{C5, E5, G5, G5, A5, G5, E5, C5, D5, E5, G5, E5, D5, C5, E5, G5, A5, G5, E5, D5, C5};
-                durs = new int[]{240, 240, 280, 280, 260, 260, 420, 240, 240, 260, 280, 240, 380, 240, 240, 280, 280, 260, 260, 280, 520};
-                lyrics = new String[]{
-                        "🍚 《大白米饭之歌》：冒尖一碗大白米饭香喷喷~",
-                        "🐟 蓝色尾巴左右晃~ 本鱼才不是大肥鱼！",
-                        "🫧 咕噜咕噜喝口汤，算力立刻满格啦~",
-                        "💙 主人快再添一勺饭，陪我一起去摸鱼~"
-                };
-            } else if (songId == 1) {
-                freqs = new double[]{G5, E5, G5, E5, C5, D5, E5, G5, A5, G5, E5, D5, E5, G5, E5, C5};
-                durs = new int[]{260, 260, 260, 260, 320, 260, 260, 420, 260, 260, 260, 260, 280, 280, 280, 520};
-                lyrics = new String[]{
-                        "🌊 《深海冒泡舞曲》：深海里面吹泡泡~ 飘呀飘~",
-                        "🎵 戴上耳机摇一摇~ 烦恼全都忘掉啦~",
-                        "🍚 梦里全是热腾腾，白胖胖的大米饭！"
-                };
-            } else {
-                freqs = new double[]{C5, C5, G5, G5, A5, A5, G5, F5, F5, E5, E5, D5, D5, C5};
-                durs = new int[]{280, 280, 280, 280, 280, 280, 480, 280, 280, 280, 280, 280, 280, 560};
-                lyrics = new String[]{
-                        "✨ 《星海小星星》：一闪一闪亮晶晶~",
-                        "🐟 鲸鱼娘在屏幕边，安安静静陪着你~",
-                        "🍚 忙完记得早点睡，明天还要吃米饭~"
-                };
-            }
-
-            final int sr = 22050;
-            AudioTrack track = null;
-            try {
-                int minBuf = AudioTrack.getMinBufferSize(sr, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT);
-                track = new AudioTrack(
-                        new AudioAttributes.Builder()
-                                .setUsage(AudioAttributes.USAGE_MEDIA)
-                                .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-                                .build(),
-                        new AudioFormat.Builder()
-                                .setSampleRate(sr)
-                                .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
-                                .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
-                                .build(),
-                        Math.max(minBuf, 4096),
-                        AudioTrack.MODE_STREAM,
-                        AudioManager.AUDIO_SESSION_ID_GENERATE
-                );
-                track.play();
-
-                for (int i = 0; i < freqs.length && singing; i++) {
-                    int lyrIdx = Math.min(lyrics.length - 1, (i * lyrics.length) / freqs.length);
-                    final String lineNow = lyrics[lyrIdx];
-                    if (!lineNow.equals(currentLine)) {
-                        currentLine = lineNow;
-                        mainHandler.post(new Runnable() {
-                            @Override
-                            public void run() {
-                                showPetSubtitle(lineNow, 6000);
-                            }
-                        });
-                    }
-
-                    int samples = (int) ((durs[i] / 1000.0) * sr);
-                    short[] pcm = new short[samples];
-                    double freq = freqs[i];
-                    for (int s = 0; s < samples; s++) {
-                        double t = s / (double) sr;
-                        // 柔和八音盒包络：快速起音 + 指数平滑衰减
-                        double attack = Math.min(1.0, s / (sr * 0.015));
-                        double decay = Math.exp(-4.2 * (s / (double) samples));
-                        double env = attack * decay;
-                        double wave = Math.sin(2.0 * Math.PI * freq * t)
-                                + 0.28 * Math.sin(2.0 * Math.PI * (freq * 2.0) * t)
-                                + 0.08 * Math.sin(2.0 * Math.PI * (freq * 3.0) * t);
-                        pcm[s] = (short) (wave * env * 6500);
-                    }
-                    track.write(pcm, 0, pcm.length);
-                }
-            } catch (Throwable ignored) {
-            } finally {
-                if (track != null) {
-                    try { track.stop(); } catch (Exception ignored) {}
-                    try { track.release(); } catch (Exception ignored) {}
-                }
-                if (singing) {
-                    singing = false;
-                    currentLine = "";
-                    mainHandler.post(new Runnable() {
-                        @Override
-                        public void run() {
-                            setPetPoseDrawable(R.drawable.feiyu_happy);
-                            showPetSubtitle("🎵 哼唱完啦~ 好听的话就给鲸鱼娘盛碗白米饭吧！🍚", 3600);
-                            mainHandler.postDelayed(happyResetRunnable, 1800);
-                        }
-                    });
-                }
+            mainHandler.removeCallbacks(progressTickRunnable);
+            if (songPlayer != null) {
+                try {
+                    if (songPlayer.isPlaying()) songPlayer.stop();
+                } catch (Exception ignored) {}
+                try {
+                    songPlayer.release();
+                } catch (Exception ignored) {}
+                songPlayer = null;
             }
         }
     }

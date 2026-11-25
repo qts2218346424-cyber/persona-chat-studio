@@ -22,7 +22,7 @@
 </p>
 
 <p>
-  <img src="https://img.shields.io/badge/Release-v2.4.5_Build_146-7C3AED?style=flat-square&logo=rocket&logoColor=white" alt="Version v2.4.5" />
+  <img src="https://img.shields.io/badge/Release-v2.5.0_Build_147-7C3AED?style=flat-square&logo=rocket&logoColor=white" alt="Version v2.5.0" />
   <img src="https://img.shields.io/badge/Node.js-%3E%3D22.5.0-339933?style=flat-square&logo=node.js&logoColor=white" alt="Node.js >= 22.5.0" />
   <img src="https://img.shields.io/badge/Dependencies-0_npm_Packages-FF6B6B?style=flat-square&logo=npm&logoColor=white" alt="Zero npm Dependencies" />
   <img src="https://img.shields.io/badge/Storage-node%3Asqlite-003B57?style=flat-square&logo=sqlite&logoColor=white" alt="Native SQLite" />
@@ -30,7 +30,7 @@
 </p>
 
 <p>
-  <a href="#-v245-最新版本核心特性">🚀 最新特性</a> •
+  <a href="#-v250-最新版本核心特性">🚀 最新特性</a> •
   <a href="#-三大工作台">🌐 三大工作台</a> •
   <a href="#-外观皮肤与头像工坊">🎨 外观工坊</a> •
   <a href="#-五大内置剧本与-20-位角色">🎬 剧本角色</a> •
@@ -47,12 +47,12 @@
 
 ---
 
-## 🚀 v2.4.5 最新版本核心特性
+## 🚀 v2.5.0 最新版本核心特性
 
-1. **鲸鱼娘清晰原声恢复与无焦点冲突音频引擎**：25 条原声语音与八音盒歌声恢复使用媒体音频流（不抢占系统音频焦点），彻底修复静音/振动或通知音关闭时鲸鱼无声，以及连点切歌/互动时的状态误判；听歌期间默认安静伴舞不打扰。
-2. **悬浮窗外置肥鱼互动条**：大肥鱼本体下方新增紧凑「🍚喂 / 👋摸 / 💃舞 / 🎤唱 / 🫧梗」互动小药丸，点外面就能直接逗肥鱼并实时观看立绘表情与动画反应（支持面板内一键开关或点 `×` 隐藏）；从面板内点互动动作亦会自动收起面板让肥鱼出来表演。
-3. **QQ 音乐自动点歌连播升级**：点歌引擎重构为多阶段节点轮询状态机，精准跳过输入框与清空`×`点击顶部右侧「搜索」与软键盘回车搜索，并自动切入单曲结果点击起播。
-4. **不抢焦点悬浮快捷打字条 & 常用聊天文字多端导入**：新增可拖动悬浮快捷打字条（支持点击直发或仅填入），并在原生悬浮窗与网页端手机模式同步支持从剪贴板、多行粘贴或 `.txt/.json` 文件批量导入常用聊天文字，双端同步升级至 `v2.4.5 (Build 146)`。
+1. **鲸鱼娘真实声音歌唱引擎 & 多选音频导入（彻底告别电子哼调）**：彻底淘汰正弦波电子哼调；内置真实甜美中文少女唱词示例曲，并支持在悬浮面板「📥导歌」或 App「肥鱼歌单」里批量导入手机本地 `.mp3/.m4a/.wav/.ogg/.flac` 实际歌声音频，支持歌名编辑、永久缓存与桌宠实时歌词进度开唱。
+2. **悬浮窗外置肥鱼互动条 & 清晰媒体流发声**：大肥鱼本体下方直接提供「🍚喂 / 👋摸 / 💃舞 / 🎤唱 / 🫧梗」互动小药丸，点外面即看立绘动画；采用媒体音量流且不抢占 QQ 音乐音频焦点。
+3. **QQ 音乐自动点歌连播升级**：多阶段状态机精准避开清空`×`并点击顶部「搜索」及软键盘回车，自动进入单曲列表点击播放。
+4. **不抢焦点悬浮快捷打字条 & 常用聊天文字多端导入**：支持剪贴板、多行粘贴及 `.txt/.json` 文件批量导入常用聊天文字并双端同步，升级至 `v2.5.0 (Build 147)`。
 5. **三通道独立隔离连接中心与极速预压缩管线**：本地直连 / DeepSeek 官方 API / 自定义云端 API 独立切换，`scripts/build-static-assets.mjs` 全面提供 `.gz` 与 `.br` 极速加载。
 
 ---

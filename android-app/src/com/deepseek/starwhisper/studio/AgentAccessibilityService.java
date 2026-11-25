@@ -1898,35 +1898,57 @@ public class AgentAccessibilityService extends AccessibilityService {
                 DisplayMetrics dm = getResources().getDisplayMetrics();
 
                 boolean hasResultsTab = hasAnyVisibleTextInRegion(root,
-                        new String[]{"单曲", "播放全部", "综合", "专辑", "歌手"},
-                        Math.round(dm.heightPixels * 0.12f), Math.round(dm.heightPixels * 0.48f));
-                int minResultY = Math.max(inputBounds.bottom + 80, Math.round(dm.heightPixels * 0.23f));
+                        new String[]{"综合", "歌曲", "歌单", "单曲", "播放全部", "专辑", "歌手"},
+                        Math.round(dm.heightPixels * 0.10f), Math.round(dm.heightPixels * 0.55f));
+                int minResultY = Math.max(inputBounds.bottom + 90, Math.round(dm.heightPixels * 0.23f));
 
                 if (hasResultsTab) {
-                    // 已进入结果页！优先找单曲区里的目标歌名结果或「播放全部」按钮
-                    Rect songRowBounds = findQqMusicSongResultRow(root, songQuery, minResultY, Math.round(dm.heightPixels * 0.80f));
-                    Rect playAllBounds = findNodeBoundsInVerticalRange(root, "播放全部", minResultY, Math.round(dm.heightPixels * 0.72f), false);
-
-                    if (songRowBounds != null) {
-                        performClickCoordinate(songRowBounds.centerX(), songRowBounds.centerY());
-                        root.recycle();
-                        scheduleQqMusicPhase4VerifyPlay(seq, songQuery, minResultY, 0);
-                        return;
-                    } else if (playAllBounds != null) {
-                        performClickCoordinate(playAllBounds.centerX(), playAllBounds.centerY());
-                        root.recycle();
-                        scheduleQqMusicPhase4VerifyPlay(seq, songQuery, minResultY, 0);
-                        return;
+                    // 1. 先检查「综合」页是否存在「单曲」分段标题（其上方常有歌手卡、歌单卡，必须跳过并点到下面的单曲区！）
+                    Rect singleSectionHdr = findNodeBoundsInVerticalRange(root, "单曲",
+                            Math.round(dm.heightPixels * 0.24f), Math.round(dm.heightPixels * 0.68f), true);
+                    int songMinY = minResultY;
+                    if (singleSectionHdr != null) {
+                        songMinY = Math.max(minResultY, singleSectionHdr.bottom + 14);
                     } else {
-                        // 如果处于「综合」页且下方首屏不是可点击曲目，先切到「单曲」Tab
-                        Rect singleTab = findNodeBoundsInVerticalRange(root, "单曲",
-                                Math.round(dm.heightPixels * 0.13f), Math.round(dm.heightPixels * 0.28f), true);
-                        if (singleTab != null && attempt <= 2) {
-                            performClickCoordinate(singleTab.centerX(), singleTab.centerY());
+                        // 无「单曲」分段且当前还处于「综合」页（有歌手/歌单干扰卡）时，优先切换到「歌曲」Tab 列表更纯净
+                        Rect songsTab = findNodeBoundsInVerticalRange(root, "歌曲",
+                                Math.round(dm.heightPixels * 0.10f), Math.round(dm.heightPixels * 0.24f), true);
+                        boolean hasTopCards = hasAnyVisibleTextInRegion(root,
+                                new String[]{"歌单", "歌手"},
+                                Math.round(dm.heightPixels * 0.16f), Math.round(dm.heightPixels * 0.44f));
+                        if (songsTab != null && hasTopCards && attempt <= 2) {
+                            performClickCoordinate(songsTab.centerX(), songsTab.centerY());
                             root.recycle();
                             scheduleQqMusicPhase3WaitResultsAndPlay(seq, songQuery, inputBounds, attempt + 1);
                             return;
                         }
+                    }
+
+                    // 2. 在单曲区块下方精准匹配目标歌曲名（避开上方歌手/歌单卡与底部 mini 播放条）
+                    int songMaxY = Math.round(dm.heightPixels * 0.85f);
+                    Rect songRowBounds = findQqMusicSongResultRow(root, songQuery, songMinY, songMaxY);
+                    if (songRowBounds != null) {
+                        performClickCoordinate(songRowBounds.centerX(), songRowBounds.centerY());
+                        root.recycle();
+                        scheduleQqMusicPhase4VerifyPlay(seq, songQuery, songMinY, 0);
+                        return;
+                    }
+
+                    // 3. 若能定位到「单曲」分段标题但找不到歌名节点，点「单曲」右侧整区播放按钮或标题正下方第一首行
+                    if (singleSectionHdr != null) {
+                        performClickCoordinate(Math.round(dm.widthPixels * 0.36f),
+                                Math.min(songMaxY - 30, singleSectionHdr.bottom + Math.round(dm.heightPixels * 0.055f)));
+                        root.recycle();
+                        scheduleQqMusicPhase4VerifyPlay(seq, songQuery, songMinY, 0);
+                        return;
+                    }
+
+                    Rect playAllBounds = findNodeBoundsInVerticalRange(root, "播放全部", songMinY, songMaxY, false);
+                    if (playAllBounds != null) {
+                        performClickCoordinate(playAllBounds.centerX(), playAllBounds.centerY());
+                        root.recycle();
+                        scheduleQqMusicPhase4VerifyPlay(seq, songQuery, songMinY, 0);
+                        return;
                     }
                 } else if (attempt == 1 || attempt == 3) {
                     // 停留在联想输入页未跳转时补点一次搜索
@@ -1940,14 +1962,14 @@ public class AgentAccessibilityService extends AccessibilityService {
                 if (attempt < 7) {
                     scheduleQqMusicPhase3WaitResultsAndPlay(seq, songQuery, inputBounds, attempt + 1);
                 } else {
-                    // 最后兜底点击结果列表首条歌曲区域
-                    performClickCoordinate(Math.round(dm.widthPixels * 0.40f), Math.round(dm.heightPixels * 0.34f));
-                    scheduleQqMusicPhase4VerifyPlay(seq, songQuery, minResultY, 1);
+                    // 最后兜底：点到下面单曲区域（约 y=0.50h，避开上面歌手/歌单推荐卡）
+                    performClickCoordinate(Math.round(dm.widthPixels * 0.36f), Math.round(dm.heightPixels * 0.50f));
+                    scheduleQqMusicPhase4VerifyPlay(seq, songQuery, Math.round(dm.heightPixels * 0.42f), 1);
                 }
             }
         };
         pendingRunnables.add(task);
-        mainHandler.postDelayed(task, attempt == 0 ? 750 : 620);
+        mainHandler.postDelayed(task, attempt == 0 ? 780 : 620);
     }
 
     private void scheduleQqMusicPhase4VerifyPlay(final int seq, final String songQuery, final int minResultY, final int retry) {
@@ -1969,20 +1991,28 @@ public class AgentAccessibilityService extends AccessibilityService {
                 AccessibilityNodeInfo root = getRootInActiveWindow();
                 if (root != null) {
                     DisplayMetrics dm = getResources().getDisplayMetrics();
-                    // 若刚刚点进的是专辑/单曲聚合卡页面，通常会出现「播放全部」或「播放」按钮，再点一次即开始播
-                    Rect playBtn = findNodeBoundsInVerticalRange(root, "播放全部", minResultY, Math.round(dm.heightPixels * 0.78f), false);
+                    Rect singleSectionHdr = findNodeBoundsInVerticalRange(root, "单曲",
+                            Math.round(dm.heightPixels * 0.24f), Math.round(dm.heightPixels * 0.68f), true);
+                    int effectiveMinY = (singleSectionHdr != null)
+                            ? Math.max(minResultY, singleSectionHdr.bottom + 14)
+                            : minResultY;
+                    int maxResultY = Math.round(dm.heightPixels * 0.85f);
+
+                    Rect playBtn = findNodeBoundsInVerticalRange(root, "播放全部", effectiveMinY, maxResultY, false);
                     if (playBtn == null) {
-                        playBtn = findNodeBoundsInVerticalRange(root, "播放", minResultY, Math.round(dm.heightPixels * 0.78f), true);
+                        playBtn = findNodeBoundsInVerticalRange(root, "播放", effectiveMinY, maxResultY, true);
                     }
                     if (playBtn != null) {
                         performClickCoordinate(playBtn.centerX(), playBtn.centerY());
                     } else if (retry == 0) {
-                        // 再尝试点一次「单曲」或第一行歌名
-                        Rect songRow = findQqMusicSongResultRow(root, songQuery, minResultY, Math.round(dm.heightPixels * 0.80f));
+                        Rect songRow = findQqMusicSongResultRow(root, songQuery, effectiveMinY, maxResultY);
                         if (songRow != null) {
                             performClickCoordinate(songRow.centerX(), songRow.centerY());
+                        } else if (singleSectionHdr != null) {
+                            performClickCoordinate(Math.round(dm.widthPixels * 0.36f),
+                                    Math.min(maxResultY - 30, singleSectionHdr.bottom + Math.round(dm.heightPixels * 0.055f)));
                         } else {
-                            performClickCoordinate(Math.round(dm.widthPixels * 0.40f), Math.round(dm.heightPixels * 0.35f));
+                            performClickCoordinate(Math.round(dm.widthPixels * 0.36f), Math.round(dm.heightPixels * 0.50f));
                         }
                     }
                     root.recycle();

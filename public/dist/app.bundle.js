@@ -5165,7 +5165,7 @@ lastInteractionAt: Date.now(),
 hasMoreMessages: false,
 totalMessages: 0,
 oldestMessageId: 0,
-appVersion: '2.4.5',
+appVersion: '2.5.0',
 tourIndex: 0,
 tourActive: false,
 llmMode: localStorage.getItem('user_llm_mode') || 'local_antigravity',
@@ -5353,7 +5353,7 @@ return null;
 }
 }
 function syncWebVersionBadges(verStr) {
-const raw = String(verStr || state.appVersion || '2.4.5').trim().replace(/^v/i, '');
+const raw = String(verStr || state.appVersion || '2.5.0').trim().replace(/^v/i, '');
 if (!raw) return;
 const vLabel = `v${raw}`;
 const isNativeApk = Boolean(
@@ -8323,7 +8323,7 @@ setTxt(
 'adm-kpi-channel-sub',
 tunnelProbe?.online ? '本机电脑 Antigravity 直连' : report.channels?.localCli?.transport === 'local_cli' ? '本机 CLI 就绪' : '电脑离线时自动回退'
 );
-setTxt('adm-sys-meta', `v${sys.appVersion || '2.4.5'} · ${sys.platform || ''} · Node ${sys.nodeVersion || ''} · ${sys.cpuCores || 1} 核 (负载 ${sys.load1m ?? 0})`);
+setTxt('adm-sys-meta', `v${sys.appVersion || '2.5.0'} · ${sys.platform || ''} · Node ${sys.nodeVersion || ''} · ${sys.cpuCores || 1} 核 (负载 ${sys.load1m ?? 0})`);
 setTxt('adm-stat-mem', `${sys.memUsedPct ?? 0}% (进程 ${sys.rssMb ?? 0} MB)`);
 setTxt('adm-stat-db', `${formatBytesCompact(dbInfo.dbSizeBytes)} / ${formatBytesCompact(dbInfo.walSizeBytes)}`);
 setTxt('adm-stat-uptime', formatUptimeCompact(sys.uptimeSec));
@@ -18926,8 +18926,8 @@ runCloneBtn.innerHTML = origHtml;
 })();
 ;
 (() => {
-const CURRENT_APK_VERSION = '2.4.5';
-const CURRENT_APK_CODE = 146;
+const CURRENT_APK_VERSION = '2.5.0';
+const CURRENT_APK_CODE = 147;
 const DEEPSEEK_API_KEYS_URL = 'https://platform.deepseek.com/api_keys';
 const PUBLIC_WEB_ORIGIN = 'https://star.claudexxb.online';
 const GITHUB_RELEASES_URL = 'https://github.com/qts2218346424-cyber/persona-chat-studio/releases';
@@ -18998,6 +18998,11 @@ items: [
 {
 id: 'phrases',
 title: '常用聊天文字',
+items: []
+},
+{
+id: 'songs',
+title: '肥鱼歌单',
 items: []
 }
 ];
@@ -19564,14 +19569,55 @@ bridge.saveQuickPhrasesJson(json);
 } catch {}
 return clean;
 }
+function loadCustomSongs() {
+try {
+const bridge = getNativeBridge();
+if (bridge && typeof bridge.getCustomSongsJson === 'function') {
+const raw = bridge.getCustomSongsJson();
+const arr = JSON.parse(raw || '[]');
+if (Array.isArray(arr)) return arr;
+}
+} catch {}
+return [];
+}
+window.addEventListener('pa-songs-updated', () => {
+const drawer = $('phone-cmd-quick-drawer');
+if (drawer && !drawer.classList.contains('hidden') && activeCmdLibCategory === 'songs') {
+renderCommandLibraryDrawer();
+}
+});
 function renderCommandLibraryDrawer() {
 const drawer = $('phone-cmd-quick-drawer');
 if (!drawer) return;
 const cat = LOCAL_COMMAND_CATALOG.find((c) => c.id === activeCmdLibCategory) || LOCAL_COMMAND_CATALOG[0];
 const isPhrasesTab = cat.id === 'phrases';
+const isSongsTab = cat.id === 'songs';
 const phrases = isPhrasesTab ? loadQuickPhrases() : [];
+const songs = isSongsTab ? loadCustomSongs() : [];
 let bodyHtml = '';
-if (isPhrasesTab) {
+if (isSongsTab) {
+const bridge = getNativeBridge();
+const canImportSong = !!(bridge && typeof bridge.openSongImporter === 'function');
+bodyHtml = `
+        <div class="pa-phrase-toolbar">
+          <button type="button" class="pa-phrase-btn is-primary" id="pa-song-import-btn">🎵 导入手机实际歌声 (MP3/WAV/M4A)</button>
+          ${canImportSong ? '<button type="button" class="pa-phrase-btn" id="pa-song-stop-btn">⏹ 停止唱歌</button>' : ''}
+        </div>
+        <div class="pa-phrase-list">
+          ${!canImportSong
+? '<div class="pa-phrase-empty">请在 Android「DeepSeek · 星语随身版」App 中打开，即可批量导入手机本地真实唱歌音频给大肥鱼献唱</div>'
+: (songs.length === 0
+? '<div class="pa-phrase-empty">尚未导入外部歌声音频（当前默认内置甜美真人唱词，不再是电子哼调）。点击上方按钮挑几首你喜欢的声音导进来吧！</div>'
+: songs.map((s) => `
+                    <div class="pa-phrase-row" data-song-id="${escapeHtml(s.id)}">
+                      <button type="button" class="pa-phrase-send-btn pa-song-play-btn" data-song-id="${escapeHtml(s.id)}" title="点击让桌面大肥鱼唱这首">▶ ${escapeHtml(s.title || '未命名歌声')}</button>
+                      <button type="button" class="pa-phrase-fill-btn pa-song-rename-btn" data-song-id="${escapeHtml(s.id)}" data-title="${escapeHtml(s.title || '')}" title="改名">改名</button>
+                      <button type="button" class="pa-phrase-del-btn pa-song-del-btn" data-song-id="${escapeHtml(s.id)}" title="删除">✕</button>
+                    </div>
+                  `).join(''))}
+        </div>
+      `;
+} else if (isPhrasesTab) {
 const bridge = getNativeBridge();
 const canOpenFloatBar = !!(bridge && typeof bridge.openQuickTypingMode === 'function');
 bodyHtml = `
@@ -19654,7 +19700,60 @@ drawer.classList.add('hidden');
 $('pa-open-cmdlib-btn')?.classList.remove('is-active');
 $('mobile-tools-plus-btn')?.classList.remove('is-active');
 });
-if (isPhrasesTab) {
+if (isSongsTab) {
+drawer.querySelector('#pa-song-import-btn')?.addEventListener('click', (e) => {
+e.stopPropagation();
+const b = getNativeBridge();
+if (b && typeof b.openSongImporter === 'function') {
+b.openSongImporter();
+} else {
+showToast('请在 Android 随身版 App 中点击导入手机本地真实音频');
+}
+});
+drawer.querySelector('#pa-song-stop-btn')?.addEventListener('click', (e) => {
+e.stopPropagation();
+const b = getNativeBridge();
+if (b && typeof b.stopCustomSongNow === 'function') {
+b.stopCustomSongNow();
+showToast('已停止大肥鱼歌唱');
+}
+});
+drawer.querySelectorAll('.pa-song-play-btn').forEach((btn) => {
+btn.addEventListener('click', (e) => {
+e.stopPropagation();
+const id = btn.getAttribute('data-song-id') || '';
+const b = getNativeBridge();
+if (b && typeof b.playCustomSongNow === 'function' && id) {
+b.playCustomSongNow(id);
+showToast('大肥鱼已开唱你导入的真实歌声~');
+}
+});
+});
+drawer.querySelectorAll('.pa-song-rename-btn').forEach((btn) => {
+btn.addEventListener('click', (e) => {
+e.stopPropagation();
+const id = btn.getAttribute('data-song-id') || '';
+const curTitle = btn.getAttribute('data-title') || '';
+const nextTitle = window.prompt('请输入新的歌曲显示名称：', curTitle);
+const b = getNativeBridge();
+if (nextTitle && nextTitle.trim() && b && typeof b.renameCustomSong === 'function') {
+b.renameCustomSong(id, nextTitle.trim());
+renderCommandLibraryDrawer();
+}
+});
+});
+drawer.querySelectorAll('.pa-song-del-btn').forEach((btn) => {
+btn.addEventListener('click', (e) => {
+e.stopPropagation();
+const id = btn.getAttribute('data-song-id') || '';
+const b = getNativeBridge();
+if (b && typeof b.deleteCustomSong === 'function' && id) {
+b.deleteCustomSong(id);
+renderCommandLibraryDrawer();
+}
+});
+});
+} else if (isPhrasesTab) {
 drawer.querySelector('#pa-phrase-add-one')?.addEventListener('click', (e) => {
 e.stopPropagation();
 const paInput = $('pa-task-input');

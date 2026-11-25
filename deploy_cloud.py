@@ -194,10 +194,10 @@ const {{ db, getRawPlatformConfigInternal, updateAdminPlatformConfig, saveAdminA
 db.prepare("DELETE FROM personas WHERE id = \\x27persona_linqi\\x27").run();
 db.prepare("UPDATE site_announcements SET enabled = 0").run();
 saveAdminAnnouncement("admin", {{
-  title: "星语恋庭 v2.5.1 更新：支持导入手机实际歌声（告别哼调），QQ 音乐点歌直击单曲区！",
-  content: "1. 【QQ 音乐精确点击下方单曲区】：对照实际搜索页布局修复点歌区域，自动越过上方歌手卡/歌单卡，直击「单曲」分段下方第一首歌曲（或自动切换「歌曲」Tab 播放），不再误点歌单推荐卡片。\\n2. 【导入手机实际歌声开唱】：淘汰电子哼调！在大肥鱼面板「📥导歌」或 App「肥鱼歌单」批量导入手机 MP3/WAV/M4A 真实歌声，未导入前内置甜美少女真人音色唱词。\\n3. 【整合外置交互条 & 不抢焦点快捷打字条】：随身版升级至 v2.5.1 (Build 148)！",
+  title: "星语恋庭 v2.5.2 更新：大肥鱼全屏自由漫步上线，头顶气泡实时吐槽天气与暖心安慰你！",
+  content: "1. 【全屏自由漫步模式】：大肥鱼活动范围不再局限在边缘！默认开启「🚶漫步」后会在全屏安全范围内自动转身小碎步自由走动，拖放到哪儿就待在哪儿。\\n2. 【头顶对话气泡（天气吐槽 + 暖心鼓励）】：大肥鱼头顶新增圆润对话气泡，自动结合云端实时天气吐槽温度阴晴雨雪，并在你忙碌时弹出温柔安慰与鼓励话语！\\n3. 【整合真实歌声导入 & QQ音乐精确单曲点播】：随身版升级至 v2.5.2 (Build 149)！",
   enabled: true,
-  version: 148
+  version: 149
 }});
 db.prepare("UPDATE sessions SET companion_config = NULL").run();
 db.prepare("UPDATE user_settings SET value = \\x27demo\\x27 WHERE key = \\x27provider\\x27").run();

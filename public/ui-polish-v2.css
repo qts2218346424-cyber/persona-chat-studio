@@ -404,18 +404,33 @@
   }
 }
 
+/* 全端统计标签防折行 */
+.ds-cache-hit-tag{white-space:nowrap;flex-shrink:0;font-variant-numeric:tabular-nums;}
+
 /* 消息操作栏收纳：次要功能折叠到「⋯」 */
 .msg-footer-bar .msg-more-tools{display:none;}
 .msg-footer-bar.show-more .msg-more-tools{display:inline-flex;gap:2px;}
 @media (max-width: 768px){
-  .msg-footer-bar{display:flex!important;flex-wrap:nowrap!important;align-items:center;gap:2px!important;margin-top:4px!important;padding:2px 0 0!important;min-height:0!important;overflow-x:auto;scrollbar-width:none;opacity:1!important;}
-  .msg-footer-bar::-webkit-scrollbar{display:none;}
+  .app-shell[data-ui-mode="roleplay"] .msg-footer-bar{display:flex!important;flex-wrap:nowrap!important;align-items:center;gap:2px!important;margin-top:4px!important;padding:2px 0 0!important;min-height:0!important;overflow-x:auto;scrollbar-width:none;opacity:1!important;}
+  .app-shell[data-ui-mode="roleplay"] .msg-footer-bar::-webkit-scrollbar{display:none;}
   .msg-footer-bar .msg-tool-btn{font-size:11.5px!important;padding:3px 7px!important;min-height:24px!important;height:auto!important;line-height:1.2!important;flex:0 0 auto;opacity:.75;}
   .msg-footer-bar .msg-recall-tag,.msg-footer-bar .theater-wave-bars{display:none!important;}
   .msg-footer-bar.show-more .msg-more-tools{flex-wrap:nowrap;}
   .msg-row.assistant .msg-body{padding:8px 10px!important;max-width:calc(100% - 36px)!important;}
   .msg-row.assistant .thought-details>summary{padding:4px 10px!important;font-size:12px!important;}
   .msg-row.assistant .thought-details{margin:0 0 6px!important;}
+
+  /* DeepSeek / Phone-Agent 模式：消除双重白框留白与统计标签竖排变形 */
+  .app-shell[data-ui-mode="deepseek"] .msg-footer-bar,
+  .app-shell[data-ui-mode="phone-agent"] .msg-footer-bar{display:flex!important;flex-wrap:wrap!important;align-items:center!important;gap:4px 6px!important;margin-top:6px!important;padding:2px 0 0!important;min-height:0!important;overflow:visible!important;opacity:1!important;}
+  .app-shell[data-ui-mode="deepseek"] .msg-footer-bar .ds-icon-action-btn,
+  .app-shell[data-ui-mode="phone-agent"] .msg-footer-bar .ds-icon-action-btn{width:28px!important;height:28px!important;min-width:28px!important;padding:4px!important;flex:0 0 auto!important;display:inline-flex!important;align-items:center!important;justify-content:center!important;}
+  .app-shell[data-ui-mode="deepseek"] .msg-footer-bar .ds-cache-hit-tag,
+  .app-shell[data-ui-mode="phone-agent"] .msg-footer-bar .ds-cache-hit-tag{flex:1 0 100%!important;margin:2px 0 0 0!important;padding:0 2px!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;font-size:11px!important;line-height:1.3!important;font-variant-numeric:tabular-nums!important;opacity:.78!important;text-align:left!important;}
+  .app-shell[data-ui-mode="deepseek"] .msg-row.assistant .msg-body,
+  .app-shell[data-ui-mode="phone-agent"] .msg-row.assistant .msg-body{padding:10px 12px 8px!important;max-width:100%!important;}
+  .app-shell[data-ui-mode="deepseek"] .msg-row.assistant .assistant-prose,
+  .app-shell[data-ui-mode="phone-agent"] .msg-row.assistant .assistant-prose{background:transparent!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important;padding:0!important;border-radius:0!important;}
 }
 
 /* 手机端：紧凑化 + 半透明毛玻璃气泡 */
@@ -425,6 +440,7 @@
   .msg-row.assistant .assistant-prose,.msg-row.assistant .assistant-prose p,.msg-row.assistant .msg-body{font-size:14px!important;line-height:1.6!important;}
   .msg-row.user .msg-body{font-size:14px!important;padding:7px 11px!important;}
   .msg-row.assistant .assistant-prose p{margin:0 0 6px!important;}
+  .msg-row.assistant .assistant-prose>:last-child,.msg-row.assistant .assistant-prose p:last-child{margin-bottom:0!important;}
   .msg-row.assistant .thought-details{font-size:12.5px!important;}
   .msg-row.assistant .msg-body{background:rgba(255,255,255,.42)!important;-webkit-backdrop-filter:blur(14px) saturate(140%);backdrop-filter:blur(14px) saturate(140%);border:1px solid rgba(255,255,255,.35)!important;box-shadow:0 4px 18px rgba(0,0,0,.08)!important;}
   .msg-row.assistant .assistant-prose{background:rgba(255,255,255,.5)!important;-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);padding:8px 10px!important;border-radius:12px;}

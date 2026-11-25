@@ -602,8 +602,8 @@ function extractAuthToken(req, parsedUrl = null) {
   return '';
 }
 
-const APP_LATEST_VERSION = '2.5.1';
-const APP_LATEST_VERSION_CODE = 148;
+const APP_LATEST_VERSION = '2.5.2';
+const APP_LATEST_VERSION_CODE = 149;
 const APP_OFFICIAL_CERT_SHA256 = '6fd05e32a3cabf327140129d866e55a342fe30daa3384c67aad4b3cbdd98a17b';
 const APP_UPDATE_TICKET_SECRET = crypto
   .createHash('sha256')
@@ -894,9 +894,9 @@ async function handleApi(req, res, pathname, parsedUrl) {
       forceUpdate,
       diffGenerations,
       changelog: [
-        '【QQ 音乐点歌精确点中下方「单曲」区】修复综合搜索页上方误点歌手卡/歌单卡的问题：自动跳过上方推荐卡直达「单曲」分段下方第一首或切入「歌曲」Tab 开播，兜底点位下移至 0.50h',
-        '【告别电子哼调：导入手机实际歌声音频】支持在面板「📥导歌」或 App「肥鱼歌单」中一次多选导入手机本地 MP3/WAV/M4A 等实际声音歌曲，内置真人音色唱词示例',
-        '【全功能升级】含外置肥鱼直点互动条、无阻媒体流发声与悬浮快捷打字条，双端同步升级至 v2.5.1 (Build 148)'
+        '【全屏自由漫步 & 任意停放】大肥鱼不再只缩在边上！开启「🚶漫步」后将在手机全屏安全区域内自由转身散步、小碎步走动，拖拽松手也不再强行吸死边缘',
+        '【头顶气泡 · 天气吐槽 & 暖心安慰鼓励】大肥鱼脑袋上方新增弹性圆润对话气泡，自动获取实时天气进行吐槽或按早晚温差关心你，并时不时送上治愈安慰与鼓励打气的话',
+        '【整合真实歌声导入与QQ音乐精确点歌】融合多选导入真实歌声音频、QQ音乐下方单曲精准点播与外置肥鱼互动条，双端同步升级至 v2.5.2 (Build 149)'
       ]
     };
 
@@ -993,6 +993,63 @@ async function handleApi(req, res, pathname, parsedUrl) {
     }
     lyricsCache.set(cacheKey, { ts: Date.now(), data: resultPayload });
     return sendJson(res, 200, resultPayload, APP_VERSION_CORS_HEADERS);
+  }
+
+  // ========= 0.1a1b 实时天气轻查询接口（供大肥鱼桌宠吐槽真实天气） =========
+  if (method === 'GET' && pathname === '/api/weather/summary') {
+    const rawIp = String(req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '')
+      .split(',')[0]
+      .trim()
+      .replace(/^::ffff:/, '');
+    const isLocalIp = !rawIp || rawIp === '127.0.0.1' || rawIp === '::1'
+      || rawIp.startsWith('10.') || rawIp.startsWith('192.168.')
+      || /^172\.(1[6-9]|2\d|3[01])\./.test(rawIp);
+    const cacheKey = isLocalIp ? 'auto' : rawIp;
+
+    if (!global.__petWeatherCache) {
+      global.__petWeatherCache = new Map();
+    }
+    const wCache = global.__petWeatherCache;
+    const hit = wCache.get(cacheKey);
+    if (hit && Date.now() - hit.ts < 30 * 60 * 1000) {
+      return sendJson(res, 200, hit.data, APP_VERSION_CORS_HEADERS);
+    }
+
+    let weatherData = null;
+    try {
+      const target = isLocalIp ? '' : encodeURIComponent(rawIp);
+      const url = `https://wttr.in/${target}?format=j1&lang=zh-cn`;
+      const resp = await fetch(url, {
+        headers: { 'User-Agent': 'StarWhisperPet/2.5.2' },
+        signal: AbortSignal.timeout(3500)
+      });
+      if (resp.ok) {
+        const j = await resp.json();
+        const cur = Array.isArray(j?.current_condition) ? j.current_condition[0] : null;
+        const area = Array.isArray(j?.nearest_area) ? j.nearest_area[0] : null;
+        if (cur) {
+          const areaName = (area?.areaName?.[0]?.value || area?.region?.[0]?.value || '').trim();
+          const descZh = (cur?.lang_zh?.[0]?.value || cur?.weatherDesc?.[0]?.value || '').trim();
+          weatherData = {
+            ok: true,
+            city: areaName,
+            tempC: String(cur.temp_C ?? ''),
+            feelsLikeC: String(cur.FeelsLikeC ?? ''),
+            humidity: String(cur.humidity ?? ''),
+            windKmph: String(cur.windspeedKmph ?? ''),
+            weatherDesc: descZh
+          };
+        }
+      }
+    } catch {}
+
+    const payload = weatherData || { ok: false, city: '', tempC: '', weatherDesc: '' };
+    if (wCache.size > 200) {
+      const firstK = wCache.keys().next().value;
+      if (firstK !== undefined) wCache.delete(firstK);
+    }
+    wCache.set(cacheKey, { ts: Date.now(), data: payload });
+    return sendJson(res, 200, payload, APP_VERSION_CORS_HEADERS);
   }
 
   // ========= 0.1a2 用户自定义头像与壁纸静态访问接口 =========

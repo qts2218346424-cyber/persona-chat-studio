@@ -92,6 +92,7 @@ public class FloatAgentService extends Service {
     private static final String PREF_KEY_CUSTOM_SONGS = "custom_songs_v1";
     private static final String ASR_ENDPOINT = "https://star.claudexxb.online/api/asr/transcribe";
     private static final String LYRICS_ENDPOINT = "https://star.claudexxb.online/api/music/lyrics";
+    private static final String WEATHER_ENDPOINT = "https://star.claudexxb.online/api/weather/summary";
 
     private static volatile FloatAgentService sInstance = null;
     public static volatile boolean sEmergencyStopRequested = false;
@@ -134,6 +135,7 @@ public class FloatAgentService extends Service {
     // 桌宠个性开关与透明悬浮歌词状态（持久化保存在 SharedPreferences）
     private boolean showVoiceTail = true;
     private boolean showExternalPetBar = true;
+    private boolean freeRoamEnabled = true;
     private boolean antiMistouchEnabled = false;
     private boolean floatingLyricsEnabled = true;
     private boolean lyricsDragMode = false;
@@ -142,15 +144,24 @@ public class FloatAgentService extends Service {
     private long lastMistouchTapMs = 0L;
     private long lastMistouchToastMs = 0L;
     private int autoLifeStep = 0;
+    private int headChatTick = 0;
+    private ValueAnimator petRoamAnimator = null;
+    private volatile String cachedWeatherCity = "";
+    private volatile String cachedWeatherDesc = "";
+    private volatile String cachedWeatherTempC = "";
+    private volatile long lastWeatherFetchMs = 0L;
+    private final java.util.Random petRandom = new java.util.Random();
 
-    // 独立全透明背景桌面漂浮歌词窗与外置互动条
+    // 独立全透明背景桌面漂浮歌词窗、外置互动条与头顶气泡
     private LinearLayout externalPetActionBar;
+    private TextView headSpeechBubbleView;
     private LinearLayout floatingLyricRootView;
     private WindowManager.LayoutParams floatingLyricParams;
     private TextView floatingLyricSubText;
     private TextView floatingLyricMainText;
     private TextView voiceTailToggleBtn;
     private TextView extPetBarToggleBtn;
+    private TextView freeRoamToggleBtn;
     private TextView antiMistouchToggleBtn;
     private TextView floatingLyricsToggleBtn;
     private TextView floatingLyricsMoveBtn;
@@ -291,50 +302,73 @@ public class FloatAgentService extends Service {
         }
     };
 
+    private final Runnable headBubbleHideRunnable = new Runnable() {
+        @Override
+        public void run() {
+            if (headSpeechBubbleView != null) {
+                headSpeechBubbleView.animate().alpha(0f).setDuration(260).withEndAction(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (headSpeechBubbleView != null) {
+                            headSpeechBubbleView.setVisibility(View.GONE);
+                            headSpeechBubbleView.setAlpha(1f);
+                        }
+                    }
+                }).start();
+            }
+        }
+    };
+
     private final Runnable autonomousLifeRunnable = new Runnable() {
         @Override
         public void run() {
             if (sInstance == null) return;
             if (!isExpanded && !isDraggingPet && "idle".equals(sCurrentStatus)
-                    && !isRecordingVoice && !qqMusicPlaying
-                    && (singerEngine == null || !singerEngine.isSinging())) {
-                int step = autoLifeStep % 6;
-                autoLifeStep++;
-                int pose = R.drawable.feiyu_eating;
-                String anim = "eat";
-                switch (step) {
-                    case 0:
-                        pose = R.drawable.feiyu_eating;
-                        anim = "eat";
-                        break;
-                    case 1:
-                        pose = R.drawable.feiyu_walk;
-                        anim = "walk";
-                        break;
-                    case 2:
-                        pose = R.drawable.feiyu_focus;
-                        anim = "bounce";
-                        break;
-                    case 3:
-                        pose = R.drawable.feiyu_dance;
-                        anim = "dance";
-                        break;
-                    case 4:
-                        pose = R.drawable.feiyu_beg;
-                        anim = "eat";
-                        break;
-                    case 5:
-                    default:
-                        pose = R.drawable.feiyu_happy;
-                        anim = "bounce";
-                        break;
+                    && !isRecordingVoice && (singerEngine == null || !singerEngine.isSinging())) {
+                // 每 25 分钟异步刷一次实时天气，供大肥鱼吐槽真实温度与阴晴雨雪
+                if (System.currentTimeMillis() - lastWeatherFetchMs > 25 * 60 * 1000L) {
+                    fetchWeatherSummaryAsync();
                 }
-                setPetPoseDrawable(pose);
-                playPetBounceAnim(anim);
-                mainHandler.removeCallbacks(lifePoseResetRunnable);
-                mainHandler.postDelayed(lifePoseResetRunnable, 4200);
+
+                // 1. 自由满屏漫步模式：真正大范围在手机屏幕上自由走动
+                if (freeRoamEnabled && !qqMusicPlaying && (petRoamAnimator == null || !petRoamAnimator.isRunning())) {
+                    if (autoLifeStep % 2 == 0 || petRandom.nextInt(10) < 7) {
+                        startPetFreeRoamStep();
+                    }
+                } else {
+                    int step = autoLifeStep % 6;
+                    int pose = R.drawable.feiyu_eating;
+                    String anim = "eat";
+                    switch (step) {
+                        case 0: pose = R.drawable.feiyu_eating; anim = "eat"; break;
+                        case 1: pose = R.drawable.feiyu_walk; anim = "walk"; break;
+                        case 2: pose = R.drawable.feiyu_focus; anim = "bounce"; break;
+                        case 3: pose = R.drawable.feiyu_dance; anim = "dance"; break;
+                        case 4: pose = R.drawable.feiyu_beg; anim = "eat"; break;
+                        default: pose = R.drawable.feiyu_happy; anim = "bounce"; break;
+                    }
+                    setPetPoseDrawable(pose);
+                    playPetBounceAnim(anim);
+                    mainHandler.removeCallbacks(lifePoseResetRunnable);
+                    mainHandler.postDelayed(lifePoseResetRunnable, 4200);
+                }
+
+                // 2. 时不时头顶冒出气泡：吐槽天气、暖心安慰或可爱打气（纯气泡文字陪伴，绝不抢占音频打扰）
+                headChatTick++;
+                if (headChatTick % 2 == 1 || petRandom.nextInt(10) < 6) {
+                    mainHandler.postDelayed(new Runnable() {
+                        @Override
+                        public void run() {
+                            if (sInstance != null && !isExpanded && !isDraggingPet && "idle".equals(sCurrentStatus)
+                                    && !isRecordingVoice && (singerEngine == null || !singerEngine.isSinging())) {
+                                showRandomWeatherOrComfortBubble();
+                            }
+                        }
+                    }, 900);
+                }
+                autoLifeStep++;
             }
-            mainHandler.postDelayed(this, 11000);
+            mainHandler.postDelayed(this, 10500);
         }
     };
 
@@ -729,6 +763,7 @@ public class FloatAgentService extends Service {
             SharedPreferences sp = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
             showVoiceTail = sp.getBoolean("show_voice_tail", true);
             showExternalPetBar = sp.getBoolean("show_ext_pet_bar", true);
+            freeRoamEnabled = sp.getBoolean("free_roam_enabled", true);
             antiMistouchEnabled = sp.getBoolean("anti_mistouch", false);
             floatingLyricsEnabled = sp.getBoolean("floating_lyrics", true);
             savedLyricsY = sp.getInt("lyrics_y", dp(88));
@@ -971,16 +1006,17 @@ public class FloatAgentService extends Service {
         initFloatingLyricOverlay();
         initFloatingView();
         mainHandler.postDelayed(lyricTickRunnable, 700);
-        mainHandler.postDelayed(autonomousLifeRunnable, 5500);
-        // 开窗轻微打个招呼
+        mainHandler.postDelayed(autonomousLifeRunnable, 4800);
+        fetchWeatherSummaryAsync();
+        // 开窗轻微打个招呼，直接在头顶冒泡
         mainHandler.postDelayed(new Runnable() {
             @Override
             public void run() {
                 if (sInstance != null && isRunning()) {
-                    showPetSubtitle("🐟 大肥鱼来啦！会自己干饭溜达，还能开防误触与透明歌词~", 3800);
+                    showHeadBubble("🐟 大肥鱼来啦！我会在屏幕上到处溜达，陪你聊天吐槽天气哦~", 4500);
                 }
             }
-        }, 650);
+        }, 700);
     }
 
     private int dp(int value) {
@@ -1111,10 +1147,33 @@ public class FloatAgentService extends Service {
 
         floatRootView = new FrameLayout(this);
 
-        // 1. 折叠态：上排 Q 版鲸鱼娘 + 快捷小麦克风按钮 + 动态台词胶囊；下排外置肥鱼互动小药丸条
+        // 1. 折叠态：最上方头顶气泡 + 中间 Q 版鲸鱼娘/语音尾巴/状态胶囊 + 下方外置互动条
         petBubbleContainer = new LinearLayout(this);
         petBubbleContainer.setOrientation(LinearLayout.VERTICAL);
         petBubbleContainer.setGravity(Gravity.START);
+
+        headSpeechBubbleView = new TextView(this);
+        headSpeechBubbleView.setTextColor(Color.parseColor("#0F172A"));
+        headSpeechBubbleView.setTextSize(11.5f);
+        headSpeechBubbleView.setLineSpacing(dp(2), 1.0f);
+        headSpeechBubbleView.setMaxWidth(dp(215));
+        headSpeechBubbleView.setMaxLines(3);
+        headSpeechBubbleView.setEllipsize(TextUtils.TruncateAt.END);
+        headSpeechBubbleView.setPadding(dp(11), dp(7), dp(11), dp(7));
+        setViewBg(headSpeechBubbleView, createRoundRect("#F5F8FCFF", 14, "#38BDF8", 1));
+        LinearLayout.LayoutParams hbLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        hbLp.bottomMargin = dp(4);
+        headSpeechBubbleView.setLayoutParams(hbLp);
+        headSpeechBubbleView.setVisibility(View.GONE);
+        headSpeechBubbleView.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                mainHandler.removeCallbacks(headBubbleHideRunnable);
+                headBubbleHideRunnable.run();
+                setPetPoseDrawable(R.drawable.feiyu_happy);
+                playPetBounceAnim("bounce");
+            }
+        });
 
         LinearLayout petTopRow = new LinearLayout(this);
         petTopRow.setOrientation(LinearLayout.HORIZONTAL);
@@ -1264,6 +1323,7 @@ public class FloatAgentService extends Service {
         externalPetActionBar.addView(extMeme);
         externalPetActionBar.addView(extHide);
 
+        petBubbleContainer.addView(headSpeechBubbleView);
         petBubbleContainer.addView(petTopRow);
         petBubbleContainer.addView(externalPetActionBar);
 
@@ -1293,6 +1353,10 @@ public class FloatAgentService extends Service {
                 switch (event.getAction()) {
                     case MotionEvent.ACTION_DOWN:
                         wakePetOpacity();
+                        stopPetRoaming();
+                        if (petAvatarView != null) {
+                            petAvatarView.setScaleX(Math.abs(petAvatarView.getScaleX()));
+                        }
                         initialX = layoutParams.x;
                         initialY = layoutParams.y;
                         initialTouchX = event.getRawX();
@@ -1395,11 +1459,18 @@ public class FloatAgentService extends Service {
                             }
                         } else {
                             int petW = petBubbleContainer.getWidth() > 0 ? petBubbleContainer.getWidth() : dp(64);
-                            int center = layoutParams.x + petW / 2;
+                            int petH = petBubbleContainer.getHeight() > 0 ? petBubbleContainer.getHeight() : dp(100);
                             int margin = dp(6);
-                            layoutParams.x = (center < dm.widthPixels / 2)
-                                    ? margin
-                                    : Math.max(margin, dm.widthPixels - petW - margin);
+                            if (freeRoamEnabled) {
+                                // 开启全屏自由漫步时，允许大肥鱼停在用户拖放的任意屏幕位置，不再强制吸死左右侧边
+                                layoutParams.x = Math.max(margin, Math.min(layoutParams.x, dm.widthPixels - petW - margin));
+                                layoutParams.y = Math.max(dp(34), Math.min(layoutParams.y, dm.heightPixels - petH - dp(24)));
+                            } else {
+                                int center = layoutParams.x + petW / 2;
+                                layoutParams.x = (center < dm.widthPixels / 2)
+                                        ? margin
+                                        : Math.max(margin, dm.widthPixels - petW - margin);
+                            }
                             savedPillX = layoutParams.x;
                             savedPillY = layoutParams.y;
                             try {
@@ -1937,7 +2008,7 @@ public class FloatAgentService extends Service {
         });
 
         extPetBarToggleBtn = createGridBtn("🐾外置:开");
-        extPetBarToggleBtn.setTextSize(9.5f);
+        extPetBarToggleBtn.setTextSize(9f);
         extPetBarToggleBtn.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -1951,8 +2022,23 @@ public class FloatAgentService extends Service {
             }
         });
 
+        freeRoamToggleBtn = createGridBtn("🚶漫步:开");
+        freeRoamToggleBtn.setTextSize(9f);
+        freeRoamToggleBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                freeRoamEnabled = !freeRoamEnabled;
+                savePrefBool("free_roam_enabled", freeRoamEnabled);
+                if (!freeRoamEnabled) stopPetRoaming();
+                refreshPrefSwitchButtons();
+                Toast.makeText(FloatAgentService.this,
+                        freeRoamEnabled ? "已开启：大肥鱼将在屏幕内自由散步与气泡互动~" : "已切换：停在角落不主动乱走",
+                        Toast.LENGTH_SHORT).show();
+            }
+        });
+
         floatingLyricsToggleBtn = createGridBtn("🪟歌词:开");
-        floatingLyricsToggleBtn.setTextSize(9.5f);
+        floatingLyricsToggleBtn.setTextSize(9f);
         LinearLayout.LayoutParams fltLp = (LinearLayout.LayoutParams) floatingLyricsToggleBtn.getLayoutParams();
         fltLp.rightMargin = 0;
         floatingLyricsToggleBtn.setLayoutParams(fltLp);
@@ -1973,6 +2059,7 @@ public class FloatAgentService extends Service {
         prefSwitchRow.addView(antiMistouchToggleBtn);
         prefSwitchRow.addView(voiceTailToggleBtn);
         prefSwitchRow.addView(extPetBarToggleBtn);
+        prefSwitchRow.addView(freeRoamToggleBtn);
         prefSwitchRow.addView(floatingLyricsToggleBtn);
         panel.addView(prefSwitchRow);
         refreshPrefSwitchButtons();
@@ -2423,6 +2510,16 @@ public class FloatAgentService extends Service {
                     1
             ));
         }
+        if (freeRoamToggleBtn != null) {
+            freeRoamToggleBtn.setText(freeRoamEnabled ? "🚶漫步:开" : "🚶漫步:关");
+            freeRoamToggleBtn.setTextColor(Color.parseColor(freeRoamEnabled ? "#67E8F9" : "#94A3B8"));
+            setViewBg(freeRoamToggleBtn, createRoundRect(
+                    freeRoamEnabled ? "#164E63" : "#1E293B",
+                    8,
+                    freeRoamEnabled ? "#06B6D4" : "#334155",
+                    1
+            ));
+        }
         if (floatingLyricsToggleBtn != null) {
             floatingLyricsToggleBtn.setText(floatingLyricsEnabled ? "🪟歌词:开" : "🪟歌词:关");
             floatingLyricsToggleBtn.setTextColor(Color.parseColor(floatingLyricsEnabled ? "#FDE68A" : "#94A3B8"));
@@ -2559,6 +2656,216 @@ public class FloatAgentService extends Service {
         }
     }
 
+    // ========= 全屏自由漫步 + 头顶气泡吐槽天气 & 暖心安慰鼓励 =========
+    private void showHeadBubble(final String msg, final long durationMs) {
+        if (headSpeechBubbleView == null || msg == null || msg.trim().isEmpty()) return;
+        mainHandler.removeCallbacks(headBubbleHideRunnable);
+        headSpeechBubbleView.animate().cancel();
+        headSpeechBubbleView.setText(msg.trim());
+        headSpeechBubbleView.setAlpha(0f);
+        headSpeechBubbleView.setScaleX(0.84f);
+        headSpeechBubbleView.setScaleY(0.84f);
+        headSpeechBubbleView.setVisibility(View.VISIBLE);
+        headSpeechBubbleView.animate()
+                .alpha(1f)
+                .scaleX(1f)
+                .scaleY(1f)
+                .setDuration(220)
+                .start();
+        if (durationMs > 0) {
+            mainHandler.postDelayed(headBubbleHideRunnable, durationMs);
+        }
+    }
+
+    private void stopPetRoaming() {
+        if (petRoamAnimator != null) {
+            petRoamAnimator.cancel();
+            petRoamAnimator = null;
+        }
+        if (petAvatarView != null) {
+            petAvatarView.setTranslationY(0f);
+            petAvatarView.setScaleX(1f);
+        }
+    }
+
+    private void startPetFreeRoamStep() {
+        if (windowManager == null || floatRootView == null || layoutParams == null || isExpanded || isDraggingPet) {
+            return;
+        }
+        stopPetRoaming();
+
+        final DisplayMetrics dm = getResources().getDisplayMetrics();
+        int petW = (petBubbleContainer != null && petBubbleContainer.getWidth() > 0) ? petBubbleContainer.getWidth() : dp(96);
+        int petH = (petBubbleContainer != null && petBubbleContainer.getHeight() > 0) ? petBubbleContainer.getHeight() : dp(120);
+
+        final int minX = dp(8);
+        final int maxX = Math.max(minX + dp(40), dm.widthPixels - Math.min(petW, dp(160)) - dp(8));
+        final int minY = dp(52);
+        final int maxY = Math.max(minY + dp(80), dm.heightPixels - petH - dp(95));
+
+        final int startX = layoutParams.x;
+        final int startY = layoutParams.y;
+
+        // 全屏大范围随机选点（确保有一定位移跨度，不再局限在一个小角落）
+        int nextX = minX + petRandom.nextInt(Math.max(1, maxX - minX));
+        int nextY = minY + petRandom.nextInt(Math.max(1, maxY - minY));
+        if (Math.hypot(nextX - startX, nextY - startY) < dp(55)) {
+            nextX = (startX < dm.widthPixels / 2) ? maxX - petRandom.nextInt(dp(40)) : minX + petRandom.nextInt(dp(40));
+            nextY = (startY < dm.heightPixels / 2)
+                    ? Math.min(maxY, startY + dp(90) + petRandom.nextInt(dp(90)))
+                    : Math.max(minY, startY - dp(90) - petRandom.nextInt(dp(90)));
+        }
+
+        final int targetX = Math.max(minX, Math.min(nextX, maxX));
+        final int targetY = Math.max(minY, Math.min(nextY, maxY));
+
+        // 依据走路方向自动转身（向左走面朝左，向右走面朝右）
+        if (petAvatarView != null) {
+            petAvatarView.setScaleX(targetX < startX ? -1f : 1f);
+        }
+        setPetPoseDrawable(R.drawable.feiyu_walk);
+        mainHandler.removeCallbacks(lifePoseResetRunnable);
+
+        double dist = Math.hypot(targetX - startX, targetY - startY);
+        long durMs = Math.max(1500L, Math.min(3400L, Math.round(dist * 3.8)));
+
+        petRoamAnimator = ValueAnimator.ofFloat(0f, 1f);
+        petRoamAnimator.setDuration(durMs);
+        petRoamAnimator.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
+            @Override
+            public void onAnimationUpdate(ValueAnimator animation) {
+                if (isExpanded || isDraggingPet || windowManager == null || floatRootView == null) {
+                    return;
+                }
+                float f = (float) animation.getAnimatedValue();
+                // 平滑缓动 + 轻快小碎步跳跃感
+                float smooth = (float) (0.5 - 0.5 * Math.cos(Math.PI * f));
+                layoutParams.x = Math.round(startX + (targetX - startX) * smooth);
+                layoutParams.y = Math.round(startY + (targetY - startY) * smooth);
+                savedPillX = layoutParams.x;
+                savedPillY = layoutParams.y;
+                if (petAvatarView != null) {
+                    petAvatarView.setTranslationY((float) (-Math.abs(Math.sin(f * Math.PI * 5.0)) * dp(5)));
+                }
+                try {
+                    windowManager.updateViewLayout(floatRootView, layoutParams);
+                } catch (Exception ignored) {}
+            }
+        });
+        petRoamAnimator.addListener(new AnimatorListenerAdapter() {
+            @Override
+            public void onAnimationEnd(Animator animation) {
+                if (petAvatarView != null) {
+                    petAvatarView.setTranslationY(0f);
+                    petAvatarView.setScaleX(1f);
+                }
+                if (!isExpanded && !isDraggingPet && "idle".equals(sCurrentStatus)) {
+                    setPetPoseDrawable(petRandom.nextBoolean() ? R.drawable.feiyu_happy : R.drawable.feiyu_idle);
+                    mainHandler.postDelayed(lifePoseResetRunnable, 2800);
+                }
+            }
+        });
+        petRoamAnimator.start();
+    }
+
+    private void fetchWeatherSummaryAsync() {
+        lastWeatherFetchMs = System.currentTimeMillis();
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                HttpURLConnection conn = null;
+                try {
+                    conn = (HttpURLConnection) new URL(WEATHER_ENDPOINT).openConnection();
+                    conn.setRequestMethod("GET");
+                    conn.setConnectTimeout(4000);
+                    conn.setReadTimeout(4500);
+                    if (conn.getResponseCode() == 200) {
+                        InputStream is = conn.getInputStream();
+                        ByteArrayOutputStream bos = new ByteArrayOutputStream();
+                        byte[] buf = new byte[1024];
+                        int n;
+                        while ((n = is.read(buf)) > 0) bos.write(buf, 0, n);
+                        JSONObject j = new JSONObject(new String(bos.toByteArray(), StandardCharsets.UTF_8));
+                        if (j.optBoolean("ok", false)) {
+                            cachedWeatherCity = j.optString("city", "").trim();
+                            cachedWeatherDesc = j.optString("weatherDesc", "").trim();
+                            cachedWeatherTempC = j.optString("tempC", "").trim();
+                        }
+                    }
+                } catch (Throwable ignored) {
+                } finally {
+                    if (conn != null) conn.disconnect();
+                }
+            }
+        }).start();
+    }
+
+    private String buildWeatherRoastLine() {
+        String cityPart = cachedWeatherCity.isEmpty() ? "外面" : (cachedWeatherCity + "这边");
+        String desc = cachedWeatherDesc;
+        int tempVal = Integer.MIN_VALUE;
+        if (!cachedWeatherTempC.isEmpty()) {
+            try { tempVal = Integer.parseInt(cachedWeatherTempC); } catch (Exception ignored) {}
+        }
+
+        if (!desc.isEmpty() && tempVal != Integer.MIN_VALUE) {
+            if (desc.contains("雨")) {
+                return "☔ " + cityPart + "竟然在" + desc + "（" + tempVal + "°C）！出门可别忘带伞，小心把衣服打湿啦~";
+            }
+            if (desc.contains("雪")) {
+                return "❄️ 哇塞！" + cityPart + desc + " " + tempVal + "°C 了，冷得我都想缩进被窝里吃热乎白米饭！";
+            }
+            if (desc.contains("雷") || desc.contains("风") || desc.contains("沙")) {
+                return "🌬️ " + cityPart + "现在" + desc + "（" + tempVal + "°C），外面妖风阵阵的，老实待在室内最安全~";
+            }
+            if (tempVal <= 10) {
+                return "🧣 " + cityPart + desc + "才 " + tempVal + "°C 呀！好冻鱼，快多穿件外套再喝口热茶暖暖手~";
+            }
+            if (tempVal >= 29) {
+                return "🥵 " + cityPart + desc + "都 " + tempVal + "°C 了，热得像蒸桑拿！记得多喝水别中暑呀~";
+            }
+            if (desc.contains("晴")) {
+                return "☀️ " + cityPart + "今天" + desc + " " + tempVal + "°C，阳光超舒服的！适合伸个懒腰晒晒背~";
+            }
+            return "🌤️ 偷看了眼" + cityPart + "天气：" + desc + " " + tempVal + "°C，不冷不热的刚刚好呢~";
+        }
+
+        int hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY);
+        if (hour >= 6 && hour < 10) {
+            return "🌅 早上风还有点凉凉的，出门记得多披一件小外套，顺便吃顿热腾腾的早饭呀~";
+        } else if (hour >= 10 && hour < 15) {
+            return "☀️ 太阳晒到正午啦！也不知道外面热不热，反正待在空调/室内陪着你最安逸~";
+        } else if (hour >= 15 && hour < 19) {
+            return "⛅ 下午天空慢慢变温柔啦~ 忙了一天快瞅瞅窗外云朵，歇口气再继续！";
+        } else if (hour >= 19 && hour < 23) {
+            return "🌙 天黑降温最容易偷着凉啦，注意保暖哦，大肥鱼给你捂捂手~";
+        } else {
+            return "✨ 夜深了外面风肯定很冷吧，还在熬夜的话本鱼可要生气督促你早点休息咯！";
+        }
+    }
+
+    private void showRandomWeatherOrComfortBubble() {
+        // 45% 吐槽实时/分时段天气，55% 温柔安慰鼓励话语
+        if (petRandom.nextInt(10) < 4) {
+            showHeadBubble(buildWeatherRoastLine(), 5500);
+            return;
+        }
+        String[] comfortLines = new String[]{
+                "💙 累了就歇两分钟吧，大肥鱼在这里陪你把烦恼一口一口吞掉~ 💪",
+                "✨ 没关系哒，慢一点也没关系的，今天的你已经做得很棒啦！",
+                "🍚 心情要是有点阴天，就点一下「喂饭」分你一半干饭好心情~",
+                "🫧 不管外面刮风还是下雨，屏幕里永远有一只大肥鱼站在你这边！",
+                "🫂 遇到难搞的事别一个人硬扛呀，深呼吸吐个泡泡，一切都会好起来的~",
+                "🌟 休息不是偷懒哦，是为了攒足能量再接着往前冲呀！加把劲~",
+                "💙 偷偷告诉你：只要每天都能看见你，大肥鱼的算力就会自动充满电！",
+                "🍀 烦躁的时候就看看我到处乱溜达吧，把坏情绪全都甩在身后~",
+                "🍰 忙完这一小段，记得去奖励自己一杯喜欢的奶茶或者好吃的哦！",
+                "🐾 别紧张别焦虑，有我在旁边给你加油打气，你比自己想象中还要厉害！"
+        };
+        int idx = petRandom.nextInt(comfortLines.length);
+        showHeadBubble(comfortLines[idx], 5400);
+    }
+
     private void showPetSubtitle(String text, long durationMs) {
         if (subtitleBannerView != null && text != null) {
             subtitleBannerView.setText(text);
@@ -2566,6 +2873,11 @@ public class FloatAgentService extends Service {
         if (feedbackTextView != null && text != null) {
             feedbackTextView.setText(text);
             feedbackTextView.setTextColor(Color.parseColor("#BAE6FD"));
+        }
+        // 在折叠态桌面状态下，说话同步在肥鱼头顶以气泡形式弹出，交互反馈一眼直达！
+        if (!isExpanded && text != null && !text.trim().isEmpty()
+                && (singerEngine == null || !singerEngine.isSinging()) && !qqMusicPlaying) {
+            showHeadBubble(text, Math.max(3600L, durationMs));
         }
         updateFloatingLyricOverlay();
         refreshCollapsedPill();
@@ -2746,6 +3058,26 @@ public class FloatAgentService extends Service {
         }
         if (t.contains("跳舞") || t.contains("跳个舞") || t.contains("摇尾巴")) {
             triggerDanceAction();
+            return true;
+        }
+        if (t.contains("开启漫步") || t.contains("打开漫步") || t.contains("到处走") || t.contains("自由走动")) {
+            freeRoamEnabled = true;
+            savePrefBool("free_roam_enabled", true);
+            refreshPrefSwitchButtons();
+            collapsePanel();
+            startPetFreeRoamStep();
+            return true;
+        }
+        if (t.contains("关闭漫步") || t.contains("停止漫步") || t.contains("别乱跑")) {
+            freeRoamEnabled = false;
+            savePrefBool("free_roam_enabled", false);
+            stopPetRoaming();
+            refreshPrefSwitchButtons();
+            return true;
+        }
+        if (t.contains("天气") || t.contains("安慰") || t.contains("鼓励") || t.contains("抱抱") || t.contains("心情不好")) {
+            collapsePanel();
+            showRandomWeatherOrComfortBubble();
             return true;
         }
         if (t.contains("导入歌声") || t.contains("导入歌曲") || t.contains("导入声音") || t.contains("导入实际声音") || t.contains("传歌")) {
@@ -4518,6 +4850,7 @@ public class FloatAgentService extends Service {
     private void expandPanel() {
         if (isExpanded) return;
         isExpanded = true;
+        stopPetRoaming();
         wakePetOpacity();
         savedPillX = layoutParams.x;
         savedPillY = layoutParams.y;
@@ -4909,6 +5242,7 @@ public class FloatAgentService extends Service {
     @Override
     public void onDestroy() {
         mainHandler.removeCallbacksAndMessages(null);
+        stopPetRoaming();
         stopWhaleVoicePlayer();
         if (singerEngine != null) {
             singerEngine.stop();

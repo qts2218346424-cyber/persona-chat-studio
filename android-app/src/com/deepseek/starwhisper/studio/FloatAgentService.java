@@ -136,6 +136,7 @@ public class FloatAgentService extends Service {
     private boolean showVoiceTail = true;
     private boolean showExternalPetBar = true;
     private boolean freeRoamEnabled = true;
+    private boolean headBubbleEnabled = true;
     private boolean antiMistouchEnabled = false;
     private boolean floatingLyricsEnabled = true;
     private boolean lyricsDragMode = false;
@@ -144,7 +145,7 @@ public class FloatAgentService extends Service {
     private long lastMistouchTapMs = 0L;
     private long lastMistouchToastMs = 0L;
     private int autoLifeStep = 0;
-    private int headChatTick = 0;
+    private long nextAutoHeadBubbleAtMs = 0L;
     private ValueAnimator petRoamAnimator = null;
     private volatile String cachedWeatherCity = "";
     private volatile String cachedWeatherDesc = "";
@@ -162,6 +163,7 @@ public class FloatAgentService extends Service {
     private TextView voiceTailToggleBtn;
     private TextView extPetBarToggleBtn;
     private TextView freeRoamToggleBtn;
+    private TextView headBubbleToggleBtn;
     private TextView antiMistouchToggleBtn;
     private TextView floatingLyricsToggleBtn;
     private TextView floatingLyricsMoveBtn;
@@ -353,14 +355,16 @@ public class FloatAgentService extends Service {
                     mainHandler.postDelayed(lifePoseResetRunnable, 4200);
                 }
 
-                // 2. 时不时头顶冒出气泡：吐槽天气、暖心安慰或可爱打气（纯气泡文字陪伴，绝不抢占音频打扰）
-                headChatTick++;
-                if (headChatTick % 2 == 1 || petRandom.nextInt(10) < 6) {
+                // 2. 开启头顶气泡时，严格每 5 分钟 ~ 10 分钟随机弹一条天气吐槽或暖心安慰（不频繁打扰）
+                long nowMs = System.currentTimeMillis();
+                if (headBubbleEnabled && nowMs >= nextAutoHeadBubbleAtMs) {
+                    scheduleNextAutoHeadBubble();
                     mainHandler.postDelayed(new Runnable() {
                         @Override
                         public void run() {
-                            if (sInstance != null && !isExpanded && !isDraggingPet && "idle".equals(sCurrentStatus)
-                                    && !isRecordingVoice && (singerEngine == null || !singerEngine.isSinging())) {
+                            if (sInstance != null && headBubbleEnabled && !isExpanded && !isDraggingPet
+                                    && "idle".equals(sCurrentStatus) && !isRecordingVoice
+                                    && (singerEngine == null || !singerEngine.isSinging())) {
                                 showRandomWeatherOrComfortBubble();
                             }
                         }
@@ -764,11 +768,13 @@ public class FloatAgentService extends Service {
             showVoiceTail = sp.getBoolean("show_voice_tail", true);
             showExternalPetBar = sp.getBoolean("show_ext_pet_bar", true);
             freeRoamEnabled = sp.getBoolean("free_roam_enabled", true);
+            headBubbleEnabled = sp.getBoolean("show_head_bubble", true);
             antiMistouchEnabled = sp.getBoolean("anti_mistouch", false);
             floatingLyricsEnabled = sp.getBoolean("floating_lyrics", true);
             savedLyricsY = sp.getInt("lyrics_y", dp(88));
             quickTypingDirectSend = sp.getBoolean(PREF_KEY_QUICK_DIRECT, true);
         } catch (Exception ignored) {}
+        scheduleNextAutoHeadBubble();
         reloadQuickPhrases();
         reloadCustomSongs();
     }
@@ -1153,16 +1159,18 @@ public class FloatAgentService extends Service {
         petBubbleContainer.setGravity(Gravity.START);
 
         headSpeechBubbleView = new TextView(this);
-        headSpeechBubbleView.setTextColor(Color.parseColor("#0F172A"));
-        headSpeechBubbleView.setTextSize(11.5f);
+        headSpeechBubbleView.setTextColor(Color.parseColor("#FFFFFF"));
+        headSpeechBubbleView.setTypeface(null, android.graphics.Typeface.BOLD);
+        headSpeechBubbleView.setTextSize(12f);
         headSpeechBubbleView.setLineSpacing(dp(2), 1.0f);
-        headSpeechBubbleView.setMaxWidth(dp(215));
+        headSpeechBubbleView.setMaxWidth(dp(220));
         headSpeechBubbleView.setMaxLines(3);
         headSpeechBubbleView.setEllipsize(TextUtils.TruncateAt.END);
-        headSpeechBubbleView.setPadding(dp(11), dp(7), dp(11), dp(7));
-        setViewBg(headSpeechBubbleView, createRoundRect("#F5F8FCFF", 14, "#38BDF8", 1));
+        headSpeechBubbleView.setPadding(dp(4), dp(2), dp(4), dp(2));
+        headSpeechBubbleView.setBackgroundColor(Color.TRANSPARENT);
+        headSpeechBubbleView.setShadowLayer(dp(4), 0f, dp(1), Color.parseColor("#F0000000"));
         LinearLayout.LayoutParams hbLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        hbLp.bottomMargin = dp(4);
+        hbLp.bottomMargin = dp(3);
         headSpeechBubbleView.setLayoutParams(hbLp);
         headSpeechBubbleView.setVisibility(View.GONE);
         headSpeechBubbleView.setOnClickListener(new View.OnClickListener() {
@@ -1969,15 +1977,15 @@ public class FloatAgentService extends Service {
         petActionRow.addView(memeBtn);
         panel.addView(petActionRow);
 
-        // 3b. 个性开关一行：防误触 + 语音尾巴 + 外置互动条 + 透明歌词
-        LinearLayout prefSwitchRow = new LinearLayout(this);
-        prefSwitchRow.setOrientation(LinearLayout.HORIZONTAL);
-        LinearLayout.LayoutParams psLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        psLp.topMargin = dp(6);
-        prefSwitchRow.setLayoutParams(psLp);
+        // 3b. 个性开关两行（3x2）：防误触 / 语音尾巴 / 外置互动 / 自由漫步 / 头顶气泡 / 透明歌词
+        LinearLayout prefSwitchRow1 = new LinearLayout(this);
+        prefSwitchRow1.setOrientation(LinearLayout.HORIZONTAL);
+        LinearLayout.LayoutParams psLp1 = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        psLp1.topMargin = dp(6);
+        prefSwitchRow1.setLayoutParams(psLp1);
 
-        antiMistouchToggleBtn = createGridBtn("🛡️防误触");
-        antiMistouchToggleBtn.setTextSize(9.5f);
+        antiMistouchToggleBtn = createGridBtn("🛡️防误触:关");
+        antiMistouchToggleBtn.setTextSize(10f);
         antiMistouchToggleBtn.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -1992,8 +2000,8 @@ public class FloatAgentService extends Service {
             }
         });
 
-        voiceTailToggleBtn = createGridBtn("🎙尾巴:开");
-        voiceTailToggleBtn.setTextSize(9.5f);
+        voiceTailToggleBtn = createGridBtn("🎙语音尾巴:开");
+        voiceTailToggleBtn.setTextSize(10f);
         voiceTailToggleBtn.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -2007,8 +2015,11 @@ public class FloatAgentService extends Service {
             }
         });
 
-        extPetBarToggleBtn = createGridBtn("🐾外置:开");
-        extPetBarToggleBtn.setTextSize(9f);
+        extPetBarToggleBtn = createGridBtn("🐾外置互动:开");
+        extPetBarToggleBtn.setTextSize(10f);
+        LinearLayout.LayoutParams epbLp = (LinearLayout.LayoutParams) extPetBarToggleBtn.getLayoutParams();
+        epbLp.rightMargin = 0;
+        extPetBarToggleBtn.setLayoutParams(epbLp);
         extPetBarToggleBtn.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -2022,8 +2033,19 @@ public class FloatAgentService extends Service {
             }
         });
 
-        freeRoamToggleBtn = createGridBtn("🚶漫步:开");
-        freeRoamToggleBtn.setTextSize(9f);
+        prefSwitchRow1.addView(antiMistouchToggleBtn);
+        prefSwitchRow1.addView(voiceTailToggleBtn);
+        prefSwitchRow1.addView(extPetBarToggleBtn);
+        panel.addView(prefSwitchRow1);
+
+        LinearLayout prefSwitchRow2 = new LinearLayout(this);
+        prefSwitchRow2.setOrientation(LinearLayout.HORIZONTAL);
+        LinearLayout.LayoutParams psLp2 = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        psLp2.topMargin = dp(5);
+        prefSwitchRow2.setLayoutParams(psLp2);
+
+        freeRoamToggleBtn = createGridBtn("🚶自由漫步:开");
+        freeRoamToggleBtn.setTextSize(10f);
         freeRoamToggleBtn.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -2032,13 +2054,33 @@ public class FloatAgentService extends Service {
                 if (!freeRoamEnabled) stopPetRoaming();
                 refreshPrefSwitchButtons();
                 Toast.makeText(FloatAgentService.this,
-                        freeRoamEnabled ? "已开启：大肥鱼将在屏幕内自由散步与气泡互动~" : "已切换：停在角落不主动乱走",
+                        freeRoamEnabled ? "已开启：大肥鱼将在屏幕内自由散步~" : "已关闭自由漫步：停在角落不动",
                         Toast.LENGTH_SHORT).show();
             }
         });
 
-        floatingLyricsToggleBtn = createGridBtn("🪟歌词:开");
-        floatingLyricsToggleBtn.setTextSize(9f);
+        headBubbleToggleBtn = createGridBtn("💬头顶气泡:开");
+        headBubbleToggleBtn.setTextSize(10f);
+        headBubbleToggleBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                headBubbleEnabled = !headBubbleEnabled;
+                savePrefBool("show_head_bubble", headBubbleEnabled);
+                if (!headBubbleEnabled && headSpeechBubbleView != null) {
+                    mainHandler.removeCallbacks(headBubbleHideRunnable);
+                    headSpeechBubbleView.setVisibility(View.GONE);
+                } else if (headBubbleEnabled) {
+                    scheduleNextAutoHeadBubble();
+                }
+                refreshPrefSwitchButtons();
+                Toast.makeText(FloatAgentService.this,
+                        headBubbleEnabled ? "已开启透明头顶气泡（约5~10分钟自动弹一条）" : "已关闭大肥鱼头顶气泡",
+                        Toast.LENGTH_SHORT).show();
+            }
+        });
+
+        floatingLyricsToggleBtn = createGridBtn("🪟透明歌词:开");
+        floatingLyricsToggleBtn.setTextSize(10f);
         LinearLayout.LayoutParams fltLp = (LinearLayout.LayoutParams) floatingLyricsToggleBtn.getLayoutParams();
         fltLp.rightMargin = 0;
         floatingLyricsToggleBtn.setLayoutParams(fltLp);
@@ -2056,12 +2098,10 @@ public class FloatAgentService extends Service {
             }
         });
 
-        prefSwitchRow.addView(antiMistouchToggleBtn);
-        prefSwitchRow.addView(voiceTailToggleBtn);
-        prefSwitchRow.addView(extPetBarToggleBtn);
-        prefSwitchRow.addView(freeRoamToggleBtn);
-        prefSwitchRow.addView(floatingLyricsToggleBtn);
-        panel.addView(prefSwitchRow);
+        prefSwitchRow2.addView(freeRoamToggleBtn);
+        prefSwitchRow2.addView(headBubbleToggleBtn);
+        prefSwitchRow2.addView(floatingLyricsToggleBtn);
+        panel.addView(prefSwitchRow2);
         refreshPrefSwitchButtons();
 
         // 4. QQ 音乐联动迷你卡片（实时歌词 + 切歌 + 点歌 + 透明歌词调节）
@@ -2481,7 +2521,7 @@ public class FloatAgentService extends Service {
 
     private void refreshPrefSwitchButtons() {
         if (antiMistouchToggleBtn != null) {
-            antiMistouchToggleBtn.setText(antiMistouchEnabled ? "🛡️防误:开" : "🛡️防误:关");
+            antiMistouchToggleBtn.setText(antiMistouchEnabled ? "🛡️防误触:开" : "🛡️防误触:关");
             antiMistouchToggleBtn.setTextColor(Color.parseColor(antiMistouchEnabled ? "#A7F3D0" : "#CBD5E1"));
             setViewBg(antiMistouchToggleBtn, createRoundRect(
                     antiMistouchEnabled ? "#064E3B" : "#1E293B",
@@ -2491,7 +2531,7 @@ public class FloatAgentService extends Service {
             ));
         }
         if (voiceTailToggleBtn != null) {
-            voiceTailToggleBtn.setText(showVoiceTail ? "🎙尾巴:开" : "🎙尾巴:关");
+            voiceTailToggleBtn.setText(showVoiceTail ? "🎙语音尾巴:开" : "🎙语音尾巴:关");
             voiceTailToggleBtn.setTextColor(Color.parseColor(showVoiceTail ? "#BAE6FD" : "#94A3B8"));
             setViewBg(voiceTailToggleBtn, createRoundRect(
                     showVoiceTail ? "#0C4A6E" : "#1E293B",
@@ -2501,7 +2541,7 @@ public class FloatAgentService extends Service {
             ));
         }
         if (extPetBarToggleBtn != null) {
-            extPetBarToggleBtn.setText(showExternalPetBar ? "🐾外置:开" : "🐾外置:关");
+            extPetBarToggleBtn.setText(showExternalPetBar ? "🐾外置互动:开" : "🐾外置互动:关");
             extPetBarToggleBtn.setTextColor(Color.parseColor(showExternalPetBar ? "#C4B5FD" : "#94A3B8"));
             setViewBg(extPetBarToggleBtn, createRoundRect(
                     showExternalPetBar ? "#2E1065" : "#1E293B",
@@ -2511,7 +2551,7 @@ public class FloatAgentService extends Service {
             ));
         }
         if (freeRoamToggleBtn != null) {
-            freeRoamToggleBtn.setText(freeRoamEnabled ? "🚶漫步:开" : "🚶漫步:关");
+            freeRoamToggleBtn.setText(freeRoamEnabled ? "🚶自由漫步:开" : "🚶自由漫步:关");
             freeRoamToggleBtn.setTextColor(Color.parseColor(freeRoamEnabled ? "#67E8F9" : "#94A3B8"));
             setViewBg(freeRoamToggleBtn, createRoundRect(
                     freeRoamEnabled ? "#164E63" : "#1E293B",
@@ -2520,8 +2560,18 @@ public class FloatAgentService extends Service {
                     1
             ));
         }
+        if (headBubbleToggleBtn != null) {
+            headBubbleToggleBtn.setText(headBubbleEnabled ? "💬头顶气泡:开" : "💬头顶气泡:关");
+            headBubbleToggleBtn.setTextColor(Color.parseColor(headBubbleEnabled ? "#F9A8D4" : "#94A3B8"));
+            setViewBg(headBubbleToggleBtn, createRoundRect(
+                    headBubbleEnabled ? "#500724" : "#1E293B",
+                    8,
+                    headBubbleEnabled ? "#EC4899" : "#334155",
+                    1
+            ));
+        }
         if (floatingLyricsToggleBtn != null) {
-            floatingLyricsToggleBtn.setText(floatingLyricsEnabled ? "🪟歌词:开" : "🪟歌词:关");
+            floatingLyricsToggleBtn.setText(floatingLyricsEnabled ? "🪟透明歌词:开" : "🪟透明歌词:关");
             floatingLyricsToggleBtn.setTextColor(Color.parseColor(floatingLyricsEnabled ? "#FDE68A" : "#94A3B8"));
             setViewBg(floatingLyricsToggleBtn, createRoundRect(
                     floatingLyricsEnabled ? "#451A03" : "#1E293B",
@@ -2657,8 +2707,17 @@ public class FloatAgentService extends Service {
     }
 
     // ========= 全屏自由漫步 + 头顶气泡吐槽天气 & 暖心安慰鼓励 =========
+    private void scheduleNextAutoHeadBubble() {
+        long delayMs = (5 * 60_000L) + petRandom.nextInt(5 * 60_000 + 1);
+        nextAutoHeadBubbleAtMs = System.currentTimeMillis() + delayMs;
+    }
+
     private void showHeadBubble(final String msg, final long durationMs) {
         if (headSpeechBubbleView == null || msg == null || msg.trim().isEmpty()) return;
+        if (!headBubbleEnabled) {
+            headSpeechBubbleView.setVisibility(View.GONE);
+            return;
+        }
         mainHandler.removeCallbacks(headBubbleHideRunnable);
         headSpeechBubbleView.animate().cancel();
         headSpeechBubbleView.setText(msg.trim());
@@ -3072,6 +3131,23 @@ public class FloatAgentService extends Service {
             freeRoamEnabled = false;
             savePrefBool("free_roam_enabled", false);
             stopPetRoaming();
+            refreshPrefSwitchButtons();
+            return true;
+        }
+        if (t.contains("关闭气泡") || t.contains("隐藏气泡") || t.contains("关掉气泡")) {
+            headBubbleEnabled = false;
+            savePrefBool("show_head_bubble", false);
+            if (headSpeechBubbleView != null) {
+                mainHandler.removeCallbacks(headBubbleHideRunnable);
+                headSpeechBubbleView.setVisibility(View.GONE);
+            }
+            refreshPrefSwitchButtons();
+            return true;
+        }
+        if (t.contains("开启气泡") || t.contains("打开气泡") || t.contains("显示气泡")) {
+            headBubbleEnabled = true;
+            savePrefBool("show_head_bubble", true);
+            scheduleNextAutoHeadBubble();
             refreshPrefSwitchButtons();
             return true;
         }

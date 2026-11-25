@@ -2,19 +2,32 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const ENV_FILE_PATH = path.join(__dirname, '..', '.env');
+const ENV_STAT_TTL_MS = 2000;
 
 let cachedMtimeMs = -1;
 let cachedEnvMap = {};
+let lastStatCheckedAt = 0;
+let cachedBuiltinConfig = null;
+let cachedBuiltinStamp = '';
 
 /**
- * 零依赖实时热加载根目录 .env 配置文件
+ * 零依赖实时热加载根目录 .env 配置文件（带 2s stat 节流，避免高频同步系统调用）
  * 用户随时编辑保存 .env 中的 API Key，无需重启服务即可在下一秒生效
  */
 function readHotEnvMap() {
+  const now = Date.now();
+  if (lastStatCheckedAt > 0 && now - lastStatCheckedAt < ENV_STAT_TTL_MS) {
+    return cachedEnvMap;
+  }
   try {
+    lastStatCheckedAt = now;
     if (!fs.existsSync(ENV_FILE_PATH)) {
-      cachedMtimeMs = -1;
-      cachedEnvMap = {};
+      if (cachedMtimeMs !== -1) {
+        cachedMtimeMs = -1;
+        cachedEnvMap = {};
+        cachedBuiltinConfig = null;
+        cachedBuiltinStamp = '';
+      }
       return cachedEnvMap;
     }
     const stat = fs.statSync(ENV_FILE_PATH);
@@ -48,6 +61,8 @@ function readHotEnvMap() {
 
     cachedMtimeMs = stat.mtimeMs;
     cachedEnvMap = parsed;
+    cachedBuiltinConfig = null;
+    cachedBuiltinStamp = '';
 
     // 同步热注入关键环境变量至 process.env，确保全底座生态即时感知
     if (parsed.GEMINI_API_KEY) process.env.GEMINI_API_KEY = parsed.GEMINI_API_KEY;
@@ -70,10 +85,24 @@ function getEnvVal(key) {
   return '';
 }
 
+function cloneBuiltinConfig(cfg) {
+  return {
+    ...cfg,
+    chatPatch: { ...cfg.chatPatch },
+    ttsPatch: { ...cfg.ttsPatch },
+    asrConfig: { ...cfg.asrConfig }
+  };
+}
+
 /**
  * 将 .env 中的快捷平台密钥自动组装为内置对话大模型 + 商业配音 TTS + 语音识别 ASR 配置
  */
 function resolveBuiltinEnvConfig() {
+  readHotEnvMap();
+  const stamp = `${cachedMtimeMs}`;
+  if (cachedBuiltinConfig && cachedBuiltinStamp === stamp) {
+    return cloneBuiltinConfig(cachedBuiltinConfig);
+  }
   const siliconKey = getEnvVal('SILICONFLOW_API_KEY');
   const dashscopeKey = getEnvVal('DASHSCOPE_API_KEY');
   const deepseekKey = getEnvVal('DEEPSEEK_API_KEY') || getEnvVal('PLATFORM_DEEPSEEK_API_KEY');
@@ -234,7 +263,9 @@ function resolveBuiltinEnvConfig() {
     };
   }
 
-  return result;
+  cachedBuiltinConfig = cloneBuiltinConfig(result);
+  cachedBuiltinStamp = stamp;
+  return cloneBuiltinConfig(cachedBuiltinConfig);
 }
 
 module.exports = {

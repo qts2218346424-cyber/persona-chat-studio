@@ -309,7 +309,48 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_lore_persona_user ON lorebook_entries(persona_id, user_id);
   CREATE INDEX IF NOT EXISTS idx_ledger_user_created ON point_ledger(user_id, created_at DESC);
   CREATE INDEX IF NOT EXISTS idx_orders_user_created ON recharge_orders(user_id, created_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_auth_sessions_user ON auth_sessions(user_id);
+  CREATE INDEX IF NOT EXISTS idx_memories_session_active ON memories(session_id, superseded_by);
+  CREATE INDEX IF NOT EXISTS idx_sessions_user_pinned_updated ON sessions(user_id, pinned DESC, updated_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_announcements_enabled_updated ON site_announcements(enabled, updated_at DESC);
 `);
+
+// ================= 高频只读查询内存热缓存（严格带写后失效与 LRU 上限） =================
+const AUTH_CACHE_MAX = 500;
+const AUTH_CACHE_TTL_MS = 15000;
+const PLATFORM_CONFIG_CACHE_TTL_MS = 5000;
+const ANNOUNCEMENT_CACHE_TTL_MS = 30000;
+
+const authTokenCache = new Map();
+let platformConfigRowsCache = null; // { ts, rows }
+let runtimeFlagsCache = null; // { ts, value }
+let latestAnnouncementCache = null; // { ts, value }
+
+function invalidateTokenCache(token) {
+  if (token) authTokenCache.delete(token);
+}
+
+function invalidateUserAuthCache(userId) {
+  if (!userId) return;
+  for (const [tok, entry] of authTokenCache.entries()) {
+    if (entry && entry.user && entry.user.id === userId) {
+      authTokenCache.delete(tok);
+    }
+  }
+}
+
+function clearAllAuthCache() {
+  authTokenCache.clear();
+}
+
+function invalidatePlatformConfigCache() {
+  platformConfigRowsCache = null;
+  runtimeFlagsCache = null;
+}
+
+function invalidateAnnouncementCache() {
+  latestAnnouncementCache = null;
+}
 
 // 平滑迁移已有数据库缺失的列
 function ensureColumn(table, column, definition) {
@@ -499,7 +540,14 @@ const PLATFORM_CONFIG_DEFAULTS = {
 
 function getRawPlatformConfigInternal() {
   const cfg = { ...PLATFORM_CONFIG_DEFAULTS };
-  const rows = db.prepare('SELECT key, value FROM platform_config').all();
+  const now = Date.now();
+  let rows;
+  if (platformConfigRowsCache && now - platformConfigRowsCache.ts < PLATFORM_CONFIG_CACHE_TTL_MS) {
+    rows = platformConfigRowsCache.rows;
+  } else {
+    rows = db.prepare('SELECT key, value FROM platform_config').all();
+    platformConfigRowsCache = { ts: now, rows };
+  }
   for (const r of rows) {
     if (r.key in PLATFORM_CONFIG_DEFAULTS) cfg[r.key] = r.value;
   }
@@ -2329,6 +2377,7 @@ function updateUserPersona(userId, { nickname, avatar, avatar_config, role, appe
     WHERE id = ?
   `).run(nextNick, nextAvatar, nextAvatarConfig, nextRole, nextApp, nextBio, Date.now(), userId);
 
+  invalidateUserAuthCache(userId);
   recordUserDailyEvent(userId, 'user_persona_saved');
   return sanitizeUser(db.prepare('SELECT * FROM users WHERE id = ?').get(userId));
 }
@@ -2346,9 +2395,21 @@ function createAuthSessionToken(userId) {
 
 function getUserByToken(token) {
   if (!token) return null;
+  const now = Date.now();
+  const cached = authTokenCache.get(token);
+  if (cached) {
+    if (now - cached.cachedAt < AUTH_CACHE_TTL_MS && cached.expiresAt > now) {
+      // 刷新 LRU 热度
+      authTokenCache.delete(token);
+      authTokenCache.set(token, cached);
+      return { ...cached.user };
+    }
+    authTokenCache.delete(token);
+  }
+
   const sess = db.prepare('SELECT * FROM auth_sessions WHERE token = ?').get(token);
   if (!sess) return null;
-  if (sess.expires_at < Date.now()) {
+  if (sess.expires_at < now) {
     db.prepare('DELETE FROM auth_sessions WHERE token = ?').run(token);
     return null;
   }
@@ -2356,14 +2417,26 @@ function getUserByToken(token) {
   if (!user || user.is_banned === 1) {
     if (user && user.is_banned === 1) {
       db.prepare('DELETE FROM auth_sessions WHERE user_id = ?').run(user.id);
+      invalidateUserAuthCache(user.id);
     }
     return null;
   }
-  return sanitizeUser(user);
+  const sanitized = sanitizeUser(user);
+  if (authTokenCache.size >= AUTH_CACHE_MAX) {
+    const oldestTok = authTokenCache.keys().next().value;
+    if (oldestTok !== undefined) authTokenCache.delete(oldestTok);
+  }
+  authTokenCache.set(token, {
+    user: sanitized,
+    expiresAt: sess.expires_at,
+    cachedAt: now
+  });
+  return { ...sanitized };
 }
 
 function revokeAuthToken(token) {
   if (!token) return;
+  invalidateTokenCache(token);
   db.prepare('DELETE FROM auth_sessions WHERE token = ?').run(token);
 }
 
@@ -2474,6 +2547,7 @@ function markUserOnboardingDone(userId, done = true) {
     Date.now(),
     userId
   );
+  invalidateUserAuthCache(userId);
   return sanitizeUser(db.prepare('SELECT * FROM users WHERE id = ?').get(userId));
 }
 
@@ -2583,6 +2657,7 @@ function performDailyCheckin(userId) {
     throw err;
   }
 
+  invalidateUserAuthCache(userId);
   return {
     points_awarded: totalPointsAwarded,
     card_bonus_points: cardBonusPoints,
@@ -2756,6 +2831,7 @@ function claimTaskReward(userId, taskKey) {
     throw err;
   }
 
+  invalidateUserAuthCache(userId);
   return {
     task: targetTask,
     membership: getMembership(userId),
@@ -2872,6 +2948,7 @@ function createAndFulfillRechargeOrder(userId, productKey, payChannel = 'wechat'
     throw err;
   }
 
+  invalidateUserAuthCache(userId);
   return {
     order: db.prepare('SELECT * FROM recharge_orders WHERE order_no = ?').get(orderNo),
     membership: getMembership(userId)
@@ -2949,6 +3026,7 @@ function exchangePointsItem(userId, itemKey) {
     throw err;
   }
 
+  invalidateUserAuthCache(userId);
   return {
     item,
     membership: getMembership(userId)
@@ -3044,6 +3122,7 @@ function redeemMembershipCode(userId, rawCode) {
     throw err;
   }
 
+  invalidateUserAuthCache(userId);
   return { membership: getMembership(userId), gift_label: giftLabel };
 }
 
@@ -3055,6 +3134,7 @@ function resetMembershipToFree(userId) {
     WHERE id = ?
   `).run(now, userId);
   db.prepare('DELETE FROM user_redeem_logs WHERE user_id = ?').run(userId);
+  invalidateUserAuthCache(userId);
   return getMembership(userId);
 }
 
@@ -3074,6 +3154,7 @@ function consumeOnlineCredit(userId) {
   const row = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
   if (!row) throw new Error('用户不存在');
   db.prepare('UPDATE users SET total_used = total_used + 1, updated_at = ? WHERE id = ?').run(now, userId);
+  invalidateUserAuthCache(userId);
   return { billing_mode: 'free', cost_desc: '', membership: getMembership(userId) };
 }
 
@@ -3321,6 +3402,7 @@ function updateAdminPlatformConfig(patch = {}) {
     }
     stmt.run(k, strVal, now);
   }
+  invalidatePlatformConfigCache();
   return getMaskedAdminPlatformConfig();
 }
 
@@ -4080,6 +4162,7 @@ function adminAdjustUserAssets(adminUserId, targetUserId, payload = {}) {
   db.prepare('UPDATE users SET points = MAX(0, points), online_credits = MAX(0, online_credits) WHERE id = ?').run(
     targetUserId
   );
+  invalidateUserAuthCache(targetUserId);
   const afterRow = db.prepare('SELECT points FROM users WHERE id = ?').get(targetUserId);
 
   appendLedgerEntry({
@@ -4131,6 +4214,7 @@ function updateAdminCredentials(adminUserId, { current_password, new_email, new_
   if (keepToken) {
     db.prepare('DELETE FROM auth_sessions WHERE user_id = ? AND token != ?').run(adminUserId, keepToken);
   }
+  invalidateUserAuthCache(adminUserId);
 
   return sanitizeUser(db.prepare('SELECT * FROM users WHERE id = ?').get(adminUserId));
 }
@@ -4150,6 +4234,7 @@ function adminResetUserPassword(adminUserId, targetUserId, newPassword) {
   db.prepare('UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?').run(nextHash, now, targetUserId);
   // 踢除该用户所有的历史登录 token，要求其使用新密码重新登录
   db.prepare('DELETE FROM auth_sessions WHERE user_id = ?').run(targetUserId);
+  invalidateUserAuthCache(targetUserId);
   return getAdminDashboardData();
 }
 
@@ -4169,6 +4254,7 @@ function adminToggleUserBan(adminUserId, targetUserId, shouldBan) {
     // 立即销毁该用户所有会话 token，迫使其下线
     db.prepare('DELETE FROM auth_sessions WHERE user_id = ?').run(targetUserId);
   }
+  invalidateUserAuthCache(targetUserId);
   return getAdminDashboardData();
 }
 
@@ -4184,6 +4270,7 @@ function adminSetUserRole(adminUserId, targetUserId, newRole) {
   const role = newRole === 'admin' ? 'admin' : 'user';
   const now = Date.now();
   db.prepare('UPDATE users SET role = ?, updated_at = ? WHERE id = ?').run(role, now, targetUserId);
+  invalidateUserAuthCache(targetUserId);
   return getAdminDashboardData();
 }
 
@@ -4213,6 +4300,7 @@ function adminDeleteUser(adminUserId, targetUserId) {
   db.prepare('DELETE FROM user_task_claims WHERE user_id = ?').run(targetUserId);
   db.prepare('DELETE FROM user_redeem_logs WHERE user_id = ?').run(targetUserId);
   db.prepare('DELETE FROM users WHERE id = ?').run(targetUserId);
+  invalidateUserAuthCache(targetUserId);
 
   return getAdminDashboardData();
 }
@@ -4774,6 +4862,10 @@ function adoptShareItemToUser(userId, shareId, currentActiveScriptId = 'script_c
 
 // ================= 16. 全站系统公告持久化与管理员发布引擎 =================
 function getLatestAnnouncement() {
+  const now = Date.now();
+  if (latestAnnouncementCache && now - latestAnnouncementCache.ts < ANNOUNCEMENT_CACHE_TTL_MS) {
+    return latestAnnouncementCache.value ? { ...latestAnnouncementCache.value } : null;
+  }
   const row = db.prepare(`
     SELECT id, title, content, enabled, version, author_id, created_at, updated_at
     FROM site_announcements
@@ -4781,7 +4873,9 @@ function getLatestAnnouncement() {
     ORDER BY updated_at DESC
     LIMIT 1
   `).get();
-  return row || null;
+  const val = row || null;
+  latestAnnouncementCache = { ts: now, value: val };
+  return val ? { ...val } : null;
 }
 
 function getAdminAnnouncementsList() {
@@ -4814,6 +4908,7 @@ function saveAdminAnnouncement(adminUserId, { title, content, enabled = true, ve
       updated_at = excluded.updated_at
   `).run(annId, cleanTitle, cleanContent, isEnabled, numVer, adminUserId || 'admin', now, now);
 
+  invalidateAnnouncementCache();
   return getLatestAnnouncement();
 }
 
@@ -4824,6 +4919,7 @@ function adminKickUserSessions(adminUserId, targetUserId) {
     throw new Error('不可强制踢出当前主站长账号');
   }
   const res = db.prepare('DELETE FROM auth_sessions WHERE user_id = ?').run(targetUserId);
+  invalidateUserAuthCache(targetUserId);
   return { kicked_count: res.changes || 0, nickname: row.nickname, ...getAdminDashboardData() };
 }
 
@@ -4831,10 +4927,15 @@ function adminRevokeNonAdminSessions(keepToken) {
   const res = keepToken
     ? db.prepare('DELETE FROM auth_sessions WHERE token != ?').run(keepToken)
     : db.prepare("DELETE FROM auth_sessions WHERE user_id != 'user_admin'").run();
+  clearAllAuthCache();
   return { revoked_count: res.changes || 0 };
 }
 
 function getSystemRuntimeFlags() {
+  const now = Date.now();
+  if (runtimeFlagsCache && now - runtimeFlagsCache.ts < PLATFORM_CONFIG_CACHE_TTL_MS) {
+    return { ...runtimeFlagsCache.value };
+  }
   const rows = db
     .prepare("SELECT key, value FROM platform_config WHERE key IN ('allow_registration', 'allow_guest_mode', 'maintenance_mode', 'maintenance_notice', 'rate_limit_login_per_min')")
     .all();
@@ -4842,13 +4943,15 @@ function getSystemRuntimeFlags() {
   for (const r of rows) {
     map[r.key] = r.value;
   }
-  return {
+  const flags = {
     allow_registration: map.allow_registration === '0' ? '0' : '1',
     allow_guest_mode: map.allow_guest_mode === '0' ? '0' : '1',
     maintenance_mode: map.maintenance_mode === '1' ? '1' : '0',
     maintenance_notice: map.maintenance_notice || '系统正在维护升级，请稍后再试',
     rate_limit_login_per_min: String(Math.max(3, Math.min(120, parseInt(map.rate_limit_login_per_min || '12', 10) || 12)))
   };
+  runtimeFlagsCache = { ts: now, value: flags };
+  return { ...flags };
 }
 
 function updateSystemRuntimeFlags(patch = {}) {
@@ -4890,6 +4993,7 @@ function updateSystemRuntimeFlags(patch = {}) {
   for (const [k, v] of Object.entries(next)) {
     stmt.run(k, v, now);
   }
+  invalidatePlatformConfigCache();
   return getSystemRuntimeFlags();
 }
 

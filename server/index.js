@@ -602,8 +602,8 @@ function extractAuthToken(req, parsedUrl = null) {
   return '';
 }
 
-const APP_LATEST_VERSION = '2.5.2';
-const APP_LATEST_VERSION_CODE = 149;
+const APP_LATEST_VERSION = '2.5.3';
+const APP_LATEST_VERSION_CODE = 150;
 const APP_OFFICIAL_CERT_SHA256 = '6fd05e32a3cabf327140129d866e55a342fe30daa3384c67aad4b3cbdd98a17b';
 const APP_UPDATE_TICKET_SECRET = crypto
   .createHash('sha256')
@@ -894,9 +894,9 @@ async function handleApi(req, res, pathname, parsedUrl) {
       forceUpdate,
       diffGenerations,
       changelog: [
-        '【全屏自由漫步 & 任意停放】大肥鱼不再只缩在边上！开启「🚶漫步」后将在手机全屏安全区域内自由转身散步、小碎步走动，拖拽松手也不再强行吸死边缘',
-        '【头顶气泡 · 天气吐槽 & 暖心安慰鼓励】大肥鱼脑袋上方新增弹性圆润对话气泡，自动获取实时天气进行吐槽或按早晚温差关心你，并时不时送上治愈安慰与鼓励打气的话',
-        '【整合真实歌声导入与QQ音乐精确点歌】融合多选导入真实歌声音频、QQ音乐下方单曲精准点播与外置肥鱼互动条，双端同步升级至 v2.5.2 (Build 149)'
+        '【透明头顶气泡 & 5-10分钟低频陪伴】大肥鱼头顶气泡背景改为纯透明无遮挡边框（高对比描边文字），主动吐槽天气或安慰话语改为每 5~10 分钟随机弹一条，绝不频繁刷屏',
+        '【气泡可自由关闭 & 3×2 清爽开关栏】面板开关行升级为双排 6 宫格，新增「💬头顶气泡:开/关」一键开启或彻底关闭头顶冒泡',
+        '【整合全屏漫步、真实歌声导入与QQ音乐精确点歌】融合全屏自由走动、导入手机真实歌曲、QQ音乐下移单曲点播，双端同步升级至 v2.5.3 (Build 150)'
       ]
     };
 

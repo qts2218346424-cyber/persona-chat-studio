@@ -37,6 +37,24 @@ let cachedState = {
 };
 
 const CACHE_TTL_MS = 5000;
+const CLI_PATH_CACHE_TTL_MS = 60000;
+const LOCAL_STATUS_CACHE_TTL_MS = 15000;
+
+let cachedCliPathState = {
+  checkedAt: 0,
+  value: null
+};
+
+let cachedLocalStatusState = {
+  checkedAt: 0,
+  value: null
+};
+
+function invalidateBridgeCaches() {
+  cachedState.loadedAt = 0;
+  cachedLocalStatusState.checkedAt = 0;
+  cachedLocalStatusState.value = null;
+}
 
 function safeReadJson(filePath) {
   try {
@@ -882,9 +900,23 @@ function getLocalBridgeSuiteCredentials() {
 }
 
 /**
- * 探测本机已安装的 Antigravity / agy CLI 原生二进制路径（跨平台兼容 Windows 与 Linux）
+ * 探测本机已安装的 Antigravity / agy CLI 原生二进制路径（带 60 秒热缓存，避免频繁同步 execFileSync 阻塞事件循环）
  */
 function getLocalAntigravityCliPath() {
+  const now = Date.now();
+  if (cachedCliPathState.checkedAt > 0 && now - cachedCliPathState.checkedAt < CLI_PATH_CACHE_TTL_MS) {
+    return cachedCliPathState.value;
+  }
+
+  const resolved = detectLocalAntigravityCliPathUncached();
+  cachedCliPathState = {
+    checkedAt: now,
+    value: resolved
+  };
+  return resolved;
+}
+
+function detectLocalAntigravityCliPathUncached() {
   const userHome = process.env.USERPROFILE || process.env.HOME || '';
 
   if (process.platform === 'win32') {
@@ -942,9 +974,18 @@ function getLocalAntigravityCliPath() {
 }
 
 /**
- * 获取本地 Antigravity 宿主底座的可用状态与模型清单（兼容本地 CLI 与服务端桥接端点）
+ * 获取本地 Antigravity 宿主底座的可用状态与模型清单（带 15 秒热缓存，兼容本地 CLI 与服务端桥接端点）
  */
 function detectLocalAntigravityStatus() {
+  const now = Date.now();
+  if (
+    cachedLocalStatusState.checkedAt > 0 &&
+    cachedLocalStatusState.value &&
+    now - cachedLocalStatusState.checkedAt < LOCAL_STATUS_CACHE_TTL_MS
+  ) {
+    return cachedLocalStatusState.value;
+  }
+
   const cliPath = getLocalAntigravityCliPath();
   const hasCli = Boolean(cliPath && fs.existsSync(cliPath));
   const runtime = loadBridgeRuntime();
@@ -958,7 +999,7 @@ function detectLocalAntigravityStatus() {
       ? `bridge://${runtime.endpoints[0].name || runtime.endpoints[0].id}`
       : '未检测到本地引擎环境');
 
-  return {
+  const statusObj = {
     available,
     transport,
     provider: 'local_antigravity',
@@ -973,6 +1014,11 @@ function detectLocalAntigravityStatus() {
       ? '已成功开启本地极速直连模式，免 API 密钥，原生支持 DeepSeek 深度思考！'
       : '本地引擎服务繁忙或未就绪，建议稍后重试或切换为「云端 API 模式」。'
   };
+  cachedLocalStatusState = {
+    checkedAt: now,
+    value: statusObj
+  };
+  return statusObj;
 }
 
 /**

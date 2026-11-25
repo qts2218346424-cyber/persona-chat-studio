@@ -194,10 +194,10 @@ const {{ db, getRawPlatformConfigInternal, updateAdminPlatformConfig, saveAdminA
 db.prepare("DELETE FROM personas WHERE id = \\x27persona_linqi\\x27").run();
 db.prepare("UPDATE site_announcements SET enabled = 0").run();
 saveAdminAnnouncement("admin", {{
-  title: "星语恋庭 v2.5.2 更新：大肥鱼全屏自由漫步上线，头顶气泡实时吐槽天气与暖心安慰你！",
-  content: "1. 【全屏自由漫步模式】：大肥鱼活动范围不再局限在边缘！默认开启「🚶漫步」后会在全屏安全范围内自动转身小碎步自由走动，拖放到哪儿就待在哪儿。\\n2. 【头顶对话气泡（天气吐槽 + 暖心鼓励）】：大肥鱼头顶新增圆润对话气泡，自动结合云端实时天气吐槽温度阴晴雨雪，并在你忙碌时弹出温柔安慰与鼓励话语！\\n3. 【整合真实歌声导入 & QQ音乐精确单曲点播】：随身版升级至 v2.5.2 (Build 149)！",
+  title: "星语恋庭 v2.5.3 更新：大肥鱼头顶气泡改为透明背景+5~10分钟低频陪伴，新增气泡开关！",
+  content: "1. 【透明背景头顶气泡】：去掉实色背景框，改用纯透明背景与高清立体描边文字直接浮在肥鱼头顶，美观通透不遮屏。\\n2. 【5~10分钟低频冒泡 & 可自由关闭】：调整为每 5~10 分钟随机弹一条天气吐槽或暖心安慰，并在面板新增「💬头顶气泡:开/关」一键隐藏或开启。\\n3. 【整合全屏自由漫步 & 真实歌声导入 & QQ音乐单曲精准点播】：随身版升级至 v2.5.3 (Build 150)！",
   enabled: true,
-  version: 149
+  version: 150
 }});
 db.prepare("UPDATE sessions SET companion_config = NULL").run();
 db.prepare("UPDATE user_settings SET value = \\x27demo\\x27 WHERE key = \\x27provider\\x27").run();

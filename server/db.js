@@ -4102,7 +4102,7 @@ function updateAdminCredentials(adminUserId, { current_password, new_email, new_
   }
 
   const nextEmail = new_email ? String(new_email).trim().toLowerCase() : row.email;
-  if (!nextEmail.includes('@')) throw new Error('新邮箱格式不正确');
+  if (nextEmail.length < 3 || /\s/.test(nextEmail)) throw new Error('登录账号至少需要 3 个字符且不能包含空格');
   if (nextEmail !== row.email) {
     const dup = db.prepare('SELECT id FROM users WHERE email = ? AND id != ?').get(nextEmail, adminUserId);
     if (dup) throw new Error('该邮箱已被其他账户占用');
@@ -4890,6 +4890,7 @@ function updateSystemRuntimeFlags(patch = {}) {
 }
 
 module.exports = {
+  hashPassword,
   verifyPassword,
   adminKickUserSessions,
   adminRevokeNonAdminSessions,

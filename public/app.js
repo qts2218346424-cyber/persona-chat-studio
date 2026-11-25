@@ -3237,8 +3237,8 @@
                     为防止站长后台被暴力猜解，建议修改初始密码（新密码至少 8 位）。修改成功后将自动吊销其他设备上的旧站长会话令牌。
                   </p>
                   <div class="field-group">
-                    <label for="adm-sec-email">站长登录邮箱</label>
-                    <input id="adm-sec-email" type="email" autocomplete="username" required />
+                    <label for="adm-sec-email">站长登录账号 / 邮箱</label>
+                    <input id="adm-sec-email" type="text" autocomplete="username" required />
                   </div>
                   <div class="inline-row">
                     <div class="field-group flex-1">

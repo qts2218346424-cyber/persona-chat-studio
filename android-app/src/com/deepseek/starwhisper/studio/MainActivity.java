@@ -989,6 +989,28 @@ public class MainActivity extends Activity {
         }
 
         @JavascriptInterface
+        public String playQqMusic(String songQuery) {
+            AgentAccessibilityService service = AgentAccessibilityService.getInstance();
+            if (service == null) return "无障碍服务未就绪，请先在系统设置中开启无障碍服务";
+            return service.playSongInQqMusic(songQuery);
+        }
+
+        @JavascriptInterface
+        public void triggerWhaleAction(String action) {
+            FloatAgentService.triggerWhaleActionFromBridge(action);
+        }
+
+        @JavascriptInterface
+        public boolean hasMusicNotificationPermission() {
+            return QqMusicListenerService.isNotificationAccessEnabled(MainActivity.this);
+        }
+
+        @JavascriptInterface
+        public void openMusicNotificationSettings() {
+            QqMusicListenerService.openNotificationListenerSettings(MainActivity.this);
+        }
+
+        @JavascriptInterface
         public boolean dispatchGlobalAction(String action) {
             AgentAccessibilityService service = AgentAccessibilityService.getInstance();
             if (service == null) return false;

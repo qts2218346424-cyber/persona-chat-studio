@@ -2,6 +2,7 @@ package com.deepseek.starwhisper.studio;
 
 import android.accessibilityservice.AccessibilityService;
 import android.accessibilityservice.GestureDescription;
+import android.app.Notification;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
@@ -86,6 +87,7 @@ public class AgentAccessibilityService extends AccessibilityService {
     // 离线多步宏队列状态
     private volatile boolean macroRunning = false;
     private final List<Runnable> pendingRunnables = new ArrayList<>();
+    private volatile long lastMusicScanMs = 0L;
 
     public static AgentAccessibilityService getInstance() {
         return sInstance;
@@ -104,7 +106,86 @@ public class AgentAccessibilityService extends AccessibilityService {
 
     @Override
     public void onAccessibilityEvent(AccessibilityEvent event) {
-        // 保持事件流监听，必要时可用于捕捉窗口切换
+        if (event == null) return;
+        try {
+            CharSequence pkgCs = event.getPackageName();
+            if (pkgCs == null) return;
+            String pkg = pkgCs.toString();
+            boolean isMusicApp = "com.tencent.qqmusic".equals(pkg)
+                    || "com.netease.cloudmusic".equals(pkg)
+                    || "com.kugou.android".equals(pkg)
+                    || "com.luna.music".equals(pkg);
+            if (!isMusicApp) return;
+
+            int evType = event.getEventType();
+            if (evType == AccessibilityEvent.TYPE_NOTIFICATION_STATE_CHANGED) {
+                if (event.getParcelableData() instanceof Notification) {
+                    Notification n = (Notification) event.getParcelableData();
+                    if (n.extras != null) {
+                        CharSequence tCs = n.extras.getCharSequence(Notification.EXTRA_TITLE);
+                        CharSequence sCs = n.extras.getCharSequence(Notification.EXTRA_TEXT);
+                        String t = tCs != null ? tCs.toString().trim() : "";
+                        String s = sCs != null ? sCs.toString().trim() : "";
+                        if (!t.isEmpty()) {
+                            FloatAgentService.onExternalMusicNotification(pkg, t, s);
+                        }
+                    }
+                } else if (event.getText() != null && !event.getText().isEmpty()) {
+                    String first = String.valueOf(event.getText().get(0)).trim();
+                    if (!first.isEmpty() && first.length() <= 80) {
+                        FloatAgentService.onExternalMusicNotification(pkg, first, "");
+                    }
+                }
+            } else if ((evType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
+                    || evType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED)
+                    && "com.tencent.qqmusic".equals(pkg)) {
+                long now = System.currentTimeMillis();
+                if (now - lastMusicScanMs >= 950L) {
+                    lastMusicScanMs = now;
+                    scanQqMusicPlayingUiHints();
+                }
+            }
+        } catch (Throwable ignored) {}
+    }
+
+    private void scanQqMusicPlayingUiHints() {
+        try {
+            AccessibilityNodeInfo root = getRootInActiveWindow();
+            if (root == null) return;
+            List<String> lines = new ArrayList<>();
+            collectShortTextNodes(root, lines, 0, 28);
+            root.recycle();
+
+            String timeFound = "";
+            for (String item : lines) {
+                if (item.matches("^\\d{1,2}:\\d{2}$")) {
+                    timeFound = item;
+                    break;
+                }
+            }
+            if (!timeFound.isEmpty()) {
+                FloatAgentService.onExternalMusicTimeHint(timeFound);
+            }
+        } catch (Throwable ignored) {}
+    }
+
+    private void collectShortTextNodes(AccessibilityNodeInfo node, List<String> out, int depth, int limit) {
+        if (node == null || depth > 8 || out.size() >= limit) return;
+        CharSequence t = node.getText();
+        if (t != null) {
+            String s = t.toString().trim();
+            if (!s.isEmpty() && s.length() <= 60) {
+                out.add(s);
+            }
+        }
+        int cnt = node.getChildCount();
+        for (int i = 0; i < cnt && out.size() < limit; i++) {
+            AccessibilityNodeInfo child = node.getChild(i);
+            if (child != null) {
+                collectShortTextNodes(child, out, depth + 1, limit);
+                child.recycle();
+            }
+        }
     }
 
     @Override
@@ -1516,10 +1597,18 @@ public class AgentAccessibilityService extends AccessibilityService {
     }
 
     /**
-     * 发送系统媒体控制按键（播放/暂停、下一首、上一首）
+     * 发送系统媒体控制按键（优先通过 QqMusicListenerService 直连控制 QQ 音乐，未授权则自动回落全局媒体键）
      */
     public String dispatchMediaKey(String action) {
         try {
+            if (QqMusicListenerService.controlActiveMusic(this, action)) {
+                QqMusicListenerService.pollActiveMusicSession(this);
+                String label = "next".equals(action) ? "下一首"
+                        : ("prev".equals(action) ? "上一首"
+                        : ("play".equals(action) ? "播放音乐"
+                        : ("pause".equals(action) ? "暂停音乐" : "播放/暂停")));
+                return "已控歌：" + label;
+            }
             AudioManager am = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
             if (am == null) return "无法访问媒体控制服务";
             int keyCode = KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE;
@@ -1530,6 +1619,12 @@ public class AgentAccessibilityService extends AccessibilityService {
             } else if ("prev".equals(action)) {
                 keyCode = KeyEvent.KEYCODE_MEDIA_PREVIOUS;
                 label = "上一首";
+            } else if ("play".equals(action)) {
+                keyCode = KeyEvent.KEYCODE_MEDIA_PLAY;
+                label = "播放音乐";
+            } else if ("pause".equals(action)) {
+                keyCode = KeyEvent.KEYCODE_MEDIA_PAUSE;
+                label = "暂停音乐";
             }
             am.dispatchMediaKeyEvent(new KeyEvent(KeyEvent.ACTION_DOWN, keyCode));
             am.dispatchMediaKeyEvent(new KeyEvent(KeyEvent.ACTION_UP, keyCode));
@@ -1537,6 +1632,81 @@ public class AgentAccessibilityService extends AccessibilityService {
         } catch (Exception e) {
             return "媒体控制发送失败";
         }
+    }
+
+    /**
+     * 在 QQ 音乐中自动拉起、搜索并尝试点播指定歌曲
+     */
+    public String playSongInQqMusic(final String rawQuery) {
+        final String songQuery = rawQuery == null ? "" : rawQuery.trim();
+        if (songQuery.isEmpty()) {
+            boolean ok = launchAppByName("qq音乐");
+            if (ok) {
+                mainHandler.postDelayed(new Runnable() {
+                    @Override
+                    public void run() {
+                        dispatchMediaKey("play");
+                    }
+                }, 1000);
+                return "已打开 QQ 音乐准备播放";
+            }
+            return "UNMATCHED:手机上未检测到 QQ 音乐";
+        }
+
+        FloatAgentService.onExpectedMusicTrack(songQuery);
+        boolean launched = launchAppByName("qq音乐");
+        if (!launched) {
+            return "UNMATCHED:未在手机上找到 QQ 音乐，请确认已安装";
+        }
+
+        Runnable step1ClickSearch = new Runnable() {
+            @Override
+            public void run() {
+                if (FloatAgentService.sEmergencyStopRequested) return;
+                boolean openedSearch = false;
+                AccessibilityNodeInfo root = getRootInActiveWindow();
+                if (root != null) {
+                    AccessibilityNodeInfo ed = findEditableTarget(root, null);
+                    if (ed != null) {
+                        openedSearch = true;
+                        ed.recycle();
+                    }
+                    root.recycle();
+                }
+                if (!openedSearch) {
+                    openedSearch = clickAnyMatchingButton(new String[]{"搜索", "大家都在搜", "搜一搜", "查找", "Search"});
+                }
+                Runnable step2Input = new Runnable() {
+                    @Override
+                    public void run() {
+                        if (FloatAgentService.sEmergencyStopRequested) return;
+                        performSmartInputText(null, songQuery, false, true);
+                        Runnable step3TapFirst = new Runnable() {
+                            @Override
+                            public void run() {
+                                if (FloatAgentService.sEmergencyStopRequested) return;
+                                boolean tapped = clickNodeByText(songQuery);
+                                if (!tapped) {
+                                    tapped = clickAnyMatchingButton(new String[]{"播放", "播放全部", "单曲"});
+                                }
+                                if (!tapped) {
+                                    DisplayMetrics dm = getResources().getDisplayMetrics();
+                                    performClickCoordinate(Math.round(dm.widthPixels * 0.42f), Math.round(dm.heightPixels * 0.27f));
+                                }
+                                QqMusicListenerService.pollActiveMusicSession(AgentAccessibilityService.this);
+                            }
+                        };
+                        pendingRunnables.add(step3TapFirst);
+                        mainHandler.postDelayed(step3TapFirst, 1250);
+                    }
+                };
+                pendingRunnables.add(step2Input);
+                mainHandler.postDelayed(step2Input, openedSearch ? 680 : 900);
+            }
+        };
+        pendingRunnables.add(step1ClickSearch);
+        mainHandler.postDelayed(step1ClickSearch, 1350);
+        return "正在 QQ 音乐为你点播《" + songQuery + "》并同步歌词…";
     }
 
     /**
@@ -1697,14 +1867,26 @@ public class AgentAccessibilityService extends AccessibilityService {
         if (cmd.equals("静音") || cmd.equals("取消静音") || cmd.equals("切换静音")) {
             return adjustMediaVolume(0);
         }
-        if (cmd.equals("下一首") || cmd.equals("下一首歌") || cmd.equals("切歌")) {
+        if (cmd.equals("下一首") || cmd.equals("下一首歌") || cmd.equals("切歌") || cmd.equals("换首歌") || cmd.equals("换一首歌")) {
             return dispatchMediaKey("next");
         }
         if (cmd.equals("上一首") || cmd.equals("上一首歌")) {
             return dispatchMediaKey("prev");
         }
-        if (cmd.equals("暂停音乐") || cmd.equals("播放音乐") || cmd.equals("继续播放") || cmd.equals("音乐暂停")) {
+        if (cmd.equals("暂停音乐") || cmd.equals("停一下音乐") || cmd.equals("停止放歌")) {
+            return dispatchMediaKey("pause");
+        }
+        if (cmd.equals("播放音乐") || cmd.equals("继续播放") || cmd.equals("继续放歌") || cmd.equals("音乐暂停")) {
             return dispatchMediaKey("toggle");
+        }
+        if (cmd.matches("^(?:用qq音乐|在qq音乐|qq音乐)?\\s*(?:播放|放一首|放首|点播|我想听|来一首|唱一首|听一下|听一首)\\s*.+$")
+                && !cmd.contains("视频")) {
+            String songKw = trimmedRaw
+                    .replaceFirst("^(?:用[qQ]{2}音乐|在[qQ]{2}音乐|[qQ]{2}音乐)?\\s*(?:播放|放一首|放首|点播|我想听|来一首|唱一首|听一下|听一首)(?:音乐|歌曲|歌)?\\s*(?:的)?\\s*", "")
+                    .trim();
+            if (!songKw.isEmpty() && !songKw.equals("歌") && !songKw.equals("一首歌") && !songKw.equals("首歌") && !songKw.equals("音乐")) {
+                return playSongInQqMusic(songKw);
+            }
         }
         if (cmd.equals("读屏幕") || cmd.equals("读取屏幕") || cmd.equals("查看屏幕")) {
             return summarizeCurrentScreen();
@@ -1923,7 +2105,7 @@ public class AgentAccessibilityService extends AccessibilityService {
         return true;
     }
 
-    private boolean canHandleAtomicLocalStep(String rawStep) {
+    public boolean canHandleAtomicLocalStep(String rawStep) {
         if (rawStep == null) return false;
         String trimmed = rawStep.trim();
         if (trimmed.isEmpty() || trimmed.length() > 36) return false;
@@ -1951,8 +2133,14 @@ public class AgentAccessibilityService extends AccessibilityService {
                 || cmd.equals("截屏") || cmd.equals("截图") || cmd.equals("屏幕截图")
                 || cmd.equals("锁屏") || cmd.equals("息屏") || cmd.equals("音量+") || cmd.equals("音量-")
                 || cmd.equals("音量加") || cmd.equals("音量减") || cmd.equals("调大音量") || cmd.equals("调小音量")
-                || cmd.equals("静音") || cmd.equals("取消静音") || cmd.equals("下一首") || cmd.equals("上一首")
-                || cmd.equals("暂停音乐") || cmd.equals("播放音乐") || cmd.equals("点中间") || cmd.equals("点击中间")) {
+                || cmd.equals("静音") || cmd.equals("取消静音") || cmd.equals("下一首") || cmd.equals("下一首歌")
+                || cmd.equals("切歌") || cmd.equals("换首歌") || cmd.equals("换一首歌") || cmd.equals("上一首") || cmd.equals("上一首歌")
+                || cmd.equals("暂停音乐") || cmd.equals("播放音乐") || cmd.equals("继续播放") || cmd.equals("继续放歌")
+                || cmd.equals("点中间") || cmd.equals("点击中间")) {
+            return true;
+        }
+        if (cmd.matches("^(?:用qq音乐|在qq音乐|qq音乐)?\\s*(?:播放|放一首|放首|点播|我想听|来一首|听一下|听一首)\\s*.+$")
+                && !cmd.contains("视频")) {
             return true;
         }
         if (cmd.equals("回到顶部") || cmd.equals("滚到顶部") || cmd.equals("回顶部") || cmd.equals("最上面")

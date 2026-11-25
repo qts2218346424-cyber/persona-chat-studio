@@ -194,10 +194,10 @@ const {{ db, getRawPlatformConfigInternal, updateAdminPlatformConfig, saveAdminA
 db.prepare("DELETE FROM personas WHERE id = \\x27persona_linqi\\x27").run();
 db.prepare("UPDATE site_announcements SET enabled = 0").run();
 saveAdminAnnouncement("admin", {{
-  title: "星语恋庭 v2.3.1 更新：手机端真 QQ 一段一气泡 & 纯净聊天底图",
-  content: "1. 【彻底告别套娃白框，真 QQ 风格气泡】：移除皮肤残留外围白框，按自然段「一段话一个独立气泡」呈现，搭配纯净素雅 QQ 灰底、纯白/天蓝气泡与轻量灰字操作条。\\n2. 【鲸鱼娘悬浮窗宠物 & 全机型语音修复】：7 姿态动态鲸鱼娘悬浮窗与 MediaRecorder 云端语音转写全机型可用。\\n3. 【双端同步升级】：网页端与随身版 APK 升级至 v2.3.1 (Build 140)，随身版用户点击「检查更新」即可体验！",
+  title: "星语恋庭 v2.4.0 重磅更新：鲸鱼娘原声唱歌动作、QQ 音乐歌词联动上线",
+  content: "1. 【鲸鱼娘 12 姿态原声语音 & 米饭唱歌】：悬浮窗新增 25 条互联网热门原声语音、喂白米饭/摸头/跳舞互动及水灵八音盒 3 首米饭主题唱歌歌词！\\n2. 【QQ 音乐深度联动 + 同步歌词】：支持语音点播歌曲、切上下首/暂停、云端时间轴 LRC 滚动歌词同步显示在鲸鱼娘悬浮胶囊中。\\n3. 【语音全流程多提示 & 手机 QQ 真气泡】：折叠态一键快捷语音 + 实时声波音量条提示；手机剧情模式纯净 QQ 背景一段一气泡，双端同步升级 v2.4.0 (Build 141)！",
   enabled: true,
-  version: 140
+  version: 141
 }});
 db.prepare("UPDATE sessions SET companion_config = NULL").run();
 db.prepare("UPDATE user_settings SET value = \\x27demo\\x27 WHERE key = \\x27provider\\x27").run();

@@ -595,8 +595,8 @@ function extractAuthToken(req, parsedUrl = null) {
   return '';
 }
 
-const APP_LATEST_VERSION = '2.3.1';
-const APP_LATEST_VERSION_CODE = 140;
+const APP_LATEST_VERSION = '2.4.0';
+const APP_LATEST_VERSION_CODE = 141;
 const APP_OFFICIAL_CERT_SHA256 = '6fd05e32a3cabf327140129d866e55a342fe30daa3384c67aad4b3cbdd98a17b';
 const APP_UPDATE_TICKET_SECRET = crypto
   .createHash('sha256')
@@ -887,9 +887,9 @@ async function handleApi(req, res, pathname, parsedUrl) {
       forceUpdate,
       diffGenerations,
       changelog: [
-        '【鲸鱼娘桌面悬浮窗 & 全机型语音修复】手机辅助悬浮窗升级 7 姿态鲸鱼娘桌面宠物形象，接入 MediaRecorder + 云端 Whisper 语音转写，修复安卓各机型悬浮窗语音无法识别问题',
-        '【手机端剧情模式 QQ 气泡与背景重构】去掉外围套娃大框实现“一句话一个独立气泡”连发体验，加宽左侧历史对话栏解决标题挤压，并打造清透适配亮暗的 QQ 风格聊天背景',
-        '【手机端剧情模式真 QQ 聊天重构】彻底清除气泡外围白色大框，改用纯净清爽 QQ 浅灰聊天底图与「一段话一个独立气泡」连发排版，同步升级至 v2.3.1 (Build 140)'
+        '【鲸鱼娘 12 姿态原声语音 & 唱歌】引入全套 12 姿态大肥鱼立绘与 25 条互联网原声语音（干饭米饭/摸头摇尾/热梗傲娇/拖拽晕乎），新增水灵八音盒 3 首米饭主题唱歌与同步歌词',
+        '【QQ 音乐深度联动与歌词】支持语音点播、切上下首、暂停播放及云端 /api/music/lyrics 实时时间轴歌词同步滚动，悬浮折叠态直显歌词胶囊',
+        '【语音全流程多提示 & 手机端 QQ 真气泡】新增折叠态一键快捷语音与实时声波音量反馈、口令引导；手机剧情模式「一段话一个独立气泡」+ 洁净 QQ 背景升级至 v2.4.0 (Build 141)'
       ]
     };
 
@@ -910,6 +910,82 @@ async function handleApi(req, res, pathname, parsedUrl) {
   if (method === 'GET' && (pathname === '/api/announcement' || pathname === '/api/site-announcement')) {
     const ann = getLatestAnnouncement();
     return sendJson(res, 200, { ok: true, announcement: ann }, APP_VERSION_CORS_HEADERS);
+  }
+
+  // ========= 0.1a1 QQ 音乐联动 LRC 时间轴歌词实时查询接口 =========
+  if (method === 'GET' && pathname === '/api/music/lyrics') {
+    const rawTitle = String(parsedUrl.searchParams.get('title') || parsedUrl.searchParams.get('q') || '').trim();
+    const rawArtist = String(parsedUrl.searchParams.get('artist') || '').trim();
+    if (!rawTitle) {
+      return sendJson(res, 400, { ok: false, error: '缺少歌曲名参数 title' }, APP_VERSION_CORS_HEADERS);
+    }
+    const cleanTitle = rawTitle
+      .replace(/\s*[\(\[（【](?:live|伴奏|dj|cover|翻唱|纯音乐|remix|ver\.?|版)[^)\]）】]*[\)\]）】]/gi, '')
+      .replace(/\s+-\s+(?:live|dj|伴奏).*$/i, '')
+      .trim() || rawTitle;
+    const cleanArtist = rawArtist.split(/[/,&、]/)[0].trim();
+    const cacheKey = `${cleanTitle.toLowerCase()}::${cleanArtist.toLowerCase()}`;
+
+    if (!global.__qqMusicLyricsCache) {
+      global.__qqMusicLyricsCache = new Map();
+    }
+    const lyricsCache = global.__qqMusicLyricsCache;
+    const cached = lyricsCache.get(cacheKey);
+    if (cached && Date.now() - cached.ts < 6 * 3600 * 1000) {
+      return sendJson(res, 200, cached.data, APP_VERSION_CORS_HEADERS);
+    }
+
+    const fetchLrcRecord = async () => {
+      const headers = { 'User-Agent': 'StarWhisperStudio/2.3.1' };
+      if (cleanArtist) {
+        try {
+          const u = `https://lrclib.net/api/get?track_name=${encodeURIComponent(cleanTitle)}&artist_name=${encodeURIComponent(cleanArtist)}`;
+          const r = await fetch(u, { headers, signal: AbortSignal.timeout(4500) });
+          if (r.ok) {
+            const j = await r.json();
+            if (j && (j.syncedLyrics || j.plainLyrics)) return j;
+          }
+        } catch {}
+      }
+      try {
+        const qStr = cleanArtist ? `${cleanArtist} ${cleanTitle}` : cleanTitle;
+        const u2 = `https://lrclib.net/api/search?q=${encodeURIComponent(qStr)}`;
+        const r2 = await fetch(u2, { headers, signal: AbortSignal.timeout(4500) });
+        if (r2.ok) {
+          const arr = await r2.json();
+          if (Array.isArray(arr) && arr.length > 0) {
+            const withSync = arr.find((x) => x && x.syncedLyrics);
+            return withSync || arr[0];
+          }
+        }
+      } catch {}
+      return null;
+    };
+
+    const rec = await fetchLrcRecord();
+    const resultPayload = rec
+      ? {
+          ok: true,
+          trackName: String(rec.trackName || cleanTitle),
+          artistName: String(rec.artistName || cleanArtist || ''),
+          duration: Number(rec.duration || 0),
+          syncedLyrics: String(rec.syncedLyrics || ''),
+          plainLyrics: String(rec.plainLyrics || '')
+        }
+      : {
+          ok: false,
+          trackName: cleanTitle,
+          artistName: cleanArtist,
+          syncedLyrics: '',
+          plainLyrics: ''
+        };
+
+    if (lyricsCache.size > 300) {
+      const firstKey = lyricsCache.keys().next().value;
+      if (firstKey !== undefined) lyricsCache.delete(firstKey);
+    }
+    lyricsCache.set(cacheKey, { ts: Date.now(), data: resultPayload });
+    return sendJson(res, 200, resultPayload, APP_VERSION_CORS_HEADERS);
   }
 
   // ========= 0.1a2 用户自定义头像与壁纸静态访问接口 =========

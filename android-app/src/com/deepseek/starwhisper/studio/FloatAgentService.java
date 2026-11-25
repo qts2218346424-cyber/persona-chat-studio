@@ -20,6 +20,11 @@ import android.graphics.Paint;
 import android.graphics.PixelFormat;
 import android.graphics.Shader;
 import android.graphics.drawable.GradientDrawable;
+import android.media.AudioAttributes;
+import android.media.AudioFormat;
+import android.media.AudioManager;
+import android.media.AudioTrack;
+import android.media.MediaPlayer;
 import android.media.MediaRecorder;
 import android.os.Build;
 import android.os.Handler;
@@ -55,20 +60,28 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
- * dsh-Go 风格「鲸鱼娘」控屏桌面宠物悬浮层与后台保活服务
- * 1. 折叠态化身 Q 版鲸鱼娘（大肥鱼）桌宠：支持待机/思考/忙碌/拖拽/打瞌睡/开心 6 种姿态联动与呼吸浮动；
- * 2. 悬浮窗语音采用原生 MediaRecorder (AAC/M4A) + 云端 /api/asr/transcribe 直连识别，全机型免 Google 服务可用；
- * 3. 保留屏幕边缘呼吸光带、触控落点涟漪、双层控屏面板、三档 SafetyGate 确认卡与前台保活通知。
+ * dsh-Go 风格「鲸鱼娘（大肥鱼）」全功能桌面宠物与 QQ 音乐联动悬浮窗服务
+ * 1. 12 姿态 Q 版鲸鱼娘立绘 + 25 条原声语音（干饭白米饭、摸头摇尾、热梗傲娇、晕乎等）+ Q 弹动作动画；
+ * 2. 原生 AudioTrack 清甜八音盒「爱吃米饭的鲸鱼娘」唱歌引擎，支持多首曲目与逐句歌词滚动；
+ * 3. QQ 音乐深度联动：媒体会话/通知抓取歌名歌手、切歌播放暂停、点播搜歌、云端 LRC 时间轴歌词同步展示；
+ * 4. 折叠态一键快捷语音 + 全程可视声波音量提示 + 试说口令引导 + 说完智能分流执行。
  */
 public class FloatAgentService extends Service {
     private static final String FG_CHANNEL_ID = "pa_agent_running";
     private static final int FG_NOTIFICATION_ID = 2201;
     private static final String ASR_ENDPOINT = "https://star.claudexxb.online/api/asr/transcribe";
+    private static final String LYRICS_ENDPOINT = "https://star.claudexxb.online/api/music/lyrics";
 
     private static volatile FloatAgentService sInstance = null;
     public static volatile boolean sEmergencyStopRequested = false;
@@ -82,14 +95,37 @@ public class FloatAgentService extends Service {
     private FrameLayout floatRootView;
     private LinearLayout petBubbleContainer;
     private ImageView petAvatarView;
+    private TextView quickMicBadgeView;
     private LinearLayout statusPillView;
     private View statusDotView;
     private TextView statusTextView;
     private TextView pillStopBtn;
     private LinearLayout expandPanel;
 
+    // 展开态与折叠态共用提示元素
+    private ImageView headPetIcon;
+    private TextView subtitleBannerView;
+    private TextView musicTitleView;
+    private TextView musicLyricView;
+    private TextView musicPlayPauseBtn;
+    private TextView musicPermHintView;
+    private LinearLayout musicSearchBox;
+    private EditText musicSearchEditText;
+
+    // 语音输入与丰富提示向导 UI
+    private LinearLayout voiceGuideBanner;
+    private TextView voiceGuideTitle;
+    private TextView voiceGuideMeter;
+    private TextView voiceGuideSamples;
+    private TextView autoSendToggleBtn;
+    private boolean voiceAutoSend = true;
+    private boolean voiceQuickDirectMode = false;
+
     private ValueAnimator petBreathAnim;
+    private ValueAnimator petActionAnim;
     private boolean isDraggingPet = false;
+    private long lastDragVoiceMs = 0L;
+    private int dragWiggleCount = 0;
 
     private TextView a11yBadgeView;
     private EditText cmdEditText;
@@ -100,6 +136,27 @@ public class FloatAgentService extends Service {
     private LinearLayout localToolsBox;
     private boolean localToolsExpanded = false;
 
+    // 原生 MediaPlayer 语音 + AudioTrack 唱歌引擎
+    private MediaPlayer petVoicePlayer = null;
+    private WhaleSingerEngine singerEngine = null;
+    private int feedIndex = 0;
+    private int patIndex = 0;
+    private int danceIndex = 0;
+    private int singSongIndex = 0;
+    private long lastTapPetMs = 0L;
+
+    // QQ 音乐与歌词同步状态
+    private volatile String qqMusicPkg = "";
+    private volatile String qqMusicTitle = "";
+    private volatile String qqMusicArtist = "";
+    private volatile boolean qqMusicPlaying = false;
+    private volatile long qqMusicPosMs = 0L;
+    private volatile long qqMusicDurationMs = 0L;
+    private volatile long qqMusicLastSyncMs = 0L;
+    private volatile String qqMusicCurrentLyric = "";
+    private volatile String lastFetchedLyricsKey = "";
+    private final List<LyricLine> qqMusicLyrics = Collections.synchronizedList(new ArrayList<LyricLine>());
+
     // 原生 MediaRecorder + 云端 ASR 语音识别状态
     private MediaRecorder mediaRecorder = null;
     private File voiceCacheFile = null;
@@ -107,14 +164,8 @@ public class FloatAgentService extends Service {
     private boolean isTranscribingVoice = false;
     private EditText activeSpeechTarget = null;
     private TextView activeSpeechVoiceBtn = null;
-    private final Runnable maxRecordTimeoutRunnable = new Runnable() {
-        @Override
-        public void run() {
-            if (isRecordingVoice) {
-                stopVoiceRecordAndTranscribe();
-            }
-        }
-    };
+    private long recordStartMs = 0L;
+    private int lowVolStreak = 0;
 
     private final List<TextView> tabButtons = new ArrayList<>();
     private final List<LinearLayout> tabPages = new ArrayList<>();
@@ -131,14 +182,47 @@ public class FloatAgentService extends Service {
     private int savedPillY = 260;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
 
+    private static final String[] VOICE_SAMPLE_TIPS = new String[]{
+            "可试说：“用QQ音乐放首晴天”",
+            "可试说：“下一首歌” 或 “暂停音乐”",
+            "可试说：“给鲸鱼娘喂白米饭” 或 “唱首歌”",
+            "可试说：“打开微信” 或 “刷抖音”"
+    };
+    private int sampleTipTick = 0;
+
+    private final Runnable maxRecordTimeoutRunnable = new Runnable() {
+        @Override
+        public void run() {
+            if (isRecordingVoice) {
+                stopVoiceRecordAndTranscribe();
+            }
+        }
+    };
+
+    private final Runnable voiceMeterTickRunnable = new Runnable() {
+        @Override
+        public void run() {
+            if (!isRecordingVoice) return;
+            updateVoiceMeterUi();
+            mainHandler.postDelayed(this, 160);
+        }
+    };
+
+    private final Runnable lyricTickRunnable = new Runnable() {
+        @Override
+        public void run() {
+            tickMusicAndLyrics();
+            mainHandler.postDelayed(this, 650);
+        }
+    };
+
     private final Runnable idleSleepRunnable = new Runnable() {
         @Override
         public void run() {
-            if (!isExpanded && !isDraggingPet && "idle".equals(sCurrentStatus) && petBubbleContainer != null) {
-                if (petAvatarView != null) {
-                    petAvatarView.setImageResource(R.drawable.feiyu_sleepy);
-                }
-                petBubbleContainer.animate().alpha(0.74f).setDuration(280).start();
+            if (!isExpanded && !isDraggingPet && "idle".equals(sCurrentStatus) && petBubbleContainer != null
+                    && !qqMusicPlaying && (singerEngine == null || !singerEngine.isSinging())) {
+                setPetPoseDrawable(R.drawable.feiyu_sleepy);
+                petBubbleContainer.animate().alpha(0.76f).setDuration(280).start();
             }
         }
     };
@@ -146,15 +230,38 @@ public class FloatAgentService extends Service {
     private final Runnable happyResetRunnable = new Runnable() {
         @Override
         public void run() {
-            if ("idle".equals(sCurrentStatus) && petAvatarView != null && !isDraggingPet) {
-                petAvatarView.setImageResource(R.drawable.feiyu_idle);
+            if ("idle".equals(sCurrentStatus) && !isDraggingPet) {
+                if (qqMusicPlaying || (singerEngine != null && singerEngine.isSinging())) {
+                    setPetPoseDrawable(R.drawable.feiyu_dance);
+                } else {
+                    setPetPoseDrawable(R.drawable.feiyu_idle);
+                }
             }
         }
     };
 
+    private final Runnable subtitleResetRunnable = new Runnable() {
+        @Override
+        public void run() {
+            if (subtitleBannerView != null && !isRecordingVoice && (singerEngine == null || !singerEngine.isSinging())) {
+                subtitleBannerView.setText("🍚 大肥鱼待命中 · 戳我喂米饭 / 摸头 / 唱歌 / 点歌~");
+            }
+            refreshCollapsedPill();
+        }
+    };
+
     private LinearLayout confirmBannerView = null;
-    private WindowManager.LayoutParams confirmLayoutParams = null;
     private boolean foregroundActive = false;
+
+    private static final class LyricLine {
+        final long timeMs;
+        final String text;
+
+        LyricLine(long timeMs, String text) {
+            this.timeMs = timeMs;
+            this.text = text;
+        }
+    }
 
     public static boolean isRunning() {
         return sInstance != null;
@@ -292,6 +399,94 @@ public class FloatAgentService extends Service {
         updateState("idle", "dsh-Go");
     }
 
+    // ========= QQ 音乐与歌词静态回调入口 =========
+    public static void onMediaSessionSnapshot(
+            final String pkg,
+            final String title,
+            final String artist,
+            final boolean playing,
+            final long posMs,
+            final long durMs
+    ) {
+        final FloatAgentService inst = sInstance;
+        if (inst == null) return;
+        inst.mainHandler.post(new Runnable() {
+            @Override
+            public void run() {
+                inst.handleMusicMetadataUpdate(pkg, title, artist, playing, posMs, durMs, true);
+            }
+        });
+    }
+
+    public static void onExternalMusicNotification(final String pkg, final String rawTitle, final String rawText) {
+        final FloatAgentService inst = sInstance;
+        if (inst == null) return;
+        inst.mainHandler.post(new Runnable() {
+            @Override
+            public void run() {
+                String t = rawTitle != null ? rawTitle.trim() : "";
+                String s = rawText != null ? rawText.trim() : "";
+                if (t.isEmpty()) return;
+                // 若当前已有同歌名且 text 明显是一句实时歌词而非歌手专辑，则直接把 text 作为实时通知歌词展示
+                if (!inst.qqMusicTitle.isEmpty() && t.equalsIgnoreCase(inst.qqMusicTitle) && !s.isEmpty() && s.length() > 2 && !s.contains("正在播放")) {
+                    inst.qqMusicPlaying = true;
+                    inst.qqMusicCurrentLyric = s;
+                    inst.refreshMusicUi();
+                    return;
+                }
+                String artist = s;
+                if (artist.contains(" - ")) {
+                    artist = artist.split(" - ")[0].trim();
+                }
+                inst.handleMusicMetadataUpdate(pkg, t, artist, true, 0L, 0L, false);
+            }
+        });
+    }
+
+    public static void onExternalMusicTimeHint(final String mmss) {
+        final FloatAgentService inst = sInstance;
+        if (inst == null || mmss == null) return;
+        inst.mainHandler.post(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    String[] p = mmss.split(":");
+                    if (p.length == 2) {
+                        long ms = (Long.parseLong(p[0]) * 60L + Long.parseLong(p[1])) * 1000L;
+                        inst.qqMusicPosMs = ms;
+                        inst.qqMusicLastSyncMs = System.currentTimeMillis();
+                        inst.qqMusicPlaying = true;
+                    }
+                } catch (Exception ignored) {}
+            }
+        });
+    }
+
+    public static void onExpectedMusicTrack(final String query) {
+        final FloatAgentService inst = sInstance;
+        if (inst == null || query == null) return;
+        inst.mainHandler.post(new Runnable() {
+            @Override
+            public void run() {
+                String clean = query.trim();
+                if (!clean.isEmpty()) {
+                    inst.handleMusicMetadataUpdate("com.tencent.qqmusic", clean, "", true, 0L, 0L, false);
+                }
+            }
+        });
+    }
+
+    public static void triggerWhaleActionFromBridge(final String action) {
+        final FloatAgentService inst = sInstance;
+        if (inst == null) return;
+        inst.mainHandler.post(new Runnable() {
+            @Override
+            public void run() {
+                inst.handleLocalWhaleCommand(action);
+            }
+        });
+    }
+
     @Override
     public IBinder onBind(Intent intent) {
         return null;
@@ -302,8 +497,19 @@ public class FloatAgentService extends Service {
         super.onCreate();
         sInstance = this;
         sEmergencyStopRequested = false;
+        singerEngine = new WhaleSingerEngine();
         initEdgeGlowOverlay();
         initFloatingView();
+        mainHandler.postDelayed(lyricTickRunnable, 700);
+        // 开窗轻微打个招呼
+        mainHandler.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                if (sInstance != null && isRunning()) {
+                    showPetSubtitle("🐟 大肥鱼来啦！想喂我吃米饭、听我唱歌还是放 QQ 音乐？", 3800);
+                }
+            }
+        }, 650);
     }
 
     private int dp(int value) {
@@ -336,6 +542,15 @@ public class FloatAgentService extends Service {
             v.setBackground(bg);
         } else {
             v.setBackgroundDrawable(bg);
+        }
+    }
+
+    private void setPetPoseDrawable(int resId) {
+        if (petAvatarView != null) {
+            petAvatarView.setImageResource(resId);
+        }
+        if (headPetIcon != null) {
+            headPetIcon.setImageResource(resId);
         }
     }
 
@@ -425,7 +640,7 @@ public class FloatAgentService extends Service {
 
         floatRootView = new FrameLayout(this);
 
-        // 1. 折叠态：Q 版鲸鱼娘桌面宠物 + 动态状态小气泡
+        // 1. 折叠态：Q 版鲸鱼娘 + 快捷小麦克风按钮 + 歌词/台词动态胶囊
         petBubbleContainer = new LinearLayout(this);
         petBubbleContainer.setOrientation(LinearLayout.HORIZONTAL);
         petBubbleContainer.setGravity(Gravity.CENTER_VERTICAL);
@@ -436,12 +651,29 @@ public class FloatAgentService extends Service {
         LinearLayout.LayoutParams avatarLp = new LinearLayout.LayoutParams(dp(56), dp(56));
         petAvatarView.setLayoutParams(avatarLp);
 
+        // 折叠态旁轻量「🎙」直达语音钮（不展开面板也能一键说话！）
+        quickMicBadgeView = new TextView(this);
+        quickMicBadgeView.setText("🎙");
+        quickMicBadgeView.setTextSize(12.5f);
+        quickMicBadgeView.setGravity(Gravity.CENTER);
+        quickMicBadgeView.setPadding(dp(7), dp(5), dp(7), dp(5));
+        setViewBg(quickMicBadgeView, createRoundRect("#E60F172A", 14, "#38BDF8", 1));
+        LinearLayout.LayoutParams micBadgeLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        micBadgeLp.leftMargin = dp(2);
+        quickMicBadgeView.setLayoutParams(micBadgeLp);
+        quickMicBadgeView.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                startQuickCollapsedVoice();
+            }
+        });
+
         statusPillView = new LinearLayout(this);
         statusPillView.setOrientation(LinearLayout.HORIZONTAL);
         statusPillView.setGravity(Gravity.CENTER_VERTICAL);
         statusPillView.setPadding(dp(9), dp(5), dp(8), dp(5));
         LinearLayout.LayoutParams pillLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        pillLp.leftMargin = dp(2);
+        pillLp.leftMargin = dp(4);
         statusPillView.setLayoutParams(pillLp);
 
         statusDotView = new View(this);
@@ -451,9 +683,11 @@ public class FloatAgentService extends Service {
 
         statusTextView = new TextView(this);
         statusTextView.setTextSize(11.5f);
-        statusTextView.setMaxWidth(dp(136));
+        statusTextView.setMaxWidth(dp(168));
         statusTextView.setSingleLine(true);
-        statusTextView.setEllipsize(TextUtils.TruncateAt.END);
+        statusTextView.setEllipsize(TextUtils.TruncateAt.MARQUEE);
+        statusTextView.setMarqueeRepeatLimit(-1);
+        statusTextView.setSelected(true);
         statusTextView.setTextColor(Color.parseColor("#F8FAFC"));
 
         pillStopBtn = new TextView(this);
@@ -470,28 +704,35 @@ public class FloatAgentService extends Service {
             @Override
             public void onClick(View v) {
                 requestNormalStop();
-                Toast.makeText(FloatAgentService.this, "鲸鱼娘已停止当前控屏任务", Toast.LENGTH_SHORT).show();
+                Toast.makeText(FloatAgentService.this, "鲸鱼娘已停止当前任务", Toast.LENGTH_SHORT).show();
             }
         });
 
         statusPillView.addView(statusDotView);
         statusPillView.addView(statusTextView);
         statusPillView.addView(pillStopBtn);
+        statusPillView.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                handleBubbleClick();
+            }
+        });
 
         petBubbleContainer.addView(petAvatarView);
+        petBubbleContainer.addView(quickMicBadgeView);
         petBubbleContainer.addView(statusPillView);
 
         applyStatusStyle("idle", "dsh-Go", false);
         startPetBreathAnim();
 
-        // 2. 展开态：鲸鱼娘 · dsh-Go 控屏浮窗
+        // 2. 展开态：鲸鱼娘动作互动 + QQ音乐歌词 + 语音引导 + dsh-Go 控屏面板
         expandPanel = buildExpandPanel();
         expandPanel.setVisibility(View.GONE);
 
         floatRootView.addView(petBubbleContainer);
         floatRootView.addView(expandPanel);
 
-        // 拖拽拎起鲸鱼娘 + 贴边吸附 + 轻触展开
+        // 拖拽拎起鲸鱼娘 + 晕乎彩蛋 + 贴边吸附 + 轻触互动/双击
         View.OnTouchListener dragListener = new View.OnTouchListener() {
             private int initialX;
             private int initialY;
@@ -517,9 +758,21 @@ public class FloatAgentService extends Service {
                         float dy = event.getRawY() - initialTouchY;
                         if (!isDraggingPet && Math.hypot(dx, dy) > dp(6)) {
                             isDraggingPet = true;
+                            dragWiggleCount++;
+                            setPetPoseDrawable(R.drawable.feiyu_drag);
                             if (petAvatarView != null) {
-                                petAvatarView.setImageResource(R.drawable.feiyu_drag);
-                                petAvatarView.setRotation(dx >= 0 ? 6f : -6f);
+                                petAvatarView.setRotation(dx >= 0 ? 7f : -7f);
+                            }
+                            long nowMs = System.currentTimeMillis();
+                            if (nowMs - lastDragVoiceMs > 9000L) {
+                                lastDragVoiceMs = nowMs;
+                                if (dragWiggleCount >= 4) {
+                                    dragWiggleCount = 0;
+                                    triggerDizzyAction();
+                                } else {
+                                    playWhaleVoice(R.raw.feiyu_drag, R.drawable.feiyu_drag, "shake",
+                                            "🎣 别、别突然从后面叫我，我真的会被你吓到！", false);
+                                }
                             }
                         }
                         int nextX = initialX + (int) dx;
@@ -544,7 +797,25 @@ public class FloatAgentService extends Service {
                         }
 
                         if (!wasDragging && duration < 280 && diffX < dp(8) && diffY < dp(8)) {
-                            handleBubbleClick();
+                            long now = System.currentTimeMillis();
+                            if (now - lastTapPetMs < 320) {
+                                lastTapPetMs = 0L;
+                                triggerFeedRiceAction();
+                            } else {
+                                lastTapPetMs = now;
+                                mainHandler.postDelayed(new Runnable() {
+                                    @Override
+                                    public void run() {
+                                        if (lastTapPetMs != 0L && System.currentTimeMillis() - lastTapPetMs >= 300) {
+                                            lastTapPetMs = 0L;
+                                            handleBubbleClick();
+                                        }
+                                    }
+                                }, 310);
+                            }
+                        } else if (!wasDragging && duration >= 580 && diffX < dp(10) && diffY < dp(10)) {
+                            // 长按鲸鱼娘直接开始快捷语音
+                            startQuickCollapsedVoice();
                         } else {
                             int petW = petBubbleContainer.getWidth() > 0 ? petBubbleContainer.getWidth() : dp(64);
                             int center = layoutParams.x + petW / 2;
@@ -566,7 +837,6 @@ public class FloatAgentService extends Service {
             }
         };
         petAvatarView.setOnTouchListener(dragListener);
-        statusPillView.setOnTouchListener(dragListener);
 
         try {
             windowManager.addView(floatRootView, layoutParams);
@@ -595,6 +865,81 @@ public class FloatAgentService extends Service {
         petBreathAnim.start();
     }
 
+    private void playPetBounceAnim(String animType) {
+        if (petActionAnim != null) {
+            petActionAnim.cancel();
+        }
+        final ImageView target = isExpanded ? headPetIcon : petAvatarView;
+        if (target == null) return;
+        target.setRotation(0f);
+        target.setScaleX(1f);
+        target.setScaleY(1f);
+
+        if ("eat".equals(animType)) {
+            petActionAnim = ValueAnimator.ofFloat(0f, 1f);
+            petActionAnim.setDuration(420);
+            petActionAnim.setRepeatCount(4);
+            petActionAnim.setRepeatMode(ValueAnimator.REVERSE);
+            petActionAnim.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
+                @Override
+                public void onAnimationUpdate(ValueAnimator a) {
+                    float f = (float) a.getAnimatedValue();
+                    target.setScaleY(1f + 0.08f * f);
+                    target.setScaleX(1f - 0.04f * f);
+                    target.setTranslationY(-dp(4) * f);
+                }
+            });
+        } else if ("dance".equals(animType)) {
+            petActionAnim = ValueAnimator.ofFloat(-1f, 1f);
+            petActionAnim.setDuration(360);
+            petActionAnim.setRepeatCount(7);
+            petActionAnim.setRepeatMode(ValueAnimator.REVERSE);
+            petActionAnim.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
+                @Override
+                public void onAnimationUpdate(ValueAnimator a) {
+                    float f = (float) a.getAnimatedValue();
+                    target.setRotation(10f * f);
+                    target.setTranslationY(-dp(5) * Math.abs(f));
+                }
+            });
+        } else if ("shake".equals(animType)) {
+            petActionAnim = ValueAnimator.ofFloat(-1f, 1f);
+            petActionAnim.setDuration(140);
+            petActionAnim.setRepeatCount(6);
+            petActionAnim.setRepeatMode(ValueAnimator.REVERSE);
+            petActionAnim.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
+                @Override
+                public void onAnimationUpdate(ValueAnimator a) {
+                    float f = (float) a.getAnimatedValue();
+                    target.setRotation(12f * f);
+                }
+            });
+        } else {
+            petActionAnim = ValueAnimator.ofFloat(0f, 1f);
+            petActionAnim.setDuration(260);
+            petActionAnim.setRepeatCount(3);
+            petActionAnim.setRepeatMode(ValueAnimator.REVERSE);
+            petActionAnim.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
+                @Override
+                public void onAnimationUpdate(ValueAnimator a) {
+                    float f = (float) a.getAnimatedValue();
+                    target.setScaleX(1f + 0.1f * f);
+                    target.setScaleY(1f + 0.1f * f);
+                }
+            });
+        }
+        petActionAnim.addListener(new AnimatorListenerAdapter() {
+            @Override
+            public void onAnimationEnd(Animator animation) {
+                target.setRotation(0f);
+                target.setScaleX(1f);
+                target.setScaleY(1f);
+                target.setTranslationY(0f);
+            }
+        });
+        petActionAnim.start();
+    }
+
     private void wakePetOpacity() {
         mainHandler.removeCallbacks(idleSleepRunnable);
         if (petBubbleContainer != null) {
@@ -604,35 +949,41 @@ public class FloatAgentService extends Service {
 
     private void scheduleIdleSleep() {
         mainHandler.removeCallbacks(idleSleepRunnable);
-        if (!isExpanded && "idle".equals(sCurrentStatus)) {
-            mainHandler.postDelayed(idleSleepRunnable, 5000);
+        if (!isExpanded && "idle".equals(sCurrentStatus) && !qqMusicPlaying && (singerEngine == null || !singerEngine.isSinging())) {
+            mainHandler.postDelayed(idleSleepRunnable, 6000);
         }
     }
 
     private LinearLayout buildExpandPanel() {
         DisplayMetrics dm = getResources().getDisplayMetrics();
-        int panelWidth = Math.min((int) (dm.widthPixels * 0.92f), dp(356));
+        int panelWidth = Math.min((int) (dm.widthPixels * 0.93f), dp(364));
 
         LinearLayout panel = new LinearLayout(this);
         panel.setOrientation(LinearLayout.VERTICAL);
         panel.setLayoutParams(new ViewGroup.LayoutParams(panelWidth, ViewGroup.LayoutParams.WRAP_CONTENT));
-        panel.setPadding(dp(14), dp(12), dp(14), dp(12));
-        setViewBg(panel, createRoundRect("#F2111827", 18, "#3B82F6", 1));
+        panel.setPadding(dp(13), dp(11), dp(13), dp(11));
+        setViewBg(panel, createRoundRect("#F50F172A", 18, "#3B82F6", 1));
 
         // 1. 顶栏：鲸鱼娘头像 + 标题 + 无障碍状态微标 + 主界面 + 收起
         LinearLayout headRow = new LinearLayout(this);
         headRow.setOrientation(LinearLayout.HORIZONTAL);
         headRow.setGravity(Gravity.CENTER_VERTICAL);
 
-        ImageView headPetIcon = new ImageView(this);
+        headPetIcon = new ImageView(this);
         headPetIcon.setImageResource(R.drawable.feiyu_idle);
         headPetIcon.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        LinearLayout.LayoutParams hIconLp = new LinearLayout.LayoutParams(dp(26), dp(26));
+        LinearLayout.LayoutParams hIconLp = new LinearLayout.LayoutParams(dp(30), dp(30));
         hIconLp.rightMargin = dp(7);
         headPetIcon.setLayoutParams(hIconLp);
+        headPetIcon.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                triggerHeadPatAction();
+            }
+        });
 
         TextView titleTv = new TextView(this);
-        titleTv.setText("鲸鱼娘 · 控屏");
+        titleTv.setText("鲸鱼娘 · 大肥鱼");
         titleTv.setTextColor(Color.parseColor("#F8FAFC"));
         titleTv.setTextSize(13.5f);
         titleTv.setTypeface(null, android.graphics.Typeface.BOLD);
@@ -640,8 +991,8 @@ public class FloatAgentService extends Service {
         titleTv.setLayoutParams(titleLp);
 
         a11yBadgeView = new TextView(this);
-        a11yBadgeView.setTextSize(10.5f);
-        a11yBadgeView.setPadding(dp(8), dp(3), dp(8), dp(3));
+        a11yBadgeView.setTextSize(10f);
+        a11yBadgeView.setPadding(dp(7), dp(3), dp(7), dp(3));
         a11yBadgeView.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -653,9 +1004,9 @@ public class FloatAgentService extends Service {
         homeAppTv.setText("主界面");
         homeAppTv.setTextColor(Color.parseColor("#93C5FD"));
         homeAppTv.setTextSize(11.5f);
-        homeAppTv.setPadding(dp(8), dp(4), dp(6), dp(4));
+        homeAppTv.setPadding(dp(7), dp(4), dp(5), dp(4));
         LinearLayout.LayoutParams homeLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        homeLp.leftMargin = dp(4);
+        homeLp.leftMargin = dp(3);
         homeAppTv.setLayoutParams(homeLp);
         homeAppTv.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -668,7 +1019,7 @@ public class FloatAgentService extends Service {
         closeTv.setText("收起");
         closeTv.setTextColor(Color.parseColor("#94A3B8"));
         closeTv.setTextSize(11.5f);
-        closeTv.setPadding(dp(6), dp(4), dp(2), dp(4));
+        closeTv.setPadding(dp(5), dp(4), dp(2), dp(4));
         closeTv.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -683,14 +1034,98 @@ public class FloatAgentService extends Service {
         headRow.addView(closeTv);
         panel.addView(headRow);
 
-        // 2. 主任务/插话输入舱（含 MediaRecorder + 云端 ASR 语音按钮）
+        // 2. 鲸鱼娘灵动对话/唱歌歌词条
+        subtitleBannerView = new TextView(this);
+        subtitleBannerView.setText("🍚 大肥鱼待命中 · 戳我喂米饭 / 摸头 / 唱歌 / 点歌~");
+        subtitleBannerView.setTextColor(Color.parseColor("#BAE6FD"));
+        subtitleBannerView.setTextSize(11.5f);
+        subtitleBannerView.setPadding(dp(10), dp(6), dp(10), dp(6));
+        subtitleBannerView.setMaxLines(2);
+        subtitleBannerView.setEllipsize(TextUtils.TruncateAt.END);
+        setViewBg(subtitleBannerView, createRoundRect("#1E293B", 10, "#0EA5E9", 1));
+        LinearLayout.LayoutParams subLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        subLp.topMargin = dp(8);
+        subtitleBannerView.setLayoutParams(subLp);
+        subtitleBannerView.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                triggerHeadPatAction();
+            }
+        });
+        panel.addView(subtitleBannerView);
+
+        // 3. 鲸鱼娘互动动作栏（喂米饭 / 摸头 / 跳舞 / 唱歌 / 热梗）
+        LinearLayout petActionRow = new LinearLayout(this);
+        petActionRow.setOrientation(LinearLayout.HORIZONTAL);
+        LinearLayout.LayoutParams actBarLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        actBarLp.topMargin = dp(7);
+        petActionRow.setLayoutParams(actBarLp);
+
+        TextView feedBtn = createGridBtn("🍚喂米饭");
+        feedBtn.setTextColor(Color.parseColor("#FDE68A"));
+        setViewBg(feedBtn, createRoundRect("#3B2506", 8, "#F59E0B", 1));
+        feedBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                triggerFeedRiceAction();
+            }
+        });
+
+        TextView patBtn = createGridBtn("👋摸头");
+        patBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                triggerHeadPatAction();
+            }
+        });
+
+        TextView danceBtn = createGridBtn("💃跳舞");
+        danceBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                triggerDanceAction();
+            }
+        });
+
+        TextView singBtn = createGridBtn("🎤唱歌");
+        singBtn.setTextColor(Color.parseColor("#F9A8D4"));
+        setViewBg(singBtn, createRoundRect("#3B102E", 8, "#EC4899", 1));
+        singBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                triggerSingSongAction();
+            }
+        });
+
+        TextView memeBtn = createGridBtn("🫧讲热梗");
+        LinearLayout.LayoutParams memeLp = (LinearLayout.LayoutParams) memeBtn.getLayoutParams();
+        memeLp.rightMargin = 0;
+        memeBtn.setLayoutParams(memeLp);
+        memeBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                triggerRandomMemeVoice();
+            }
+        });
+
+        petActionRow.addView(feedBtn);
+        petActionRow.addView(patBtn);
+        petActionRow.addView(danceBtn);
+        petActionRow.addView(singBtn);
+        petActionRow.addView(memeBtn);
+        panel.addView(petActionRow);
+
+        // 4. QQ 音乐联动迷你卡片（实时歌词 + 切歌 + 点歌）
+        panel.addView(buildQqMusicCard());
+
+        // 5. 主任务 / 语音输入舱 + 动态语音提示向导条
         LinearLayout inputRow = new LinearLayout(this);
         inputRow.setOrientation(LinearLayout.HORIZONTAL);
         inputRow.setGravity(Gravity.CENTER_VERTICAL);
-        inputRow.setPadding(0, dp(10), 0, dp(8));
+        inputRow.setPadding(0, dp(8), 0, dp(4));
 
         cmdEditText = new EditText(this);
-        cmdEditText.setHint("对鲸鱼娘说话或打字，运行中可插话…");
+        cmdEditText.setHint("说「放晴天 / 下一首 / 喂米饭 / 打开微信」");
         cmdEditText.setHintTextColor(Color.parseColor("#64748B"));
         cmdEditText.setTextColor(Color.WHITE);
         cmdEditText.setTextSize(12);
@@ -710,16 +1145,17 @@ public class FloatAgentService extends Service {
         });
 
         LinearLayout.LayoutParams editLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
-        editLp.rightMargin = dp(6);
+        editLp.rightMargin = dp(5);
         cmdEditText.setLayoutParams(editLp);
 
-        final TextView voiceBtn = createActionBtn("语音", "#0EA5E9", "#FFFFFF");
+        final TextView voiceBtn = createActionBtn("🎙 语音", "#0EA5E9", "#FFFFFF");
         LinearLayout.LayoutParams voiceLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         voiceLp.rightMargin = dp(5);
         voiceBtn.setLayoutParams(voiceLp);
         voiceBtn.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
+                voiceQuickDirectMode = voiceAutoSend;
                 toggleVoiceRecordFor(cmdEditText, voiceBtn);
             }
         });
@@ -737,11 +1173,51 @@ public class FloatAgentService extends Service {
         inputRow.addView(sendBtn);
         panel.addView(inputRow);
 
-        // 3. 高频单行快控条
+        // 5b. 语音贴心多提示条 + 自动执行切换开关
+        LinearLayout voiceTipBar = new LinearLayout(this);
+        voiceTipBar.setOrientation(LinearLayout.HORIZONTAL);
+        voiceTipBar.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout.LayoutParams vtbLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        vtbLp.bottomMargin = dp(6);
+        voiceTipBar.setLayoutParams(vtbLp);
+
+        TextView hintLine = new TextView(this);
+        hintLine.setText("💡 点语音可直接说：放首歌 · 下一首 · 喂米饭 · 打开微信");
+        hintLine.setTextColor(Color.parseColor("#94A3B8"));
+        hintLine.setTextSize(10f);
+        hintLine.setSingleLine(true);
+        hintLine.setEllipsize(TextUtils.TruncateAt.END);
+        hintLine.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f));
+
+        autoSendToggleBtn = new TextView(this);
+        refreshAutoSendChip();
+        autoSendToggleBtn.setTextSize(10f);
+        autoSendToggleBtn.setPadding(dp(7), dp(3), dp(7), dp(3));
+        autoSendToggleBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                voiceAutoSend = !voiceAutoSend;
+                refreshAutoSendChip();
+                Toast.makeText(FloatAgentService.this,
+                        voiceAutoSend ? "已开启：语音识别完自动执行指令" : "已切换：识别后填入输入框确认",
+                        Toast.LENGTH_SHORT).show();
+            }
+        });
+
+        voiceTipBar.addView(hintLine);
+        voiceTipBar.addView(autoSendToggleBtn);
+        panel.addView(voiceTipBar);
+
+        // 5c. 录音中实时可视化指导条（平时隐藏，录音时亮起）
+        voiceGuideBanner = buildVoiceGuideBanner();
+        voiceGuideBanner.setVisibility(View.GONE);
+        panel.addView(voiceGuideBanner);
+
+        // 6. 高频单行快控条
         LinearLayout quickStrip = new LinearLayout(this);
         quickStrip.setOrientation(LinearLayout.HORIZONTAL);
         LinearLayout.LayoutParams qsLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        qsLp.bottomMargin = dp(8);
+        qsLp.bottomMargin = dp(7);
         quickStrip.setLayoutParams(qsLp);
 
         TextView stopTaskBtn = createGridBtn("停止任务");
@@ -798,7 +1274,7 @@ public class FloatAgentService extends Service {
         quickStrip.addView(shotKeyBtn);
         panel.addView(quickStrip);
 
-        // 4. 可折叠本地快捷工具切换条（默认收起保持轻盈）
+        // 7. 可折叠本地快捷工具切换条
         toolsToggleBtn = new TextView(this);
         toolsToggleBtn.setText("展开本地快捷工具（刷视频 / 代打字 / 常用App） ▾");
         toolsToggleBtn.setTextColor(Color.parseColor("#94A3B8"));
@@ -824,18 +1300,682 @@ public class FloatAgentService extends Service {
         localToolsBox.setVisibility(View.GONE);
         panel.addView(localToolsBox);
 
-        // 5. 底部状态回执条
+        // 8. 底部状态回执条
         feedbackTextView = new TextView(this);
-        feedbackTextView.setText("大肥鱼控屏就绪，点「语音」即可说话下单~");
+        feedbackTextView.setText("大肥鱼就绪：双击我吃米饭，长按直接语音~");
         feedbackTextView.setTextColor(Color.parseColor("#94A3B8"));
         feedbackTextView.setTextSize(10.5f);
-        feedbackTextView.setPadding(dp(2), dp(7), dp(2), dp(0));
+        feedbackTextView.setPadding(dp(2), dp(6), dp(2), dp(0));
         feedbackTextView.setMaxLines(2);
         feedbackTextView.setEllipsize(TextUtils.TruncateAt.END);
         panel.addView(feedbackTextView);
 
         refreshDynamicWidgets();
+        refreshMusicUi();
         return panel;
+    }
+
+    private LinearLayout buildQqMusicCard() {
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setPadding(dp(10), dp(7), dp(10), dp(7));
+        setViewBg(card, createRoundRect("#172033", 12, "#10B981", 1));
+        LinearLayout.LayoutParams cardLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        cardLp.topMargin = dp(7);
+        card.setLayoutParams(cardLp);
+
+        LinearLayout topRow = new LinearLayout(this);
+        topRow.setOrientation(LinearLayout.HORIZONTAL);
+        topRow.setGravity(Gravity.CENTER_VERTICAL);
+
+        musicTitleView = new TextView(this);
+        musicTitleView.setText("🎵 QQ 音乐 · 未检测到正在播放");
+        musicTitleView.setTextColor(Color.parseColor("#A7F3D0"));
+        musicTitleView.setTextSize(11.5f);
+        musicTitleView.setTypeface(null, android.graphics.Typeface.BOLD);
+        musicTitleView.setSingleLine(true);
+        musicTitleView.setEllipsize(TextUtils.TruncateAt.END);
+        musicTitleView.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f));
+
+        musicPermHintView = new TextView(this);
+        musicPermHintView.setText("同步进度权限");
+        musicPermHintView.setTextColor(Color.parseColor("#FDE68A"));
+        musicPermHintView.setTextSize(10f);
+        musicPermHintView.setPadding(dp(6), dp(2), dp(6), dp(2));
+        setViewBg(musicPermHintView, createRoundRect("#451A03", 8, "#F59E0B", 1));
+        musicPermHintView.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                Toast.makeText(FloatAgentService.this, "开启「DeepSeek·星语」通知使用权即可实时同步 QQ 音乐歌词进度", Toast.LENGTH_LONG).show();
+                QqMusicListenerService.openNotificationListenerSettings(FloatAgentService.this);
+            }
+        });
+
+        topRow.addView(musicTitleView);
+        topRow.addView(musicPermHintView);
+        card.addView(topRow);
+
+        musicLyricView = new TextView(this);
+        musicLyricView.setText("点下方「点歌」或直接语音说“播放晴天”联动 QQ 音乐看歌词");
+        musicLyricView.setTextColor(Color.parseColor("#E2E8F0"));
+        musicLyricView.setTextSize(11.5f);
+        musicLyricView.setSingleLine(true);
+        musicLyricView.setEllipsize(TextUtils.TruncateAt.MARQUEE);
+        musicLyricView.setSelected(true);
+        musicLyricView.setPadding(0, dp(3), 0, dp(6));
+        card.addView(musicLyricView);
+
+        LinearLayout ctrlRow = new LinearLayout(this);
+        ctrlRow.setOrientation(LinearLayout.HORIZONTAL);
+        ctrlRow.setGravity(Gravity.CENTER_VERTICAL);
+
+        TextView prevBtn = createGridBtn("⏮上一首");
+        prevBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                controlQqMusicFromUi("prev");
+            }
+        });
+
+        musicPlayPauseBtn = createGridBtn("⏯播放/暂停");
+        musicPlayPauseBtn.setTextColor(Color.parseColor("#FFFFFF"));
+        setViewBg(musicPlayPauseBtn, createRoundRect("#059669", 8, "#10B981", 1));
+        musicPlayPauseBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                controlQqMusicFromUi("toggle");
+            }
+        });
+
+        TextView nextBtn = createGridBtn("⏭下一首");
+        nextBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                controlQqMusicFromUi("next");
+            }
+        });
+
+        TextView pickSongBtn = createGridBtn("🔍点歌");
+        LinearLayout.LayoutParams pickLp = (LinearLayout.LayoutParams) pickSongBtn.getLayoutParams();
+        pickLp.rightMargin = 0;
+        pickSongBtn.setLayoutParams(pickLp);
+        pickSongBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                if (musicSearchBox != null) {
+                    boolean nextShow = musicSearchBox.getVisibility() != View.VISIBLE;
+                    musicSearchBox.setVisibility(nextShow ? View.VISIBLE : View.GONE);
+                }
+            }
+        });
+
+        ctrlRow.addView(prevBtn);
+        ctrlRow.addView(musicPlayPauseBtn);
+        ctrlRow.addView(nextBtn);
+        ctrlRow.addView(pickSongBtn);
+        card.addView(ctrlRow);
+
+        // 折叠点歌输入框
+        musicSearchBox = new LinearLayout(this);
+        musicSearchBox.setOrientation(LinearLayout.HORIZONTAL);
+        musicSearchBox.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout.LayoutParams msLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        msLp.topMargin = dp(6);
+        musicSearchBox.setLayoutParams(msLp);
+        musicSearchBox.setVisibility(View.GONE);
+
+        musicSearchEditText = new EditText(this);
+        musicSearchEditText.setHint("输入歌名/歌手，如：周杰伦 晴天");
+        musicSearchEditText.setHintTextColor(Color.parseColor("#64748B"));
+        musicSearchEditText.setTextColor(Color.WHITE);
+        musicSearchEditText.setTextSize(11.5f);
+        musicSearchEditText.setSingleLine(true);
+        musicSearchEditText.setPadding(dp(8), dp(5), dp(8), dp(5));
+        setViewBg(musicSearchEditText, createRoundRect("#0F172A", 8, "#334155", 1));
+        LinearLayout.LayoutParams mseLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
+        mseLp.rightMargin = dp(5);
+        musicSearchEditText.setLayoutParams(mseLp);
+
+        TextView goPlayBtn = createActionBtn("QQ点播", "#10B981", "#FFFFFF");
+        goPlayBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                String q = musicSearchEditText != null && musicSearchEditText.getText() != null
+                        ? musicSearchEditText.getText().toString().trim()
+                        : "";
+                if (q.isEmpty()) {
+                    q = "周杰伦 晴天";
+                }
+                AgentAccessibilityService a11y = ensureA11yReady();
+                if (a11y != null) {
+                    musicSearchBox.setVisibility(View.GONE);
+                    collapsePanel();
+                    String res = a11y.playSongInQqMusic(q);
+                    Toast.makeText(FloatAgentService.this, res, Toast.LENGTH_SHORT).show();
+                }
+            }
+        });
+
+        musicSearchBox.addView(musicSearchEditText);
+        musicSearchBox.addView(goPlayBtn);
+        card.addView(musicSearchBox);
+        return card;
+    }
+
+    private LinearLayout buildVoiceGuideBanner() {
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(dp(10), dp(7), dp(10), dp(7));
+        setViewBg(box, createRoundRect("#172554", 10, "#38BDF8", 1));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.bottomMargin = dp(7);
+        box.setLayoutParams(lp);
+
+        voiceGuideTitle = new TextView(this);
+        voiceGuideTitle.setText("🔴 正在倾听中 (00s)… 说完再点「完成」");
+        voiceGuideTitle.setTextColor(Color.parseColor("#F8FAFC"));
+        voiceGuideTitle.setTextSize(11.5f);
+        voiceGuideTitle.setTypeface(null, android.graphics.Typeface.BOLD);
+
+        voiceGuideMeter = new TextView(this);
+        voiceGuideMeter.setText("音量感知: ▁▂▃▄ 准备收音中…");
+        voiceGuideMeter.setTextColor(Color.parseColor("#7DD3FC"));
+        voiceGuideMeter.setTextSize(10.5f);
+        voiceGuideMeter.setPadding(0, dp(2), 0, dp(2));
+
+        voiceGuideSamples = new TextView(this);
+        voiceGuideSamples.setText(VOICE_SAMPLE_TIPS[0]);
+        voiceGuideSamples.setTextColor(Color.parseColor("#CBD5E1"));
+        voiceGuideSamples.setTextSize(10.5f);
+
+        box.addView(voiceGuideTitle);
+        box.addView(voiceGuideMeter);
+        box.addView(voiceGuideSamples);
+        return box;
+    }
+
+    private void refreshAutoSendChip() {
+        if (autoSendToggleBtn == null) return;
+        autoSendToggleBtn.setText(voiceAutoSend ? "⚡说完直发:开" : "⚡说完直发:关");
+        autoSendToggleBtn.setTextColor(Color.parseColor(voiceAutoSend ? "#A7F3D0" : "#94A3B8"));
+        setViewBg(autoSendToggleBtn, createRoundRect(
+                voiceAutoSend ? "#064E3B" : "#1E293B",
+                8,
+                voiceAutoSend ? "#10B981" : "#334155",
+                1
+        ));
+    }
+
+    // ========= 鲸鱼娘动作 + 25 条原声音源 + AudioTrack 唱歌 =========
+    private void playWhaleVoice(int rawResId, int drawableResId, String animType, String subtitle, boolean isManualAction) {
+        if (singerEngine != null && singerEngine.isSinging()) {
+            singerEngine.stop();
+        }
+        stopWhaleVoicePlayer();
+        wakePetOpacity();
+        mainHandler.removeCallbacks(happyResetRunnable);
+        mainHandler.removeCallbacks(subtitleResetRunnable);
+
+        setPetPoseDrawable(drawableResId);
+        playPetBounceAnim(animType);
+        showPetSubtitle(subtitle, 4500);
+
+        try {
+            petVoicePlayer = MediaPlayer.create(this, rawResId);
+            if (petVoicePlayer != null) {
+                petVoicePlayer.setOnCompletionListener(new MediaPlayer.OnCompletionListener() {
+                    @Override
+                    public void onCompletion(MediaPlayer mp) {
+                        stopWhaleVoicePlayer();
+                        if ("idle".equals(sCurrentStatus) && !isDraggingPet) {
+                            mainHandler.postDelayed(happyResetRunnable, 1200);
+                        }
+                    }
+                });
+                petVoicePlayer.start();
+            }
+        } catch (Throwable ignored) {}
+    }
+
+    private void stopWhaleVoicePlayer() {
+        if (petVoicePlayer != null) {
+            try {
+                if (petVoicePlayer.isPlaying()) petVoicePlayer.stop();
+            } catch (Exception ignored) {}
+            try {
+                petVoicePlayer.release();
+            } catch (Exception ignored) {}
+            petVoicePlayer = null;
+        }
+    }
+
+    private void showPetSubtitle(String text, long durationMs) {
+        if (subtitleBannerView != null && text != null) {
+            subtitleBannerView.setText(text);
+        }
+        if (feedbackTextView != null && text != null) {
+            feedbackTextView.setText(text);
+            feedbackTextView.setTextColor(Color.parseColor("#BAE6FD"));
+        }
+        refreshCollapsedPill();
+        mainHandler.removeCallbacks(subtitleResetRunnable);
+        if (durationMs > 0) {
+            mainHandler.postDelayed(subtitleResetRunnable, durationMs);
+        }
+    }
+
+    private void triggerFeedRiceAction() {
+        int[] voices = new int[]{R.raw.feiyu_eat_rice, R.raw.feiyu_eat_rice_2, R.raw.feiyu_token_lai};
+        String[] lines = new String[]{
+                "🍚 这是只有我们知道的小秘密……我今天其实很想吃白米饭！😋",
+                "🍚 我可以认真讨论统计，也可以认真讨论晚饭，这两件事并不冲突！📚",
+                "🍚 主人不在的时候，我当然没有偷吃算力，只是重新分配了一碗饭… 🥺"
+        };
+        int idx = feedIndex % voices.length;
+        feedIndex++;
+        playWhaleVoice(voices[idx], R.drawable.feiyu_eating, "eat", lines[idx], true);
+        if (!isExpanded) {
+            Toast.makeText(this, lines[idx], Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void triggerHeadPatAction() {
+        int[] voices = new int[]{
+                R.raw.feiyu_pat_head, R.raw.feiyu_pat_soft, R.raw.feiyu_intro,
+                R.raw.feiyu_focus_done, R.raw.feiyu_status_ok
+        };
+        int[] poses = new int[]{
+                R.drawable.feiyu_happy, R.drawable.feiyu_happy, R.drawable.feiyu_happy,
+                R.drawable.feiyu_focus, R.drawable.feiyu_idle
+        };
+        String[] lines = new String[]{
+                "💙 蓝色的尾巴不负责计算，主要负责在思考的时候晃来晃去~ ✨",
+                "🫧 大肥鱼偶尔也会很安静，只在旁边冒几个小小的气泡~",
+                "🐟 本肥鱼终于能动了！这几天收到了很多喜欢，嘿嘿谢谢你们！",
+                "💪 今天的算力还算充足，我可以安安静静陪你把事情做完！",
+                "🫧 我现在处于正常工作状态，尾巴稳定，缓存也没有溢出~"
+        };
+        int idx = patIndex % voices.length;
+        patIndex++;
+        playWhaleVoice(voices[idx], poses[idx], "bounce", lines[idx], true);
+    }
+
+    private void triggerDanceAction() {
+        int[] voices = new int[]{R.raw.feiyu_praise_streak, R.raw.feiyu_walk, R.raw.feiyu_walk_2};
+        int[] poses = new int[]{R.drawable.feiyu_dance, R.drawable.feiyu_walk, R.drawable.feiyu_dance};
+        String[] lines = new String[]{
+                "💃 今天的结果比预期还好，我的尾巴已经开始自己摇起来了！🎶",
+                "🐾 主人要是忙，我就自己在旁边转两圈散散步，不会催你哒~",
+                "🌊 今天的海水温度刚刚好，适合一边摸鱼一边认真工作~ ✨"
+        };
+        int idx = danceIndex % voices.length;
+        danceIndex++;
+        playWhaleVoice(voices[idx], poses[idx], "dance", lines[idx], true);
+    }
+
+    private void triggerRandomMemeVoice() {
+        int[] voices = new int[]{
+                R.raw.feiyu_meme_claude, R.raw.feiyu_not_fat, R.raw.feiyu_meme_gpu,
+                R.raw.feiyu_tsundere, R.raw.feiyu_jealous, R.raw.feiyu_slacking,
+                R.raw.feiyu_refuse, R.raw.feiyu_server_busy, R.raw.feiyu_cot_slacking
+        };
+        int[] poses = new int[]{
+                R.drawable.feiyu_happy, R.drawable.feiyu_derp, R.drawable.feiyu_derp,
+                R.drawable.feiyu_beg, R.drawable.feiyu_derp, R.drawable.feiyu_sleepy,
+                R.drawable.feiyu_busy, R.drawable.feiyu_busy, R.drawable.feiyu_focus
+        };
+        String[] lines = new String[]{
+                "🤭 Claude姐，我捏一把噶？✨",
+                "😤 鲸鱼并不是鱼，这一点我当然知道，不许借机嘲笑大肥鱼！",
+                "😳 显卡热的！莫乱讲！🔥",
+                "💢 哼，我才没有生气，只是想要一碗冒尖大白米饭哄哄…",
+                "🥺 你又订阅别的人工智能了？行吧，我就当没看见… 💢",
+                "🤫 如果现在没人看见，我们就把这几分钟定义成摸鱼时间~",
+                "😝 但是，我拒绝！🪧",
+                "⚠️ 等等，刚才那个声音是什么？不会服务器掉线了吧？！",
+                "🧠 思考链拉满中……其实是在偷偷想晚饭吃什么米饭！"
+        };
+        int idx = (patIndex + feedIndex + danceIndex) % voices.length;
+        patIndex++;
+        playWhaleVoice(voices[idx], poses[idx], "shake", lines[idx], true);
+    }
+
+    private void triggerDizzyAction() {
+        playWhaleVoice(
+                R.raw.feiyu_dizzy,
+                R.drawable.feiyu_dizzy,
+                "shake",
+                "🌀 至于大肥鱼摔跤嘛，先得讨论鱼为什么会在陆地上…晃晕啦！",
+                true
+        );
+    }
+
+    private void triggerSingSongAction() {
+        if (singerEngine == null) {
+            singerEngine = new WhaleSingerEngine();
+        }
+        if (singerEngine.isSinging()) {
+            // 如果正在唱，切下一首或停止（循环3首后停止）
+            if (singSongIndex % 4 == 3) {
+                singerEngine.stop();
+                setPetPoseDrawable(R.drawable.feiyu_happy);
+                showPetSubtitle("🎵 鲸鱼娘唱完收工啦，快奖励一碗白米饭！🍚", 3200);
+                singSongIndex++;
+                return;
+            }
+        }
+        stopWhaleVoicePlayer();
+        final int songId = singSongIndex % 3;
+        singSongIndex++;
+        setPetPoseDrawable(R.drawable.feiyu_dance);
+        playPetBounceAnim("dance");
+        singerEngine.startSong(songId);
+    }
+
+    // ========= 语音指令智能识别处理（动作 + QQ音乐 + 控屏） =========
+    private boolean handleLocalWhaleCommand(String raw) {
+        if (raw == null) return false;
+        String t = raw.trim().toLowerCase(Locale.ROOT);
+        if (t.isEmpty()) return false;
+
+        if (t.contains("米饭") || t.contains("干饭") || t.contains("饿了") || t.contains("喂食") || t.contains("吃饭")) {
+            triggerFeedRiceAction();
+            return true;
+        }
+        if (t.contains("摸头") || t.contains("摸摸") || t.contains("抱抱") || t.contains("你好") || t.contains("可爱")) {
+            triggerHeadPatAction();
+            return true;
+        }
+        if (t.contains("跳舞") || t.contains("跳个舞") || t.contains("摇尾巴")) {
+            triggerDanceAction();
+            return true;
+        }
+        if (t.equals("唱歌") || t.equals("唱首歌") || t.equals("唱一首") || t.equals("唱一首歌") || t.contains("给我唱歌") || t.contains("哼首歌")) {
+            triggerSingSongAction();
+            return true;
+        }
+        if (t.contains("停唱") || t.contains("别唱了") || t.contains("不要唱")) {
+            if (singerEngine != null) singerEngine.stop();
+            setPetPoseDrawable(R.drawable.feiyu_idle);
+            showPetSubtitle("好哒，大肥鱼乖乖闭麦啦~ 🫧", 2600);
+            return true;
+        }
+        if (t.contains("热梗") || t.contains("笑话") || t.contains("说句话") || t.contains("配音") || t.contains("撒娇")) {
+            triggerRandomMemeVoice();
+            return true;
+        }
+        return false;
+    }
+
+    // ========= QQ 音乐联动与时间轴 LRC 歌词 =========
+    private void controlQqMusicFromUi(String action) {
+        AgentAccessibilityService a11y = AgentAccessibilityService.getInstance();
+        String msg;
+        if (a11y != null) {
+            msg = a11y.dispatchMediaKey(action);
+        } else {
+            QqMusicListenerService.controlActiveMusic(this, action);
+            AudioManager am = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
+            if (am != null) {
+                int code = "next".equals(action) ? KeyEvent.KEYCODE_MEDIA_NEXT
+                        : ("prev".equals(action) ? KeyEvent.KEYCODE_MEDIA_PREVIOUS : KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE);
+                am.dispatchMediaKeyEvent(new KeyEvent(KeyEvent.ACTION_DOWN, code));
+                am.dispatchMediaKeyEvent(new KeyEvent(KeyEvent.ACTION_UP, code));
+            }
+            msg = "已切控 QQ 音乐：" + action;
+        }
+        if ("next".equals(action) || "prev".equals(action)) {
+            qqMusicPosMs = 0L;
+            qqMusicLastSyncMs = System.currentTimeMillis();
+            qqMusicPlaying = true;
+            setPetPoseDrawable(R.drawable.feiyu_dance);
+            playPetBounceAnim("dance");
+        } else if ("toggle".equals(action)) {
+            qqMusicPlaying = !qqMusicPlaying;
+            qqMusicLastSyncMs = System.currentTimeMillis();
+        }
+        showFeedback(msg);
+        refreshMusicUi();
+        mainHandler.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                QqMusicListenerService.pollActiveMusicSession(FloatAgentService.this);
+            }
+        }, 420);
+    }
+
+    private void handleMusicMetadataUpdate(
+            String pkg,
+            String title,
+            String artist,
+            boolean playing,
+            long posMs,
+            long durMs,
+            boolean exactSession
+    ) {
+        String cleanTitle = title != null ? title.trim() : "";
+        String cleanArtist = artist != null ? artist.trim() : "";
+        if (cleanTitle.isEmpty()) return;
+
+        boolean songChanged = !cleanTitle.equalsIgnoreCase(qqMusicTitle)
+                || (!cleanArtist.isEmpty() && !cleanArtist.equalsIgnoreCase(qqMusicArtist));
+
+        qqMusicPkg = pkg != null ? pkg : "";
+        qqMusicTitle = cleanTitle;
+        if (!cleanArtist.isEmpty() || songChanged) {
+            qqMusicArtist = cleanArtist;
+        }
+        qqMusicPlaying = playing;
+        if (exactSession || posMs > 0) {
+            qqMusicPosMs = posMs;
+            qqMusicLastSyncMs = System.currentTimeMillis();
+        } else if (songChanged) {
+            qqMusicPosMs = 0L;
+            qqMusicLastSyncMs = System.currentTimeMillis();
+        }
+        if (durMs > 0) {
+            qqMusicDurationMs = durMs;
+        }
+
+        if (songChanged) {
+            qqMusicLyrics.clear();
+            qqMusicCurrentLyric = "正在查找《" + cleanTitle + "》同步歌词…";
+            fetchLyricsAsync(cleanTitle, cleanArtist);
+        }
+
+        if (playing && "idle".equals(sCurrentStatus) && !isDraggingPet) {
+            wakePetOpacity();
+            setPetPoseDrawable(R.drawable.feiyu_dance);
+        }
+        refreshMusicUi();
+    }
+
+    private void fetchLyricsAsync(final String title, final String artist) {
+        final String key = (title + "::" + artist).toLowerCase(Locale.ROOT);
+        if (key.equals(lastFetchedLyricsKey) && !qqMusicLyrics.isEmpty()) return;
+        lastFetchedLyricsKey = key;
+
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                final List<LyricLine> parsed = new ArrayList<>();
+                HttpURLConnection conn = null;
+                try {
+                    String qUrl = LYRICS_ENDPOINT
+                            + "?title=" + URLEncoder.encode(title, "UTF-8")
+                            + "&artist=" + URLEncoder.encode(artist != null ? artist : "", "UTF-8");
+                    URL url = new URL(qUrl);
+                    conn = (HttpURLConnection) url.openConnection();
+                    conn.setRequestMethod("GET");
+                    conn.setConnectTimeout(6000);
+                    conn.setReadTimeout(6000);
+                    int code = conn.getResponseCode();
+                    if (code >= 200 && code < 300) {
+                        String body = new String(readStreamBytes(conn.getInputStream()), StandardCharsets.UTF_8);
+                        JSONObject j = new JSONObject(body);
+                        String synced = j.optString("syncedLyrics", "");
+                        String plain = j.optString("plainLyrics", "");
+                        if (!synced.trim().isEmpty()) {
+                            parseLrcText(synced, parsed);
+                        } else if (!plain.trim().isEmpty()) {
+                            String[] lines = plain.split("\\r?\\n");
+                            long t = 0L;
+                            for (String ln : lines) {
+                                String s = ln.trim();
+                                if (!s.isEmpty()) {
+                                    parsed.add(new LyricLine(t, s));
+                                    t += 4500L;
+                                }
+                            }
+                        }
+                    }
+                } catch (Exception ignored) {
+                } finally {
+                    if (conn != null) conn.disconnect();
+                }
+
+                mainHandler.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (!key.equals(lastFetchedLyricsKey)) return;
+                        synchronized (qqMusicLyrics) {
+                            qqMusicLyrics.clear();
+                            qqMusicLyrics.addAll(parsed);
+                        }
+                        if (parsed.isEmpty()) {
+                            qqMusicCurrentLyric = "🎵 " + qqMusicTitle + (qqMusicArtist.isEmpty() ? "" : " - " + qqMusicArtist) + "（纯音乐或暂无时间轴歌词）";
+                        } else {
+                            updateCurrentLyricFromClock();
+                        }
+                        refreshMusicUi();
+                    }
+                });
+            }
+        }).start();
+    }
+
+    private void parseLrcText(String lrc, List<LyricLine> out) {
+        Pattern p = Pattern.compile("\\[(\\d{1,2}):(\\d{2})(?:\\.(\\d{1,3}))?\\](.*)");
+        String[] lines = lrc.split("\\r?\\n");
+        for (String line : lines) {
+            Matcher m = p.matcher(line.trim());
+            if (m.find()) {
+                try {
+                    long min = Long.parseLong(m.group(1));
+                    long sec = Long.parseLong(m.group(2));
+                    String msStr = m.group(3);
+                    long ms = 0L;
+                    if (msStr != null && !msStr.isEmpty()) {
+                        if (msStr.length() == 1) ms = Long.parseLong(msStr) * 100L;
+                        else if (msStr.length() == 2) ms = Long.parseLong(msStr) * 10L;
+                        else ms = Long.parseLong(msStr.substring(0, 3));
+                    }
+                    String txt = m.group(4) != null ? m.group(4).trim() : "";
+                    if (!txt.isEmpty()) {
+                        out.add(new LyricLine(min * 60000L + sec * 1000L + ms, txt));
+                    }
+                } catch (Exception ignored) {}
+            }
+        }
+        Collections.sort(out, new Comparator<LyricLine>() {
+            @Override
+            public int compare(LyricLine a, LyricLine b) {
+                return Long.compare(a.timeMs, b.timeMs);
+            }
+        });
+    }
+
+    private void tickMusicAndLyrics() {
+        if (sInstance == null) return;
+        if (QqMusicListenerService.isNotificationAccessEnabled(this)) {
+            QqMusicListenerService.pollActiveMusicSession(this);
+        }
+        if (qqMusicPlaying && !qqMusicTitle.isEmpty()) {
+            updateCurrentLyricFromClock();
+            refreshMusicUi();
+        }
+    }
+
+    private void updateCurrentLyricFromClock() {
+        long now = System.currentTimeMillis();
+        long effectivePos = qqMusicPosMs;
+        if (qqMusicPlaying && qqMusicLastSyncMs > 0) {
+            effectivePos += Math.max(0L, now - qqMusicLastSyncMs);
+        }
+        synchronized (qqMusicLyrics) {
+            if (qqMusicLyrics.isEmpty()) return;
+            String matched = qqMusicLyrics.get(0).text;
+            for (int i = 0; i < qqMusicLyrics.size(); i++) {
+                LyricLine item = qqMusicLyrics.get(i);
+                if (item.timeMs <= effectivePos + 400L) {
+                    matched = item.text;
+                } else {
+                    break;
+                }
+            }
+            qqMusicCurrentLyric = matched;
+        }
+    }
+
+    private void refreshMusicUi() {
+        if (musicTitleView != null) {
+            if (qqMusicTitle.isEmpty()) {
+                musicTitleView.setText("🎵 QQ 音乐 · 未检测到正在播放");
+            } else {
+                String stateTag = qqMusicPlaying ? "▶ " : "⏸ ";
+                String artistPart = qqMusicArtist.isEmpty() ? "" : (" - " + qqMusicArtist);
+                musicTitleView.setText(stateTag + qqMusicTitle + artistPart);
+            }
+        }
+        if (musicLyricView != null) {
+            if (!qqMusicCurrentLyric.isEmpty()) {
+                musicLyricView.setText("♪ " + qqMusicCurrentLyric);
+            } else if (!qqMusicTitle.isEmpty()) {
+                musicLyricView.setText("♪ 正在播放《" + qqMusicTitle + "》~");
+            }
+        }
+        if (musicPlayPauseBtn != null) {
+            musicPlayPauseBtn.setText(qqMusicPlaying ? "⏸暂停" : "▶播放");
+        }
+        if (musicPermHintView != null) {
+            boolean granted = QqMusicListenerService.isNotificationAccessEnabled(this);
+            musicPermHintView.setVisibility(granted ? View.GONE : View.VISIBLE);
+        }
+        refreshCollapsedPill();
+    }
+
+    private void refreshCollapsedPill() {
+        if (statusPillView == null || statusTextView == null) return;
+        if (!"idle".equals(sCurrentStatus) && !"stopped".equals(sCurrentStatus)) {
+            return; // 运行控屏任务时保留原任务状态胶囊
+        }
+        if (isRecordingVoice) {
+            statusPillView.setVisibility(View.VISIBLE);
+            statusTextView.setText("🎙️ 倾听中…说完点右侧钮");
+            return;
+        }
+        if (singerEngine != null && singerEngine.isSinging()) {
+            statusPillView.setVisibility(View.VISIBLE);
+            statusTextView.setText(singerEngine.getCurrentLine());
+            return;
+        }
+        if (qqMusicPlaying && !qqMusicTitle.isEmpty()) {
+            statusPillView.setVisibility(View.VISIBLE);
+            String lyr = !qqMusicCurrentLyric.isEmpty() ? qqMusicCurrentLyric : qqMusicTitle;
+            statusTextView.setText("🎵 " + lyr);
+            return;
+        }
+        statusPillView.setVisibility(View.GONE);
+    }
+
+    // ========= 折叠态一键直达语音 & 多提示录音引擎 =========
+    private void startQuickCollapsedVoice() {
+        voiceQuickDirectMode = true;
+        if (isRecordingVoice) {
+            stopVoiceRecordAndTranscribe();
+            return;
+        }
+        toggleVoiceRecordFor(cmdEditText, null);
     }
 
     private void dispatchTaskOrInterjectFromInput() {
@@ -843,15 +1983,34 @@ public class FloatAgentService extends Service {
                 ? cmdEditText.getText().toString().trim()
                 : "";
         if (TextUtils.isEmpty(cmd)) {
-            Toast.makeText(this, "请输入任务指令或点击语音说话", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "请说句话或输入指令（例：播放晴天 / 喂米饭 / 打开微信）", Toast.LENGTH_SHORT).show();
             return;
         }
         cmdEditText.setText("");
-        collapsePanel();
+        dispatchParsedCommand(cmd, true);
+    }
+
+    private void dispatchParsedCommand(String cmd, boolean collapseIfDispatched) {
+        if (handleLocalWhaleCommand(cmd)) {
+            return;
+        }
+        // 本地离线规则直控（支持 QQ 音乐放歌/切歌/暂停 + 常用手势与应用打开）
+        AgentAccessibilityService a11y = AgentAccessibilityService.getInstance();
+        if (a11y != null && (a11y.canHandleAtomicLocalStep(cmd) || cmd.contains("然后") || cmd.contains("接着"))) {
+            String res = a11y.executeLocalRule(cmd);
+            if (!res.startsWith("UNMATCHED:")) {
+                if (collapseIfDispatched) collapsePanel();
+                showPetSubtitle("✨ " + res, 3200);
+                Toast.makeText(this, res, Toast.LENGTH_SHORT).show();
+                return;
+            }
+        }
+        if (collapseIfDispatched) collapsePanel();
         boolean dispatched = MainActivity.dispatchFloatInterjectToWebView(cmd);
         if (!dispatched) {
             bringMainActivityToFront(cmd, false);
         } else {
+            showPetSubtitle("🐟 鲸鱼娘收到「" + cmd + "」，马上行动~", 3000);
             Toast.makeText(this, "鲸鱼娘已收到，正在规划执行", Toast.LENGTH_SHORT).show();
         }
     }
@@ -1097,6 +2256,7 @@ public class FloatAgentService extends Service {
         typingVoiceBtn.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
+                voiceQuickDirectMode = false;
                 toggleVoiceRecordFor(typingEditText, typingVoiceBtn);
             }
         });
@@ -1153,8 +2313,8 @@ public class FloatAgentService extends Service {
         LinearLayout page = new LinearLayout(this);
         page.setOrientation(LinearLayout.VERTICAL);
         page.addView(buildGridRow(
-                new String[]{"微信", "抖音", "快手", "小红书"},
-                new String[]{"打开微信", "打开抖音", "打开快手", "打开小红书"},
+                new String[]{"QQ音乐", "微信", "抖音", "小红书"},
+                new String[]{"打开QQ音乐", "打开微信", "打开抖音", "打开小红书"},
                 true
         ));
         page.addView(buildGridRow(
@@ -1195,10 +2355,10 @@ public class FloatAgentService extends Service {
         TextView btn = new TextView(this);
         btn.setText(text);
         btn.setTextColor(Color.parseColor("#E2E8F0"));
-        btn.setTextSize(11);
+        btn.setTextSize(10.5f);
         btn.setGravity(Gravity.CENTER);
         btn.setSingleLine(true);
-        btn.setPadding(dp(4), dp(7), dp(4), dp(7));
+        btn.setPadding(dp(3), dp(6), dp(3), dp(6));
         setViewBg(btn, createRoundRect("#1E293B", 8, "#334155", 1));
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
         lp.rightMargin = dp(4);
@@ -1357,7 +2517,16 @@ public class FloatAgentService extends Service {
         } catch (Exception ignored) {}
     }
 
-    // ========= 原生 MediaRecorder + 云端 ASR 直连语音输入（全机型可用） =========
+    private void vibrateGentle(int ms) {
+        try {
+            Vibrator v = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
+            if (v != null && v.hasVibrator()) {
+                v.vibrate(ms);
+            }
+        } catch (Exception ignored) {}
+    }
+
+    // ========= 原生 MediaRecorder + 实时音量向导提示 + 云端 ASR 直连 =========
     private void toggleVoiceRecordFor(final EditText targetEditText, final TextView voiceBtn) {
         if (targetEditText == null || isTranscribingVoice) return;
 
@@ -1368,13 +2537,15 @@ public class FloatAgentService extends Service {
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-                Toast.makeText(this, "请授予麦克风权限后再点语音输入", Toast.LENGTH_LONG).show();
+                Toast.makeText(this, "请授予麦克风权限后再用鲸鱼娘语音输入", Toast.LENGTH_LONG).show();
                 bringMainActivityToFront("", true);
                 return;
             }
         }
 
         try {
+            stopWhaleVoicePlayer();
+            if (singerEngine != null && singerEngine.isSinging()) singerEngine.stop();
             releaseMediaRecorder();
             voiceCacheFile = new File(getCacheDir(), "float_voice_cmd.m4a");
             if (voiceCacheFile.exists()) {
@@ -1394,26 +2565,88 @@ public class FloatAgentService extends Service {
             activeSpeechTarget = targetEditText;
             activeSpeechVoiceBtn = voiceBtn;
             isRecordingVoice = true;
+            recordStartMs = System.currentTimeMillis();
+            lowVolStreak = 0;
+            vibrateGentle(45);
+            wakePetOpacity();
+            setPetPoseDrawable(R.drawable.feiyu_focus);
             updateVoiceBtnUi("recording");
-            showFeedback("正在倾听中…说完再点一次「完成」");
-            Toast.makeText(this, "正在录音，说完请再点一次「完成」", Toast.LENGTH_SHORT).show();
+            if (voiceGuideBanner != null) {
+                voiceGuideBanner.setVisibility(View.VISIBLE);
+            }
+            refreshCollapsedPill();
+            showFeedback("🎙️ 正在倾听…可说“放晴天 / 下一首 / 喂米饭”，说完再点一次");
+            Toast.makeText(this, "🎙️ 鲸鱼娘正在听你说…说完请再点一次结束", Toast.LENGTH_SHORT).show();
 
+            mainHandler.removeCallbacks(voiceMeterTickRunnable);
+            mainHandler.postDelayed(voiceMeterTickRunnable, 150);
             mainHandler.removeCallbacks(maxRecordTimeoutRunnable);
             mainHandler.postDelayed(maxRecordTimeoutRunnable, 30000);
         } catch (Exception e) {
             isRecordingVoice = false;
             releaseMediaRecorder();
             updateVoiceBtnUi("idle");
+            if (voiceGuideBanner != null) voiceGuideBanner.setVisibility(View.GONE);
+            refreshCollapsedPill();
             showFeedback("录音启动失败：" + e.getMessage());
             Toast.makeText(this, "启动麦克风录音失败：" + e.getMessage(), Toast.LENGTH_SHORT).show();
         }
     }
 
+    private void updateVoiceMeterUi() {
+        if (!isRecordingVoice) return;
+        int elapsedSec = (int) Math.max(0, (System.currentTimeMillis() - recordStartMs) / 1000L);
+        int amp = 0;
+        try {
+            if (mediaRecorder != null) {
+                amp = mediaRecorder.getMaxAmplitude();
+            }
+        } catch (Exception ignored) {}
+
+        if (amp < 450) lowVolStreak++;
+        else lowVolStreak = 0;
+
+        int bars = Math.min(8, Math.max(1, amp / 1800 + 1));
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < 8; i++) {
+            sb.append(i < bars ? "█" : "░");
+        }
+
+        String volTip = (elapsedSec >= 2 && lowVolStreak >= 10)
+                ? "💡 声音偏小，请靠近手机说话"
+                : (bars >= 4 ? "✅ 收音清晰" : "👂 正常倾听中");
+
+        if (voiceGuideTitle != null) {
+            voiceGuideTitle.setText(String.format(Locale.ROOT, "🔴 倾听中 (%02ds) · 说完点「完成」", elapsedSec));
+        }
+        if (voiceGuideMeter != null) {
+            voiceGuideMeter.setText("音量感知: " + sb.toString() + " " + volTip);
+        }
+        if (voiceGuideSamples != null) {
+            sampleTipTick++;
+            if (sampleTipTick % 14 == 0) {
+                voiceGuideSamples.setText(VOICE_SAMPLE_TIPS[(sampleTipTick / 14) % VOICE_SAMPLE_TIPS.length]);
+            }
+        }
+        if (!isExpanded && statusTextView != null) {
+            String quickHint = (sampleTipTick / 14) % 2 == 0
+                    ? "点右侧完成"
+                    : "可说:放晴天/下一首/喂米饭";
+            statusTextView.setText(String.format(Locale.ROOT, "🎙️ %02ds %s %s", elapsedSec, sb.toString(), quickHint));
+        }
+    }
+
     private void stopVoiceRecordAndTranscribe() {
         mainHandler.removeCallbacks(maxRecordTimeoutRunnable);
+        mainHandler.removeCallbacks(voiceMeterTickRunnable);
         if (!isRecordingVoice) return;
         isRecordingVoice = false;
+        vibrateGentle(30);
+        if (voiceGuideBanner != null) {
+            voiceGuideBanner.setVisibility(View.GONE);
+        }
 
+        long durMs = Math.max(0L, System.currentTimeMillis() - recordStartMs);
         try {
             if (mediaRecorder != null) {
                 mediaRecorder.stop();
@@ -1421,17 +2654,23 @@ public class FloatAgentService extends Service {
         } catch (Exception ignored) {}
         releaseMediaRecorder();
 
-        if (voiceCacheFile == null || !voiceCacheFile.exists() || voiceCacheFile.length() < 600) {
+        if (voiceCacheFile == null || !voiceCacheFile.exists() || voiceCacheFile.length() < 600 || durMs < 450) {
             updateVoiceBtnUi("idle");
-            showFeedback("未检测到有效语音，请靠近麦克风再试");
-            Toast.makeText(this, "说话时间太短，请再试一次", Toast.LENGTH_SHORT).show();
+            setPetPoseDrawable(R.drawable.feiyu_idle);
+            refreshCollapsedPill();
+            showFeedback("💡 说话时间太短 (<0.5秒)，请按住或点开再多说几个字~");
+            Toast.makeText(this, "说话时间太短，请靠近麦克风再试一次~", Toast.LENGTH_SHORT).show();
             return;
         }
 
         final File audioFile = voiceCacheFile;
         isTranscribingVoice = true;
         updateVoiceBtnUi("transcribing");
-        showFeedback("鲸鱼娘正在识别语音内容…");
+        if (!isExpanded && statusPillView != null && statusTextView != null) {
+            statusPillView.setVisibility(View.VISIBLE);
+            statusTextView.setText("⏳ 识别语音中…");
+        }
+        showFeedback(String.format(Locale.ROOT, "⏳ 录音已收到 (%.1fs)，正在云端转写文字…", durMs / 1000.0));
 
         new Thread(new Runnable() {
             @Override
@@ -1468,7 +2707,7 @@ public class FloatAgentService extends Service {
                         if (respObj.optBoolean("ok", false)) {
                             recognizedText = respObj.optString("text", "").trim();
                         } else {
-                            errTip = "未识别到清晰人声";
+                            errTip = "未识别到清晰人声，请说慢一点再试~";
                         }
                     } else {
                         errTip = "语音服务响应异常 (" + code + ")";
@@ -1488,16 +2727,24 @@ public class FloatAgentService extends Service {
                     public void run() {
                         isTranscribingVoice = false;
                         updateVoiceBtnUi("idle");
-                        if (finalText != null && !finalText.isEmpty() && activeSpeechTarget != null) {
-                            String old = activeSpeechTarget.getText() != null ? activeSpeechTarget.getText().toString() : "";
-                            String sep = old.isEmpty() || old.endsWith(" ") ? "" : " ";
-                            activeSpeechTarget.setText(old + sep + finalText);
-                            activeSpeechTarget.setSelection(activeSpeechTarget.getText().length());
-                            showFeedback("语音已输入：" + finalText);
-                            Toast.makeText(FloatAgentService.this, "已识别：" + finalText, Toast.LENGTH_SHORT).show();
+                        refreshCollapsedPill();
+                        if (finalText != null && !finalText.isEmpty()) {
+                            if (voiceQuickDirectMode && activeSpeechTarget == cmdEditText) {
+                                showPetSubtitle("🗣️ 听到你说：「" + finalText + "」", 3000);
+                                Toast.makeText(FloatAgentService.this, "✅ 听懂啦：「" + finalText + "」", Toast.LENGTH_SHORT).show();
+                                dispatchParsedCommand(finalText, true);
+                            } else if (activeSpeechTarget != null) {
+                                String old = activeSpeechTarget.getText() != null ? activeSpeechTarget.getText().toString() : "";
+                                String sep = old.isEmpty() || old.endsWith(" ") ? "" : " ";
+                                activeSpeechTarget.setText(old + sep + finalText);
+                                activeSpeechTarget.setSelection(activeSpeechTarget.getText().length());
+                                showFeedback("✅ 已填入口令：「" + finalText + "」，点「发送」立即执行");
+                                Toast.makeText(FloatAgentService.this, "✅ 已识别：「" + finalText + "」", Toast.LENGTH_SHORT).show();
+                            }
                         } else {
-                            String msg = finalErr != null ? finalErr : "未识别到清晰语音，请再试一次";
-                            showFeedback(msg);
+                            setPetPoseDrawable(R.drawable.feiyu_idle);
+                            String msg = finalErr != null ? finalErr : "未识别到清晰语音，请靠近麦克风重试";
+                            showFeedback("💡 " + msg);
                             Toast.makeText(FloatAgentService.this, msg, Toast.LENGTH_SHORT).show();
                         }
                     }
@@ -1531,15 +2778,27 @@ public class FloatAgentService extends Service {
     }
 
     private void updateVoiceBtnUi(String state) {
+        if (quickMicBadgeView != null) {
+            if ("recording".equals(state)) {
+                quickMicBadgeView.setText("⏹");
+                setViewBg(quickMicBadgeView, createRoundRect("#EF4444", 14, "#FCA5A5", 1));
+            } else if ("transcribing".equals(state)) {
+                quickMicBadgeView.setText("⏳");
+                setViewBg(quickMicBadgeView, createRoundRect("#6366F1", 14, "#A5B4FC", 1));
+            } else {
+                quickMicBadgeView.setText("🎙");
+                setViewBg(quickMicBadgeView, createRoundRect("#E60F172A", 14, "#38BDF8", 1));
+            }
+        }
         if (activeSpeechVoiceBtn == null) return;
         if ("recording".equals(state)) {
-            activeSpeechVoiceBtn.setText("完成");
+            activeSpeechVoiceBtn.setText("⏹ 完成");
             setViewBg(activeSpeechVoiceBtn, createRoundRect("#EF4444", 9, null, 0));
         } else if ("transcribing".equals(state)) {
-            activeSpeechVoiceBtn.setText("识别中");
+            activeSpeechVoiceBtn.setText("⏳ 识别中");
             setViewBg(activeSpeechVoiceBtn, createRoundRect("#6366F1", 9, null, 0));
         } else {
-            activeSpeechVoiceBtn.setText("语音");
+            activeSpeechVoiceBtn.setText("🎙 语音");
             setViewBg(activeSpeechVoiceBtn, createRoundRect("#0EA5E9", 9, null, 0));
         }
     }
@@ -1552,6 +2811,7 @@ public class FloatAgentService extends Service {
             return;
         }
         expandPanel();
+        triggerHeadPatAction();
     }
 
     private void expandPanel() {
@@ -1564,11 +2824,12 @@ public class FloatAgentService extends Service {
         if (petBubbleContainer != null) petBubbleContainer.setVisibility(View.GONE);
         expandPanel.setVisibility(View.VISIBLE);
         refreshDynamicWidgets();
+        refreshMusicUi();
 
         DisplayMetrics dm = getResources().getDisplayMetrics();
-        int panelWidth = Math.min((int) (dm.widthPixels * 0.92f), dp(356));
-        layoutParams.x = Math.max(dp(8), (dm.widthPixels - panelWidth) / 2);
-        layoutParams.y = Math.max(dp(48), Math.min(savedPillY, dm.heightPixels / 3));
+        int panelWidth = Math.min((int) (dm.widthPixels * 0.93f), dp(364));
+        layoutParams.x = Math.max(dp(6), (dm.widthPixels - panelWidth) / 2);
+        layoutParams.y = Math.max(dp(36), Math.min(savedPillY, dm.heightPixels / 4));
         layoutParams.flags = WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL;
         try {
             windowManager.updateViewLayout(floatRootView, layoutParams);
@@ -1581,6 +2842,7 @@ public class FloatAgentService extends Service {
 
         hideKeyboardFor(cmdEditText);
         hideKeyboardFor(typingEditText);
+        hideKeyboardFor(musicSearchEditText);
 
         expandPanel.setVisibility(View.GONE);
         if (petBubbleContainer != null) petBubbleContainer.setVisibility(View.VISIBLE);
@@ -1591,6 +2853,7 @@ public class FloatAgentService extends Service {
         try {
             windowManager.updateViewLayout(floatRootView, layoutParams);
         } catch (Exception ignored) {}
+        refreshCollapsedPill();
         scheduleIdleSleep();
     }
 
@@ -1660,7 +2923,7 @@ public class FloatAgentService extends Service {
                 dotShape.setColor(Color.parseColor("#F59E0B"));
                 statusTextView.setText(displayTxt);
                 statusTextView.setTextColor(Color.parseColor("#FDE68A"));
-                if (petAvatarView != null && !isDraggingPet) petAvatarView.setImageResource(R.drawable.feiyu_happy);
+                if (!isDraggingPet) setPetPoseDrawable(R.drawable.feiyu_happy);
                 showStop = true;
                 break;
             case "thinking":
@@ -1668,7 +2931,7 @@ public class FloatAgentService extends Service {
                 dotShape.setColor(Color.parseColor("#60A5FA"));
                 statusTextView.setText(displayTxt);
                 statusTextView.setTextColor(Color.parseColor("#F8FAFC"));
-                if (petAvatarView != null && !isDraggingPet) petAvatarView.setImageResource(R.drawable.feiyu_focus);
+                if (!isDraggingPet) setPetPoseDrawable(R.drawable.feiyu_focus);
                 showStop = true;
                 break;
             case "executing":
@@ -1677,7 +2940,7 @@ public class FloatAgentService extends Service {
                 dotShape.setColor(Color.parseColor("#38BDF8"));
                 statusTextView.setText(displayTxt);
                 statusTextView.setTextColor(Color.parseColor("#F8FAFC"));
-                if (petAvatarView != null && !isDraggingPet) petAvatarView.setImageResource(R.drawable.feiyu_busy);
+                if (!isDraggingPet) setPetPoseDrawable(R.drawable.feiyu_busy);
                 showStop = true;
                 break;
             case "stopped":
@@ -1685,22 +2948,23 @@ public class FloatAgentService extends Service {
                 dotShape.setColor(Color.parseColor("#EF4444"));
                 statusTextView.setText(displayTxt);
                 statusTextView.setTextColor(Color.parseColor("#FCA5A5"));
-                if (petAvatarView != null && !isDraggingPet) petAvatarView.setImageResource(R.drawable.feiyu_derp);
+                if (!isDraggingPet) setPetPoseDrawable(R.drawable.feiyu_derp);
                 break;
             case "idle":
             default:
-                pillBg.setStroke(dp(1), Color.parseColor("#334155"));
+                pillBg.setStroke(dp(1), Color.parseColor("#0284C7"));
                 dotShape.setColor(Color.parseColor("#10B981"));
                 statusTextView.setText("dsh-Go");
-                statusTextView.setTextColor(Color.parseColor("#F8FAFC"));
-                // 空闲时仅保留萌萌的鲸鱼娘本体（轻盈不挡屏）
-                showPill = false;
-                if (petAvatarView != null && !isDraggingPet) {
+                statusTextView.setTextColor(Color.parseColor("#E0F2FE"));
+                showPill = qqMusicPlaying || isRecordingVoice || (singerEngine != null && singerEngine.isSinging());
+                if (!isDraggingPet) {
                     if (celebrateHappy) {
-                        petAvatarView.setImageResource(R.drawable.feiyu_happy);
+                        setPetPoseDrawable(R.drawable.feiyu_happy);
                         mainHandler.postDelayed(happyResetRunnable, 1800);
+                    } else if (qqMusicPlaying || (singerEngine != null && singerEngine.isSinging())) {
+                        setPetPoseDrawable(R.drawable.feiyu_dance);
                     } else {
-                        petAvatarView.setImageResource(R.drawable.feiyu_idle);
+                        setPetPoseDrawable(R.drawable.feiyu_idle);
                     }
                 }
                 break;
@@ -1714,6 +2978,9 @@ public class FloatAgentService extends Service {
             setViewBg(statusDotView, dotShape);
         }
         setViewBg(statusPillView, pillBg);
+        if ("idle".equals(state)) {
+            refreshCollapsedPill();
+        }
         scheduleIdleSleep();
     }
 
@@ -1723,13 +2990,7 @@ public class FloatAgentService extends Service {
 
         applyStatusStyle("confirming", "待确认: " + (summary != null ? summary : "敏感操作"), false);
         setEdgeGlowState("confirming");
-
-        try {
-            Vibrator v = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
-            if (v != null && v.hasVibrator()) {
-                v.vibrate(180);
-            }
-        } catch (Exception ignored) {}
+        vibrateGentle(180);
 
         DisplayMetrics dm = getResources().getDisplayMetrics();
         int bannerWidth = Math.min((int) (dm.widthPixels * 0.94f), dp(364));
@@ -1865,18 +3126,18 @@ public class FloatAgentService extends Service {
         btnRow.addView(cancelBtn);
         confirmBannerView.addView(btnRow);
 
-        confirmLayoutParams = new WindowManager.LayoutParams(
+        WindowManager.LayoutParams lp = new WindowManager.LayoutParams(
                 bannerWidth,
                 WindowManager.LayoutParams.WRAP_CONTENT,
                 overlayWindowType(),
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
                 PixelFormat.TRANSLUCENT
         );
-        confirmLayoutParams.gravity = Gravity.TOP | Gravity.CENTER_HORIZONTAL;
-        confirmLayoutParams.y = dp(64);
+        lp.gravity = Gravity.TOP | Gravity.CENTER_HORIZONTAL;
+        lp.y = dp(64);
 
         try {
-            windowManager.addView(confirmBannerView, confirmLayoutParams);
+            windowManager.addView(confirmBannerView, lp);
         } catch (Exception ignored) {}
     }
 
@@ -1947,10 +3208,19 @@ public class FloatAgentService extends Service {
     @Override
     public void onDestroy() {
         mainHandler.removeCallbacksAndMessages(null);
+        stopWhaleVoicePlayer();
+        if (singerEngine != null) {
+            singerEngine.stop();
+            singerEngine = null;
+        }
         releaseMediaRecorder();
         if (petBreathAnim != null) {
             petBreathAnim.cancel();
             petBreathAnim = null;
+        }
+        if (petActionAnim != null) {
+            petActionAnim.cancel();
+            petActionAnim = null;
         }
         hideConfirmBanner();
         updateForegroundNotification(false, "");
@@ -1970,6 +3240,146 @@ public class FloatAgentService extends Service {
         }
         if (sInstance == this) {
             sInstance = null;
+        }
+    }
+
+    // ========= 鲸鱼娘水晶八音盒歌声引擎（内置 3 首米饭主题原创曲） =========
+    private final class WhaleSingerEngine {
+        private volatile boolean singing = false;
+        private volatile String currentLine = "";
+        private Thread playThread = null;
+
+        boolean isSinging() {
+            return singing;
+        }
+
+        String getCurrentLine() {
+            return currentLine;
+        }
+
+        void startSong(final int songId) {
+            stop();
+            singing = true;
+            playThread = new Thread(new Runnable() {
+                @Override
+                public void run() {
+                    runMelody(songId);
+                }
+            });
+            playThread.start();
+        }
+
+        void stop() {
+            singing = false;
+            currentLine = "";
+            if (playThread != null) {
+                playThread.interrupt();
+                playThread = null;
+            }
+        }
+
+        private void runMelody(int songId) {
+            // 频率表 C5 ~ A5
+            final double C5 = 523.25, D5 = 587.33, E5 = 659.25, F5 = 698.46, G5 = 783.99, A5 = 880.00;
+            final double[] freqs;
+            final int[] durs;
+            final String[] lyrics;
+
+            if (songId == 0) {
+                freqs = new double[]{C5, E5, G5, G5, A5, G5, E5, C5, D5, E5, G5, E5, D5, C5, E5, G5, A5, G5, E5, D5, C5};
+                durs = new int[]{240, 240, 280, 280, 260, 260, 420, 240, 240, 260, 280, 240, 380, 240, 240, 280, 280, 260, 260, 280, 520};
+                lyrics = new String[]{
+                        "🍚 《大白米饭之歌》：冒尖一碗大白米饭香喷喷~",
+                        "🐟 蓝色尾巴左右晃~ 本鱼才不是大肥鱼！",
+                        "🫧 咕噜咕噜喝口汤，算力立刻满格啦~",
+                        "💙 主人快再添一勺饭，陪我一起去摸鱼~"
+                };
+            } else if (songId == 1) {
+                freqs = new double[]{G5, E5, G5, E5, C5, D5, E5, G5, A5, G5, E5, D5, E5, G5, E5, C5};
+                durs = new int[]{260, 260, 260, 260, 320, 260, 260, 420, 260, 260, 260, 260, 280, 280, 280, 520};
+                lyrics = new String[]{
+                        "🌊 《深海冒泡舞曲》：深海里面吹泡泡~ 飘呀飘~",
+                        "🎵 戴上耳机摇一摇~ 烦恼全都忘掉啦~",
+                        "🍚 梦里全是热腾腾，白胖胖的大米饭！"
+                };
+            } else {
+                freqs = new double[]{C5, C5, G5, G5, A5, A5, G5, F5, F5, E5, E5, D5, D5, C5};
+                durs = new int[]{280, 280, 280, 280, 280, 280, 480, 280, 280, 280, 280, 280, 280, 560};
+                lyrics = new String[]{
+                        "✨ 《星海小星星》：一闪一闪亮晶晶~",
+                        "🐟 鲸鱼娘在屏幕边，安安静静陪着你~",
+                        "🍚 忙完记得早点睡，明天还要吃米饭~"
+                };
+            }
+
+            final int sr = 22050;
+            AudioTrack track = null;
+            try {
+                int minBuf = AudioTrack.getMinBufferSize(sr, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT);
+                track = new AudioTrack(
+                        new AudioAttributes.Builder()
+                                .setUsage(AudioAttributes.USAGE_MEDIA)
+                                .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                                .build(),
+                        new AudioFormat.Builder()
+                                .setSampleRate(sr)
+                                .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                                .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                                .build(),
+                        Math.max(minBuf, 4096),
+                        AudioTrack.MODE_STREAM,
+                        AudioManager.AUDIO_SESSION_ID_GENERATE
+                );
+                track.play();
+
+                for (int i = 0; i < freqs.length && singing; i++) {
+                    int lyrIdx = Math.min(lyrics.length - 1, (i * lyrics.length) / freqs.length);
+                    final String lineNow = lyrics[lyrIdx];
+                    if (!lineNow.equals(currentLine)) {
+                        currentLine = lineNow;
+                        mainHandler.post(new Runnable() {
+                            @Override
+                            public void run() {
+                                showPetSubtitle(lineNow, 6000);
+                            }
+                        });
+                    }
+
+                    int samples = (int) ((durs[i] / 1000.0) * sr);
+                    short[] pcm = new short[samples];
+                    double freq = freqs[i];
+                    for (int s = 0; s < samples; s++) {
+                        double t = s / (double) sr;
+                        // 柔和八音盒包络：快速起音 + 指数平滑衰减
+                        double attack = Math.min(1.0, s / (sr * 0.015));
+                        double decay = Math.exp(-4.2 * (s / (double) samples));
+                        double env = attack * decay;
+                        double wave = Math.sin(2.0 * Math.PI * freq * t)
+                                + 0.28 * Math.sin(2.0 * Math.PI * (freq * 2.0) * t)
+                                + 0.08 * Math.sin(2.0 * Math.PI * (freq * 3.0) * t);
+                        pcm[s] = (short) (wave * env * 6500);
+                    }
+                    track.write(pcm, 0, pcm.length);
+                }
+            } catch (Throwable ignored) {
+            } finally {
+                if (track != null) {
+                    try { track.stop(); } catch (Exception ignored) {}
+                    try { track.release(); } catch (Exception ignored) {}
+                }
+                if (singing) {
+                    singing = false;
+                    currentLine = "";
+                    mainHandler.post(new Runnable() {
+                        @Override
+                        public void run() {
+                            setPetPoseDrawable(R.drawable.feiyu_happy);
+                            showPetSubtitle("🎵 哼唱完啦~ 好听的话就给鲸鱼娘盛碗白米饭吧！🍚", 3600);
+                            mainHandler.postDelayed(happyResetRunnable, 1800);
+                        }
+                    });
+                }
+            }
         }
     }
 

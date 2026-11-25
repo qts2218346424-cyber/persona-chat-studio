@@ -1,0 +1,17 @@
+{
+  "generatedAt": "2026-11-25T14:24:23.505Z",
+  "bundleHash": "97eeb6ccd7",
+  "css": {
+    "file": "dist/app.bundle.css",
+    "hash": "decd6520e6",
+    "rawBytes": 566513,
+    "minifiedBytes": 435985
+  },
+  "js": {
+    "file": "dist/app.bundle.js",
+    "hash": "061899f90e",
+    "rawBytes": 1119602,
+    "minifiedBytes": 938462,
+    "fellBack": false
+  }
+}

@@ -547,3 +547,161 @@ html body #app-shell[data-ui-mode="roleplay"] #messages-viewport #messages-conta
   .adm-probes-grid,.adm-checks-grid,.adm-toggle-grid{grid-template-columns:1fr;}
   .adm-pill{min-height:36px;padding:6px 12px;}
 }
+
+/* 右侧边栏 #right-panel 视觉统一、防文字贴边与防溢出深度修复 */
+#right-panel .inspector-body{padding:14px!important;gap:14px!important;}
+#right-panel .memory-block,
+#right-panel .session-prompt-card,
+#right-panel .nurturing-card,
+#right-panel .telemetry-card,
+#right-panel .session-iso-banner,
+#right-panel .upload-mini-dropzone,
+#right-panel #inline-persona-form{padding:14px!important;border-radius:14px!important;box-sizing:border-box!important;max-width:100%!important;}
+#right-panel .block-title-row{display:flex!important;align-items:center!important;justify-content:space-between!important;gap:8px!important;flex-wrap:wrap!important;margin:0 0 6px 0!important;}
+#right-panel .ds-cache-pill,
+#right-panel .muted-count{flex-shrink:0!important;white-space:nowrap!important;}
+#right-panel .ds-suite-desc,
+#right-panel .drop-texts span,
+#right-panel .drop-texts strong{line-height:1.55!important;word-break:break-word!important;overflow-wrap:anywhere!important;}
+#right-panel .lore-add-box{display:flex!important;flex-direction:column!important;gap:8px!important;}
+#right-panel .lore-add-box .inline-row{display:flex!important;flex-direction:column!important;gap:8px!important;}
+#right-panel .lore-add-box .field-group,
+#right-panel #inline-persona-form .field-group{min-width:0!important;}
+#right-panel .add-memory-row{display:flex!important;align-items:center!important;gap:8px!important;flex-wrap:nowrap!important;}
+#right-panel .add-memory-row input{flex:1 1 auto!important;min-width:0!important;}
+#right-panel .add-memory-row button,
+#right-panel #trigger-inline-doc-btn{flex-shrink:0!important;white-space:nowrap!important;}
+#right-panel .lore-cards-list,
+#right-panel .memory-cards-list{display:flex!important;flex-direction:column!important;gap:10px!important;margin-top:8px!important;}
+#right-panel .lore-card,
+#right-panel .memory-card{padding:12px 13px!important;border-radius:12px!important;gap:6px!important;line-height:1.6!important;word-break:break-word!important;overflow-wrap:anywhere!important;}
+#right-panel .lore-top{display:flex!important;align-items:flex-start!important;justify-content:space-between!important;gap:8px!important;flex-wrap:wrap!important;}
+#right-panel .lore-keys{font-size:12px!important;line-height:1.5!important;word-break:break-word!important;overflow-wrap:anywhere!important;}
+#right-panel #inline-persona-form .inline-row{display:flex!important;align-items:flex-end!important;gap:10px!important;}
+#right-panel #inline-persona-form .avatar-field{width:68px!important;flex:0 0 68px!important;}
+#right-panel #inline-persona-form .avatar-field input{text-align:center!important;font-weight:700!important;}
+
+/* 默认暗夜剧场或深色皮肤下，强制右侧栏所有内部卡片、输入控件与文字统一为和谐深色玻璃，杜绝黑底白框与黑底黑字 */
+.app-shell[data-ui-mode="roleplay"] #right-panel,
+html[data-skin="obsidian-gold"] #right-panel,
+html[data-skin="crimson-scroll"] #right-panel,
+html[data-skin="cyber-neon"] #right-panel{color-scheme:dark;background:rgba(18,20,30,.92)!important;color:#f1f5f9!important;border-left:1px solid rgba(255,255,255,.1)!important;}
+
+.app-shell[data-ui-mode="roleplay"] #right-panel .memory-block,
+.app-shell[data-ui-mode="roleplay"] #right-panel .session-prompt-card,
+.app-shell[data-ui-mode="roleplay"] #right-panel .nurturing-card,
+.app-shell[data-ui-mode="roleplay"] #right-panel .telemetry-card,
+.app-shell[data-ui-mode="roleplay"] #right-panel .session-iso-banner,
+.app-shell[data-ui-mode="roleplay"] #right-panel .upload-mini-dropzone,
+.app-shell[data-ui-mode="roleplay"] #right-panel #inline-persona-form,
+.app-shell[data-ui-mode="roleplay"] #right-panel .lore-card,
+.app-shell[data-ui-mode="roleplay"] #right-panel .memory-card,
+html[data-skin="obsidian-gold"] #right-panel .memory-block,
+html[data-skin="obsidian-gold"] #right-panel .lore-card,
+html[data-skin="crimson-scroll"] #right-panel .memory-block,
+html[data-skin="crimson-scroll"] #right-panel .lore-card,
+html[data-skin="cyber-neon"] #right-panel .memory-block,
+html[data-skin="cyber-neon"] #right-panel .lore-card{background:rgba(255,255,255,.06)!important;border:1px solid rgba(255,255,255,.11)!important;color:#e2e8f0!important;box-shadow:none!important;}
+
+.app-shell[data-ui-mode="roleplay"] #right-panel .lore-card.triggered{background:rgba(139,92,246,.14)!important;border-color:rgba(167,139,250,.38)!important;}
+
+.app-shell[data-ui-mode="roleplay"] #right-panel label,
+.app-shell[data-ui-mode="roleplay"] #right-panel strong,
+.app-shell[data-ui-mode="roleplay"] #right-panel .block-title-row,
+.app-shell[data-ui-mode="roleplay"] #right-panel .compact-block-label,
+.app-shell[data-ui-mode="roleplay"] #right-panel .field-group label,
+.app-shell[data-ui-mode="roleplay"] #right-panel .telemetry-title{color:#f1f5f9!important;}
+
+.app-shell[data-ui-mode="roleplay"] #right-panel .ds-suite-desc,
+.app-shell[data-ui-mode="roleplay"] #right-panel .drop-texts span,
+.app-shell[data-ui-mode="roleplay"] #right-panel .muted-count,
+.app-shell[data-ui-mode="roleplay"] #right-panel .lore-keys,
+.app-shell[data-ui-mode="roleplay"] #right-panel .session-scope-check,
+.app-shell[data-ui-mode="roleplay"] #right-panel .telemetry-fold-summary{color:#cbd5e1!important;}
+
+.app-shell[data-ui-mode="roleplay"] #right-panel .lore-title{color:#c4b5fd!important;}
+.app-shell[data-ui-mode="roleplay"] #right-panel .lore-body,
+.app-shell[data-ui-mode="roleplay"] #right-panel .memory-text{color:#e2e8f0!important;}
+
+.app-shell[data-ui-mode="roleplay"] #right-panel input:not([type="checkbox"]),
+.app-shell[data-ui-mode="roleplay"] #right-panel textarea,
+.app-shell[data-ui-mode="roleplay"] #right-panel select{background:rgba(12,14,22,.72)!important;color:#f8fafc!important;border:1px solid rgba(255,255,255,.16)!important;}
+.app-shell[data-ui-mode="roleplay"] #right-panel input::placeholder,
+.app-shell[data-ui-mode="roleplay"] #right-panel textarea::placeholder{color:#94a3b8!important;}
+
+.app-shell[data-ui-mode="roleplay"] #right-panel .mini-btn,
+.app-shell[data-ui-mode="roleplay"] #right-panel .secondary-btn{background:rgba(255,255,255,.09)!important;color:#e2e8f0!important;border:1px solid rgba(255,255,255,.16)!important;}
+
+/* 浅色皮肤或显式切为浅色模式时，右侧栏整体同步为柔和浅色毛玻璃，不再强行套深黑壳 */
+html[data-skin="mist-silk"] #right-panel,
+html[data-skin="sakura-dawn"] #right-panel,
+html[data-skin="eink-paper"] #right-panel,
+html[style*="color-scheme: light"]:not([style*="light dark"]) #right-panel{color-scheme:light;background:var(--bg-inspector,rgba(252,250,255,.94))!important;color:var(--text-primary,#1e1b24)!important;border-left:1px solid var(--border-subtle,rgba(15,23,42,.1))!important;}
+
+html[data-skin="mist-silk"] #right-panel .memory-block,
+html[data-skin="mist-silk"] #right-panel .session-prompt-card,
+html[data-skin="mist-silk"] #right-panel .nurturing-card,
+html[data-skin="mist-silk"] #right-panel .telemetry-card,
+html[data-skin="mist-silk"] #right-panel .session-iso-banner,
+html[data-skin="mist-silk"] #right-panel .upload-mini-dropzone,
+html[data-skin="mist-silk"] #right-panel #inline-persona-form,
+html[data-skin="mist-silk"] #right-panel .lore-card,
+html[data-skin="sakura-dawn"] #right-panel .memory-block,
+html[data-skin="sakura-dawn"] #right-panel .session-prompt-card,
+html[data-skin="sakura-dawn"] #right-panel .nurturing-card,
+html[data-skin="sakura-dawn"] #right-panel .telemetry-card,
+html[data-skin="sakura-dawn"] #right-panel .session-iso-banner,
+html[data-skin="sakura-dawn"] #right-panel .upload-mini-dropzone,
+html[data-skin="sakura-dawn"] #right-panel #inline-persona-form,
+html[data-skin="sakura-dawn"] #right-panel .lore-card,
+html[data-skin="eink-paper"] #right-panel .memory-block,
+html[data-skin="eink-paper"] #right-panel .session-prompt-card,
+html[data-skin="eink-paper"] #right-panel .nurturing-card,
+html[data-skin="eink-paper"] #right-panel .telemetry-card,
+html[data-skin="eink-paper"] #right-panel .session-iso-banner,
+html[data-skin="eink-paper"] #right-panel .upload-mini-dropzone,
+html[data-skin="eink-paper"] #right-panel #inline-persona-form,
+html[data-skin="eink-paper"] #right-panel .lore-card,
+html[style*="color-scheme: light"]:not([style*="light dark"]) #right-panel .memory-block,
+html[style*="color-scheme: light"]:not([style*="light dark"]) #right-panel .session-prompt-card,
+html[style*="color-scheme: light"]:not([style*="light dark"]) #right-panel .nurturing-card,
+html[style*="color-scheme: light"]:not([style*="light dark"]) #right-panel .telemetry-card,
+html[style*="color-scheme: light"]:not([style*="light dark"]) #right-panel .session-iso-banner,
+html[style*="color-scheme: light"]:not([style*="light dark"]) #right-panel .upload-mini-dropzone,
+html[style*="color-scheme: light"]:not([style*="light dark"]) #right-panel #inline-persona-form,
+html[style*="color-scheme: light"]:not([style*="light dark"]) #right-panel .lore-card{background:rgba(255,255,255,.82)!important;border:1px solid rgba(15,23,42,.08)!important;color:#1e293b!important;}
+
+html[data-skin="mist-silk"] #right-panel label,
+html[data-skin="mist-silk"] #right-panel strong,
+html[data-skin="mist-silk"] #right-panel .block-title-row,
+html[data-skin="sakura-dawn"] #right-panel label,
+html[data-skin="sakura-dawn"] #right-panel strong,
+html[data-skin="sakura-dawn"] #right-panel .block-title-row,
+html[data-skin="eink-paper"] #right-panel label,
+html[data-skin="eink-paper"] #right-panel strong,
+html[data-skin="eink-paper"] #right-panel .block-title-row,
+html[style*="color-scheme: light"]:not([style*="light dark"]) #right-panel label,
+html[style*="color-scheme: light"]:not([style*="light dark"]) #right-panel strong,
+html[style*="color-scheme: light"]:not([style*="light dark"]) #right-panel .block-title-row{color:#1e293b!important;}
+
+html[data-skin="mist-silk"] #right-panel .ds-suite-desc,
+html[data-skin="mist-silk"] #right-panel .muted-count,
+html[data-skin="mist-silk"] #right-panel .lore-keys,
+html[data-skin="sakura-dawn"] #right-panel .ds-suite-desc,
+html[data-skin="sakura-dawn"] #right-panel .muted-count,
+html[data-skin="sakura-dawn"] #right-panel .lore-keys,
+html[data-skin="eink-paper"] #right-panel .ds-suite-desc,
+html[data-skin="eink-paper"] #right-panel .muted-count,
+html[data-skin="eink-paper"] #right-panel .lore-keys,
+html[style*="color-scheme: light"]:not([style*="light dark"]) #right-panel .ds-suite-desc,
+html[style*="color-scheme: light"]:not([style*="light dark"]) #right-panel .muted-count,
+html[style*="color-scheme: light"]:not([style*="light dark"]) #right-panel .lore-keys{color:#475569!important;}
+
+html[data-skin="mist-silk"] #right-panel input:not([type="checkbox"]),
+html[data-skin="mist-silk"] #right-panel textarea,
+html[data-skin="sakura-dawn"] #right-panel input:not([type="checkbox"]),
+html[data-skin="sakura-dawn"] #right-panel textarea,
+html[data-skin="eink-paper"] #right-panel input:not([type="checkbox"]),
+html[data-skin="eink-paper"] #right-panel textarea,
+html[style*="color-scheme: light"]:not([style*="light dark"]) #right-panel input:not([type="checkbox"]),
+html[style*="color-scheme: light"]:not([style*="light dark"]) #right-panel textarea{background:#ffffff!important;color:#0f172a!important;border:1px solid rgba(15,23,42,.14)!important;}

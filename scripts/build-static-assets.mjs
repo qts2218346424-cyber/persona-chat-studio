@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import vm from 'node:vm';
 import zlib from 'node:zlib';
+import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -416,6 +417,10 @@ function formatKB(bytes) {
   return `${(bytes / 1024).toFixed(2)} KB`;
 }
 
+function shortHash(textOrBuf, len = 10) {
+  return crypto.createHash('sha256').update(textOrBuf).digest('hex').slice(0, len);
+}
+
 function buildCssBundle() {
   let rawTotal = 0;
   const parts = [];
@@ -431,6 +436,7 @@ function buildCssBundle() {
   fs.writeFileSync(outPath, minified, 'utf8');
   return {
     outPath,
+    hash: shortHash(minified),
     rawBytes: rawTotal,
     minifiedBytes: Buffer.byteLength(minified, 'utf8')
   };
@@ -463,10 +469,36 @@ function buildJsBundle() {
   fs.writeFileSync(outPath, finalJs, 'utf8');
   return {
     outPath,
+    hash: shortHash(finalJs),
     rawBytes: rawTotal,
     minifiedBytes: Buffer.byteLength(finalJs, 'utf8'),
     fellBack
   };
+}
+
+function syncAssetFingerprints({ cssHash, jsHash, bundleHash }) {
+  const indexPath = path.join(PUBLIC_DIR, 'index.html');
+  if (fs.existsSync(indexPath)) {
+    let html = fs.readFileSync(indexPath, 'utf8');
+    const nextHtml = html
+      .replace(/(\.\/dist\/app\.bundle\.css\?v=)[^"'\s>]+/g, `$1${cssHash}`)
+      .replace(/(\.\/dist\/app\.bundle\.js\?v=)[^"'\s>]+/g, `$1${jsHash}`);
+    if (nextHtml !== html) {
+      fs.writeFileSync(indexPath, nextHtml, 'utf8');
+    }
+  }
+
+  const swPath = path.join(PUBLIC_DIR, 'sw.js');
+  if (fs.existsSync(swPath)) {
+    let sw = fs.readFileSync(swPath, 'utf8');
+    const nextSw = sw
+      .replace(/(const\s+CACHE_VERSION\s*=\s*['"])[^'"]+(['"])/, `$1star-whisper-${bundleHash}$2`)
+      .replace(/(\.\/dist\/app\.bundle\.css\?v=)[^"'\s]+/g, `$1${cssHash}`)
+      .replace(/(\.\/dist\/app\.bundle\.js\?v=)[^"'\s]+/g, `$1${jsHash}`);
+    if (nextSw !== sw) {
+      fs.writeFileSync(swPath, nextSw, 'utf8');
+    }
+  }
 }
 
 function precompressPublicAssets() {
@@ -537,6 +569,30 @@ function main() {
 
   const cssRes = buildCssBundle();
   const jsRes = buildJsBundle();
+  const bundleHash = shortHash(`${cssRes.hash}:${jsRes.hash}`, 10);
+
+  const manifest = {
+    generatedAt: new Date().toISOString(),
+    bundleHash,
+    css: {
+      file: 'dist/app.bundle.css',
+      hash: cssRes.hash,
+      rawBytes: cssRes.rawBytes,
+      minifiedBytes: cssRes.minifiedBytes
+    },
+    js: {
+      file: 'dist/app.bundle.js',
+      hash: jsRes.hash,
+      rawBytes: jsRes.rawBytes,
+      minifiedBytes: jsRes.minifiedBytes,
+      fellBack: jsRes.fellBack
+    }
+  };
+  fs.writeFileSync(path.join(DIST_DIR, 'asset-manifest.json'), JSON.stringify(manifest, null, 2), 'utf8');
+
+  // 先同步 index.html 与 sw.js 的内容指纹，再统一执行全量预压缩，确保 .gz/.br 与源码完全一致
+  syncAssetFingerprints({ cssHash: cssRes.hash, jsHash: jsRes.hash, bundleHash });
+
   const compRes = precompressPublicAssets();
 
   const cssGz = fs.statSync(`${cssRes.outPath}.gz`).size;
@@ -546,13 +602,13 @@ function main() {
 
   console.log('=== 静态资产合并压缩报告 ===');
   console.log(
-    `CSS Bundle (6 -> 1): 原始 ${formatKB(cssRes.rawBytes)} -> 压缩后 ${formatKB(cssRes.minifiedBytes)} | Gzip ${formatKB(cssGz)} | Brotli ${formatKB(cssBr)}`
+    `CSS Bundle (${CSS_FILES.length} -> 1, hash=${cssRes.hash}): 原始 ${formatKB(cssRes.rawBytes)} -> 压缩后 ${formatKB(cssRes.minifiedBytes)} | Gzip ${formatKB(cssGz)} | Brotli ${formatKB(cssBr)}`
   );
   console.log(
-    `JS  Bundle (7 -> 1): 原始 ${formatKB(jsRes.rawBytes)} -> 压缩后 ${formatKB(jsRes.minifiedBytes)} (回退=${jsRes.fellBack}) | Gzip ${formatKB(jsGz)} | Brotli ${formatKB(jsBr)}`
+    `JS  Bundle (${JS_FILES.length} -> 1, hash=${jsRes.hash}): 原始 ${formatKB(jsRes.rawBytes)} -> 压缩后 ${formatKB(jsRes.minifiedBytes)} (回退=${jsRes.fellBack}) | Gzip ${formatKB(jsGz)} | Brotli ${formatKB(jsBr)}`
   );
   console.log(
-    `预压缩全量产物: ${compRes.count} 个文件已生成 .gz 与 .br (总计原始 ${formatKB(compRes.totalRaw)} -> Gzip ${formatKB(compRes.totalGz)} | Brotli ${formatKB(compRes.totalBr)})`
+    `预压缩全量产物: ${compRes.count} 个文件已生成 .gz 与 .br (总计原始 ${formatKB(compRes.totalRaw)} -> Gzip ${formatKB(compRes.totalGz)} | Brotli ${formatKB(compRes.totalBr)}) | bundleHash=${bundleHash}`
   );
 }
 

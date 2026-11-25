@@ -269,15 +269,8 @@ function sanitizeCustomImageInput(rawImg) {
   throw new Error('仅支持上传 PNG / JPG / WEBP / GIF 格式的安全图片');
 }
 
-function sendJson(res, statusCode, payload, extraHeaders = {}) {
-  const rawBuf = Buffer.from(JSON.stringify(payload), 'utf8');
-  const headers = {
-    'Content-Type': 'application/json; charset=utf-8',
-    'Cache-Control': 'no-store',
-    ...SECURITY_HEADERS,
-    ...extraHeaders
-  };
-  const hasExplicitEncoding = Object.keys(extraHeaders).some(
+function compressAndSendJsonBuf(res, statusCode, rawBuf, headers) {
+  const hasExplicitEncoding = Object.keys(headers).some(
     (k) => k.toLowerCase() === 'content-encoding'
   );
   let outBuf = rawBuf;
@@ -288,11 +281,9 @@ function sendJson(res, statusCode, payload, extraHeaders = {}) {
         params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 4 }
       });
       headers['Content-Encoding'] = 'br';
-      headers['Vary'] = 'Accept-Encoding';
     } else if (/\bgzip\b/i.test(acceptEncoding)) {
       outBuf = zlib.gzipSync(rawBuf, { level: 6 });
       headers['Content-Encoding'] = 'gzip';
-      headers['Vary'] = 'Accept-Encoding';
     }
   }
   headers['Content-Length'] = outBuf.length;
@@ -302,6 +293,61 @@ function sendJson(res, statusCode, payload, extraHeaders = {}) {
     return;
   }
   res.end(outBuf);
+}
+
+function sendJson(res, statusCode, payload, extraHeaders = {}) {
+  const rawBuf = Buffer.from(JSON.stringify(payload), 'utf8');
+  const headers = {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Cache-Control': 'no-store',
+    'Vary': 'Accept-Encoding',
+    ...SECURITY_HEADERS,
+    ...extraHeaders
+  };
+  compressAndSendJsonBuf(res, statusCode, rawBuf, headers);
+}
+
+function isIfNoneMatchHit(ifNoneMatchHeader, etag) {
+  if (!ifNoneMatchHeader || !etag) return false;
+  const etagCore = etag.replace(/^W\//, '');
+  return ifNoneMatchHeader.split(',').some((tag) => {
+    const t = tag.trim();
+    return t === '*' || t === etag || t.replace(/^W\//, '') === etagCore;
+  });
+}
+
+function sendJsonCached(
+  res,
+  statusCode,
+  payload,
+  {
+    cacheControl = 'private, no-cache',
+    vary = 'Cookie, Authorization, X-Expected-User-Id, Accept-Encoding',
+    extraHeaders = {}
+  } = {}
+) {
+  const rawBuf = Buffer.from(JSON.stringify(payload), 'utf8');
+  const canNegotiate = statusCode === 200 && (res._reqMethod === 'GET' || res._reqMethod === 'HEAD');
+  const headers = {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Cache-Control': cacheControl,
+    'Vary': vary,
+    ...SECURITY_HEADERS,
+    ...extraHeaders
+  };
+
+  if (canNegotiate) {
+    const hashHex = crypto.createHash('sha1').update(rawBuf).digest('hex').slice(0, 16);
+    const etag = `W/"${rawBuf.length.toString(16)}-${hashHex}"`;
+    headers['ETag'] = etag;
+    if (isIfNoneMatchHit(res._ifNoneMatch, etag)) {
+      res.writeHead(304, headers);
+      res.end();
+      return;
+    }
+  }
+
+  compressAndSendJsonBuf(res, statusCode, rawBuf, headers);
 }
 
 function sanitizePublicErrorMessage(err, fallback = '请求处理失败，请稍后重试') {
@@ -681,11 +727,15 @@ function verifyApkUpdateTicket(ticketStr) {
   return crypto.timingSafeEqual(a, b);
 }
 
-const APP_VERSION_CORS_HEADERS = {
+const PUBLIC_API_CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Range, X-Requested-With',
-  'Access-Control-Expose-Headers': 'Content-Length, Content-Range, Content-Disposition, X-APK-SHA256',
+  'Access-Control-Allow-Headers': 'Content-Type, Range, X-Requested-With, If-None-Match',
+  'Access-Control-Expose-Headers': 'Content-Length, Content-Range, Content-Disposition, X-APK-SHA256, ETag'
+};
+
+const APP_VERSION_CORS_HEADERS = {
+  ...PUBLIC_API_CORS_HEADERS,
   'Cache-Control': 'no-store, no-cache, must-revalidate'
 };
 
@@ -849,7 +899,10 @@ async function handleApi(req, res, pathname, parsedUrl) {
 
   // ========= 0.0 本地 Antigravity 宿主智能体底座状态探针 =========
   if (method === 'GET' && pathname === '/api/antigravity/status') {
-    return sendJson(res, 200, detectLocalAntigravityStatus());
+    return sendJsonCached(res, 200, detectLocalAntigravityStatus(), {
+      cacheControl: 'private, max-age=15, stale-while-revalidate=30',
+      vary: 'Accept-Encoding'
+    });
   }
 
   // ========= 0.1 客户端版本更新检查公开接口 =========
@@ -916,7 +969,16 @@ async function handleApi(req, res, pathname, parsedUrl) {
   // ========= 0.1a 全站公开系统公告查询接口 =========
   if (method === 'GET' && (pathname === '/api/announcement' || pathname === '/api/site-announcement')) {
     const ann = getLatestAnnouncement();
-    return sendJson(res, 200, { ok: true, announcement: ann }, APP_VERSION_CORS_HEADERS);
+    return sendJsonCached(
+      res,
+      200,
+      { ok: true, announcement: ann },
+      {
+        cacheControl: 'public, max-age=60, stale-while-revalidate=300',
+        vary: 'Accept-Encoding',
+        extraHeaders: PUBLIC_API_CORS_HEADERS
+      }
+    );
   }
 
   // ========= 0.1a1 QQ 音乐联动 LRC 时间轴歌词实时查询接口 =========
@@ -939,7 +1001,13 @@ async function handleApi(req, res, pathname, parsedUrl) {
     const lyricsCache = global.__qqMusicLyricsCache;
     const cached = lyricsCache.get(cacheKey);
     if (cached && Date.now() - cached.ts < 6 * 3600 * 1000) {
-      return sendJson(res, 200, cached.data, APP_VERSION_CORS_HEADERS);
+      return sendJsonCached(res, 200, cached.data, {
+        cacheControl: cached.data?.ok
+          ? 'public, max-age=3600, stale-while-revalidate=86400'
+          : 'public, max-age=60',
+        vary: 'Accept-Encoding',
+        extraHeaders: PUBLIC_API_CORS_HEADERS
+      });
     }
 
     const fetchLrcRecord = async () => {
@@ -992,7 +1060,13 @@ async function handleApi(req, res, pathname, parsedUrl) {
       if (firstKey !== undefined) lyricsCache.delete(firstKey);
     }
     lyricsCache.set(cacheKey, { ts: Date.now(), data: resultPayload });
-    return sendJson(res, 200, resultPayload, APP_VERSION_CORS_HEADERS);
+    return sendJsonCached(res, 200, resultPayload, {
+      cacheControl: resultPayload.ok
+        ? 'public, max-age=3600, stale-while-revalidate=86400'
+        : 'public, max-age=60',
+      vary: 'Accept-Encoding',
+      extraHeaders: PUBLIC_API_CORS_HEADERS
+    });
   }
 
   // ========= 0.1a1b 实时天气轻查询接口（供大肥鱼桌宠吐槽真实天气） =========
@@ -1012,7 +1086,13 @@ async function handleApi(req, res, pathname, parsedUrl) {
     const wCache = global.__petWeatherCache;
     const hit = wCache.get(cacheKey);
     if (hit && Date.now() - hit.ts < 30 * 60 * 1000) {
-      return sendJson(res, 200, hit.data, APP_VERSION_CORS_HEADERS);
+      return sendJsonCached(res, 200, hit.data, {
+        cacheControl: hit.data?.ok
+          ? 'private, max-age=600, stale-while-revalidate=1800'
+          : 'no-store',
+        vary: 'Accept-Encoding',
+        extraHeaders: PUBLIC_API_CORS_HEADERS
+      });
     }
 
     let weatherData = null;
@@ -1097,7 +1177,13 @@ async function handleApi(req, res, pathname, parsedUrl) {
       if (firstK !== undefined) wCache.delete(firstK);
     }
     wCache.set(cacheKey, { ts: Date.now(), data: payload });
-    return sendJson(res, 200, payload, APP_VERSION_CORS_HEADERS);
+    return sendJsonCached(res, 200, payload, {
+      cacheControl: payload.ok
+        ? 'private, max-age=600, stale-while-revalidate=1800'
+        : 'no-store',
+      vary: 'Accept-Encoding',
+      extraHeaders: PUBLIC_API_CORS_HEADERS
+    });
   }
 
   // ========= 0.1a2 用户自定义头像与壁纸静态访问接口 =========
@@ -1127,17 +1213,68 @@ async function handleApi(req, res, pathname, parsedUrl) {
     if (!stats.isFile()) {
       return sendJson(res, 404, { error: '图片不存在' });
     }
-    const contentType = MIME_TYPES[ext] || 'application/octet-stream';
-    res.writeHead(200, {
-      'Content-Type': contentType,
-      'Content-Length': stats.size,
-      'Cache-Control': 'public, max-age=31536000, immutable',
-      ...SECURITY_HEADERS
-    });
-    if (method === 'HEAD') {
+
+    const etag = `"${stats.size.toString(16)}-${Math.floor(stats.mtimeMs).toString(16)}"`;
+    const fileMtimeSec = Math.floor(stats.mtimeMs / 1000) * 1000;
+    const lastModified = new Date(fileMtimeSec).toUTCString();
+    const ifNoneMatch = String(req.headers['if-none-match'] || '').trim();
+    const ifModifiedSince = String(req.headers['if-modified-since'] || '').trim();
+    const imsTime = ifModifiedSince ? Date.parse(ifModifiedSince) : NaN;
+
+    if (
+      isIfNoneMatchHit(ifNoneMatch, etag) ||
+      (!Number.isNaN(imsTime) && imsTime >= fileMtimeSec)
+    ) {
+      res.writeHead(304, {
+        'ETag': etag,
+        'Last-Modified': lastModified,
+        'Cache-Control': 'public, max-age=31536000, immutable',
+        ...SECURITY_HEADERS
+      });
       res.end();
       return;
     }
+
+    const contentType = MIME_TYPES[ext] || 'application/octet-stream';
+    const headers = {
+      'Content-Type': contentType,
+      'Content-Length': stats.size,
+      'ETag': etag,
+      'Last-Modified': lastModified,
+      'Cache-Control': 'public, max-age=31536000, immutable',
+      ...SECURITY_HEADERS
+    };
+    if (method === 'HEAD') {
+      res.writeHead(200, headers);
+      res.end();
+      return;
+    }
+
+    const memKey = `${resolvedTarget}|raw`;
+    const stamp = `${stats.mtimeMs}:${stats.size}`;
+    const cachedBuf = getStaticMemCache(memKey, stamp);
+    if (cachedBuf) {
+      res.writeHead(200, headers);
+      res.end(cachedBuf);
+      return;
+    }
+    if (stats.size <= MAX_STATIC_MEM_CACHE_ITEM_BYTES) {
+      fs.readFile(resolvedTarget, (readErr, buf) => {
+        if (readErr) {
+          if (!res.headersSent) {
+            res.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8', ...SECURITY_HEADERS });
+          }
+          if (!res.writableEnded) res.end();
+          return;
+        }
+        setStaticMemCache(memKey, stamp, buf);
+        res.writeHead(200, headers);
+        res.end(buf);
+      });
+      return;
+    }
+
+    res.writeHead(200, headers);
     fs.createReadStream(resolvedTarget).pipe(res);
     return;
   }
@@ -1873,23 +2010,31 @@ async function handleApi(req, res, pathname, parsedUrl) {
       }
     }
 
-    return sendJson(res, 200, {
-      authenticated: true,
-      app_version: APP_LATEST_VERSION,
-      app_version_code: APP_LATEST_VERSION_CODE,
-      user: currentUser,
-      token: currentToken,
-      scripts,
-      square_items: lite ? [] : listCommunityShares({ userId }),
-      personas,
-      sessions,
-      settings,
-      membership: wallet.membership,
-      wallet,
-      local_antigravity_status: detectLocalAntigravityStatus(),
-      initial_session_id: initialSessionId,
-      initial_session_payload: initialSessionPayload
-    });
+    return sendJsonCached(
+      res,
+      200,
+      {
+        authenticated: true,
+        app_version: APP_LATEST_VERSION,
+        app_version_code: APP_LATEST_VERSION_CODE,
+        user: currentUser,
+        token: currentToken,
+        scripts,
+        square_items: lite ? [] : listCommunityShares({ userId }),
+        personas,
+        sessions,
+        settings,
+        membership: wallet.membership,
+        wallet,
+        local_antigravity_status: detectLocalAntigravityStatus(),
+        initial_session_id: initialSessionId,
+        initial_session_payload: initialSessionPayload
+      },
+      {
+        cacheControl: 'private, no-cache',
+        vary: 'Cookie, Authorization, X-Expected-User-Id, Accept-Encoding'
+      }
+    );
   }
 
   // ========= 2.5 AI 剧本工坊（读取/诊断/精修剧本 + 自动提取人设）与共创设计广场接口 =========
@@ -1957,9 +2102,17 @@ async function handleApi(req, res, pathname, parsedUrl) {
   if (method === 'GET' && pathname === '/api/square/items') {
     const type = parsedUrl?.searchParams?.get('type') || 'all';
     const q = parsedUrl?.searchParams?.get('q') || '';
-    return sendJson(res, 200, {
-      items: listCommunityShares({ userId, type, query: q })
-    });
+    return sendJsonCached(
+      res,
+      200,
+      {
+        items: listCommunityShares({ userId, type, query: q })
+      },
+      {
+        cacheControl: 'private, no-cache',
+        vary: 'Cookie, Authorization, X-Expected-User-Id, Accept-Encoding'
+      }
+    );
   }
 
   if (method === 'POST' && pathname === '/api/square/publish') {
@@ -3463,10 +3616,14 @@ async function handleApi(req, res, pathname, parsedUrl) {
       const msgLimit = Math.min(200, Math.max(10, parseInt(parsedUrl.searchParams.get('limit') || '60', 10) || 60));
       const beforeId = Math.max(0, parseInt(parsedUrl.searchParams.get('before_id') || '0', 10) || 0);
       const loadAll = parsedUrl.searchParams.get('all') === '1';
-      return sendJson(
+      return sendJsonCached(
         res,
         200,
-        buildSessionDetailPayload(session, userId, { limit: msgLimit, beforeId, loadAll })
+        buildSessionDetailPayload(session, userId, { limit: msgLimit, beforeId, loadAll }),
+        {
+          cacheControl: 'private, no-cache',
+          vary: 'Cookie, Authorization, X-Expected-User-Id, Accept-Encoding'
+        }
       );
     }
 
@@ -5397,14 +5554,21 @@ async function handleApi(req, res, pathname, parsedUrl) {
 }
 
 const STATIC_MEM_CACHE = new Map();
-const MAX_STATIC_MEM_CACHE_ENTRIES = 64;
-const MAX_STATIC_MEM_CACHE_BYTES = 1024 * 1024;
+const MAX_STATIC_MEM_CACHE_ENTRIES = 256;
+const MAX_STATIC_MEM_CACHE_ITEM_BYTES = 1024 * 1024;
+const MAX_STATIC_MEM_CACHE_TOTAL_BYTES = 32 * 1024 * 1024;
+let staticMemCacheTotalBytes = 0;
+
+const STATIC_STAT_CACHE = new Map();
+const MAX_STATIC_STAT_CACHE_ENTRIES = 512;
+const STATIC_STAT_CACHE_TTL_MS = 2000;
 
 function getStaticMemCache(key, mtimeStamp) {
   const entry = STATIC_MEM_CACHE.get(key);
   if (!entry) return null;
   if (entry.mtimeStamp !== mtimeStamp) {
     STATIC_MEM_CACHE.delete(key);
+    staticMemCacheTotalBytes = Math.max(0, staticMemCacheTotalBytes - entry.buf.length);
     return null;
   }
   STATIC_MEM_CACHE.delete(key);
@@ -5413,14 +5577,63 @@ function getStaticMemCache(key, mtimeStamp) {
 }
 
 function setStaticMemCache(key, mtimeStamp, buf) {
-  if (!buf || buf.length > MAX_STATIC_MEM_CACHE_BYTES) return;
-  if (STATIC_MEM_CACHE.has(key)) {
+  if (!buf || buf.length > MAX_STATIC_MEM_CACHE_ITEM_BYTES) return;
+  const prev = STATIC_MEM_CACHE.get(key);
+  if (prev) {
     STATIC_MEM_CACHE.delete(key);
-  } else if (STATIC_MEM_CACHE.size >= MAX_STATIC_MEM_CACHE_ENTRIES) {
+    staticMemCacheTotalBytes = Math.max(0, staticMemCacheTotalBytes - prev.buf.length);
+  }
+  while (
+    STATIC_MEM_CACHE.size >= MAX_STATIC_MEM_CACHE_ENTRIES ||
+    (staticMemCacheTotalBytes + buf.length > MAX_STATIC_MEM_CACHE_TOTAL_BYTES && STATIC_MEM_CACHE.size > 0)
+  ) {
     const oldestKey = STATIC_MEM_CACHE.keys().next().value;
-    if (oldestKey !== undefined) STATIC_MEM_CACHE.delete(oldestKey);
+    if (oldestKey === undefined) break;
+    const oldestEntry = STATIC_MEM_CACHE.get(oldestKey);
+    STATIC_MEM_CACHE.delete(oldestKey);
+    if (oldestEntry) {
+      staticMemCacheTotalBytes = Math.max(0, staticMemCacheTotalBytes - oldestEntry.buf.length);
+    }
   }
   STATIC_MEM_CACHE.set(key, { mtimeStamp, buf });
+  staticMemCacheTotalBytes += buf.length;
+}
+
+function getStaticStatCached(resolvedPath, cb) {
+  const now = Date.now();
+  const cached = STATIC_STAT_CACHE.get(resolvedPath);
+  if (cached && now - cached.ts < STATIC_STAT_CACHE_TTL_MS) {
+    return cb(cached.err, cached.meta);
+  }
+  fs.stat(resolvedPath, (err, stats) => {
+    if (err || !stats.isFile()) {
+      return cb(err || new Error('NOT_FILE'), null);
+    }
+    const finish = (brMeta, gzMeta) => {
+      const meta = { stats, br: brMeta, gz: gzMeta };
+      if (STATIC_STAT_CACHE.size >= MAX_STATIC_STAT_CACHE_ENTRIES) {
+        const oldestKey = STATIC_STAT_CACHE.keys().next().value;
+        if (oldestKey !== undefined) STATIC_STAT_CACHE.delete(oldestKey);
+      }
+      STATIC_STAT_CACHE.set(resolvedPath, { ts: Date.now(), err: null, meta });
+      cb(null, meta);
+    };
+    const brPath = `${resolvedPath}.br`;
+    const gzPath = `${resolvedPath}.gz`;
+    fs.stat(brPath, (brErr, brStats) => {
+      const brMeta =
+        !brErr && brStats.isFile() && brStats.mtimeMs + 2000 >= stats.mtimeMs
+          ? { path: brPath, size: brStats.size, mtimeMs: brStats.mtimeMs }
+          : null;
+      fs.stat(gzPath, (gzErr, gzStats) => {
+        const gzMeta =
+          !gzErr && gzStats.isFile() && gzStats.mtimeMs + 2000 >= stats.mtimeMs
+            ? { path: gzPath, size: gzStats.size, mtimeMs: gzStats.mtimeMs }
+            : null;
+        finish(brMeta, gzMeta);
+      });
+    });
+  });
 }
 
 function serveStatic(req, res, pathname) {
@@ -5467,13 +5680,14 @@ function serveStatic(req, res, pathname) {
     return;
   }
 
-  fs.stat(resolvedPath, (err, stats) => {
-    if (err || !stats.isFile()) {
+  getStaticStatCached(resolvedPath, (err, meta) => {
+    if (err || !meta) {
       res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8', ...SECURITY_HEADERS });
       res.end('页面未找到');
       return;
     }
 
+    const { stats, br: preBr, gz: preGz } = meta;
     const ext = path.extname(resolvedPath).toLowerCase();
     const contentType = MIME_TYPES[ext] || 'application/octet-stream';
     const isHtml = ext === '.html';
@@ -5489,18 +5703,25 @@ function serveStatic(req, res, pathname) {
       cacheHeader = 'no-cache, no-store, must-revalidate';
     }
 
-    const etag = `"${stats.size.toString(16)}-${Math.floor(stats.mtimeMs).toString(16)}"`;
+    const isHead = req.method === 'HEAD';
+    const acceptEncoding = String(req.headers['accept-encoding'] || '');
+    const compressible = /^(text\/|application\/(javascript|json)|image\/svg\+xml)/.test(contentType) && stats.size > 512;
+    const acceptsBr = compressible && /\bbr\b/i.test(acceptEncoding);
+    const acceptsGzip = compressible && /\bgzip\b/i.test(acceptEncoding);
+
+    const chosenEncoding = acceptsBr && preBr ? 'br' : acceptsGzip ? 'gzip' : '';
+    const baseEtagCore = `${stats.size.toString(16)}-${Math.floor(stats.mtimeMs).toString(16)}`;
+    const etag = chosenEncoding ? `"${baseEtagCore}-${chosenEncoding}"` : `"${baseEtagCore}"`;
     const fileMtimeSec = Math.floor(stats.mtimeMs / 1000) * 1000;
     const lastModified = new Date(fileMtimeSec).toUTCString();
 
     const ifNoneMatch = String(req.headers['if-none-match'] || '').trim();
     const ifModifiedSince = String(req.headers['if-modified-since'] || '').trim();
-    const etagCore = etag.replace(/^W\//, '');
     const etagMatched = Boolean(
       ifNoneMatch &&
       ifNoneMatch.split(',').some((tag) => {
-        const t = tag.trim();
-        return t === '*' || t === etag || t.replace(/^W\//, '') === etagCore;
+        const t = tag.trim().replace(/^W\//, '');
+        return t === '*' || t === `"${baseEtagCore}"` || t === etag;
       })
     );
     const imsTime = ifModifiedSince ? Date.parse(ifModifiedSince) : NaN;
@@ -5511,17 +5732,12 @@ function serveStatic(req, res, pathname) {
         'ETag': etag,
         'Last-Modified': lastModified,
         'Cache-Control': cacheHeader,
+        'Vary': 'Accept-Encoding',
         ...SECURITY_HEADERS
       });
       res.end();
       return;
     }
-
-    const isHead = req.method === 'HEAD';
-    const acceptEncoding = String(req.headers['accept-encoding'] || '');
-    const compressible = /^(text\/|application\/(javascript|json)|image\/svg\+xml)/.test(contentType) && stats.size > 512;
-    const acceptsBr = compressible && /\bbr\b/i.test(acceptEncoding);
-    const acceptsGzip = compressible && /\bgzip\b/i.test(acceptEncoding);
 
     const headers = {
       'Content-Type': contentType,
@@ -5549,7 +5765,7 @@ function serveStatic(req, res, pathname) {
         res.end();
         return;
       }
-      if (fileSize <= MAX_STATIC_MEM_CACHE_BYTES) {
+      if (fileSize <= MAX_STATIC_MEM_CACHE_ITEM_BYTES) {
         fs.readFile(filePathToRead, (readErr, buf) => {
           if (readErr) {
             if (!res.writableEnded) res.end();
@@ -5567,43 +5783,29 @@ function serveStatic(req, res, pathname) {
       stream.pipe(res);
     };
 
-    const tryGzipOrRaw = () => {
-      if (acceptsGzip) {
-        const precompressedGzPath = `${resolvedPath}.gz`;
-        fs.stat(precompressedGzPath, (gzErr, gzStats) => {
-          if (!gzErr && gzStats.isFile() && gzStats.mtimeMs + 2000 >= stats.mtimeMs) {
-            sendEncodedBufferOrFile('gzip', precompressedGzPath, gzStats.size);
-            return;
-          }
-          headers['Content-Encoding'] = 'gzip';
-          res.writeHead(200, headers);
-          if (isHead) {
-            res.end();
-            return;
-          }
-          const rawStream = fs.createReadStream(resolvedPath);
-          const gzipStream = zlib.createGzip({ level: 6 });
-          rawStream.on('error', () => { if (!res.writableEnded) res.end(); });
-          gzipStream.on('error', () => { if (!res.writableEnded) res.end(); });
-          rawStream.pipe(gzipStream).pipe(res);
-        });
+    if (acceptsBr && preBr) {
+      sendEncodedBufferOrFile('br', preBr.path, preBr.size);
+      return;
+    }
+    if (acceptsGzip) {
+      if (preGz) {
+        sendEncodedBufferOrFile('gzip', preGz.path, preGz.size);
         return;
       }
-      sendEncodedBufferOrFile('', resolvedPath, stats.size);
-    };
-
-    if (acceptsBr) {
-      const precompressedBrPath = `${resolvedPath}.br`;
-      fs.stat(precompressedBrPath, (brErr, brStats) => {
-        if (!brErr && brStats.isFile() && brStats.mtimeMs + 2000 >= stats.mtimeMs) {
-          sendEncodedBufferOrFile('br', precompressedBrPath, brStats.size);
-          return;
-        }
-        tryGzipOrRaw();
-      });
-    } else {
-      tryGzipOrRaw();
+      headers['Content-Encoding'] = 'gzip';
+      res.writeHead(200, headers);
+      if (isHead) {
+        res.end();
+        return;
+      }
+      const rawStream = fs.createReadStream(resolvedPath);
+      const gzipStream = zlib.createGzip({ level: 6 });
+      rawStream.on('error', () => { if (!res.writableEnded) res.end(); });
+      gzipStream.on('error', () => { if (!res.writableEnded) res.end(); });
+      rawStream.pipe(gzipStream).pipe(res);
+      return;
     }
+    sendEncodedBufferOrFile('', resolvedPath, stats.size);
   });
 }
 
@@ -5611,6 +5813,7 @@ const server = http.createServer(async (req, res) => {
   bumpMetric('totalRequests');
   res._acceptEncoding = String(req.headers['accept-encoding'] || '');
   res._reqMethod = req.method || 'GET';
+  res._ifNoneMatch = String(req.headers['if-none-match'] || '').trim();
   try {
     const parsedUrl = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
     const pathname = parsedUrl.pathname;

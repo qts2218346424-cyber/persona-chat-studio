@@ -7,6 +7,7 @@
 html[data-ui-mode="roleplay"],
 body[data-ui-mode="roleplay"],
 .app-shell[data-ui-mode="roleplay"] {
+  color-scheme: dark;
   --theater-font-serif: 'Noto Serif SC', 'Songti SC', 'STSong', serif;
   --theater-font-en: 'Cormorant Garamond', 'Noto Serif SC', serif;
   --theater-font-sans: 'Noto Sans SC', -apple-system, BlinkMacSystemFont, sans-serif;
@@ -45,6 +46,7 @@ body[data-ui-mode="roleplay"],
 html[data-ui-mode="roleplay"][style*="color-scheme: light"]:not([style*="light dark"]),
 html[style*="color-scheme: light"]:not([style*="light dark"]) body[data-ui-mode="roleplay"],
 html[style*="color-scheme: light"]:not([style*="light dark"]) .app-shell[data-ui-mode="roleplay"] {
+  color-scheme: light;
   --theater-persona-glow: rgba(184, 139, 114, 0.16);
   --bg-stage: radial-gradient(circle at 75% 25%, var(--theater-persona-glow) 0%, rgba(234, 230, 240, 0.92) 66%), #F6F5F8;
   --glass-surface: rgba(255, 255, 255, 0.72);

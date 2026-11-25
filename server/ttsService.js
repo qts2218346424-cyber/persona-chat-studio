@@ -229,6 +229,8 @@ const PRESET_VOICE_RULES = [
   }
 ];
 
+const presetAudioMemCache = new Map();
+
 function findPresetAudioBuffer(text, isMale = true) {
   if (!text) return null;
   const str = String(text).trim();
@@ -236,10 +238,21 @@ function findPresetAudioBuffer(text, isMale = true) {
     if (rule.patterns.some((re) => re.test(str))) {
       const fileName = isMale ? rule.maleFile : rule.femaleFile;
       const fullPath = path.join(PRESET_VOICE_DIR, fileName);
+      const memHit = presetAudioMemCache.get(fileName);
+      if (memHit && memHit.buf && memHit.buf.length > 500) {
+        return {
+          audioBuffer: memHit.buf,
+          mimeType: 'audio/mpeg',
+          fileName,
+          ruleKey: rule.key
+        };
+      }
       if (fs.existsSync(fullPath)) {
         try {
+          const stat = fs.statSync(fullPath);
           const buf = fs.readFileSync(fullPath);
           if (buf && buf.length > 500) {
+            presetAudioMemCache.set(fileName, { mtimeMs: stat.mtimeMs, buf });
             return {
               audioBuffer: buf,
               mimeType: 'audio/mpeg',
@@ -442,6 +455,102 @@ function resolveEffectiveTtsApiKey(provider, settings = {}) {
   return apiKey;
 }
 
+const TTS_MEM_CACHE_MAX = 64;
+const TTS_MEM_CACHE_MAX_BYTES = 16 * 1024 * 1024;
+const MAX_DISK_CACHE_FILES = 300;
+const MAX_DISK_CACHE_BYTES = 120 * 1024 * 1024;
+
+const ttsMemCache = new Map();
+let ttsMemCacheBytes = 0;
+const inFlightTtsTasks = new Map();
+let diskWriteCountSincePrune = 0;
+let diskPruneInProgress = false;
+
+function getTtsMemCache(cacheKey) {
+  const hit = ttsMemCache.get(cacheKey);
+  if (!hit) return null;
+  ttsMemCache.delete(cacheKey);
+  ttsMemCache.set(cacheKey, hit);
+  return {
+    ok: true,
+    audioBuffer: hit.audioBuffer,
+    wavBuffer: hit.audioBuffer,
+    mimeType: hit.mimeType,
+    engineName: hit.engineName,
+    voice: hit.voice
+  };
+}
+
+function setTtsMemCache(cacheKey, outObj) {
+  const buf = outObj?.audioBuffer || outObj?.wavBuffer;
+  if (!cacheKey || !buf || buf.length <= 512 || buf.length > 4 * 1024 * 1024) return;
+  const prev = ttsMemCache.get(cacheKey);
+  if (prev) {
+    ttsMemCacheBytes = Math.max(0, ttsMemCacheBytes - prev.size);
+    ttsMemCache.delete(cacheKey);
+  }
+  while (
+    ttsMemCache.size >= TTS_MEM_CACHE_MAX ||
+    (ttsMemCacheBytes + buf.length > TTS_MEM_CACHE_MAX_BYTES && ttsMemCache.size > 0)
+  ) {
+    const oldestKey = ttsMemCache.keys().next().value;
+    if (oldestKey === undefined) break;
+    const oldest = ttsMemCache.get(oldestKey);
+    ttsMemCache.delete(oldestKey);
+    if (oldest) ttsMemCacheBytes = Math.max(0, ttsMemCacheBytes - oldest.size);
+  }
+  ttsMemCache.set(cacheKey, {
+    audioBuffer: buf,
+    mimeType: outObj.mimeType || 'audio/wav',
+    engineName: outObj.engineName || 'Qwen3-TTS 1.7B 声优大模型',
+    voice: outObj.voice,
+    size: buf.length
+  });
+  ttsMemCacheBytes += buf.length;
+}
+
+async function pruneDiskCacheIfNeeded() {
+  if (diskPruneInProgress) return;
+  diskPruneInProgress = true;
+  try {
+    const entries = await fs.promises.readdir(CACHE_DIR, { withFileTypes: true }).catch(() => []);
+    const binItems = [];
+    let totalBytes = 0;
+    for (const ent of entries) {
+      if (!ent.isFile() || !ent.name.endsWith('.bin')) continue;
+      if (ent.name === 'custom_otome_ref.wav') continue;
+      const binPath = path.join(CACHE_DIR, ent.name);
+      try {
+        const st = await fs.promises.stat(binPath);
+        totalBytes += st.size;
+        binItems.push({
+          binPath,
+          metaPath: binPath.replace(/\.bin$/, '.json'),
+          size: st.size,
+          mtimeMs: st.mtimeMs
+        });
+      } catch {}
+    }
+
+    if (binItems.length <= MAX_DISK_CACHE_FILES && totalBytes <= MAX_DISK_CACHE_BYTES) {
+      return;
+    }
+
+    binItems.sort((a, b) => a.mtimeMs - b.mtimeMs);
+    let remainingCount = binItems.length;
+    let remainingBytes = totalBytes;
+    for (const item of binItems) {
+      if (remainingCount <= MAX_DISK_CACHE_FILES && remainingBytes <= MAX_DISK_CACHE_BYTES) break;
+      await fs.promises.unlink(item.binPath).catch(() => {});
+      await fs.promises.unlink(item.metaPath).catch(() => {});
+      remainingCount -= 1;
+      remainingBytes = Math.max(0, remainingBytes - item.size);
+    }
+  } catch {} finally {
+    diskPruneInProgress = false;
+  }
+}
+
 function getDiskCachePaths(hashKey) {
   const hash = crypto.createHash('sha1').update(hashKey).digest('hex');
   return {
@@ -457,7 +566,7 @@ function readDiskCache(hashKey) {
       const meta = JSON.parse(fs.readFileSync(metaPath, 'utf8'));
       const buf = fs.readFileSync(binPath);
       if (buf.length > 512) {
-        return {
+        const outObj = {
           ok: true,
           audioBuffer: buf,
           wavBuffer: buf,
@@ -465,6 +574,8 @@ function readDiskCache(hashKey) {
           engineName: meta.engineName || 'Qwen3-TTS 1.7B 声优大模型',
           voice: meta.voice
         };
+        setTtsMemCache(hashKey, outObj);
+        return outObj;
       }
     }
   } catch {}
@@ -472,18 +583,23 @@ function readDiskCache(hashKey) {
 }
 
 function writeDiskCache(hashKey, outObj) {
+  setTtsMemCache(hashKey, outObj);
   try {
     const { binPath, metaPath } = getDiskCachePaths(hashKey);
-    fs.writeFileSync(binPath, outObj.audioBuffer);
-    fs.writeFileSync(
-      metaPath,
-      JSON.stringify({
-        mimeType: outObj.mimeType,
-        engineName: outObj.engineName,
-        voice: outObj.voice
-      }),
-      'utf8'
-    );
+    const metaStr = JSON.stringify({
+      mimeType: outObj.mimeType,
+      engineName: outObj.engineName,
+      voice: outObj.voice
+    });
+    fs.promises.writeFile(binPath, outObj.audioBuffer).catch(() => {});
+    fs.promises.writeFile(metaPath, metaStr, 'utf8').catch(() => {});
+    diskWriteCountSincePrune += 1;
+    if (diskWriteCountSincePrune >= 30) {
+      diskWriteCountSincePrune = 0;
+      setImmediate(() => {
+        pruneDiskCacheIfNeeded().catch(() => {});
+      });
+    }
   } catch {}
 }
 
@@ -941,96 +1057,116 @@ async function synthesizeNeuralSpeech({ text, voiceId = 'otome_cool', speed, set
   const cacheKey = `v4:${provider}:${settings.tts_model || ''}:${settings.tts_cool_voice || ''}:${settings.tts_cute_voice || ''}:${settings.tts_ref_text || ''}:${meta.id}:${cleanedText}`;
 
   if (!strictCommercial) {
+    const memHit = getTtsMemCache(cacheKey);
+    if (memHit) return memHit;
     const diskHit = readDiskCache(cacheKey);
     if (diskHit) return diskHit;
-  }
-
-  // 1. 若配置了专门的高阶商业漫剧配音 API（MiniMax海螺 / 火山豆包2.0 / Fish Audio / 阿里云百炼），优先走专属商业音源
-  if (
-    provider !== 'edge_neural' &&
-    provider !== 'qwen3_otome' &&
-    provider !== 'offline_kokoro' &&
-    provider !== 'local_kokoro'
-  ) {
-    const cloudRes = await callCommercialCloudTts({
-      text: cleanedText,
-      voiceMeta: meta,
-      settings,
-      strictThrow: strictCommercial
-    });
-    if (cloudRes && cloudRes.ok && cloudRes.audioBuffer) {
-      writeDiskCache(cacheKey, cloudRes);
-      return cloudRes;
+    if (inFlightTtsTasks.has(cacheKey)) {
+      return inFlightTtsTasks.get(cacheKey);
     }
   }
 
-  // 2. 若显式指定了 Qwen3-TTS 1.7B 且带 HF Token
-  if (provider === 'qwen3_otome') {
-    const qwenRes = await callQwen3OtomeCloud({ text: cleanedText, voiceMeta: meta, settings });
-    if (qwenRes && qwenRes.ok) {
-      writeDiskCache(cacheKey, qwenRes);
-      return qwenRes;
-    }
-    if (strictCommercial) {
-      throw new Error(qwenRes?.error || '连接 Qwen3-TTS 声优模型超时');
-    }
-  }
-
-  // 3. 默认主力音源 API：独立 Azure Edge 24kHz 超纯净无底噪神经语音云（0.35s 极速直出，零电流杂音、零吞字）
-  if (provider === 'edge_neural' || !strictCommercial) {
-    const edgeRes = await edgeWorker.request(
-      {
+  const runSynthesis = async () => {
+    // 1. 若配置了专门的高阶商业漫剧配音 API（MiniMax海螺 / 火山豆包2.0 / Fish Audio / 阿里云百炼），优先走专属商业音源
+    if (
+      provider !== 'edge_neural' &&
+      provider !== 'qwen3_otome' &&
+      provider !== 'offline_kokoro' &&
+      provider !== 'local_kokoro'
+    ) {
+      const cloudRes = await callCommercialCloudTts({
         text: cleanedText,
-        voice: meta.id
-      },
-      6500
-    );
-    if (edgeRes && edgeRes.ok && edgeRes.audio_b64) {
-      const mp3Buf = Buffer.from(edgeRes.audio_b64, 'base64');
-      const outObj = {
-        ok: true,
-        audioBuffer: mp3Buf,
-        mimeType: 'audio/mpeg',
-        engineName: 'Azure Edge 24kHz 超清声优',
-        voice: meta
-      };
-      writeDiskCache(cacheKey, outObj);
-      return outObj;
+        voiceMeta: meta,
+        settings,
+        strictThrow: strictCommercial
+      });
+      if (cloudRes && cloudRes.ok && cloudRes.audioBuffer) {
+        writeDiskCache(cacheKey, cloudRes);
+        return cloudRes;
+      }
     }
-  }
 
-  // 4. 断网离线应急保底（仅在完全无法联网或显式选择离线时启用）
-  const finalSpeed = speed || meta.defaultSpeed || 0.94;
-  const workerResult = await kokoroWorker.request(
-    {
-      text: cleanedText.slice(0, 260),
-      voice: meta.id,
-      speed: finalSpeed
-    },
-    7000
-  );
+    // 2. 若显式指定了 Qwen3-TTS 1.7B 且带 HF Token
+    if (provider === 'qwen3_otome') {
+      const qwenRes = await callQwen3OtomeCloud({ text: cleanedText, voiceMeta: meta, settings });
+      if (qwenRes && qwenRes.ok) {
+        writeDiskCache(cacheKey, qwenRes);
+        return qwenRes;
+      }
+      if (strictCommercial) {
+        throw new Error(qwenRes?.error || '连接 Qwen3-TTS 声优模型超时');
+      }
+    }
 
-  if (!workerResult.ok || !workerResult.audio_b64) {
-    return { ok: false, fallback: true, error: workerResult.error || '语音生成失败' };
-  }
+    // 3. 默认主力音源 API：独立 Azure Edge 24kHz 超纯净无底噪神经语音云（0.35s 极速直出，零电流杂音、零吞字）
+    if (provider === 'edge_neural' || !strictCommercial) {
+      const edgeRes = await edgeWorker.request(
+        {
+          text: cleanedText,
+          voice: meta.id
+        },
+        6500
+      );
+      if (edgeRes && edgeRes.ok && edgeRes.audio_b64) {
+        const mp3Buf = Buffer.from(edgeRes.audio_b64, 'base64');
+        const outObj = {
+          ok: true,
+          audioBuffer: mp3Buf,
+          mimeType: 'audio/mpeg',
+          engineName: 'Azure Edge 24kHz 超清声优',
+          voice: meta
+        };
+        writeDiskCache(cacheKey, outObj);
+        return outObj;
+      }
+    }
 
-  const buf = Buffer.from(workerResult.audio_b64, 'base64');
-  return {
-    ok: true,
-    audioBuffer: buf,
-    wavBuffer: buf,
-    mimeType: 'audio/wav',
-    engineName: '离线应急语音',
-    duration: workerResult.duration || 0,
-    voice: meta
+    // 4. 断网离线应急保底（仅在完全无法联网或显式选择离线时启用）
+    const finalSpeed = speed || meta.defaultSpeed || 0.94;
+    const workerResult = await kokoroWorker.request(
+      {
+        text: cleanedText.slice(0, 260),
+        voice: meta.id,
+        speed: finalSpeed
+      },
+      7000
+    );
+
+    if (!workerResult.ok || !workerResult.audio_b64) {
+      return { ok: false, fallback: true, error: workerResult.error || '语音生成失败' };
+    }
+
+    const buf = Buffer.from(workerResult.audio_b64, 'base64');
+    return {
+      ok: true,
+      audioBuffer: buf,
+      wavBuffer: buf,
+      mimeType: 'audio/wav',
+      engineName: '离线应急语音',
+      duration: workerResult.duration || 0,
+      voice: meta
+    };
   };
+
+  if (strictCommercial) {
+    return runSynthesis();
+  }
+
+  const taskPromise = runSynthesis().finally(() => {
+    inFlightTtsTasks.delete(cacheKey);
+  });
+  inFlightTtsTasks.set(cacheKey, taskPromise);
+  return taskPromise;
 }
 
-// 启动后立即预热 Azure Edge 24kHz 超清神经语音通道（约 18MB 内存，毫秒级首包响应）
+// 启动后立即预热 Azure Edge 24kHz 超清神经语音通道（约 18MB 内存，毫秒级首包响应），并异步治理磁盘缓存容量
 function warmupTtsEngine() {
   setTimeout(() => {
     edgeWorker.ensure().catch(() => {});
   }, 400);
+  setTimeout(() => {
+    pruneDiskCacheIfNeeded().catch(() => {});
+  }, 5000);
 }
 
 process.on('exit', () => {

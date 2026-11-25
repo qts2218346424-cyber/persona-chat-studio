@@ -81,15 +81,162 @@
     antigravityStatus: { available: true, models: [], default_model: 'DeepSeek-V4.1-Flash', checked: false }
   };
 
-  // ================= 会话内存 LRU 缓存与 0ms 首屏 SWR 本地快照引擎 =================
-  const SESSION_CACHE_MAX = 15;
+  // ================= 会话三级缓存（L1 内存 LRU + L2 IndexedDB + 智能预取）与 0ms 首屏 SWR 快照引擎 =================
+  const SESSION_CACHE_MAX = 24;
+  const SESSION_RECONCILE_COOLDOWN_MS = 15000;
+  const SESSION_PREFETCH_FRESH_MS = 30000;
+  const SESSION_IDB_MAX_ITEMS = 20;
+  const SESSION_IDB_TTL_MS = 7 * 24 * 3600 * 1000;
   const BOOT_SNAPSHOT_KEY = 'star_boot_snapshot_v1';
   const BOOT_SNAPSHOT_TTL_MS = 7 * 24 * 3600 * 1000;
   const sessionDetailCache = new Map();
+  const inFlightSessionFetches = new Map();
   let userManualSessionSwitchAt = 0;
   let bootEnterStartedAt = 0;
 
-  function setSessionCache(sessionId, payload) {
+  // L2 IndexedDB 容错存储（严格按 userId 隔离，异常/隐私模式自动静默降级）
+  const sessionIdbStore = (() => {
+    const DB_NAME = 'star_whisper_cache_v1';
+    const STORE_NAME = 'sessions';
+    let dbPromise = null;
+
+    function openDb() {
+      if (dbPromise) return dbPromise;
+      if (typeof indexedDB === 'undefined') return Promise.resolve(null);
+      dbPromise = new Promise((resolve) => {
+        try {
+          const req = indexedDB.open(DB_NAME, 1);
+          req.onupgradeneeded = () => {
+            try {
+              const db = req.result;
+              if (!db.objectStoreNames.contains(STORE_NAME)) {
+                const os = db.createObjectStore(STORE_NAME, { keyPath: 'pk' });
+                os.createIndex('by_uid', 'userId', { unique: false });
+                os.createIndex('by_ts', 'cachedAt', { unique: false });
+              }
+            } catch {}
+          };
+          req.onsuccess = () => resolve(req.result);
+          req.onerror = () => resolve(null);
+          req.onblocked = () => resolve(null);
+        } catch {
+          resolve(null);
+        }
+      });
+      return dbPromise;
+    }
+
+    function makePk(userId, sessionId) {
+      return `${userId}::${sessionId}`;
+    }
+
+    async function get(userId, sessionId) {
+      if (!userId || !sessionId) return null;
+      const db = await openDb();
+      if (!db) return null;
+      return new Promise((resolve) => {
+        try {
+          const tx = db.transaction(STORE_NAME, 'readonly');
+          const req = tx.objectStore(STORE_NAME).get(makePk(userId, sessionId));
+          req.onsuccess = () => {
+            const rec = req.result;
+            if (!rec || rec.userId !== userId || !rec.payload?.session) {
+              return resolve(null);
+            }
+            if (!rec.cachedAt || Date.now() - rec.cachedAt > SESSION_IDB_TTL_MS) {
+              del(userId, sessionId);
+              return resolve(null);
+            }
+            resolve(rec.payload);
+          };
+          req.onerror = () => resolve(null);
+        } catch {
+          resolve(null);
+        }
+      });
+    }
+
+    async function put(userId, sessionId, payload) {
+      if (!userId || !sessionId || !payload?.session) return;
+      const db = await openDb();
+      if (!db) return;
+      try {
+        const slimPayload = {
+          session: payload.session,
+          persona: payload.persona,
+          messages: trimMessagesForSnapshot(payload.messages, 60),
+          has_more_messages: Boolean(payload.has_more_messages),
+          total_messages: Number(payload.total_messages || (payload.messages || []).length),
+          oldest_message_id: Number(payload.oldest_message_id || payload.messages?.[0]?.id || 0),
+          memories: Array.isArray(payload.memories) ? payload.memories.slice(0, 24) : [],
+          lorebooks: Array.isArray(payload.lorebooks) ? payload.lorebooks.slice(0, 20) : [],
+          nurturing: payload.nurturing || null,
+          companion: payload.companion || null,
+          telemetry: payload.telemetry || null,
+          membership: payload.membership || null
+        };
+        const tx = db.transaction(STORE_NAME, 'readwrite');
+        const store = tx.objectStore(STORE_NAME);
+        store.put({
+          pk: makePk(userId, sessionId),
+          userId,
+          sessionId,
+          cachedAt: Date.now(),
+          payload: slimPayload
+        });
+        // 轻量淘汰超出上限的旧条目
+        const countReq = store.count();
+        countReq.onsuccess = () => {
+          if (countReq.result > SESSION_IDB_MAX_ITEMS) {
+            const idx = store.index('by_ts');
+            let toDel = countReq.result - SESSION_IDB_MAX_ITEMS;
+            const curReq = idx.openCursor();
+            curReq.onsuccess = () => {
+              const cursor = curReq.result;
+              if (cursor && toDel > 0) {
+                cursor.delete();
+                toDel -= 1;
+                cursor.continue();
+              }
+            };
+          }
+        };
+      } catch {}
+    }
+
+    async function del(userId, sessionId) {
+      if (!userId || !sessionId) return;
+      const db = await openDb();
+      if (!db) return;
+      try {
+        const tx = db.transaction(STORE_NAME, 'readwrite');
+        tx.objectStore(STORE_NAME).delete(makePk(userId, sessionId));
+      } catch {}
+    }
+
+    async function clearUser(userId) {
+      if (!userId) return;
+      const db = await openDb();
+      if (!db) return;
+      try {
+        const tx = db.transaction(STORE_NAME, 'readwrite');
+        const store = tx.objectStore(STORE_NAME);
+        const idx = store.index('by_uid');
+        const curReq = idx.openCursor(IDBKeyRange.only(userId));
+        curReq.onsuccess = () => {
+          const cursor = curReq.result;
+          if (cursor) {
+            cursor.delete();
+            cursor.continue();
+          }
+        };
+      } catch {}
+    }
+
+    return { get, put, del, clearUser };
+  })();
+
+  function setSessionCache(sessionId, payload, { syncIdb = true } = {}) {
     if (!sessionId || !payload || !payload.session) return;
     if (sessionDetailCache.has(sessionId)) {
       sessionDetailCache.delete(sessionId);
@@ -101,6 +248,10 @@
       ...payload,
       cachedAt: Date.now()
     });
+    const uid = state.user?.id;
+    if (syncIdb && uid) {
+      sessionIdbStore.put(uid, sessionId, payload).catch(() => {});
+    }
   }
 
   function getSessionCache(sessionId) {
@@ -116,6 +267,38 @@
   function invalidateSessionCache(sessionId) {
     if (!sessionId) return;
     sessionDetailCache.delete(sessionId);
+    const uid = state.user?.id;
+    if (uid) sessionIdbStore.del(uid, sessionId).catch(() => {});
+  }
+
+  function fetchSessionDetailDeduped(sessionId, limit = 60) {
+    if (!sessionId) return Promise.reject(new Error('缺少会话 ID'));
+    const existing = inFlightSessionFetches.get(sessionId);
+    if (existing) return existing;
+    const p = apiJson(`/api/sessions/${encodeURIComponent(sessionId)}?limit=${limit}`)
+      .then((data) => {
+        if (data && data.session) {
+          setSessionCache(sessionId, data);
+        }
+        return data;
+      })
+      .finally(() => {
+        inFlightSessionFetches.delete(sessionId);
+      });
+    inFlightSessionFetches.set(sessionId, p);
+    return p;
+  }
+
+  function prefetchSessionDetail(sessionId) {
+    if (!sessionId || !state.user?.id) return;
+    if (state.isStreaming || sessionId === state.activeSessionId) return;
+    try {
+      if (navigator.connection?.saveData) return;
+    } catch {}
+    const cached = sessionDetailCache.get(sessionId);
+    if (cached && Date.now() - cached.cachedAt < SESSION_PREFETCH_FRESH_MS) return;
+    if (inFlightSessionFetches.has(sessionId)) return;
+    fetchSessionDetailDeduped(sessionId, 60).catch(() => {});
   }
 
   function syncActiveSessionToCache() {
@@ -175,7 +358,11 @@
     }));
   }
 
+  let bootSnapshotTimer = 0;
+  let bootSnapshotDirty = false;
+
   function saveBootSnapshot() {
+    bootSnapshotDirty = false;
     try {
       if (!state.user || !state.user.id) return;
       const liteScripts = (state.scripts || []).map((sc) => ({
@@ -251,6 +438,27 @@
       }
     } catch {}
   }
+
+  function scheduleSaveBootSnapshot() {
+    bootSnapshotDirty = true;
+    clearTimeout(bootSnapshotTimer);
+    bootSnapshotTimer = setTimeout(() => {
+      if (typeof window.requestIdleCallback === 'function') {
+        window.requestIdleCallback(() => saveBootSnapshot(), { timeout: 2000 });
+      } else {
+        saveBootSnapshot();
+      }
+    }, 400);
+  }
+
+  window.addEventListener('pagehide', () => {
+    if (bootSnapshotDirty) saveBootSnapshot();
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden' && bootSnapshotDirty) {
+      saveBootSnapshot();
+    }
+  });
 
   function loadBootSnapshot() {
     try {
@@ -1252,6 +1460,7 @@
 
   // 彻底清理前端当前账户的工作区内存与 DOM 残留，确保多账户切换 100% 物理级隔离
   function resetClientWorkspaceState() {
+    const prevUid = state.user?.id || '';
     if (state.isStreaming && state.streamingAbort) {
       try {
         state.streamingAbort.abort();
@@ -1300,6 +1509,10 @@
     codeSeq = 0;
     markdownRenderCache.clear();
     sessionDetailCache.clear();
+    inFlightSessionFetches.clear();
+    bootSnapshotDirty = false;
+    clearTimeout(bootSnapshotTimer);
+    if (prevUid) sessionIdbStore.clearUser(prevUid).catch(() => {});
     window.__activeSessionId = null;
     window.__isAdminUser = false;
     window.dispatchEvent(new CustomEvent('user-role-changed'));
@@ -4907,6 +5120,21 @@
         </div>
       `;
 
+      let hoverPrefetchTimer = 0;
+      item.addEventListener('pointerenter', () => {
+        clearTimeout(hoverPrefetchTimer);
+        hoverPrefetchTimer = setTimeout(() => {
+          prefetchSessionDetail(s.id);
+        }, 90);
+      });
+      item.addEventListener('pointerleave', () => {
+        clearTimeout(hoverPrefetchTimer);
+      });
+      item.addEventListener('pointerdown', () => {
+        clearTimeout(hoverPrefetchTimer);
+        prefetchSessionDetail(s.id);
+      });
+
       item.addEventListener('click', (e) => {
         if (
           e.target.closest('.session-del-btn') ||
@@ -5240,7 +5468,22 @@
     );
     updateBondBadge();
 
-    document.getElementById('ip-avatar').value = p.avatar || '角';
+    const ipAvatarEl = document.getElementById('ip-avatar');
+    if (ipAvatarEl) {
+      const rawAvatar = String(p.avatar || '').trim();
+      const isImgAvatar = /^(\/|https?:\/\/|data:image\/)/i.test(rawAvatar);
+      if (isImgAvatar) {
+        ipAvatarEl.dataset.imageAvatar = rawAvatar;
+        ipAvatarEl.dataset.fallbackBadge = (String(p.name || '角').trim().charAt(0) || '角');
+        ipAvatarEl.value = ipAvatarEl.dataset.fallbackBadge;
+        ipAvatarEl.title = '当前使用二次元高清图片头像；直接修改为 1~2 个字/Emoji 可切换为文字徽记';
+      } else {
+        delete ipAvatarEl.dataset.imageAvatar;
+        delete ipAvatarEl.dataset.fallbackBadge;
+        ipAvatarEl.value = rawAvatar || '角';
+        ipAvatarEl.title = '';
+      }
+    }
     document.getElementById('ip-name').value = p.name || '';
     document.getElementById('ip-tagline').value = replaceClientMacros(p.tagline || '');
     document.getElementById('ip-personality').value = replaceClientMacros(p.personality || '');
@@ -5786,7 +6029,7 @@
       box.remove();
       onSaved();
       syncActiveSessionToCache();
-      saveBootSnapshot();
+      scheduleSaveBootSnapshot();
       showToast('内容已保存');
     });
     const resubmitBtn = box.querySelector('.resubmit-edit-btn');
@@ -7364,7 +7607,22 @@
         body: JSON.stringify({ filename: file.name, content, auto_create: false })
       });
       const p = res.parsed;
-      document.getElementById('ip-avatar').value = p.avatar || '角';
+      const ipAvatarEl = document.getElementById('ip-avatar');
+    if (ipAvatarEl) {
+      const rawAvatar = String(p.avatar || '').trim();
+      const isImgAvatar = /^(\/|https?:\/\/|data:image\/)/i.test(rawAvatar);
+      if (isImgAvatar) {
+        ipAvatarEl.dataset.imageAvatar = rawAvatar;
+        ipAvatarEl.dataset.fallbackBadge = (String(p.name || '角').trim().charAt(0) || '角');
+        ipAvatarEl.value = ipAvatarEl.dataset.fallbackBadge;
+        ipAvatarEl.title = '当前使用二次元高清图片头像；直接修改为 1~2 个字/Emoji 可切换为文字徽记';
+      } else {
+        delete ipAvatarEl.dataset.imageAvatar;
+        delete ipAvatarEl.dataset.fallbackBadge;
+        ipAvatarEl.value = rawAvatar || '角';
+        ipAvatarEl.title = '';
+      }
+    }
       document.getElementById('ip-name').value = p.name || '';
       document.getElementById('ip-tagline').value = p.tagline || '';
       document.getElementById('ip-personality').value = p.personality || '';
@@ -8239,11 +8497,17 @@
     if (!state.activePersona) return;
     const applyGlobal = Boolean(document.getElementById('ip-sync-global-chk')?.checked);
     const sessionPromptVal = document.getElementById('session-prompt-input')?.value ?? '';
+    const ipAvatarEl = document.getElementById('ip-avatar');
+    const typedAvatar = String(ipAvatarEl?.value || '').trim();
+    const resolvedAvatar =
+      ipAvatarEl?.dataset.imageAvatar && typedAvatar === (ipAvatarEl.dataset.fallbackBadge || '')
+        ? ipAvatarEl.dataset.imageAvatar
+        : typedAvatar || ipAvatarEl?.dataset.imageAvatar || '角';
     const payload = {
       session_id: state.activeSessionId,
       apply_to_global: applyGlobal,
       session_prompt: sessionPromptVal,
-      avatar: document.getElementById('ip-avatar').value,
+      avatar: resolvedAvatar,
       name: document.getElementById('ip-name').value,
       tagline: document.getElementById('ip-tagline').value,
       personality: document.getElementById('ip-personality').value,

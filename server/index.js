@@ -582,8 +582,8 @@ function extractAuthToken(req, parsedUrl = null) {
   return '';
 }
 
-const APP_LATEST_VERSION = '2.1.0';
-const APP_LATEST_VERSION_CODE = 137;
+const APP_LATEST_VERSION = '2.2.0';
+const APP_LATEST_VERSION_CODE = 138;
 const APP_OFFICIAL_CERT_SHA256 = '6fd05e32a3cabf327140129d866e55a342fe30daa3384c67aad4b3cbdd98a17b';
 const APP_UPDATE_TICKET_SECRET = crypto
   .createHash('sha256')
@@ -1166,62 +1166,83 @@ async function handleApi(req, res, pathname, parsedUrl) {
       body.screenSize && Number(body.screenSize.width) > 0 && Number(body.screenSize.height) > 0
         ? { width: Number(body.screenSize.width), height: Number(body.screenSize.height) }
         : { width: 1080, height: 2400 };
-    const screenNodes = Array.isArray(body.screenNodes) ? body.screenNodes.slice(0, 120) : [];
-    const historySteps = Array.isArray(body.history) ? body.history.slice(-10) : [];
+    const screenNodes = Array.isArray(body.screenNodes) ? body.screenNodes.slice(0, 160) : [];
+    const historySteps = Array.isArray(body.history) ? body.history.slice(-12) : [];
     const installedApps = Array.isArray(body.installedApps) ? body.installedApps.slice(0, 80) : [];
+    const snapshotId = String(body.snapshotId || '').trim();
+    const foregroundApp = String(body.foregroundApp || '').trim();
+    const packageName = String(body.packageName || '').trim();
+    const screenTreeText = String(body.screenTreeText || '').trim().slice(0, 12000);
+    const screenVerdict = body.screenVerdict && typeof body.screenVerdict === 'object' ? body.screenVerdict : null;
+    const interjections = Array.isArray(body.interjections) ? body.interjections.slice(-5) : [];
+    const hasSensitiveField = Boolean(body.hasSensitiveField);
+    const sensitiveReason = String(body.sensitiveReason || '').trim();
 
     const sysPrompt = [
-      '你是星语手机辅助代理（Phone Agent · 参考 dsh-Go 规划架构）。',
-      '你的职责是根据用户的目标任务、当前手机屏幕无障碍控件节点树以及历史执行步骤，规划“下一步唯一且精确”的操作。',
+      '你是星语手机辅助代理（Phone Agent · dsh-Go 规划内核）。',
+      '你的职责是根据用户的目标任务、当前手机屏幕快照（含元素 ref 编号）、上一步 ScreenVerdict 验证结果、用户中途插话以及历史步骤，输出“下一步唯一且精确”的动作指令。',
       `当前设备屏幕分辨率为 ${screenSize.width}x${screenSize.height}。`,
       '你只能输出一个严格合法的 JSON 对象（不要用 Markdown 代码块包裹，也不要附加前后任何解释文字），格式如下：',
-      '{"thought":"简短中文判断依据（35字以内）","action":"动作名","params":{},"summary":"对用户展示的本步中文说明（25字以内）","needConfirm":false}',
-      '可用 action 及对应 params 规范：',
-      '- launch_app: {"appName":"应用名称，优先参考已安装应用列表"}',
-      '- click_node: {"text":"控件精确可见文本或描述","viewId":"可选控件id"}',
-      '- click: {"x":像素X,"y":像素Y}',
-      '- long_click: {"x":像素X,"y":像素Y}',
-      '- swipe: {"x1":起点X,"y1":起点Y,"x2":终点X,"y2":终点Y,"duration":350}',
-      '- input: {"text":"要输入的文本","viewId":"可选目标输入框id"}',
-      '- home: {}',
-      '- back: {}',
-      '- recents: {}',
-      '- wait: {"ms":1000}',
-      '- done: {"message":"任务完成总结"}',
-      '- ask_user: {"message":"需要用户手动操作或澄清的问题"}',
+      '{"thought":"精炼中文推理(<=50字)","tool":"工具名","args":{},"summary":"面向用户的中文操作简述(<=28字)","risk":"read|write|sensitive","reply":"仅在 done 或 ask_user 时填写自然语言回复"}',
+      '可用 tool 及对应 args 规范（dsh-Go PhoneToolCatalog）：',
+      '- phone_open: {"appName":"应用名称，优先参考已安装应用列表"}',
+      '- phone_tap: {"ref":"元素编号如e12","snapshotId":"当前快照ID"}  （点击页面控件首选！）',
+      '- phone_tap_xy: {"x":像素X,"y":像素Y}  （仅当控件树未暴露目标或自绘控件时使用）',
+      '- phone_double_tap: {"x":像素X,"y":像素Y}',
+      '- phone_long_press: {"ref":"e12","duration":700} 或 {"x":像素X,"y":像素Y,"duration":700}',
+      '- phone_type: {"ref":"可选输入框ref","text":"要输入的文本","clear":false,"submit":true}',
+      '- phone_scroll: {"direction":"down|up|left|right","amount":0.65}',
+      '- phone_swipe: {"x1":起点X,"y1":起点Y,"x2":终点X,"y2":终点Y,"duration":320}',
+      '- phone_key: {"key":"back|home|recents|notifications|quick_settings|enter|screenshot"}',
+      '- phone_wait: {"ms":1000}',
+      '- ask_user: {"message":"需要用户手动输入支付密码/选择规格或确认的问题","reason":"sensitive_or_manual"}',
+      '- done: {"message":"清晰自然的中文完成总结，汇报查到的信息或操作结果"}',
       '关键约束：',
-      '1. 优先使用 launch_app 打开第三方应用，优先级高于回桌面翻找图标；点选屏幕已有控件时优先用 click_node 或其 bounds 中心点 click。',
-      '2. 若控件列表中出现需要向下滚动才能看见的内容，请返回 swipe 向上滑动（例如 y1=1600 -> y2=600）。',
-      '3. 若即将触发支付、转账、确认下单、发红包、删除数据、卸载应用、发送消息/邮件/评论、修改系统密码或退出登录等高风险动作，必须将 needConfirm 设为 true。',
-      '4. 如果连续 2 次 wait 后屏幕界面节点仍无变化或节点极少（例如自绘弹窗或复杂规格面板），严禁继续返回 wait 或输出纯文字解释，必须尝试 click/swipe 或返回 {"thought":"当前面板控件未暴露","action":"ask_user","params":{"message":"请手动点选规格或完成当前操作后继续"},"summary":"等待手动点选规格","needConfirm":false}。',
-      '5. 若处于网页预览或桌面端（无真实屏幕节点，screenNodes 为空且明确说明未在 APK 中运行），可直接给出逻辑演练步骤或 return action="done"。'
+      '1. 优先用 phone_open 打开目标应用；点击屏幕元素时优先使用 phone_tap 并携带准确 ref 与 snapshotId，避免盲猜坐标。',
+      '2. 仔细检查 screenVerdict：若连续 2 步画面未变化（changed=false），严禁继续重复同一动作或 phone_wait，必须改用 phone_tap_xy / phone_scroll / phone_key(back) 或返回 ask_user 交还用户处理。',
+      '3. 若 interjections 非空（用户在执行中途插话或纠偏），必须最高优先级立即响应用户最新插话要求。',
+      '4. 若 hasSensitiveField=true（密码框/支付收银台/验证码）或即将执行付款、转账、下单、发红包、删除、卸载、发送对外消息/评论等高风险动作，必须将 risk 设为 "sensitive"；遇到支付密码/短信验证码/刷脸确认时，直接返回 ask_user 交还人类操作。',
+      '5. 若处于网页预览模式（无真实屏幕节点，screenNodes 为空且无 screenTreeText），可直接给出逻辑演示并在最后一步返回 done。'
     ].join('\n');
 
     const compactNodes = screenNodes.map((n, idx) => ({
-      i: idx,
+      ref: n.ref || `e${idx + 1}`,
       t: n.text || '',
       d: n.desc || '',
       id: n.viewId || n.id || '',
       cls: String(n.className || n.cls || '').split('.').pop(),
       clk: Boolean(n.clickable),
       edt: Boolean(n.editable),
+      pwd: Boolean(n.password),
       c: n.center || undefined,
       b: n.bounds || ''
     }));
 
-    const userMsg = JSON.stringify({
+    const userPayload = {
       task,
-      stepIndex: historySteps.length + 1,
+      stepIndex: Number(body.stepIndex) > 0 ? Number(body.stepIndex) : historySteps.length + 1,
+      snapshotId,
+      foregroundApp,
+      packageName,
+      hasSensitiveField,
+      sensitiveReason,
+      screenVerdict,
+      interjections,
       recentHistory: historySteps.map((h) => ({
         step: h.step,
-        action: h.action,
+        tool: h.tool || h.action,
         summary: h.summary,
         result: h.result
       })),
-      installedAppsPreview: installedApps.map((a) => (typeof a === 'string' ? a : a.name)).slice(0, 40),
-      screenNodesCount: compactNodes.length,
-      screenNodes: compactNodes
-    });
+      installedAppsPreview: installedApps.map((a) => (typeof a === 'string' ? a : a.name)).slice(0, 40)
+    };
+    if (screenTreeText) {
+      userPayload.screenTreeText = screenTreeText;
+    } else {
+      userPayload.screenNodesCount = compactNodes.length;
+      userPayload.screenNodes = compactNodes;
+    }
+    const userMsg = JSON.stringify(userPayload);
 
     const extractPlanJson = (raw) => {
       const cleaned = String(raw || '')
@@ -1264,7 +1285,7 @@ async function handleApi(req, res, pathname, parsedUrl) {
                 const slice = cleaned.slice(i, j + 1);
                 try {
                   const obj = tryParseClean(slice);
-                  if (obj && typeof obj === 'object' && obj.action) return obj;
+                  if (obj && typeof obj === 'object' && (obj.tool || obj.action)) return obj;
                 } catch {}
                 break;
               }
@@ -1276,30 +1297,70 @@ async function handleApi(req, res, pathname, parsedUrl) {
     };
 
     const normalizePlan = (obj) => {
-      const allowed = new Set([
-        'launch_app',
-        'click_node',
-        'click',
-        'long_click',
-        'swipe',
-        'input',
-        'home',
-        'back',
-        'recents',
-        'wait',
-        'done',
-        'ask_user'
-      ]);
-      const action = allowed.has(obj?.action) ? obj.action : 'done';
-      const params = obj?.params && typeof obj.params === 'object' ? obj.params : {};
-      const highRiskKw = /(付款|支付|转账|结算|下单|提交订单|确认购买|发红包|删除|清空|卸载|注销|发送|发布|授权|登录)/;
-      const riskText = `${obj?.summary || ''} ${params?.text || ''} ${obj?.thought || ''}`;
+      const toolToLegacy = {
+        phone_open: 'launch_app',
+        phone_tap: 'click_node',
+        phone_tap_xy: 'click',
+        phone_double_tap: 'double_tap',
+        phone_long_press: 'long_click',
+        phone_type: 'input',
+        phone_scroll: 'scroll',
+        phone_swipe: 'swipe',
+        phone_key: 'key',
+        phone_wait: 'wait',
+        done: 'done',
+        ask_user: 'ask_user'
+      };
+      const legacyToTool = {
+        launch_app: 'phone_open',
+        click_node: 'phone_tap',
+        click: 'phone_tap_xy',
+        long_click: 'phone_long_press',
+        swipe: 'phone_swipe',
+        input: 'phone_type',
+        home: 'phone_key',
+        back: 'phone_key',
+        recents: 'phone_key',
+        wait: 'phone_wait',
+        done: 'done',
+        ask_user: 'ask_user'
+      };
+
+      const rawTool = String(obj?.tool || '').trim();
+      const rawAction = String(obj?.action || '').trim();
+      let tool = rawTool && toolToLegacy[rawTool] ? rawTool : (legacyToTool[rawAction] || 'done');
+      let args = (obj?.args && typeof obj.args === 'object') ? { ...obj.args } : ((obj?.params && typeof obj.params === 'object') ? { ...obj.params } : {});
+
+      if (!rawTool && (rawAction === 'home' || rawAction === 'back' || rawAction === 'recents')) {
+        args = { key: rawAction };
+      }
+
+      const legacyAction = toolToLegacy[tool] || 'done';
+      const highRiskKw = /(付款|支付|转账|结算|下单|提交订单|确认购买|发红包|删除|清空|卸载|注销|发送|发布|授权|登录|密码|验证码)/;
+      const riskText = `${obj?.summary || ''} ${args?.text || ''} ${obj?.thought || ''}`;
+      let risk = String(obj?.risk || '').trim().toLowerCase();
+      if (risk !== 'read' && risk !== 'write' && risk !== 'sensitive') {
+        risk = (obj?.needConfirm || highRiskKw.test(riskText)) ? 'sensitive' : (tool === 'phone_wait' || tool === 'done' || tool === 'ask_user' ? 'read' : 'write');
+      }
+      if (tool !== 'done' && tool !== 'phone_wait' && tool !== 'ask_user' && highRiskKw.test(riskText)) {
+        risk = 'sensitive';
+      }
+
+      const replyText = String(obj?.reply || args?.message || obj?.summary || '').trim();
+      if ((tool === 'done' || tool === 'ask_user') && replyText && !args.message) {
+        args.message = replyText;
+      }
+
       return {
-        thought: String(obj?.thought || '已结合当前界面完成分析').slice(0, 160),
-        action,
-        params,
-        summary: String(obj?.summary || `执行 ${action}`).slice(0, 120),
-        needConfirm: Boolean(obj?.needConfirm) || (action !== 'done' && action !== 'wait' && action !== 'ask_user' && highRiskKw.test(riskText))
+        thought: String(obj?.thought || '已结合当前界面完成分析').slice(0, 180),
+        tool,
+        args,
+        risk,
+        reply: replyText.slice(0, 500),
+        action: legacyAction,
+        params: args,
+        summary: String(obj?.summary || `执行 ${tool}`).slice(0, 120),
+        needConfirm: risk === 'sensitive' || Boolean(obj?.needConfirm)
       };
     };
 

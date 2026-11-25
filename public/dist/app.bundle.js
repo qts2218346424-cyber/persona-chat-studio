@@ -18351,8 +18351,8 @@ runCloneBtn.innerHTML = origHtml;
 })();
 ;
 (() => {
-const CURRENT_APK_VERSION = '2.1.0';
-const CURRENT_APK_CODE = 137;
+const CURRENT_APK_VERSION = '2.2.0';
+const CURRENT_APK_CODE = 138;
 const DEEPSEEK_API_KEYS_URL = 'https://platform.deepseek.com/api_keys';
 const PUBLIC_WEB_ORIGIN = 'https://star.claudexxb.online';
 const GITHUB_RELEASES_URL = 'https://github.com/qts2218346424-cyber/persona-chat-studio/releases';
@@ -18361,6 +18361,9 @@ execMode: 'pa_exec_mode_v1',
 directModel: 'pa_direct_model_v1',
 directBaseUrl: 'pa_direct_baseurl_v1',
 autoApprove: 'pa_auto_approve_v1',
+confirmPolicy: 'pa_confirm_policy_v2',
+trustedApps: 'pa_trusted_apps_v1',
+edgeGlow: 'pa_edge_glow_v1',
 exclusiveKey: 'pa_exclusive_api_key_v1',
 keyPrimary: 'deepseek_user_api_key',
 keyFallback: 'own_deepseek_api_key',
@@ -18419,18 +18422,20 @@ items: [
 }
 ];
 const EMPTY_GUIDE_PRESETS = [
-{ label: '打开任意 App...', sub: '输入应用名快速直达', cmd: '打开 ', mode: 'fill' },
-{ label: '快捷搜索...', sub: '打开搜索栏并查询', cmd: '搜索 ', mode: 'fill' },
-{ label: '智能代打字...', sub: '自动填入底层输入框', cmd: '打字 ', mode: 'fill' },
-{ label: '读取当前屏幕', sub: '查看界面控件上下文', cmd: '__inspect_screen__', mode: 'exec' },
-{ label: '系统截屏', sub: '一键截取当前屏幕', cmd: '截屏', mode: 'exec' },
-{ label: '自动刷视频', sub: '每8秒自动上滑切换', cmd: '自动刷视频', mode: 'exec' }
+{ label: '打开微信找文件传输助手', sub: '多步自动识屏点按进入', cmd: '打开微信，进入文件传输助手', mode: 'exec' },
+{ label: '高德地图搜附近咖啡', sub: '自动开地图并搜索附近地点', cmd: '打开高德地图搜索附近的咖啡店', mode: 'exec' },
+{ label: '读取当前屏幕内容', sub: '采集控件树并分析界面', cmd: '__inspect_screen__', mode: 'exec' },
+{ label: '打开系统设置看电量', sub: '自动跳转系统电池信息页', cmd: '打开系统设置，查看电池电量信息', mode: 'exec' }
 ];
 let paSessionNodes = [];
 let activeCmdLibCategory = 'common';
 let installedAppsCache = null;
 let activeAbortController = null;
 let emergencyStopRequested = false;
+let isAgentRunning = false;
+let queuedInterjections = [];
+let activeRunContext = null;
+let pendingTaskAfterA11y = '';
 let latestUpdateInfo = null;
 let pendingNativeCheckResolve = null;
 let nativeCheckTimeoutId = null;
@@ -18552,7 +18557,8 @@ try {
 const saved = localStorage.getItem(STORAGE_KEYS.execMode);
 if (saved === 'api_direct' || saved === 'api_cloud' || saved === 'local') return saved;
 } catch {}
-return 'local';
+const cfg = getDirectConfig();
+return cfg.apiKey ? 'api_direct' : 'api_cloud';
 }
 function setExecMode(mode) {
 const next = mode === 'api_cloud' || mode === 'local' ? mode : 'api_direct';
@@ -18561,6 +18567,103 @@ localStorage.setItem(STORAGE_KEYS.execMode, next);
 } catch {}
 syncStatus();
 return next;
+}
+function getConfirmPolicy() {
+try {
+const p = localStorage.getItem(STORAGE_KEYS.confirmPolicy);
+if (p === 'ask_every' || p === 'sensitive_only' || p === 'auto_turn') return p;
+if (localStorage.getItem(STORAGE_KEYS.autoApprove) === '1') return 'auto_turn';
+} catch {}
+return 'sensitive_only';
+}
+function setConfirmPolicy(policy) {
+const next = policy === 'ask_every' || policy === 'auto_turn' ? policy : 'sensitive_only';
+try {
+localStorage.setItem(STORAGE_KEYS.confirmPolicy, next);
+localStorage.setItem(STORAGE_KEYS.autoApprove, next === 'auto_turn' ? '1' : '0');
+} catch {}
+syncStatus();
+return next;
+}
+function getPolicyLabel(policy) {
+if (policy === 'ask_every') return '每次确认';
+if (policy === 'auto_turn') return '托管放行';
+return '仅敏感确认';
+}
+function getTrustedApps() {
+try {
+const raw = localStorage.getItem(STORAGE_KEYS.trustedApps);
+const arr = raw ? JSON.parse(raw) : [];
+return Array.isArray(arr) ? arr.filter((x) => x && (x.packageName || x.appName)) : [];
+} catch {
+return [];
+}
+}
+function addTrustedApp(appName, packageName) {
+const pkg = String(packageName || '').trim();
+const name = String(appName || pkg).trim();
+if (!pkg && !name) return;
+const list = getTrustedApps().filter((x) => (pkg ? x.packageName !== pkg : x.appName !== name));
+list.unshift({ appName: name, packageName: pkg, ts: Date.now() });
+try {
+localStorage.setItem(STORAGE_KEYS.trustedApps, JSON.stringify(list.slice(0, 30)));
+} catch {}
+syncStatus();
+}
+function removeTrustedApp(key) {
+const list = getTrustedApps().filter((x) => x.packageName !== key && x.appName !== key);
+try {
+localStorage.setItem(STORAGE_KEYS.trustedApps, JSON.stringify(list));
+} catch {}
+syncStatus();
+}
+function isAppTrusted(appName, packageName) {
+const pkg = String(packageName || '').trim();
+const name = String(appName || '').trim();
+return getTrustedApps().some((x) => (pkg && x.packageName === pkg) || (name && x.appName === name));
+}
+function isEdgeGlowEnabled() {
+try {
+return localStorage.getItem(STORAGE_KEYS.edgeGlow) !== '0';
+} catch {
+return true;
+}
+}
+function setEdgeGlowPref(enabled) {
+const flag = Boolean(enabled);
+try {
+localStorage.setItem(STORAGE_KEYS.edgeGlow, flag ? '1' : '0');
+} catch {}
+const b = getBridge();
+if (isNativeApk() && b && typeof b.setEdgeGlowEnabled === 'function') {
+try { b.setEdgeGlowEnabled(flag); } catch {}
+}
+syncStatus();
+}
+function renderTrustedAppsList() {
+const wrap = $('pa-trusted-apps-list');
+if (!wrap) return;
+const list = getTrustedApps();
+if (list.length === 0) {
+wrap.innerHTML = `<span class="pa-trusted-empty">暂无白名单应用（在确认卡点“信任此App”可自动加入）</span>`;
+return;
+}
+wrap.innerHTML = list
+.map((item) => {
+const key = item.packageName || item.appName;
+return `
+          <span class="pa-trusted-chip">
+            <span>${escapeHtml(item.appName || item.packageName)}</span>
+            <button type="button" data-remove-trust="${escapeHtml(key)}" title="移出白名单" aria-label="移出白名单">✕</button>
+          </span>
+        `;
+})
+.join('');
+wrap.querySelectorAll('button[data-remove-trust]').forEach((btn) => {
+btn.addEventListener('click', () => {
+removeTrustedApp(btn.getAttribute('data-remove-trust') || '');
+});
+});
 }
 function getDirectConfig() {
 let apiKey = '';
@@ -19051,14 +19154,38 @@ floatBtnLabel.textContent = floatOn ? '悬浮中' : '悬浮窗';
 }
 const confirmChip = $('pa-banner-confirm-chip');
 const confirmText = $('pa-banner-confirm-text');
+const policy = getConfirmPolicy();
+const policyLabel = getPolicyLabel(policy);
 if (confirmChip && confirmText) {
 confirmChip.classList.remove('mode-on', 'disabled');
-if (cfg.autoApprove) {
+if (policy === 'auto_turn') {
 confirmChip.classList.add('mode-on');
-confirmText.textContent = '免确认自动执行';
-} else {
+} else if (policy === 'ask_every') {
 confirmChip.classList.add('disabled');
-confirmText.textContent = '逐步安全确认';
+}
+confirmText.textContent = policyLabel;
+}
+const topPolicyLabel = $('pa-policy-pill-label');
+if (topPolicyLabel) topPolicyLabel.textContent = policyLabel;
+const topPolicyPill = $('pa-banner-policy-pill');
+if (topPolicyPill) topPolicyPill.classList.toggle('is-active', policy === 'auto_turn');
+document.querySelectorAll('.pa-policy-card').forEach((card) => {
+const act = card.dataset.paPolicy === policy;
+card.classList.toggle('active', act);
+card.setAttribute('aria-checked', String(act));
+});
+renderTrustedAppsList();
+const edgeGlowChk = $('pa-cfg-edge-glow');
+if (edgeGlowChk) edgeGlowChk.checked = isEdgeGlowEnabled();
+const heroTitle = $('pa-empty-hero-title');
+const heroSub = $('pa-empty-hero-sub');
+if (heroTitle && heroSub) {
+if (native && !a11yOk) {
+heroTitle.textContent = '开启无障碍即可代劳控屏';
+heroSub.textContent = '点上方状态栏前往系统开启「DeepSeek · 星语」无障碍服务';
+} else {
+heroTitle.textContent = 'dsh-Go 手机控屏已就绪';
+heroSub.textContent = '支持三档安全确认，密码、支付与验证码操作始终交还给你';
 }
 }
 const autoSwipeBtn = $('pa-sheet-autoswipe-btn');
@@ -19114,19 +19241,129 @@ return list;
 }
 return [];
 }
-function readScreenNodes() {
-if (!isNativeApk()) return [];
+function readAndFormatSnapshot(includeInvisible = false) {
+if (!isNativeApk()) {
+return {
+snapshotId: '',
+packageName: '',
+appName: '网页预览',
+signature: '',
+hasSensitiveField: false,
+sensitiveReason: '',
+nodes: [],
+screenTreeText: ''
+};
+}
 const b = getBridge();
 try {
+if (typeof b.dumpScreenSnapshot === 'function') {
+const raw = b.dumpScreenSnapshot(Boolean(includeInvisible));
+const parsed = JSON.parse(raw);
+if (parsed && Array.isArray(parsed.nodes)) {
+const lines = parsed.nodes.slice(0, 120).map((n) => {
+const flags = [];
+if (n.clickable) flags.push('clk');
+if (n.editable) flags.push('edt');
+if (n.scrollable) flags.push('scr');
+if (n.checked) flags.push('chk');
+if (n.password) flags.push('pwd');
+const label = [n.text, n.desc].filter(Boolean).join(' / ').slice(0, 48);
+const cx = Array.isArray(n.center) ? n.center[0] : 0;
+const cy = Array.isArray(n.center) ? n.center[1] : 0;
+const flagStr = flags.length ? ` (${flags.join(',')})` : '';
+return `[${n.ref || ''}] ${n.cls || 'View'}${label ? ` "${label}"` : ''}${flagStr} @${cx},${cy}`;
+});
+return {
+snapshotId: String(parsed.snapshotId || ''),
+packageName: String(parsed.packageName || ''),
+appName: String(parsed.appName || parsed.packageName || ''),
+signature: String(parsed.signature || ''),
+hasSensitiveField: Boolean(parsed.hasSensitiveField),
+sensitiveReason: String(parsed.sensitiveReason || ''),
+nodes: parsed.nodes,
+screenTreeText: lines.join('\n')
+};
+}
+}
 if (typeof b.dumpScreenHierarchy === 'function') {
 const raw = b.dumpScreenHierarchy(false);
 const parsed = JSON.parse(raw);
-if (Array.isArray(parsed)) return parsed;
-if (parsed && Array.isArray(parsed.nodes)) return parsed.nodes;
-return [];
+const nodes = Array.isArray(parsed) ? parsed : (parsed?.nodes || []);
+const refNodes = nodes.slice(0, 120).map((n, idx) => ({ ...n, ref: n.ref || `e${idx + 1}` }));
+const lines = refNodes.map((n) => {
+const cx = Array.isArray(n.center) ? n.center[0] : 0;
+const cy = Array.isArray(n.center) ? n.center[1] : 0;
+const label = [n.text, n.desc].filter(Boolean).join(' / ').slice(0, 48);
+return `[${n.ref}] ${String(n.className || 'View').split('.').pop()}${label ? ` "${label}"` : ''} @${cx},${cy}`;
+});
+return {
+snapshotId: '',
+packageName: String(parsed?.packageName || ''),
+appName: String(parsed?.packageName || ''),
+signature: '',
+hasSensitiveField: false,
+sensitiveReason: '',
+nodes: refNodes,
+screenTreeText: lines.join('\n')
+};
 }
 } catch {}
-return [];
+return {
+snapshotId: '',
+packageName: '',
+appName: '',
+signature: '',
+hasSensitiveField: false,
+sensitiveReason: '',
+nodes: [],
+screenTreeText: ''
+};
+}
+function readScreenNodes() {
+return readAndFormatSnapshot(false).nodes;
+}
+function readScreenMeta() {
+if (!isNativeApk()) return { ok: false, packageName: '', appName: '', signature: '', hasSensitiveField: false, sensitiveReason: '' };
+const b = getBridge();
+try {
+if (typeof b.getScreenMeta === 'function') {
+return JSON.parse(b.getScreenMeta()) || {};
+}
+} catch {}
+return { ok: false, packageName: '', appName: '', signature: '', hasSensitiveField: false, sensitiveReason: '' };
+}
+async function waitForScreenVerdict(beforeMeta, toolName, signal) {
+if (!isNativeApk() || toolName === 'phone_wait' || toolName === 'done' || toolName === 'ask_user') {
+return { changed: true, fromApp: beforeMeta?.appName || '', toApp: beforeMeta?.appName || '', elapsedMs: 0 };
+}
+const maxWait = toolName === 'phone_open' ? 2400 : (toolName === 'phone_type' ? 1200 : 1500);
+const startAt = Date.now();
+let changed = false;
+let latest = beforeMeta || {};
+while (Date.now() - startAt < maxWait) {
+if (signal?.aborted || emergencyStopRequested) break;
+await sleep(220);
+latest = readScreenMeta();
+if (latest && latest.ok) {
+if (
+(beforeMeta?.packageName && latest.packageName && latest.packageName !== beforeMeta.packageName) ||
+(beforeMeta?.signature && latest.signature && latest.signature !== beforeMeta.signature)
+) {
+changed = true;
+await sleep(280);
+latest = readScreenMeta();
+break;
+}
+}
+}
+return {
+changed,
+fromApp: beforeMeta?.appName || beforeMeta?.packageName || '',
+toApp: latest?.appName || latest?.packageName || '',
+elapsedMs: Date.now() - startAt,
+hasSensitiveField: Boolean(latest?.hasSensitiveField),
+sensitiveReason: String(latest?.sensitiveReason || '')
+};
 }
 function parseBoundsCenter(node) {
 if (!node) return null;
@@ -19170,23 +19407,38 @@ window.__refreshChatQuickNav();
 });
 }
 }
-function appendUserMessageRow(text) {
+function appendUserMessageRow(text, isInterject = false) {
 const container = $('messages-container');
 if (!container) return;
 document.querySelector('.chat-stage')?.classList.remove('ds-empty-mode');
 const row = document.createElement('div');
-row.className = 'msg-row user pa-user-row';
+row.className = `msg-row user pa-user-row ${isInterject ? 'pa-interject-row' : ''}`;
 const wrap = document.createElement('div');
 wrap.className = 'user-msg-wrap';
 const bodyEl = document.createElement('div');
 bodyEl.className = 'msg-body';
-bodyEl.textContent = String(text || '');
+bodyEl.textContent = isInterject ? `插话：${String(text || '')}` : String(text || '');
 wrap.appendChild(bodyEl);
 row.appendChild(wrap);
 paSessionNodes.push(row);
 container.appendChild(row);
 syncEmptyGuideVisibility();
 scrollChatToBottom();
+}
+function updateQueueBarUi() {
+const bar = $('pa-queue-bar');
+const txtEl = $('pa-queue-text');
+if (!bar || !txtEl) return;
+if (!isAgentRunning || queuedInterjections.length === 0) {
+bar.classList.add('hidden');
+txtEl.textContent = '';
+return;
+}
+const latest = queuedInterjections[queuedInterjections.length - 1];
+txtEl.textContent = queuedInterjections.length > 1
+? `${latest.text}（共 ${queuedInterjections.length} 条待注入）`
+: latest.text;
+bar.classList.remove('hidden');
 }
 function createAgentCardRow(taskText, execMode) {
 const container = $('messages-container');
@@ -19198,26 +19450,35 @@ avatarEl.className = 'msg-avatar';
 const bodyEl = document.createElement('div');
 bodyEl.className = 'msg-body';
 const card = document.createElement('div');
-card.className = 'pa-agent-card';
+card.className = 'pa-dsh-turn';
 card.innerHTML = `
-      <div class="pa-card-head">
-        <div class="pa-card-title">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4d6bfe" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect>
-            <line x1="12" y1="18" x2="12.01" y2="18"></line>
-          </svg>
-          <span>手机辅助 · dsh-Go</span>
+      <div class="pa-trace-accordion is-running">
+        <div class="pa-trace-summary" role="button" tabindex="0" aria-expanded="true">
+          <div class="pa-trace-sum-left">
+            <span class="pa-trace-pulse" aria-hidden="true"></span>
+            <span class="pa-trace-sum-text">正在规划：${escapeHtml(taskText)}</span>
+          </div>
+          <div class="pa-trace-sum-right">
+            <span class="pa-trace-meta">${escapeHtml(getEngineLabel(execMode))}</span>
+            <button type="button" class="pa-banner-btn subtle pa-card-stop-btn" style="padding:3px 9px;font-size:11px;">停止</button>
+            <span class="pa-trace-chevron" aria-hidden="true">▾</span>
+          </div>
         </div>
-        <div style="display:flex;align-items:center;gap:6px;">
-          <span class="pa-engine-badge">${escapeHtml(getEngineLabel(execMode))}</span>
-          <button type="button" class="pa-banner-btn subtle pa-card-stop-btn" style="padding:3px 9px;font-size:11px;">停止</button>
+        <div class="pa-trace-body">
+          <div class="pa-steps-list pa-trace-list"></div>
+          <div class="pa-confirm-slot"></div>
+          <div class="pa-fix-slot"></div>
         </div>
       </div>
-      <div class="pa-task-echo" style="font-size:12.5px;color:light-dark(#475569,#94a3b8);">任务指令：${escapeHtml(taskText)}</div>
-      <div class="pa-steps-list"></div>
-      <div class="pa-confirm-slot"></div>
-      <div class="pa-fix-slot"></div>
+      <div class="pa-final-reply hidden"></div>
     `;
+const accordion = card.querySelector('.pa-trace-accordion');
+const summaryEl = card.querySelector('.pa-trace-summary');
+summaryEl?.addEventListener('click', (e) => {
+if (e.target.closest('.pa-card-stop-btn')) return;
+const collapsed = accordion.classList.toggle('is-collapsed');
+summaryEl.setAttribute('aria-expanded', String(!collapsed));
+});
 bodyEl.appendChild(card);
 row.appendChild(avatarEl);
 row.appendChild(bodyEl);
@@ -19228,29 +19489,62 @@ scrollChatToBottom();
 return {
 row,
 card,
+accordion,
+summaryEl,
+summaryTextEl: card.querySelector('.pa-trace-sum-text'),
+summaryMetaEl: card.querySelector('.pa-trace-meta'),
 stepsList: card.querySelector('.pa-steps-list'),
 confirmSlot: card.querySelector('.pa-confirm-slot'),
 fixSlot: card.querySelector('.pa-fix-slot'),
-stopBtn: card.querySelector('.pa-card-stop-btn')
+stopBtn: card.querySelector('.pa-card-stop-btn'),
+finalReplyEl: card.querySelector('.pa-final-reply'),
+startedAt: Date.now(),
+stepCount: 0
 };
 }
-function addStepItem(stepsList, stepNum, summary, thought, statusText, isError = false) {
+function addStepItem(stepsList, stepNum, summary, thought, statusText, isError = false, toolName = 'step') {
 if (!stepsList) return null;
 const item = document.createElement('div');
-item.className = 'pa-step-item';
+item.className = 'pa-trace-step';
 item.innerHTML = `
-      <div class="pa-step-top">
-        <span>第 ${stepNum} 步 · ${escapeHtml(summary)}</span>
+      <div class="pa-trace-step-head">
+        <div class="pa-trace-step-main">
+          <span class="pa-tool-badge">${escapeHtml(toolName)}</span>
+          <span class="pa-step-desc">${escapeHtml(summary)}</span>
+        </div>
+        <span class="pa-verdict-badge ${isError ? 'is-error' : 'is-same'}">${escapeHtml(statusText)}</span>
       </div>
-      ${thought ? `<div class="pa-step-thought">${escapeHtml(thought)}</div>` : ''}
-      <div class="pa-step-result ${isError ? 'is-error' : ''}">${escapeHtml(statusText)}</div>
+      <div class="pa-trace-step-detail">
+        ${thought ? `<div class="pa-step-thought">${escapeHtml(thought)}</div>` : '<div class="pa-step-thought"></div>'}
+        <div class="pa-step-result ${isError ? 'is-error' : ''}">${escapeHtml(statusText)}</div>
+      </div>
     `;
+item.addEventListener('click', () => {
+item.classList.toggle('is-detail-open');
+});
 stepsList.appendChild(item);
 scrollChatToBottom();
 return item;
 }
-function updateStepResult(stepEl, statusText, isError = false) {
+function updateStepResult(stepEl, statusText, isError = false, verdictChanged = null) {
 if (!stepEl) return;
+const badgeEl = stepEl.querySelector('.pa-verdict-badge');
+if (badgeEl) {
+badgeEl.classList.remove('is-changed', 'is-same', 'is-error');
+if (isError) {
+badgeEl.classList.add('is-error');
+badgeEl.textContent = '失败';
+} else if (verdictChanged === true) {
+badgeEl.classList.add('is-changed');
+badgeEl.textContent = '画面已更新';
+} else if (verdictChanged === false) {
+badgeEl.classList.add('is-same');
+badgeEl.textContent = '画面未变';
+} else {
+badgeEl.classList.add('is-same');
+badgeEl.textContent = statusText.slice(0, 12);
+}
+}
 const resEl = stepEl.querySelector('.pa-step-result');
 if (resEl) {
 resEl.textContent = statusText;
@@ -19258,17 +19552,123 @@ resEl.classList.toggle('is-error', Boolean(isError));
 }
 scrollChatToBottom();
 }
+function finalizeAgentTurn(cardCtx, { status = 'done', summaryTitle = '', replyText = '', handoverCb = null }) {
+if (!cardCtx) return;
+const elapsedSec = ((Date.now() - (cardCtx.startedAt || Date.now())) / 1000).toFixed(1);
+const acc = cardCtx.accordion;
+if (acc) {
+acc.classList.remove('is-running', 'is-done', 'is-error');
+acc.classList.add(status === 'error' ? 'is-error' : 'is-done');
+if (status === 'done' && cardCtx.stepCount > 0) {
+acc.classList.add('is-collapsed');
+cardCtx.summaryEl?.setAttribute('aria-expanded', 'false');
+}
+}
+if (cardCtx.summaryTextEl && summaryTitle) {
+cardCtx.summaryTextEl.textContent = summaryTitle;
+}
+if (cardCtx.summaryMetaEl) {
+cardCtx.summaryMetaEl.textContent = `${cardCtx.stepCount || 0} 步 · ${elapsedSec}s`;
+}
+if (cardCtx.stopBtn && !isNativeAutoSwiping()) {
+cardCtx.stopBtn.classList.add('hidden');
+}
+if (cardCtx.finalReplyEl && (replyText || typeof handoverCb === 'function')) {
+cardCtx.finalReplyEl.classList.remove('hidden');
+cardCtx.finalReplyEl.innerHTML = `
+        <div>${escapeHtml(replyText)}</div>
+        ${typeof handoverCb === 'function' ? `
+          <div class="pa-handover-bar">
+            <button type="button" class="pa-banner-btn pa-handover-resume-btn">我已完成，继续执行</button>
+          </div>
+        ` : ''}
+      `;
+if (typeof handoverCb === 'function') {
+cardCtx.finalReplyEl.querySelector('.pa-handover-resume-btn')?.addEventListener('click', (e) => {
+e.currentTarget.disabled = true;
+e.currentTarget.textContent = '正在继续…';
+handoverCb();
+});
+}
+}
+scrollChatToBottom();
+}
+function renderA11yGuideCard(taskText) {
+pendingTaskAfterA11y = taskText;
+const cardCtx = createAgentCardRow(taskText, getExecMode());
+if (!cardCtx) return;
+if (cardCtx.accordion) cardCtx.accordion.classList.add('is-collapsed');
+if (cardCtx.summaryTextEl) cardCtx.summaryTextEl.textContent = '需要开启手机无障碍权限';
+if (cardCtx.stopBtn) cardCtx.stopBtn.classList.add('hidden');
+if (cardCtx.finalReplyEl) {
+cardCtx.finalReplyEl.classList.remove('hidden');
+cardCtx.finalReplyEl.innerHTML = `
+        <div class="pa-a11y-guide-card" id="pa-inline-a11y-card">
+          <div class="pa-a11y-guide-title">请先开启「DeepSeek · 星语」无障碍服务</div>
+          <div class="pa-a11y-guide-desc">dsh-Go 需要无障碍权限来读取屏幕元素并替你点按滑动。开启后返回本页面，卡片会自动刷新状态。</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:2px;">
+            <button type="button" class="pa-banner-btn pa-guide-open-a11y">前往系统开启无障碍</button>
+            <button type="button" class="pa-banner-btn outline pa-guide-resume-task hidden">无障碍已就绪 · 继续执行任务</button>
+          </div>
+        </div>
+      `;
+cardCtx.finalReplyEl.querySelector('.pa-guide-open-a11y')?.addEventListener('click', () => {
+const b = getBridge();
+if (b && typeof b.openAccessibilitySettings === 'function') {
+b.openAccessibilitySettings();
+}
+});
+cardCtx.finalReplyEl.querySelector('.pa-guide-resume-task')?.addEventListener('click', () => {
+const pending = pendingTaskAfterA11y || taskText;
+pendingTaskAfterA11y = '';
+executeTaskInChat(pending);
+});
+}
+scrollChatToBottom();
+}
 function formatActionCodeDesc(plan) {
-const act = plan?.action || 'done';
-const p = plan?.params || {};
-if (act === 'launch_app') return `launch_app("${p.appName || ''}")`;
-if (act === 'click_node') return `click_node("${p.text || p.viewId || ''}")`;
-if (act === 'click') return `click(${p.x || 0}, ${p.y || 0})`;
-if (act === 'long_click') return `long_click(${p.x || 0}, ${p.y || 0})`;
-if (act === 'swipe') return `swipe(${p.x1},${p.y1} -> ${p.x2},${p.y2})`;
-if (act === 'input') return `input("${String(p.text || '').slice(0, 40)}")`;
-if (act === 'wait') return `wait(${p.ms || 1000}ms)`;
-return `${act}()`;
+const tool = plan?.tool || plan?.action || 'done';
+const p = plan?.args || plan?.params || {};
+if (tool === 'phone_open' || tool === 'launch_app') return `phone.open("${p.appName || ''}")`;
+if (tool === 'phone_tap' || tool === 'click_node') return `phone.tap(ref="${p.ref || p.text || ''}")`;
+if (tool === 'phone_tap_xy' || tool === 'click') return `phone.tap_xy(${p.x || 0}, ${p.y || 0})`;
+if (tool === 'phone_double_tap') return `phone.double_tap(${p.x || 0}, ${p.y || 0})`;
+if (tool === 'phone_long_press' || tool === 'long_click') return `phone.long_press(${p.ref || `${p.x || 0},${p.y || 0}`})`;
+if (tool === 'phone_type' || tool === 'input') return `phone.type("${String(p.text || '').slice(0, 32)}")`;
+if (tool === 'phone_scroll') return `phone.scroll("${p.direction || 'down'}")`;
+if (tool === 'phone_swipe' || tool === 'swipe') return `phone.swipe(${p.x1},${p.y1} -> ${p.x2},${p.y2})`;
+if (tool === 'phone_key') return `phone.key("${p.key || ''}")`;
+if (tool === 'phone_wait' || tool === 'wait') return `phone.wait(${p.ms || 1000}ms)`;
+return `${tool}()`;
+}
+const HARD_SENSITIVE_RE = /(支付|付款|转账|收银台|密码|验证码|指纹|人脸|刷脸|免密|下单|提交订单|确认购买|发红包|银行卡|交易密码|删除|卸载|注销)/;
+function evaluateSafetyGate(plan, snapshot, roundAutoApproved) {
+const tool = plan?.tool || plan?.action || 'done';
+if (tool === 'phone_wait' || tool === 'wait' || tool === 'done' || tool === 'ask_user') {
+return { needConfirm: false, hardSensitive: false, riskLevel: 'read' };
+}
+const p = plan?.args || plan?.params || {};
+const combined = `${plan?.summary || ''} ${plan?.thought || ''} ${p?.text || ''} ${p?.appName || ''}`;
+const hardSensitive = Boolean(snapshot?.hasSensitiveField) || HARD_SENSITIVE_RE.test(combined);
+if (hardSensitive) {
+return { needConfirm: true, hardSensitive: true, riskLevel: 'sensitive' };
+}
+const policy = getConfirmPolicy();
+if (policy === 'auto_turn' || roundAutoApproved) {
+return { needConfirm: false, hardSensitive: false, riskLevel: plan?.risk || 'write' };
+}
+if (isAppTrusted(snapshot?.appName, snapshot?.packageName)) {
+return { needConfirm: false, hardSensitive: false, riskLevel: plan?.risk || 'write' };
+}
+if (policy === 'ask_every') {
+return { needConfirm: true, hardSensitive: false, riskLevel: plan?.risk || 'write' };
+}
+const isSensitiveWrite = plan?.risk === 'sensitive' || Boolean(plan?.needConfirm);
+return {
+needConfirm: isSensitiveWrite,
+hardSensitive: false,
+riskLevel: isSensitiveWrite ? 'sensitive' : 'write'
+};
 }
 let activeConfirmResolver = null;
 window.__onFloatConfirmDecision = (decision) => {
@@ -19279,6 +19679,7 @@ fn(decision || 'cancel');
 }
 };
 window.__onFloatNormalStop = () => {
+emergencyStopRequested = true;
 if (activeAbortController) {
 try {
 activeAbortController.abort();
@@ -19290,10 +19691,52 @@ try { b.dismissUserConfirmation(); } catch {}
 }
 showToast('已按悬浮窗指令停止当前任务');
 };
-function askStepConfirmCard(confirmSlot, plan, signal) {
+window.__onFloatInterjectTask = (text) => {
+const clean = String(text || '').trim();
+if (!clean) return;
+if (isAgentRunning) {
+queuedInterjections.push({ text: clean, priority: true });
+updateQueueBarUi();
+appendUserMessageRow(clean, true);
+showToast(`已注入插话指令：${clean}`);
+} else {
+executeTaskInChat(clean);
+}
+};
+window.__onNativeResume = () => {
+syncStatus();
+if (pendingTaskAfterA11y && isNativeApk() && getBridge()?.isAccessibilityEnabled?.()) {
+const card = $('pa-inline-a11y-card');
+if (card) {
+card.classList.add('is-ready');
+const title = card.querySelector('.pa-a11y-guide-title');
+const desc = card.querySelector('.pa-a11y-guide-desc');
+const openBtn = card.querySelector('.pa-guide-open-a11y');
+const resumeBtn = card.querySelector('.pa-guide-resume-task');
+if (title) title.textContent = '无障碍服务已开启';
+if (desc) desc.textContent = '权限已就绪，点击下方按钮立即继续执行刚才的任务。';
+if (openBtn) openBtn.classList.add('hidden');
+if (resumeBtn) resumeBtn.classList.remove('hidden');
+}
+}
+};
+function askStepConfirmCard(confirmSlot, plan, signal, gateInfo = {}, snapshot = {}) {
 if (!confirmSlot) return Promise.resolve('allow');
 const b = getBridge();
-if (b && typeof b.requestUserConfirmation === 'function') {
+const hardSensitive = Boolean(gateInfo?.hardSensitive);
+const riskLevel = gateInfo?.riskLevel || 'write';
+const targetApp = snapshot?.appName || '';
+if (b && typeof b.requestSafetyConfirmation === 'function') {
+try {
+b.requestSafetyConfirmation(
+plan.summary || '执行下一步操作',
+formatActionCodeDesc(plan),
+riskLevel,
+targetApp,
+hardSensitive
+);
+} catch {}
+} else if (b && typeof b.requestUserConfirmation === 'function') {
 try {
 b.requestUserConfirmation(plan.summary || '执行下一步操作', formatActionCodeDesc(plan));
 } catch {}
@@ -19319,16 +19762,23 @@ confirmSlot.innerHTML = `
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
             </svg>
-            <span>dsh-Go 安全确认：即将向系统派发操作</span>
+            <span>${hardSensitive ? '高危安全拦截（密码 / 支付 / 验证码）' : 'dsh-Go 安全确认'}</span>
           </div>
           <div class="pa-action-box">
             <div><strong>${escapeHtml(plan.summary || '执行下一步操作')}</strong></div>
             <div style="margin-top:4px;">动作指令：<code>${escapeHtml(formatActionCodeDesc(plan))}</code></div>
+            ${snapshot?.sensitiveReason ? `<div style="margin-top:4px;color:#ef4444;font-size:11.5px;">提示：${escapeHtml(snapshot.sensitiveReason)}</div>` : ''}
           </div>
           <div class="pa-confirm-btns">
-            <button type="button" class="pa-banner-btn" data-decision="allow">允许本次</button>
-            <button type="button" class="pa-banner-btn outline" data-decision="auto">本轮自动放行</button>
-            <button type="button" class="pa-banner-btn subtle" data-decision="cancel">取消</button>
+            <button type="button" class="pa-banner-btn" data-decision="allow">允许一次</button>
+            ${hardSensitive
+? `<button type="button" class="pa-banner-btn outline" data-decision="handover">我来手动操作</button>`
+: `
+                <button type="button" class="pa-banner-btn outline" data-decision="auto_turn">本轮允许</button>
+                ${targetApp ? `<button type="button" class="pa-banner-btn outline" data-decision="trust_app">信任 ${escapeHtml(targetApp)}</button>` : ''}
+              `
+}
+            <button type="button" class="pa-banner-btn subtle" data-decision="cancel">拒绝</button>
           </div>
         </div>
       `;
@@ -19412,39 +19862,96 @@ fixSlot.innerHTML = '';
 if (typeof onRetryWithMode === 'function') onRetryWithMode('local');
 });
 }
-function buildPlanningPromptMessages(task, screenNodes, history, screenSize, installedApps) {
+function buildPlanningPromptMessages({ task, snapshot, history, screenSize, installedApps, screenVerdict, interjections, stepIndex }) {
 const sys = [
 '你是星语手机辅助代理（Phone Agent · dsh-Go 规划内核）。',
 `屏幕分辨率: ${screenSize.width}x${screenSize.height}。`,
 '你必须仅返回一个合法 JSON 对象（不要用 Markdown 代码块包裹，也不要附加前后任何解释文字），字段定义：',
-'{"thought":"简短中文判断(<=35字)","action":"launch_app|click_node|click|long_click|swipe|input|home|back|recents|wait|done|ask_user","params":{},"summary":"本步中文说明(<=25字)","needConfirm":false}',
-'常用 action 的 params：',
-'launch_app:{"appName":"微信"} / click_node:{"text":"发送","viewId":""} / click:{"x":540,"y":1200} / long_click:{"x":540,"y":1200} / swipe:{"x1":540,"y1":1600,"x2":540,"y2":600,"duration":350} / input:{"text":"你好","viewId":""} / wait:{"ms":1000} / done:{"message":"完成"} / ask_user:{"message":"请补充信息"}。',
-'打开应用优先使用 launch_app；付款、转账、下单、删除、卸载、发消息等高风险步骤必须设置 needConfirm=true。',
-'关键限制：如果连续 2 次 wait 后屏幕界面节点仍无变化或节点极少（如自绘弹窗/SKU面板），严禁继续 wait 或输出非 JSON 解释，必须尝试 click/swipe 或返回 {"thought":"面板控件未暴露","action":"ask_user","params":{"message":"请手动点选规格后继续"},"summary":"等待手动操作","needConfirm":false}。'
+'{"thought":"精炼中文推理(<=50字)","tool":"工具名","args":{},"summary":"面向用户的中文操作简述(<=28字)","risk":"read|write|sensitive","reply":"仅在 done 或 ask_user 时填写自然语言回复"}',
+'可用 tool 与 args：',
+'phone_open:{"appName":"微信"} / phone_tap:{"ref":"e12","snapshotId":"snap_1"} / phone_tap_xy:{"x":540,"y":1200} / phone_double_tap:{"x":540,"y":1000} / phone_long_press:{"ref":"e12","duration":700} / phone_type:{"ref":"e8","text":"你好","clear":false,"submit":true} / phone_scroll:{"direction":"down|up|left|right","amount":0.65} / phone_swipe:{"x1":540,"y1":1600,"x2":540,"y2":600,"duration":320} / phone_key:{"key":"back|home|recents|notifications|quick_settings|enter|screenshot"} / phone_wait:{"ms":1000} / ask_user:{"message":"请手动输入密码或确认"} / done:{"message":"完成总结"}',
+'关键约束：',
+'1. 优先用 phone_open 打开应用；点击屏幕元素首选 phone_tap 并携带 ref 与 snapshotId。',
+'2. 若 screenVerdict 显示连续 2 步画面未变化，禁止重复同一动作或 phone_wait，改用 phone_tap_xy / phone_scroll / phone_key(back) 或 ask_user。',
+'3. 若 interjections 非空，最高优先级立即响应用户中途插话指令。',
+'4. 若 hasSensitiveField=true 或涉及付款/转账/下单/密码/验证码/删除/卸载/发消息，risk 必须为 "sensitive"，支付密码/验证码直接 ask_user 交还人工。'
 ].join('\n');
-const compactNodes = (screenNodes || []).slice(0, 120).map((n, idx) => ({
-i: idx,
-t: n.text || '',
-d: n.desc || '',
-id: n.viewId || n.id || '',
-cls: String(n.className || n.cls || '').split('.').pop(),
-clk: Boolean(n.clickable),
-edt: Boolean(n.editable),
-c: n.center || undefined,
-b: n.bounds || ''
-}));
 const usr = JSON.stringify({
 task,
-stepIndex: (history || []).length + 1,
-recentHistory: (history || []).slice(-6),
+stepIndex: stepIndex || (history || []).length + 1,
+snapshotId: snapshot?.snapshotId || '',
+foregroundApp: snapshot?.appName || '',
+packageName: snapshot?.packageName || '',
+hasSensitiveField: Boolean(snapshot?.hasSensitiveField),
+sensitiveReason: snapshot?.sensitiveReason || '',
+screenVerdict: screenVerdict || null,
+interjections: interjections || [],
+recentHistory: (history || []).slice(-8),
 installedApps: (installedApps || []).slice(0, 40).map((a) => (typeof a === 'string' ? a : a.name)),
-screenNodes: compactNodes
+screenTreeText: snapshot?.screenTreeText || ''
 });
 return [
 { role: 'system', content: sys },
 { role: 'user', content: usr }
 ];
+}
+function normalizeClientPlan(obj) {
+const toolToLegacy = {
+phone_open: 'launch_app',
+phone_tap: 'click_node',
+phone_tap_xy: 'click',
+phone_double_tap: 'double_tap',
+phone_long_press: 'long_click',
+phone_type: 'input',
+phone_scroll: 'scroll',
+phone_swipe: 'swipe',
+phone_key: 'key',
+phone_wait: 'wait',
+done: 'done',
+ask_user: 'ask_user'
+};
+const legacyToTool = {
+launch_app: 'phone_open',
+click_node: 'phone_tap',
+click: 'phone_tap_xy',
+long_click: 'phone_long_press',
+swipe: 'phone_swipe',
+input: 'phone_type',
+home: 'phone_key',
+back: 'phone_key',
+recents: 'phone_key',
+wait: 'phone_wait',
+done: 'done',
+ask_user: 'ask_user'
+};
+const rawTool = String(obj?.tool || '').trim();
+const rawAction = String(obj?.action || '').trim();
+const tool = rawTool && toolToLegacy[rawTool] ? rawTool : (legacyToTool[rawAction] || 'done');
+const args = (obj?.args && typeof obj.args === 'object')
+? { ...obj.args }
+: ((obj?.params && typeof obj.params === 'object') ? { ...obj.params } : {});
+if (!rawTool && (rawAction === 'home' || rawAction === 'back' || rawAction === 'recents')) {
+args.key = rawAction;
+}
+const riskRaw = String(obj?.risk || '').trim().toLowerCase();
+const risk = riskRaw === 'read' || riskRaw === 'write' || riskRaw === 'sensitive'
+? riskRaw
+: (obj?.needConfirm ? 'sensitive' : (tool === 'done' || tool === 'ask_user' || tool === 'phone_wait' ? 'read' : 'write'));
+const reply = String(obj?.reply || args?.message || obj?.summary || '').trim();
+if ((tool === 'done' || tool === 'ask_user') && reply && !args.message) {
+args.message = reply;
+}
+return {
+thought: String(obj?.thought || '').trim(),
+tool,
+args,
+risk,
+reply,
+action: toolToLegacy[tool] || 'done',
+params: args,
+summary: String(obj?.summary || `执行 ${tool}`).trim(),
+needConfirm: risk === 'sensitive' || Boolean(obj?.needConfirm)
+};
 }
 function extractJsonFromText(raw) {
 const cleaned = String(raw || '')
@@ -19465,7 +19972,7 @@ if (cleaned) {
 try {
 const directObj = tryParseClean(cleaned);
 if (directObj && typeof directObj === 'object' && !Array.isArray(directObj)) {
-return directObj;
+return normalizeClientPlan(directObj);
 }
 } catch {}
 for (let i = 0; i < cleaned.length; i++) {
@@ -19489,8 +19996,8 @@ if (depth === 0) {
 const candidate = cleaned.slice(i, j + 1);
 try {
 const parsed = tryParseClean(candidate);
-if (parsed && typeof parsed === 'object' && parsed.action) {
-return parsed;
+if (parsed && typeof parsed === 'object' && (parsed.tool || parsed.action)) {
+return normalizeClientPlan(parsed);
 }
 } catch {}
 break;
@@ -19503,15 +20010,25 @@ const err = new Error('模型响应未返回合法 JSON 动作指令');
 err.code = 'JSON_PARSE_ERROR';
 throw err;
 }
-async function requestPlanStep({ execMode, task, screenNodes, history, screenSize, installedApps, signal }) {
+async function requestPlanStep({ execMode, task, snapshot, history, screenSize, installedApps, screenVerdict, interjections, stepIndex, signal }) {
 const cfg = getDirectConfig();
+const screenNodes = snapshot?.nodes || [];
 if (execMode === 'api_direct') {
 if (!cfg.apiKey) {
-return { ok: false, code: 'NO_DIRECT_KEY', error: '手机辅助 DeepSeek API 密钥尚未配置，请填入密钥或切换至本地免 API / 云端 API。' };
+return { ok: false, code: 'NO_DIRECT_KEY', error: '手机辅助 DeepSeek API 密钥尚未配置，请填入密钥或切换至云端 API。' };
 }
 const targetUrl = cfg.baseUrl || 'https://api.deepseek.com/v1/chat/completions';
 const targetModel = cfg.model || 'deepseek-chat';
-const baseMessages = buildPlanningPromptMessages(task, screenNodes, history, screenSize, installedApps);
+const baseMessages = buildPlanningPromptMessages({
+task,
+snapshot,
+history,
+screenSize,
+installedApps,
+screenVerdict,
+interjections,
+stepIndex
+});
 const attemptDirectCall = async (modelToUse, extraHint = '') => {
 const msgs = extraHint ? [...baseMessages, { role: 'user', content: extraHint }] : baseMessages;
 const isReasoner = /reasoner|r1/i.test(String(modelToUse || ''));
@@ -19566,7 +20083,7 @@ if (firstErr?.code === 'JSON_PARSE_ERROR' || /JSON/i.test(String(firstErr?.messa
 const retryModel = /reasoner|r1/i.test(targetModel) ? 'deepseek-chat' : targetModel;
 result = await attemptDirectCall(
 retryModel,
-'刚才未返回合法 JSON 动作指令。请严格只输出一个合法 JSON 对象（不要任何 Markdown 或解释文字）。若连续等待后界面无新控件，请返回 click/swipe 或 ask_user。'
+'刚才未返回合法 JSON 动作指令。请严格只输出一个合法 JSON 对象（不要任何 Markdown 或解释文字）。'
 );
 } else {
 throw firstErr;
@@ -19582,7 +20099,16 @@ const proxyRes = await apiPostJson(
 '/api/phone-agent/plan',
 {
 task,
+stepIndex,
+snapshotId: snapshot?.snapshotId || '',
+foregroundApp: snapshot?.appName || '',
+packageName: snapshot?.packageName || '',
+hasSensitiveField: Boolean(snapshot?.hasSensitiveField),
+sensitiveReason: snapshot?.sensitiveReason || '',
+screenTreeText: snapshot?.screenTreeText || '',
 screenNodes,
+screenVerdict,
+interjections,
 history,
 screenSize,
 installedApps: (installedApps || []).map((a) => (typeof a === 'string' ? a : a.name)),
@@ -19606,7 +20132,16 @@ const cloudRes = await apiPostJson(
 '/api/phone-agent/plan',
 {
 task,
+stepIndex,
+snapshotId: snapshot?.snapshotId || '',
+foregroundApp: snapshot?.appName || '',
+packageName: snapshot?.packageName || '',
+hasSensitiveField: Boolean(snapshot?.hasSensitiveField),
+sensitiveReason: snapshot?.sensitiveReason || '',
+screenTreeText: snapshot?.screenTreeText || '',
 screenNodes,
+screenVerdict,
+interjections,
 history,
 screenSize,
 installedApps: (installedApps || []).map((a) => (typeof a === 'string' ? a : a.name)),
@@ -19623,31 +20158,42 @@ code: cloudRes.data?.code || 'CLOUD_ERROR',
 error: cloudRes.data?.error || '云端规划接口暂不可用'
 };
 }
-function dispatchNativePlanAction(plan, latestNodes) {
+function dispatchNativePlanAction(plan, snapshot) {
 const b = getBridge();
-const act = plan?.action;
-const p = plan?.params || {};
+const tool = plan?.tool || plan?.action || 'done';
+const p = plan?.args || plan?.params || {};
+const latestNodes = snapshot?.nodes || [];
+const snapshotId = p.snapshotId || snapshot?.snapshotId || '';
 if (!isNativeApk() || !b) {
 return { executed: false, simulated: true, text: '网页预览模式已推演该动作（安装随身版 APK 后可在真机自动执行）' };
 }
 const a11yOk = Boolean(b.isAccessibilityEnabled && b.isAccessibilityEnabled());
-if (!a11yOk && act !== 'launch_app' && act !== 'wait' && act !== 'done' && act !== 'ask_user') {
-return { executed: false, error: true, text: '系统无障碍权限尚未开启，请先点上方状态栏开启无障碍服务' };
+if (!a11yOk && tool !== 'phone_open' && tool !== 'launch_app' && tool !== 'phone_wait' && tool !== 'wait' && tool !== 'done' && tool !== 'ask_user') {
+return { executed: false, error: true, text: '系统无障碍权限尚未开启，请先前往开启无障碍服务' };
 }
 try {
-if (act === 'launch_app') {
+if (tool === 'phone_open' || tool === 'launch_app') {
 const appName = String(p.appName || '').trim();
 if (typeof b.launchAppByName === 'function') {
 const ok = b.launchAppByName(appName);
 return ok
-? { executed: true, text: `已通过系统启动器打开「${appName}」` }
+? { executed: true, text: `已打开应用「${appName}」` }
 : { executed: false, error: true, text: `未能匹配或拉起应用「${appName}」` };
 }
 const msg = String(b.executeLocalRule(`打开 ${appName}`) || '');
 const okFallback = isLocalRuleSucceeded(msg);
 return { executed: okFallback, error: !okFallback, text: msg || `尝试打开「${appName}」` };
 }
-if (act === 'click_node') {
+if (tool === 'phone_tap' || tool === 'click_node') {
+const refId = String(p.ref || '').trim();
+if (refId && typeof b.clickByRef === 'function') {
+const resObj = JSON.parse(b.clickByRef(snapshotId, refId) || '{}');
+return {
+executed: Boolean(resObj.ok),
+error: !resObj.ok,
+text: resObj.message || (resObj.ok ? `已点击控件 ${refId}` : `点击控件 ${refId} 失败`)
+};
+}
 const targetText = String(p.text || '').trim();
 let ok = false;
 if (targetText && typeof b.clickByText === 'function') {
@@ -19661,47 +20207,77 @@ ok = b.dispatchClick(c.cx, c.cy);
 }
 return ok
 ? { executed: true, text: `已点击控件「${targetText}」` }
-: { executed: false, error: true, text: `当前界面未找到控件「${targetText}」` };
+: { executed: false, error: true, text: `当前界面未找到控件「${targetText || refId}」` };
 }
-if (act === 'click') {
+if (tool === 'phone_tap_xy' || tool === 'click') {
 const x = Number(p.x) || 540;
 const y = Number(p.y) || 1200;
 const ok = b.dispatchClick(x, y);
 return { executed: Boolean(ok), error: !ok, text: ok ? `已点击坐标 (${x}, ${y})` : '坐标点击派发失败' };
 }
-if (act === 'long_click') {
+if (tool === 'phone_double_tap') {
+const x = Number(p.x) || 540;
+const y = Number(p.y) || 1000;
+const ok = typeof b.doubleTapAt === 'function' ? b.doubleTapAt(x, y) : b.dispatchClick(x, y);
+return { executed: Boolean(ok), error: !ok, text: ok ? `已双击坐标 (${x}, ${y})` : '双击派发失败' };
+}
+if (tool === 'phone_long_press' || tool === 'long_click') {
+const refId = String(p.ref || '').trim();
+const dur = Number(p.duration) || 700;
+if (refId && typeof b.longClickByRef === 'function') {
+const resObj = JSON.parse(b.longClickByRef(snapshotId, refId, dur) || '{}');
+return { executed: Boolean(resObj.ok), error: !resObj.ok, text: resObj.message || `已长按 ${refId}` };
+}
 const x = Number(p.x) || 540;
 const y = Number(p.y) || 1200;
-const ok = typeof b.dispatchLongClick === 'function' ? b.dispatchLongClick(x, y, 600) : b.dispatchClick(x, y);
+const ok = typeof b.dispatchLongClick === 'function' ? b.dispatchLongClick(x, y, dur) : b.dispatchClick(x, y);
 return { executed: Boolean(ok), error: !ok, text: ok ? `已长按坐标 (${x}, ${y})` : '长按派发失败' };
 }
-if (act === 'swipe') {
+if (tool === 'phone_type' || tool === 'input') {
+const txt = String(p.text || '');
+const refId = String(p.ref || '').trim();
+const clearFirst = p.clear !== undefined ? Boolean(p.clear) : !Boolean(p.append);
+const shouldAutoSubmit = Boolean(p.submit || p.autoSubmit);
+if (typeof b.inputByRef === 'function') {
+const resObj = JSON.parse(b.inputByRef(snapshotId, refId, txt, clearFirst, shouldAutoSubmit) || '{}');
+return {
+executed: Boolean(resObj.ok),
+error: !resObj.ok,
+text: resObj.message || (resObj.ok ? `已输入文本「${txt}」` : '未能定位输入框')
+};
+}
+const ok = typeof b.dispatchSmartInput === 'function'
+? b.dispatchSmartInput(txt, !clearFirst, shouldAutoSubmit)
+: b.dispatchInputText(String(p.viewId || ''), txt);
+return {
+executed: Boolean(ok),
+error: !ok,
+text: ok ? `已向输入框填入「${txt}」` : '未能定位到可编辑输入框'
+};
+}
+if (tool === 'phone_scroll' || tool === 'scroll') {
+const dir = String(p.direction || 'down');
+const ratio = Number(p.amount) || 0.65;
+const ok = typeof b.scrollScreen === 'function'
+? b.scrollScreen(dir, ratio)
+: b.dispatchSwipe(540, 1600, 540, 650, 340);
+return { executed: Boolean(ok), error: !ok, text: ok ? `已向 ${dir} 滚动页面` : '滚动派发失败' };
+}
+if (tool === 'phone_swipe' || tool === 'swipe') {
 const x1 = Number(p.x1) || 540;
 const y1 = Number(p.y1) || 1650;
 const x2 = Number(p.x2) || 540;
 const y2 = Number(p.y2) || 650;
-const dur = Number(p.duration) || 380;
+const dur = Number(p.duration) || 340;
 const ok = b.dispatchSwipe(x1, y1, x2, y2, dur);
 return { executed: Boolean(ok), error: !ok, text: ok ? `已执行滑动 (${x1},${y1} -> ${x2},${y2})` : '滑动派发失败' };
 }
-if (act === 'input') {
-const txt = String(p.text || '');
-const viewId = String(p.viewId || '');
-const shouldAutoSubmit = Boolean(p.autoSubmit || p.submit || /发送|提交|回复|评论/i.test(p.actionDesc || '') || /发送|提交|回复|评论/i.test(txt));
-const ok = typeof b.dispatchSmartInput === 'function'
-? b.dispatchSmartInput(txt, false, shouldAutoSubmit)
-: b.dispatchInputText(viewId, txt);
-return {
-executed: Boolean(ok),
-error: !ok,
-text: ok ? (shouldAutoSubmit ? `已向输入框打字并自动点击发送「${txt}」` : `已向输入框填入文本`) : '未能定位到可编辑输入框'
-};
+if (tool === 'phone_key' || tool === 'home' || tool === 'back' || tool === 'recents' || tool === 'key') {
+const key = String(p.key || tool || 'back').toLowerCase();
+const ok = b.dispatchGlobalAction(key);
+return { executed: Boolean(ok), error: !ok, text: ok ? `已执行系统键 (${key})` : `系统键 ${key} 执行失败` };
 }
-if (act === 'home' || act === 'back' || act === 'recents') {
-const ok = b.dispatchGlobalAction(act);
-return { executed: Boolean(ok), error: !ok, text: ok ? `已执行全局系统键 (${act})` : `全局键 ${act} 执行失败` };
-}
-if (act === 'wait') {
+if (tool === 'phone_wait' || tool === 'wait') {
 return { executed: true, text: `等待 ${Number(p.ms) || 1000}ms 界面刷新` };
 }
 } catch (e) {
@@ -19862,9 +20438,24 @@ activeAbortController.abort();
 activeAbortController = new AbortController();
 const signal = activeAbortController.signal;
 emergencyStopRequested = false;
+isAgentRunning = true;
+updateQueueBarUi();
 if (native && b && typeof b.resetEmergencyStop === 'function') {
+try { b.resetEmergencyStop(); } catch {}
+}
+if (native && b) {
 try {
-b.resetEmergencyStop();
+if (typeof b.hasOverlayPermission === 'function' && b.hasOverlayPermission()
+&& typeof b.isFloatAgentRunning === 'function' && !b.isFloatAgentRunning()
+&& typeof b.startFloatAgent === 'function') {
+b.startFloatAgent();
+}
+if (typeof b.setEdgeGlowEnabled === 'function') {
+b.setEdgeGlowEnabled(isEdgeGlowEnabled());
+}
+if (typeof b.setAgentForegroundActive === 'function') {
+b.setAgentForegroundActive(true, taskText.slice(0, 32));
+}
 } catch {}
 }
 if (cardCtx.stopBtn) {
@@ -19872,250 +20463,293 @@ cardCtx.stopBtn.disabled = false;
 cardCtx.stopBtn.textContent = '停止';
 cardCtx.stopBtn.onclick = () => {
 emergencyStopRequested = true;
-try {
-activeAbortController.abort();
-} catch {}
+try { activeAbortController.abort(); } catch {}
 if (native && b && typeof b.stopAutoSwipeVideos === 'function') {
-try {
-b.stopAutoSwipeVideos();
-} catch {}
+try { b.stopAutoSwipeVideos(); } catch {}
 }
 if (cardCtx.stopBtn) {
 cardCtx.stopBtn.disabled = true;
 cardCtx.stopBtn.textContent = '已停止';
 }
 if (native && b && typeof b.updateFloatState === 'function') {
-try {
-b.updateFloatState('idle', '星语 AI');
-} catch {}
+try { b.updateFloatState('idle', 'dsh-Go'); } catch {}
 }
 syncStatus();
 };
 }
+let finalStatus = 'done';
+let finalSummaryTitle = '';
+let finalReplyText = '';
+let handoverCb = null;
+try {
 const matchedOffline = isSimpleBuiltInLocalCmd(taskText);
-const shouldTryFullLocal = !isResuming && (execMode === 'local' || matchedOffline);
+const shouldTryFullLocal = !isResuming && execMode === 'local';
 if (shouldTryFullLocal) {
 if (!native) {
+cardCtx.stepCount = 1;
 if (matchedOffline) {
-addStepItem(
-cardCtx.stepsList,
-1,
-'命中本地离线指令库',
-'网页预览环境模拟执行（免 API Key）',
-simulateWebLocalPreview(taskText),
-false
-);
+const sim = simulateWebLocalPreview(taskText);
+addStepItem(cardCtx.stepsList, 1, taskText, '网页预览模拟执行', '模拟完成', false, 'local.rule');
+finalSummaryTitle = `已完成本地口令演练 · ${taskText}`;
+finalReplyText = sim;
 } else {
-addStepItem(
-cardCtx.stepsList,
-1,
-'超出固定离线口令范围',
-'该任务包含复杂动态语义，建议切换至「DeepSeek API / 云端 API」进行多步识屏规划。',
-'也可点击下方按钮切换引擎重试',
-true
-);
-showInlineFixBox(
-cardCtx.fixSlot,
-'复杂多步任务需要大模型识屏规划，可切换至 API 引擎继续：',
-(nextMode) => runReActLoop(taskText, cardCtx, nextMode)
-);
+addStepItem(cardCtx.stepsList, 1, '超出固定离线口令范围', '建议切换至 DeepSeek API / 云端 API 进行多步识屏规划。', '未匹配', true, 'local.rule');
+showInlineFixBox(cardCtx.fixSlot, { error: '复杂多步任务需要大模型识屏规划，可切换至 API 引擎继续：' }, {
+onRetryWithMode: (nextMode) => runReActLoop(taskText, cardCtx, nextMode)
+});
+finalStatus = 'error';
+finalSummaryTitle = '需要切换 API 智能识屏模式';
 }
-if (cardCtx.stopBtn) cardCtx.stopBtn.classList.add('hidden');
+finalizeAgentTurn(cardCtx, { status: finalStatus, summaryTitle: finalSummaryTitle, replyText: finalReplyText });
 return;
 }
 const res = tryExecuteLocalQuickCommand(taskText);
 if (res.handled) {
-addStepItem(cardCtx.stepsList, 1, taskText, '命中本地离线指令库 · 免 API 毫秒级直控', res.summary, false);
+cardCtx.stepCount = 1;
+addStepItem(cardCtx.stepsList, 1, taskText, '命中本地离线指令库 · 免 API 毫秒级直控', '已完成', false, 'local.rule');
 appendNativeConsoleLog(`本地执行成功: ${taskText} -> ${res.summary}`);
+finalizeAgentTurn(cardCtx, {
+status: 'done',
+summaryTitle: `已执行：${taskText}`,
+replyText: res.summary
+});
 if (isNativeAutoSwiping() && cardCtx.stopBtn) {
 cardCtx.stopBtn.classList.remove('hidden');
 cardCtx.stopBtn.textContent = '停止连刷';
-} else if (cardCtx.stopBtn) {
-cardCtx.stopBtn.classList.add('hidden');
 }
 syncStatus();
 return;
 }
-if (execMode === 'local') {
-addStepItem(
-cardCtx.stepsList,
-1,
-'本地离线口令未匹配',
-'支持口令：自动刷视频、下一个视频、双击点赞、打字 [内容]、输入并发送 [内容]、搜索 [词]、打开 [应用]、点击 [文字]、截屏、下滑3次，或用“然后”串联多步。',
-'更复杂的跨应用推理任务可切换 API 模式自动识屏规划',
-true
-);
-showInlineFixBox(
-cardCtx.fixSlot,
-'该任务超出本地离线口令范围，是否切换为 API 智能识屏规划？',
-(nextMode) => runReActLoop(taskText, cardCtx, nextMode)
-);
-if (cardCtx.stopBtn) cardCtx.stopBtn.classList.add('hidden');
+cardCtx.stepCount = 1;
+addStepItem(cardCtx.stepsList, 1, '本地离线口令未匹配', '可切换至 API 智能识屏规划执行复杂自然语言任务', '未匹配', true, 'local.rule');
+showInlineFixBox(cardCtx.fixSlot, { error: '该任务超出本地离线口令范围，是否切换为 API 智能识屏规划？' }, {
+onRetryWithMode: (nextMode) => runReActLoop(taskText, cardCtx, nextMode)
+});
+finalizeAgentTurn(cardCtx, { status: 'error', summaryTitle: '本地口令未匹配' });
 return;
 }
-}
-const MAX_STEPS = 12;
+const MAX_STEPS = 20;
 const history = isResuming ? resumeOpts.history.slice() : [];
 const screenSize = getScreenSizeObj();
 const installedApps = getInstalledAppsList();
 let roundAutoApproved =
 resumeOpts && typeof resumeOpts.roundAutoApproved === 'boolean'
 ? resumeOpts.roundAutoApproved
-: getDirectConfig().autoApprove;
+: (getConfirmPolicy() === 'auto_turn');
 let startStep = isResuming && Number(resumeOpts.startStep) > 0 ? Number(resumeOpts.startStep) : 1;
-if (!isResuming && execMode !== 'local' && native && !matchedOffline) {
-const steps = splitCompoundTaskSteps(taskText);
-if (steps.length >= 2 && isAtomicBuiltInLocalCmd(steps[0])) {
-const firstStepCmd = steps[0];
-const firstRes = tryExecuteLocalQuickCommand(firstStepCmd);
-if (firstRes.handled) {
-addStepItem(
-cardCtx.stepsList,
-1,
-`本地直控加速 · ${firstStepCmd}`,
-'已完成前置本地动作，后续交由大模型识屏规划推进',
-firstRes.summary,
-false
-);
-appendNativeConsoleLog(`混合接力前置步完成: ${firstStepCmd} -> ${firstRes.summary}`);
-history.push({
-step: 1,
-action: 'local_quick',
-summary: firstStepCmd,
-result: firstRes.summary
-});
-startStep = 2;
-const waitMs = /^(?:打开|启动|进入|运行)/.test(firstStepCmd) ? 1600 : 700;
-await sleep(waitMs);
-}
-}
-}
+let lastScreenVerdict = resumeOpts?.lastScreenVerdict || null;
+let noChangeStreak = 0;
 for (let step = startStep; step <= MAX_STEPS; step++) {
 if (signal.aborted || emergencyStopRequested) {
-addStepItem(cardCtx.stepsList, step, '任务中止', '', '用户已停止执行', true);
+addStepItem(cardCtx.stepsList, step, '任务已停止', '', '已中止', true, 'system.stop');
+finalStatus = 'error';
+finalSummaryTitle = '已停止执行';
 break;
 }
 if (native && b && typeof b.isEmergencyStopRequested === 'function' && b.isEmergencyStopRequested()) {
 b.resetEmergencyStop();
-addStepItem(cardCtx.stepsList, step, '悬浮球急停触发', '', '已按最高安全优先停止后续操作', true);
+addStepItem(cardCtx.stepsList, step, '悬浮球急停触发', '', '已急停', true, 'system.stop');
+finalStatus = 'error';
+finalSummaryTitle = '已安全急停';
 break;
 }
-if (native && b && typeof b.updateFloatState === 'function') {
-try {
-b.updateFloatState('thinking', `第 ${step} 步 AI 规划中...`);
-} catch {}
+const turnInterjections = [];
+while (queuedInterjections.length > 0) {
+const item = queuedInterjections.shift();
+if (item && item.text) turnInterjections.push(item.text);
 }
-const nodes = readScreenNodes();
+updateQueueBarUi();
+if (native && b && typeof b.updateFloatState === 'function') {
+try { b.updateFloatState('thinking', `第 ${step} 步 规划中...`); } catch {}
+}
+const snapshot = readAndFormatSnapshot(false);
 const pendingStepEl = addStepItem(
 cardCtx.stepsList,
 step,
-'读取屏幕并请求决策',
-native ? `已采集当前屏幕 ${nodes.length} 个界面节点` : '网页端逻辑推演规划中',
-'等待大模型下发下一步动作...'
+'正在识别屏幕并规划',
+native ? `当前应用：${snapshot.appName || '桌面'}（${snapshot.nodes.length} 个元素）` : '网页端逻辑推演规划中',
+'规划中',
+false,
+'phone.screen'
 );
+cardCtx.stepCount = step;
+if (cardCtx.summaryTextEl) {
+cardCtx.summaryTextEl.textContent = `第 ${step} 步 · ${snapshot.appName || '读取屏幕'} 规划中`;
+}
 let planResp;
 try {
 planResp = await requestPlanStep({
 execMode,
 task: taskText,
-screenNodes: nodes,
+snapshot,
 history,
 screenSize,
 installedApps,
+screenVerdict: lastScreenVerdict,
+interjections: turnInterjections,
+stepIndex: step,
 signal
 });
 } catch (err) {
 if (err?.name === 'AbortError' || signal.aborted) {
-updateStepResult(pendingStepEl, '请求已取消', true);
+updateStepResult(pendingStepEl, '已取消', true);
+finalStatus = 'error';
+finalSummaryTitle = '已取消当前任务';
 break;
 }
-updateStepResult(pendingStepEl, `规划网络异常: ${err?.message || err}`, true);
+updateStepResult(pendingStepEl, '网络异常', true);
+finalStatus = 'error';
+finalSummaryTitle = `规划网络异常：${err?.message || err}`;
 break;
 }
 if (!planResp.ok || !planResp.plan) {
-updateStepResult(pendingStepEl, planResp.error || '未能获取有效规划指令', true);
+updateStepResult(pendingStepEl, '规划失败', true);
 showInlineFixBox(cardCtx.fixSlot, planResp, {
 onRetryWithMode: (nextMode) =>
 runReActLoop(
 taskText,
 cardCtx,
 nextMode,
-nextMode === 'local' ? null : { history, startStep: step, roundAutoApproved }
+nextMode === 'local' ? null : { history, startStep: step, roundAutoApproved, lastScreenVerdict }
 ),
 onRetryStep: () =>
 runReActLoop(taskText, cardCtx, execMode, {
 history,
 startStep: step,
-roundAutoApproved
+roundAutoApproved,
+lastScreenVerdict
 })
 });
+finalStatus = 'error';
+finalSummaryTitle = planResp.error || '未能获取有效规划指令';
 break;
 }
 const plan = planResp.plan;
-const topSpan = pendingStepEl?.querySelector('.pa-step-top span');
-if (topSpan) topSpan.textContent = `第 ${step} 步 · ${plan.summary || plan.action}`;
+const toolName = plan.tool || plan.action || 'step';
+const badgeEl = pendingStepEl?.querySelector('.pa-tool-badge');
+if (badgeEl) badgeEl.textContent = toolName;
+const descEl = pendingStepEl?.querySelector('.pa-step-desc');
+if (descEl) descEl.textContent = plan.summary || toolName;
 const thoughtEl = pendingStepEl?.querySelector('.pa-step-thought');
 if (thoughtEl && plan.thought) thoughtEl.textContent = plan.thought;
-if (plan.action === 'done') {
-const doneMsg = plan.params?.message || plan.summary || '全部任务步骤已顺利完成';
-updateStepResult(pendingStepEl, doneMsg, false);
+if (cardCtx.summaryTextEl) {
+cardCtx.summaryTextEl.textContent = `${toolName} · ${plan.summary || '执行中'}`;
+}
+if (toolName === 'done') {
+const doneMsg = plan.reply || plan.args?.message || plan.summary || '全部任务步骤已顺利完成';
+updateStepResult(pendingStepEl, '已完成', false);
 appendNativeConsoleLog(`AI 任务完成: ${doneMsg}`);
+finalStatus = 'done';
+finalSummaryTitle = `已完成 ${step} 步手机操控${snapshot.appName ? ` · ${snapshot.appName}` : ''}`;
+finalReplyText = doneMsg;
 break;
 }
-if (plan.action === 'ask_user') {
-const askMsg = plan.params?.message || plan.summary || '请手动完成当前页面确认后再继续';
-updateStepResult(pendingStepEl, `等待人工介入：${askMsg}`, false);
+if (toolName === 'ask_user') {
+const askMsg = plan.reply || plan.args?.message || plan.summary || '请手动完成当前页面操作后再继续';
+updateStepResult(pendingStepEl, '等待人工', false);
+finalStatus = 'done';
+finalSummaryTitle = '等待你的手动操作';
+finalReplyText = askMsg;
+handoverCb = () =>
+runReActLoop(taskText, cardCtx, execMode, {
+history: [...history, { step, tool: 'ask_user', summary: askMsg, result: '用户已手动处理' }],
+startStep: step + 1,
+roundAutoApproved,
+lastScreenVerdict: null
+});
 break;
 }
-const needsConfirm = plan.action !== 'wait' && (!roundAutoApproved || plan.needConfirm);
-if (needsConfirm) {
-updateStepResult(pendingStepEl, '等待用户安全确认...', false);
-const decision = await askStepConfirmCard(cardCtx.confirmSlot, plan, signal);
+const gateInfo = evaluateSafetyGate(plan, snapshot, roundAutoApproved);
+if (gateInfo.needConfirm) {
+updateStepResult(pendingStepEl, '待确认', false);
+const decision = await askStepConfirmCard(cardCtx.confirmSlot, plan, signal, gateInfo, snapshot);
 if (decision === 'cancel') {
-updateStepResult(pendingStepEl, '用户取消该动作，任务结束', true);
+updateStepResult(pendingStepEl, '已拒绝', true);
+finalStatus = 'error';
+finalSummaryTitle = '用户已取消该操作';
 break;
 }
-if (decision === 'auto') {
+if (decision === 'handover') {
+updateStepResult(pendingStepEl, '交还人工', false);
+finalStatus = 'done';
+finalSummaryTitle = '已交还给你手动操作';
+finalReplyText = '请直接在手机屏幕完成敏感操作，完成后点击下方按钮即可让 AI 接力继续。';
+handoverCb = () =>
+runReActLoop(taskText, cardCtx, execMode, {
+history: [...history, { step, tool: 'handover', summary: plan.summary, result: '用户已手动接管完成' }],
+startStep: step + 1,
+roundAutoApproved,
+lastScreenVerdict: null
+});
+break;
+}
+if (decision === 'auto_turn' || decision === 'auto') {
 roundAutoApproved = true;
+} else if (decision === 'trust_app') {
+addTrustedApp(snapshot.appName, snapshot.packageName);
 }
 }
 if (native && b && typeof b.updateFloatState === 'function') {
-try {
-b.updateFloatState('acting', plan.summary || '执行动作中...');
-} catch {}
+try { b.updateFloatState('acting', plan.summary || '执行中...'); } catch {}
 }
-const execRes = dispatchNativePlanAction(plan, nodes);
-updateStepResult(pendingStepEl, execRes.text, Boolean(execRes.error));
-appendNativeConsoleLog(`第${step}步 [${plan.action}]: ${execRes.text}`);
+const beforeMeta = native ? readScreenMeta() : null;
+const execRes = dispatchNativePlanAction(plan, snapshot);
+const verdict = native
+? await waitForScreenVerdict(beforeMeta, toolName, signal)
+: { changed: true, elapsedMs: 0 };
+if (verdict && !verdict.changed && toolName !== 'phone_wait') {
+noChangeStreak += 1;
+} else {
+noChangeStreak = 0;
+}
+lastScreenVerdict = {
+...verdict,
+noChangeStreak
+};
+updateStepResult(
+pendingStepEl,
+execRes.text,
+Boolean(execRes.error),
+native && !execRes.error && toolName !== 'phone_wait' ? Boolean(verdict.changed) : null
+);
+appendNativeConsoleLog(`第${step}步 [${toolName}]: ${execRes.text}`);
 history.push({
 step,
-action: plan.action,
+tool: toolName,
 summary: plan.summary,
-result: execRes.text
+result: execRes.text,
+changed: Boolean(verdict?.changed)
 });
 if (!native) {
-addStepItem(
-cardCtx.stepsList,
-step + 1,
-'网页端规划演示完成',
-'当前环境未连接真机无障碍界面',
-'安装安卓随身版 APK 并授权后，将继续多步循环直至完成整个任务。',
-false
-);
+finalStatus = 'done';
+finalSummaryTitle = '网页端规划演示完成';
+finalReplyText = `已在网页预览完成动作推演：${plan.summary}。安装 Android 随身版 APK 并开启无障碍后，将在真机自动连续执行。`;
 break;
 }
-const waitTime = plan.action === 'wait' ? Math.min(3500, Math.max(400, Number(plan.params?.ms) || 1000)) : 800;
-await sleep(waitTime);
+if (step === MAX_STEPS) {
+finalStatus = 'done';
+finalSummaryTitle = `已执行 ${MAX_STEPS} 步`;
+finalReplyText = '已达到单轮最大步数上限，你可以继续补充指令让我接着操作。';
 }
-if (native && b && typeof b.updateFloatState === 'function' && !isNativeAutoSwiping()) {
+}
+finalizeAgentTurn(cardCtx, {
+status: finalStatus,
+summaryTitle: finalSummaryTitle || `已完成 ${cardCtx.stepCount || 0} 步控屏`,
+replyText: finalReplyText,
+handoverCb
+});
+} finally {
+isAgentRunning = false;
+queuedInterjections = [];
+updateQueueBarUi();
+if (native && b && !isNativeAutoSwiping()) {
 try {
-b.updateFloatState('idle', '星语 AI');
+if (typeof b.updateFloatState === 'function') b.updateFloatState('idle', 'dsh-Go');
+if (typeof b.setAgentForegroundActive === 'function') b.setAgentForegroundActive(false, '');
 } catch {}
 }
-if (cardCtx.stopBtn && !isNativeAutoSwiping()) {
-cardCtx.stopBtn.classList.add('hidden');
-}
 syncStatus();
+}
 }
 async function executeTaskInChat(taskText) {
 const clean = String(taskText || '').trim();
@@ -20124,9 +20758,20 @@ const shell = document.getElementById('app-shell');
 if (shell && shell.dataset.uiMode !== 'phone-agent') {
 document.getElementById('ws-mode-phone-agent')?.click();
 }
+if (isAgentRunning) {
+queuedInterjections.push({ text: clean, priority: false });
+updateQueueBarUi();
+appendUserMessageRow(clean, true);
+showToast('当前任务执行中，已加入插话队列（点「立即插话」优先注入）');
+return;
+}
 const mode = getExecMode();
 recordTaskHistory(clean, mode);
 appendUserMessageRow(clean);
+if (isNativeApk() && mode !== 'local' && !getBridge()?.isAccessibilityEnabled?.()) {
+renderA11yGuideCard(clean);
+return;
+}
 const cardCtx = createAgentCardRow(clean, mode);
 if (!cardCtx) return;
 await runReActLoop(clean, cardCtx, mode);
@@ -20138,24 +20783,34 @@ showToast('手机辅助功能仅在 Android 随身版 App 端开放，请先下�
 openModal();
 return;
 }
+if (!getBridge()?.isAccessibilityEnabled?.()) {
+renderA11yGuideCard('读取当前屏幕内容');
+return;
+}
 const cardCtx = createAgentCardRow('读取当前屏幕界面无障碍节点', getExecMode());
 if (!cardCtx) return;
-const nodes = readScreenNodes();
+const snap = readAndFormatSnapshot(false);
 const sz = getScreenSizeObj();
-const sample = nodes
+const sample = snap.nodes
 .filter((n) => n.text || n.desc)
 .slice(0, 12)
 .map((n) => n.text || n.desc)
 .join(' / ');
+cardCtx.stepCount = 1;
 addStepItem(
 cardCtx.stepsList,
 1,
-`已捕获 ${nodes.length} 个界面控件（${sz.width}×${sz.height}）`,
+`已捕获 ${snap.nodes.length} 个界面元素（${sz.width}×${sz.height}）`,
 sample ? `可见关键元素：${sample}` : '当前窗口主要为图标或自绘视图',
-'屏幕上下文已就绪，可直接下达下一步操作任务',
-false
+'已就绪',
+false,
+'phone.screen'
 );
-cardCtx.stopBtn?.classList.add('hidden');
+finalizeAgentTurn(cardCtx, {
+status: 'done',
+summaryTitle: `已读取 ${snap.appName || '当前屏幕'}（${snap.nodes.length} 个元素）`,
+replyText: sample ? `当前屏幕可见关键内容：${sample}` : '当前屏幕未检测到文字节点，可能为纯图像或自绘界面。'
+});
 }
 window.__receiveFloatAgentTask = (taskText) => {
 const clean = String(taskText || '').trim();
@@ -20164,7 +20819,7 @@ if (shell && shell.dataset.uiMode !== 'phone-agent') {
 document.getElementById('ws-mode-phone-agent')?.click();
 }
 if (!clean) {
-showToast('已回到星语手机辅助工作台');
+showToast('已回到 dsh-Go 手机控屏工作台');
 return;
 }
 if (getExecMode() === 'local' && !isSimpleBuiltInLocalCmd(clean)) {
@@ -20727,13 +21382,33 @@ $('pa-banner-float-chip')?.addEventListener('click', handleToggleFloat);
 $('pa-banner-toggle-float-btn')?.addEventListener('click', handleToggleFloat);
 $('pa-toggle-float-btn')?.addEventListener('click', handleToggleFloat);
 $('pa-banner-confirm-chip')?.addEventListener('click', () => {
-const nextVal = !getDirectConfig().autoApprove;
-setAutoApprove(nextVal);
-showToast(
-nextVal
-? '已开启 dsh-Go 免确认自动执行'
-: '已切换为逐步安全确认模式'
-);
+const order = ['ask_every', 'sensitive_only', 'auto_turn'];
+const cur = getConfirmPolicy();
+const next = order[(order.indexOf(cur) + 1) % order.length];
+setConfirmPolicy(next);
+showToast(`已切换为「${getPolicyLabel(next)}」`);
+});
+$('pa-banner-policy-pill')?.addEventListener('click', () => openControlSheet(false));
+document.querySelectorAll('.pa-policy-card').forEach((card) => {
+card.addEventListener('click', () => {
+const p = card.dataset.paPolicy || 'sensitive_only';
+setConfirmPolicy(p);
+showToast(`安全策略已切换：${getPolicyLabel(p)}`);
+});
+});
+$('pa-cfg-edge-glow')?.addEventListener('change', (e) => {
+setEdgeGlowPref(Boolean(e.target.checked));
+});
+$('pa-queue-now-btn')?.addEventListener('click', () => {
+if (queuedInterjections.length > 0) {
+queuedInterjections[queuedInterjections.length - 1].priority = true;
+showToast('已标记优先注入，将在本步完成后立即响应');
+}
+});
+$('pa-queue-cancel-btn')?.addEventListener('click', () => {
+queuedInterjections = [];
+updateQueueBarUi();
+showToast('已取消排队插话');
 });
 $('pa-sheet-autoswipe-btn')?.addEventListener('click', () => {
 closeControlSheet();

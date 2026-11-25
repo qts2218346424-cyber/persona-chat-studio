@@ -2396,3 +2396,469 @@
   border-color: #ef4444 !important;
   box-shadow: 0 0 14px rgba(239, 68, 68, 0.45) !important;
 }
+
+/* ==========================================================================
+   7. dsh-Go 高度还原 UI 组件：空态英雄区、工具折叠流、三档确认、排队插话条
+   ========================================================================== */
+
+.pa-empty-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 8px;
+  padding: 12px 8px 16px;
+}
+
+.pa-empty-badge-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: light-dark(rgba(77, 107, 254, 0.1), rgba(77, 107, 254, 0.2));
+  color: #4d6bfe;
+  border: 1px solid light-dark(rgba(77, 107, 254, 0.2), rgba(77, 107, 254, 0.35));
+}
+
+.pa-empty-hero-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: light-dark(#0f172a, #f8fafc);
+}
+
+.pa-empty-hero-sub {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: light-dark(#64748b, #94a3b8);
+}
+
+#pa-empty-guide .pa-empty-guide-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+/* 执行中途排队插话胶囊条 */
+.pa-queue-bar {
+  width: min(100%, 750px);
+  margin: 0 auto 8px;
+  padding: 7px 10px 7px 12px;
+  border-radius: 12px;
+  background: light-dark(#eff6ff, rgba(77, 107, 254, 0.14));
+  border: 1px solid light-dark(rgba(77, 107, 254, 0.28), rgba(77, 107, 254, 0.38));
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.pa-queue-bar.hidden {
+  display: none !important;
+}
+
+.pa-queue-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.pa-queue-tag {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: #4d6bfe;
+  color: #ffffff;
+  flex-shrink: 0;
+}
+
+.pa-queue-text {
+  font-size: 12.5px;
+  color: light-dark(#1e293b, #e2e8f0);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pa-queue-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.pa-queue-now-btn {
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 7px;
+  border: none;
+  background: #4d6bfe;
+  color: #ffffff;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.pa-queue-cancel-btn {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  color: light-dark(#64748b, #94a3b8);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Bottom-Sheet 三档确认策略卡片组 & 白名单 */
+.pa-policy-segmented {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+}
+
+@media (max-width: 520px) {
+  .pa-policy-segmented {
+    grid-template-columns: 1fr;
+  }
+}
+
+.pa-policy-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 9px 10px;
+  border-radius: 11px;
+  border: 1px solid light-dark(rgba(15, 23, 42, 0.08), rgba(255, 255, 255, 0.1));
+  background: light-dark(#f8fafc, #1e222f);
+  color: light-dark(#1e293b, #f1f5f9);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.16s ease, background-color 0.16s ease;
+}
+
+.pa-policy-card strong {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.pa-policy-card span {
+  font-size: 11px;
+  color: light-dark(#64748b, #94a3b8);
+}
+
+.pa-policy-card.active {
+  border-color: #4d6bfe;
+  background: light-dark(#eff6ff, rgba(77, 107, 254, 0.18));
+}
+
+.pa-policy-card.active strong {
+  color: #4d6bfe;
+}
+
+.pa-trusted-apps-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.pa-trusted-empty {
+  font-size: 11.5px;
+  color: light-dark(#94a3b8, #64748b);
+}
+
+.pa-trusted-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 600;
+  background: light-dark(#f1f5f9, rgba(255, 255, 255, 0.08));
+  border: 1px solid light-dark(rgba(15, 23, 42, 0.08), rgba(255, 255, 255, 0.12));
+  color: light-dark(#334155, #e2e8f0);
+}
+
+.pa-trusted-chip button {
+  border: none;
+  background: transparent;
+  color: light-dark(#64748b, #94a3b8);
+  cursor: pointer;
+  padding: 0 2px;
+  font-size: 12px;
+  line-height: 1;
+}
+
+/* dsh-Go 聊天流工具轨迹折叠组 */
+.pa-dsh-turn {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.pa-trace-accordion {
+  border-radius: 14px;
+  background: light-dark(#f8fafc, #181b25);
+  border: 1px solid light-dark(rgba(15, 23, 42, 0.07), rgba(255, 255, 255, 0.09));
+  overflow: hidden;
+  transition: border-color 0.2s ease, background-color 0.2s ease;
+}
+
+.pa-trace-accordion.is-running {
+  border-color: light-dark(rgba(77, 107, 254, 0.35), rgba(77, 107, 254, 0.45));
+  box-shadow: 0 4px 16px -4px rgba(77, 107, 254, 0.12);
+}
+
+.pa-trace-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 9px 12px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.pa-trace-sum-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.pa-trace-pulse {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #4d6bfe;
+  flex-shrink: 0;
+}
+
+.pa-trace-accordion.is-running .pa-trace-pulse {
+  animation: paPulseRing 1.4s ease-in-out infinite;
+}
+
+.pa-trace-accordion.is-done .pa-trace-pulse {
+  background: #10b981;
+  animation: none;
+}
+
+.pa-trace-accordion.is-error .pa-trace-pulse {
+  background: #ef4444;
+  animation: none;
+}
+
+@keyframes paPulseRing {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(77, 107, 254, 0.45);
+  }
+  50% {
+    box-shadow: 0 0 0 5px rgba(77, 107, 254, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pa-trace-accordion.is-running .pa-trace-pulse {
+    animation: none !important;
+  }
+}
+
+.pa-trace-sum-text {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: light-dark(#1e293b, #f1f5f9);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pa-trace-sum-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex-shrink: 0;
+}
+
+.pa-trace-meta {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: light-dark(#64748b, #94a3b8);
+}
+
+.pa-trace-chevron {
+  font-size: 11px;
+  color: light-dark(#64748b, #94a3b8);
+  transition: transform 0.18s ease;
+}
+
+.pa-trace-accordion.is-collapsed .pa-trace-chevron {
+  transform: rotate(-90deg);
+}
+
+.pa-trace-accordion.is-collapsed .pa-trace-body {
+  display: none;
+}
+
+.pa-trace-body {
+  padding: 0 12px 10px;
+  border-top: 1px solid light-dark(rgba(15, 23, 42, 0.05), rgba(255, 255, 255, 0.06));
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.pa-trace-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding-top: 8px;
+}
+
+.pa-trace-step {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 7px 9px;
+  border-radius: 9px;
+  background: light-dark(#ffffff, rgba(255, 255, 255, 0.04));
+  border: 1px solid light-dark(rgba(15, 23, 42, 0.05), rgba(255, 255, 255, 0.06));
+  cursor: pointer;
+}
+
+.pa-trace-step-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.pa-trace-step-main {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.pa-tool-badge {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 5px;
+  background: light-dark(rgba(77, 107, 254, 0.1), rgba(77, 107, 254, 0.22));
+  color: #4d6bfe;
+  flex-shrink: 0;
+}
+
+.pa-step-desc {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: light-dark(#1e293b, #e2e8f0);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pa-verdict-badge {
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.pa-verdict-badge.is-changed {
+  background: light-dark(#ecfdf5, rgba(16, 185, 129, 0.16));
+  color: light-dark(#047857, #34d399);
+}
+
+.pa-verdict-badge.is-same {
+  background: light-dark(#f1f5f9, rgba(255, 255, 255, 0.08));
+  color: light-dark(#64748b, #94a3b8);
+}
+
+.pa-verdict-badge.is-error {
+  background: light-dark(#fef2f2, rgba(239, 68, 68, 0.18));
+  color: #ef4444;
+}
+
+.pa-trace-step-detail {
+  display: none;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: light-dark(#64748b, #94a3b8);
+  padding-top: 3px;
+  border-top: 1px dashed light-dark(rgba(15, 23, 42, 0.06), rgba(255, 255, 255, 0.08));
+}
+
+.pa-trace-step.is-detail-open .pa-trace-step-detail {
+  display: block;
+}
+
+.pa-final-reply {
+  font-size: 14.5px;
+  line-height: 1.65;
+  color: light-dark(#0f172a, #f1f5f9);
+  padding: 2px 2px 4px;
+}
+
+.pa-final-reply.hidden {
+  display: none;
+}
+
+.pa-handover-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+/* 无障碍未开启内联引导卡 */
+.pa-a11y-guide-card {
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: light-dark(#fffbeb, rgba(245, 158, 11, 0.1));
+  border: 1px solid light-dark(rgba(245, 158, 11, 0.35), rgba(245, 158, 11, 0.42));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pa-a11y-guide-card.is-ready {
+  background: light-dark(#ecfdf5, rgba(16, 185, 129, 0.12));
+  border-color: light-dark(rgba(16, 185, 129, 0.35), rgba(16, 185, 129, 0.45));
+}
+
+.pa-a11y-guide-title {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: light-dark(#92400e, #fcd34d);
+}
+
+.pa-a11y-guide-card.is-ready .pa-a11y-guide-title {
+  color: light-dark(#047857, #34d399);
+}
+
+.pa-a11y-guide-desc {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: light-dark(#475569, #cbd5e1);
+}
+
+.pa-interject-row .user-msg-wrap {
+  border-style: dashed;
+}

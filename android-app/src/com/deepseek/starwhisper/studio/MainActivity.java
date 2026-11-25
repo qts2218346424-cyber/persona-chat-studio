@@ -125,6 +125,21 @@ public class MainActivity extends Activity {
         handleIncomingAgentIntent(intent);
     }
 
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (webPageReady && webView != null) {
+            webView.post(new Runnable() {
+                @Override
+                public void run() {
+                    if (webView != null) {
+                        webView.evaluateJavascript("if(window.__onNativeResume){window.__onNativeResume();}", null);
+                    }
+                }
+            });
+        }
+    }
+
     private void handleIncomingAgentIntent(Intent intent) {
         if (intent == null) return;
         String task = intent.getStringExtra(EXTRA_PENDING_AGENT_TASK);
@@ -526,6 +541,26 @@ public class MainActivity extends Activity {
                 }
             });
         }
+    }
+
+    public static boolean dispatchFloatInterjectToWebView(final String task) {
+        final MainActivity act = sInstance;
+        if (act == null || act.webView == null || !act.webPageReady || task == null || task.trim().isEmpty()) {
+            return false;
+        }
+        act.runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                if (act.webView != null) {
+                    String quoted = JSONObject.quote(task.trim());
+                    act.webView.evaluateJavascript(
+                        "if(window.__onFloatInterjectTask){window.__onFloatInterjectTask(" + quoted + ");}else if(window.__receiveFloatAgentTask){window.__receiveFloatAgentTask(" + quoted + ");}",
+                        null
+                    );
+                }
+            }
+        });
+        return true;
     }
 
     @Override
@@ -959,6 +994,89 @@ public class MainActivity extends Activity {
                 return "无障碍服务未就绪，请先在系统设置中开启无障碍服务";
             }
             return service.executeLocalRule(command);
+        }
+
+        @JavascriptInterface
+        public void requestSafetyConfirmation(final String summary, final String actionDesc, final String riskLevel, final String targetApp, final boolean hardSensitive) {
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    FloatAgentService.showConfirmPrompt(summary, actionDesc, riskLevel, targetApp, hardSensitive);
+                }
+            });
+        }
+
+        @JavascriptInterface
+        public void setEdgeGlowEnabled(boolean enabled) {
+            FloatAgentService.setEdgeGlowEnabled(enabled);
+        }
+
+        @JavascriptInterface
+        public void setEdgeGlowState(String state) {
+            FloatAgentService.setEdgeGlowState(state);
+        }
+
+        @JavascriptInterface
+        public void showTapIndicator(int x, int y) {
+            FloatAgentService.showTapRipple(x, y);
+        }
+
+        @JavascriptInterface
+        public void setAgentForegroundActive(boolean active, String statusText) {
+            FloatAgentService.setForegroundKeepingAlive(active, statusText);
+        }
+
+        @JavascriptInterface
+        public String dumpScreenSnapshot(boolean includeInvisible) {
+            AgentAccessibilityService service = AgentAccessibilityService.getInstance();
+            if (service == null) {
+                return "{\"error\":\"AccessibilityService 未就绪，请先在系统设置中启用无障碍服务\",\"snapshotId\":\"\",\"nodes\":[]}";
+            }
+            return service.dumpScreenSnapshot(includeInvisible);
+        }
+
+        @JavascriptInterface
+        public String getScreenMeta() {
+            AgentAccessibilityService service = AgentAccessibilityService.getInstance();
+            if (service == null) {
+                return "{\"ok\":false,\"packageName\":\"\",\"appName\":\"\",\"signature\":\"\",\"hasSensitiveField\":false,\"nodeCount\":0}";
+            }
+            return service.getScreenMetaJson();
+        }
+
+        @JavascriptInterface
+        public String clickByRef(String snapshotId, String refId) {
+            AgentAccessibilityService service = AgentAccessibilityService.getInstance();
+            if (service == null) return "{\"ok\":false,\"message\":\"无障碍服务未就绪\"}";
+            return service.clickByRef(snapshotId, refId);
+        }
+
+        @JavascriptInterface
+        public String longClickByRef(String snapshotId, String refId, int durationMs) {
+            AgentAccessibilityService service = AgentAccessibilityService.getInstance();
+            if (service == null) return "{\"ok\":false,\"message\":\"无障碍服务未就绪\"}";
+            return service.longClickByRef(snapshotId, refId, durationMs);
+        }
+
+        @JavascriptInterface
+        public boolean doubleTapAt(int x, int y) {
+            AgentAccessibilityService service = AgentAccessibilityService.getInstance();
+            if (service == null) return false;
+            return service.performDoubleClickCoordinate(x, y);
+        }
+
+        @JavascriptInterface
+        public String inputByRef(String snapshotId, String refId, String text, boolean clearFirst, boolean autoSubmit) {
+            AgentAccessibilityService service = AgentAccessibilityService.getInstance();
+            if (service == null) return "{\"ok\":false,\"message\":\"无障碍服务未就绪\"}";
+            return service.inputByRef(snapshotId, refId, text, clearFirst, autoSubmit);
+        }
+
+        @JavascriptInterface
+        public boolean scrollScreen(String direction, float ratio) {
+            AgentAccessibilityService service = AgentAccessibilityService.getInstance();
+            if (service == null) return false;
+            return service.scrollDirection(direction, ratio);
         }
 
         @JavascriptInterface

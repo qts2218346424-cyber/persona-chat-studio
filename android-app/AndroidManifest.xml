@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.deepseek.starwhisper.studio"
-    android:versionCode="137"
-    android:versionName="2.1.0">
+    android:versionCode="138"
+    android:versionName="2.2.0">
 
     <uses-sdk
         android:minSdkVersion="24"
@@ -15,6 +15,9 @@
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <queries>
         <intent>
@@ -57,9 +60,10 @@
                 android:resource="@xml/accessibility_service_config" />
         </service>
 
-        <!-- 屏幕常驻悬浮控制球与一键急停哨兵服务 -->
+        <!-- 屏幕常驻悬浮控制球与一键急停哨兵服务（含前台保活） -->
         <service
             android:name=".FloatAgentService"
+            android:foregroundServiceType="dataSync"
             android:exported="false" />
 
         <!-- 专用只读 APK 更新包 ContentProvider（仅限私有更新包文件共享给系统安装器） -->

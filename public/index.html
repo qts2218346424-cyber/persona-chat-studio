@@ -100,9 +100,9 @@
       pointer-events: none !important;
     }
   </style>
-  <link rel="preload" href="./dist/app.bundle.css?v=20261122_v210_char_avatar" as="style" />
-  <link rel="preload" href="./dist/app.bundle.js?v=20261122_v210_char_avatar" as="script" />
-  <link rel="stylesheet" href="./dist/app.bundle.css?v=20261122_v210_char_avatar" />
+  <link rel="preload" href="./dist/app.bundle.css?v=20261125_v221_ui_fix" as="style" />
+  <link rel="preload" href="./dist/app.bundle.js?v=20261125_v220_dshgo" as="script" />
+  <link rel="stylesheet" href="./dist/app.bundle.css?v=20261125_v221_ui_fix" />
 </head>
 <body data-ui-mode="deepseek">
   <div id="skin-wallpaper-layer" class="skin-wallpaper-layer" aria-hidden="true"></div>
@@ -884,6 +884,9 @@
                 </svg>
               </button>
               <div class="pa-compact-actions">
+                <button type="button" class="pa-mini-pill pa-policy-pill" id="pa-banner-policy-pill" title="点击切换 dsh-Go 三档安全确认策略">
+                  <span id="pa-policy-pill-label">仅敏感确认</span>
+                </button>
                 <button type="button" class="pa-mini-pill" id="pa-banner-toggle-float-btn" title="快速启停桌面多功能悬浮窗">
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                     <rect x="4" y="4" width="16" height="16" rx="4"></rect>
@@ -895,9 +898,21 @@
             </div>
           </div>
 
-          <!-- 手机辅助空态轻盈快捷引导（仅空消息时展示，发送任务后自动收起） -->
+          <!-- dsh-Go 风格手机控屏居中空态引导（仅空消息时展示，发送任务后自动收起） -->
           <div class="pa-empty-guide hidden" id="pa-empty-guide">
-            <div class="pa-empty-guide-title">离线直控 · 轻触即发</div>
+            <div class="pa-empty-hero">
+              <div class="pa-empty-badge-icon" aria-hidden="true">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="5" y="2" width="14" height="20" rx="3" ry="3"></rect>
+                  <path d="M9 10h6"></path>
+                  <path d="M12 7v6"></path>
+                  <line x1="12" y1="18" x2="12.01" y2="18"></line>
+                </svg>
+              </div>
+              <h2 class="pa-empty-hero-title" id="pa-empty-hero-title">dsh-Go 手机控屏已就绪</h2>
+              <p class="pa-empty-hero-sub" id="pa-empty-hero-sub">支持三档安全确认，密码、支付与验证码操作始终交还给你</p>
+            </div>
+            <div class="pa-empty-guide-title">试着说一句，或点选任务示例</div>
             <div class="pa-empty-guide-grid" id="pa-empty-guide-grid"></div>
           </div>
 
@@ -1003,6 +1018,18 @@
 
         <!-- 分类离线指令库抽屉（按需弹出在输入舱上方，支持刷视频/打字/手势/系统/应用分类直达） -->
         <div class="phone-cmd-quick-drawer pa-cmdlib-drawer hidden" id="phone-cmd-quick-drawer" aria-label="本地离线指令库"></div>
+
+        <!-- dsh-Go 执行中途排队 / 插话条 -->
+        <div class="pa-queue-bar hidden" id="pa-queue-bar" role="status" aria-live="polite">
+          <div class="pa-queue-info">
+            <span class="pa-queue-tag">排队插话</span>
+            <span class="pa-queue-text" id="pa-queue-text"></span>
+          </div>
+          <div class="pa-queue-actions">
+            <button type="button" class="pa-queue-now-btn" id="pa-queue-now-btn">立即插话</button>
+            <button type="button" class="pa-queue-cancel-btn" id="pa-queue-cancel-btn" aria-label="取消排队">✕</button>
+          </div>
+        </div>
 
         <form class="composer-card" id="chat-form">
           <!-- 已选上传文档/代码附件预览芯片栏（遵循 single-line-overflow 保留扩展名规范） -->
@@ -3649,7 +3676,30 @@
       </div>
 
       <div class="pa-sheet-section">
-        <div class="pa-sheet-label">设备权限与运行状态（点击切换）</div>
+        <div class="pa-sheet-label">安全确认策略（dsh-Go 三档确认）</div>
+        <div class="pa-policy-segmented" id="pa-policy-segmented" role="radiogroup" aria-label="选择安全确认策略">
+          <button type="button" class="pa-policy-card" data-pa-policy="ask_every" role="radio" aria-checked="false">
+            <strong>每次确认</strong>
+            <span>每步操作均弹窗把关</span>
+          </button>
+          <button type="button" class="pa-policy-card active" data-pa-policy="sensitive_only" role="radio" aria-checked="true">
+            <strong>仅敏感确认 · 推荐</strong>
+            <span>普通点滑直行，敏感拦截</span>
+          </button>
+          <button type="button" class="pa-policy-card" data-pa-policy="auto_turn" role="radio" aria-checked="false">
+            <strong>托管放行</strong>
+            <span>自动连跑，密码/支付仍拦</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="pa-sheet-section">
+        <div class="pa-sheet-label">已信任应用白名单</div>
+        <div class="pa-trusted-apps-list" id="pa-trusted-apps-list"></div>
+      </div>
+
+      <div class="pa-sheet-section">
+        <div class="pa-sheet-label">设备权限与视觉反馈</div>
         <div class="pa-status-chips">
           <button type="button" class="pa-chip pa-a11y-chip pending" id="pa-banner-a11y-chip" title="点击前往开启或检查无障碍权限">
             <span class="pa-dot"></span><span id="pa-banner-a11y-text">无障碍未授权</span>
@@ -3658,9 +3708,13 @@
             <span class="pa-dot"></span><span id="pa-banner-float-text">悬浮窗</span>
           </button>
           <button type="button" class="pa-chip pa-mode-chip" id="pa-banner-confirm-chip" title="点击切换 dsh-Go 逐步确认 / 免确认自动执行">
-            <span class="pa-dot"></span><span id="pa-banner-confirm-text">需确认执行</span>
+            <span class="pa-dot"></span><span id="pa-banner-confirm-text">仅敏感确认</span>
           </button>
         </div>
+        <label class="pa-cfg-check" style="margin-top:4px;">
+          <input type="checkbox" id="pa-cfg-edge-glow" checked />
+          <span>屏幕边缘柔和光效提示（AI 控屏时亮起微光边框）</span>
+        </label>
       </div>
 
       <div class="pa-config-drawer" id="pa-inline-config-drawer">
@@ -3751,7 +3805,7 @@
   <!-- 全局 Top-Layer 顶层轻提示胶囊（popover="manual" 确保在任何模态 <dialog> 打开时依然 100% 可见，遵循 persistent-toast-notifications 规范） -->
   <div id="global-top-toast" popover="manual" class="global-top-toast" role="status" aria-live="polite"></div>
 
-  <script defer src="./dist/app.bundle.js?v=20261122_v210_char_avatar"></script>
+  <script defer src="./dist/app.bundle.js?v=20261125_v220_dshgo"></script>
   <script>
     if ('serviceWorker' in navigator && window.location.protocol.startsWith('http')) {
       window.addEventListener('load', () => {

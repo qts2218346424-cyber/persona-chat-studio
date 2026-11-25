@@ -6,6 +6,7 @@ import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.graphics.Path;
@@ -22,25 +23,56 @@ import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Random;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
  * 星语恋庭 × DeepSeek 手机端 AI 辅助助理无障碍服务 (Phone Agent Service)
- * 参考 dsh-Go 架构：在用户明确授权与下达指令的前提下，负责屏幕感知、智能打字、自动刷视频与丰富离线辅助操作。
+ * 参考 dsh-Go 架构：提供快照化屏幕感知、敏感字段脱敏、ref 精准控件操作与丰富本地辅助能力。
  */
 public class AgentAccessibilityService extends AccessibilityService {
     private static final String TAG = "AgentAccessibility";
+    private static final int MAX_SNAPSHOT_NODES = 160;
     private static volatile AgentAccessibilityService sInstance = null;
     private final AtomicInteger nodeCounter = new AtomicInteger(1);
+    private final AtomicInteger snapshotSeq = new AtomicInteger(0);
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final Random random = new Random();
+
+    // 快照缓存（dsh-go ref 精准定位 + 过期保护）
+    private volatile String currentSnapshotId = "";
+    private final ConcurrentHashMap<String, SnapshotEntry> currentSnapshotNodes = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, String> appLabelCache = new ConcurrentHashMap<>();
+
+    private static final class SnapshotEntry {
+        String ref;
+        String text;
+        String desc;
+        String viewId;
+        String className;
+        Rect bounds;
+        int centerX;
+        int centerY;
+        boolean clickable;
+        boolean editable;
+        boolean checkable;
+        boolean checked;
+        boolean scrollable;
+        boolean selected;
+        boolean focused;
+        boolean enabled;
+        boolean password;
+        int depth;
+    }
 
     // 自动连刷视频任务状态
     private volatile boolean autoSwipeRunning = false;
@@ -88,6 +120,500 @@ public class AgentAccessibilityService extends AccessibilityService {
             sInstance = null;
         }
         Log.i(TAG, "AgentAccessibilityService 已销毁");
+    }
+
+    /**
+     * 解析包名对应的应用显示名（带缓存）
+     */
+    private String resolveAppLabel(String pkgName) {
+        if (pkgName == null || pkgName.isEmpty()) return "";
+        String cached = appLabelCache.get(pkgName);
+        if (cached != null) return cached;
+        try {
+            PackageManager pm = getPackageManager();
+            ApplicationInfo ai = pm.getApplicationInfo(pkgName, 0);
+            CharSequence label = pm.getApplicationLabel(ai);
+            String res = label != null ? label.toString() : pkgName;
+            appLabelCache.put(pkgName, res);
+            return res;
+        } catch (Exception ignored) {
+            return pkgName;
+        }
+    }
+
+    private static boolean isSensitiveKeywordMatch(String text) {
+        if (text == null || text.isEmpty()) return false;
+        return text.contains("支付密码") || text.contains("输入密码") || text.contains("指纹支付")
+                || text.contains("人脸支付") || text.contains("刷脸支付") || text.contains("免密支付")
+                || text.contains("收银台") || text.contains("银行卡") || text.contains("验证码")
+                || text.contains("转账确认") || text.contains("确认付款") || text.contains("立即支付")
+                || text.contains("交易密码") || text.contains("安全密码");
+    }
+
+    private static boolean isSensitivePackage(String pkg) {
+        if (pkg == null) return false;
+        String low = pkg.toLowerCase(Locale.ROOT);
+        return low.contains("bank") || low.contains("wallet") || low.contains("unionpay")
+                || low.contains("cmb") || low.contains("icbc") || low.contains("ccb")
+                || low.contains("abchina") || low.contains("boc");
+    }
+
+    /**
+     * dsh-go 风格快照化屏幕采集：
+     * - 自动分配 snapshotId 与 ref (e1, e2, ...)
+     * - 自动脱敏 password 字段为 [PROTECTED_PASSWORD]
+     * - 检测支付/密码/银行/验证码等敏感场景
+     * - 按屏幕从上到下、从左到右视觉顺序排序并裁剪高价值节点
+     */
+    public String dumpScreenSnapshot(boolean includeInvisible) {
+        AccessibilityNodeInfo root = getRootInActiveWindow();
+        if (root == null) {
+            return "{\"error\":\"无法获取当前屏幕根节点（请确认屏幕未锁定或当前应用允许无障碍读取）\",\"snapshotId\":\"\",\"nodes\":[]}";
+        }
+
+        DisplayMetrics dm = getResources().getDisplayMetrics();
+        int screenW = dm.widthPixels;
+        int screenH = dm.heightPixels;
+        CharSequence pkgCs = root.getPackageName();
+        String pkgName = pkgCs != null ? pkgCs.toString() : "";
+        String appName = resolveAppLabel(pkgName);
+
+        List<SnapshotEntry> collected = new ArrayList<>();
+        boolean[] sensitiveFlag = new boolean[]{ isSensitivePackage(pkgName) };
+        StringBuilder sensitiveReason = new StringBuilder();
+        if (sensitiveFlag[0]) {
+            sensitiveReason.append("检测到金融/银行/钱包类应用界面");
+        }
+
+        collectSnapshotEntries(root, 0, includeInvisible, screenW, screenH, collected, sensitiveFlag, sensitiveReason);
+        root.recycle();
+
+        // 按视觉位置从上到下（24px 行容差）、从左到右稳定排序
+        Collections.sort(collected, new Comparator<SnapshotEntry>() {
+            @Override
+            public int compare(SnapshotEntry a, SnapshotEntry b) {
+                int rowDiff = a.centerY - b.centerY;
+                if (Math.abs(rowDiff) > 24) {
+                    return rowDiff;
+                }
+                int colDiff = a.centerX - b.centerX;
+                if (colDiff != 0) return colDiff;
+                return a.depth - b.depth;
+            }
+        });
+
+        if (collected.size() > MAX_SNAPSHOT_NODES) {
+            collected = new ArrayList<>(collected.subList(0, MAX_SNAPSHOT_NODES));
+        }
+
+        String snapId = "snap_" + snapshotSeq.incrementAndGet();
+        currentSnapshotNodes.clear();
+        StringBuilder sigSb = new StringBuilder(pkgName).append("|");
+
+        for (int i = 0; i < collected.size(); i++) {
+            SnapshotEntry entry = collected.get(i);
+            entry.ref = "e" + (i + 1);
+            currentSnapshotNodes.put(entry.ref, entry);
+            if (i < 24) {
+                sigSb.append(entry.text).append(':').append(entry.centerX).append(',').append(entry.centerY).append(';');
+            }
+        }
+        currentSnapshotId = snapId;
+        String signature = Integer.toHexString(sigSb.toString().hashCode());
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("{");
+        sb.append("\"snapshotId\":\"").append(escapeJson(snapId)).append("\",");
+        sb.append("\"packageName\":\"").append(escapeJson(pkgName)).append("\",");
+        sb.append("\"appName\":\"").append(escapeJson(appName)).append("\",");
+        sb.append("\"width\":").append(screenW).append(",");
+        sb.append("\"height\":").append(screenH).append(",");
+        sb.append("\"timestamp\":").append(System.currentTimeMillis()).append(",");
+        sb.append("\"signature\":\"").append(escapeJson(signature)).append("\",");
+        sb.append("\"hasSensitiveField\":").append(sensitiveFlag[0]).append(",");
+        sb.append("\"sensitiveReason\":\"").append(escapeJson(sensitiveReason.toString())).append("\",");
+        sb.append("\"nodes\":[");
+
+        for (int i = 0; i < collected.size(); i++) {
+            SnapshotEntry e = collected.get(i);
+            if (i > 0) sb.append(",");
+            sb.append("{");
+            sb.append("\"ref\":\"").append(e.ref).append("\",");
+            sb.append("\"text\":\"").append(escapeJson(e.text)).append("\",");
+            sb.append("\"desc\":\"").append(escapeJson(e.desc)).append("\",");
+            sb.append("\"viewId\":\"").append(escapeJson(e.viewId)).append("\",");
+            sb.append("\"cls\":\"").append(escapeJson(e.className)).append("\",");
+            sb.append("\"bounds\":[").append(e.bounds.left).append(",").append(e.bounds.top).append(",").append(e.bounds.right).append(",").append(e.bounds.bottom).append("],");
+            sb.append("\"center\":[").append(e.centerX).append(",").append(e.centerY).append("],");
+            sb.append("\"clickable\":").append(e.clickable).append(",");
+            sb.append("\"editable\":").append(e.editable).append(",");
+            sb.append("\"checkable\":").append(e.checkable).append(",");
+            sb.append("\"checked\":").append(e.checked).append(",");
+            sb.append("\"scrollable\":").append(e.scrollable).append(",");
+            sb.append("\"selected\":").append(e.selected).append(",");
+            sb.append("\"focused\":").append(e.focused).append(",");
+            sb.append("\"enabled\":").append(e.enabled).append(",");
+            sb.append("\"password\":").append(e.password);
+            sb.append("}");
+        }
+        sb.append("]}");
+        return sb.toString();
+    }
+
+    /**
+     * 轻量屏幕元数据接口（供 ScreenVerdict 高频轮询判断页面变化与敏感态）
+     */
+    public String getScreenMetaJson() {
+        AccessibilityNodeInfo root = getRootInActiveWindow();
+        if (root == null) {
+            return "{\"ok\":false,\"packageName\":\"\",\"appName\":\"\",\"signature\":\"\",\"hasSensitiveField\":false,\"sensitiveReason\":\"\",\"nodeCount\":0,\"timestamp\":" + System.currentTimeMillis() + "}";
+        }
+        DisplayMetrics dm = getResources().getDisplayMetrics();
+        CharSequence pkgCs = root.getPackageName();
+        String pkgName = pkgCs != null ? pkgCs.toString() : "";
+        String appName = resolveAppLabel(pkgName);
+
+        List<SnapshotEntry> collected = new ArrayList<>();
+        boolean[] sensitiveFlag = new boolean[]{ isSensitivePackage(pkgName) };
+        StringBuilder sensitiveReason = new StringBuilder();
+        if (sensitiveFlag[0]) {
+            sensitiveReason.append("检测到金融/银行/钱包类应用界面");
+        }
+        collectSnapshotEntries(root, 0, false, dm.widthPixels, dm.heightPixels, collected, sensitiveFlag, sensitiveReason);
+        root.recycle();
+
+        StringBuilder sigSb = new StringBuilder(pkgName).append("|");
+        int limit = Math.min(24, collected.size());
+        for (int i = 0; i < limit; i++) {
+            SnapshotEntry entry = collected.get(i);
+            sigSb.append(entry.text).append(':').append(entry.centerX).append(',').append(entry.centerY).append(';');
+        }
+        String signature = Integer.toHexString(sigSb.toString().hashCode());
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("{");
+        sb.append("\"ok\":true,");
+        sb.append("\"packageName\":\"").append(escapeJson(pkgName)).append("\",");
+        sb.append("\"appName\":\"").append(escapeJson(appName)).append("\",");
+        sb.append("\"signature\":\"").append(escapeJson(signature)).append("\",");
+        sb.append("\"hasSensitiveField\":").append(sensitiveFlag[0]).append(",");
+        sb.append("\"sensitiveReason\":\"").append(escapeJson(sensitiveReason.toString())).append("\",");
+        sb.append("\"nodeCount\":").append(collected.size()).append(",");
+        sb.append("\"timestamp\":").append(System.currentTimeMillis());
+        sb.append("}");
+        return sb.toString();
+    }
+
+    private void collectSnapshotEntries(
+            AccessibilityNodeInfo node,
+            int depth,
+            boolean includeInvisible,
+            int screenW,
+            int screenH,
+            List<SnapshotEntry> out,
+            boolean[] sensitiveFlag,
+            StringBuilder sensitiveReason
+    ) {
+        if (node == null || out.size() >= MAX_SNAPSHOT_NODES * 2) return;
+
+        boolean visible = node.isVisibleToUser();
+        boolean isPassword = node.isPassword();
+        CharSequence rawText = node.getText();
+        CharSequence rawDesc = node.getContentDescription();
+        String textStr = isPassword ? "[PROTECTED_PASSWORD]" : (rawText != null ? rawText.toString().trim() : "");
+        String descStr = isPassword ? "" : (rawDesc != null ? rawDesc.toString().trim() : "");
+
+        if (isPassword && visible) {
+            sensitiveFlag[0] = true;
+            if (sensitiveReason.length() == 0) sensitiveReason.append("当前屏幕包含密码输入框");
+        } else if (visible && (isSensitiveKeywordMatch(textStr) || isSensitiveKeywordMatch(descStr))) {
+            sensitiveFlag[0] = true;
+            if (sensitiveReason.length() == 0) sensitiveReason.append("当前屏幕出现支付/密码/验证码等敏感操作");
+        }
+
+        boolean clickable = node.isClickable();
+        boolean editable = node.isEditable();
+        boolean checkable = node.isCheckable();
+        boolean scrollable = node.isScrollable();
+        boolean hasText = !textStr.isEmpty() || !descStr.isEmpty();
+        boolean isInteractive = clickable || editable || checkable;
+
+        if ((visible || includeInvisible) && (isInteractive || hasText)) {
+            Rect bounds = new Rect();
+            node.getBoundsInScreen(bounds);
+            if (bounds.width() > 2 && bounds.height() > 2
+                    && bounds.right > 0 && bounds.bottom > 0
+                    && bounds.left < screenW && bounds.top < screenH) {
+                int cx = Math.max(1, Math.min(screenW - 1, bounds.centerX()));
+                int cy = Math.max(1, Math.min(screenH - 1, bounds.centerY()));
+
+                SnapshotEntry entry = new SnapshotEntry();
+                entry.text = textStr.length() > 120 ? textStr.substring(0, 120) : textStr;
+                entry.desc = descStr.length() > 120 ? descStr.substring(0, 120) : descStr;
+                String vid = node.getViewIdResourceName();
+                entry.viewId = vid != null ? vid : "";
+                CharSequence cls = node.getClassName();
+                String clsStr = cls != null ? cls.toString() : "";
+                int lastDot = clsStr.lastIndexOf('.');
+                entry.className = lastDot >= 0 ? clsStr.substring(lastDot + 1) : clsStr;
+                entry.bounds = bounds;
+                entry.centerX = cx;
+                entry.centerY = cy;
+                entry.clickable = clickable;
+                entry.editable = editable;
+                entry.checkable = checkable;
+                entry.checked = node.isChecked();
+                entry.scrollable = scrollable;
+                entry.selected = node.isSelected();
+                entry.focused = node.isFocused();
+                entry.enabled = node.isEnabled();
+                entry.password = isPassword;
+                entry.depth = depth;
+                out.add(entry);
+            }
+        }
+
+        int childCount = node.getChildCount();
+        for (int i = 0; i < childCount && out.size() < MAX_SNAPSHOT_NODES * 2; i++) {
+            AccessibilityNodeInfo child = node.getChild(i);
+            if (child != null) {
+                collectSnapshotEntries(child, depth + 1, includeInvisible, screenW, screenH, out, sensitiveFlag, sensitiveReason);
+                child.recycle();
+            }
+        }
+    }
+
+    /**
+     * 通过快照 ref 点击目标控件（优先节点 ACTION_CLICK，回退坐标手势并触发光圈反馈）
+     */
+    public String clickByRef(String snapshotId, String refId) {
+        if (snapshotId != null && !snapshotId.trim().isEmpty()
+                && !currentSnapshotId.isEmpty()
+                && !snapshotId.trim().equals(currentSnapshotId)) {
+            return "{\"ok\":false,\"stale\":true,\"message\":\"屏幕快照已过期，请重新采集当前屏幕后再点击\"}";
+        }
+        SnapshotEntry entry = refId != null ? currentSnapshotNodes.get(refId.trim()) : null;
+        if (entry == null) {
+            return "{\"ok\":false,\"message\":\"未在当前快照中找到控件 " + escapeJson(refId) + "\"}";
+        }
+
+        AccessibilityNodeInfo root = getRootInActiveWindow();
+        if (root != null) {
+            AccessibilityNodeInfo matched = findNodeMatchingSnapshot(root, entry);
+            if (matched != null) {
+                boolean nodeClicked = false;
+                AccessibilityNodeInfo cur = matched;
+                while (cur != null) {
+                    if (cur.isClickable()) {
+                        nodeClicked = cur.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+                        if (nodeClicked) break;
+                    }
+                    AccessibilityNodeInfo parent = cur.getParent();
+                    if (cur != matched) cur.recycle();
+                    cur = parent;
+                }
+                if (cur != null && cur != matched) cur.recycle();
+                matched.recycle();
+                if (nodeClicked) {
+                    root.recycle();
+                    FloatAgentService.showTapRipple(entry.centerX, entry.centerY);
+                    return "{\"ok\":true,\"x\":" + entry.centerX + ",\"y\":" + entry.centerY + ",\"message\":\"已点击控件 " + escapeJson(entry.ref) + "\"}";
+                }
+            }
+            root.recycle();
+        }
+
+        boolean gestureOk = performClickCoordinate(entry.centerX, entry.centerY);
+        return "{\"ok\":" + gestureOk + ",\"x\":" + entry.centerX + ",\"y\":" + entry.centerY + ",\"message\":\"" + (gestureOk ? "已按坐标点击控件 " + escapeJson(entry.ref) : "控件点击派发失败") + "\"}";
+    }
+
+    /**
+     * 通过快照 ref 长按目标控件
+     */
+    public String longClickByRef(String snapshotId, String refId, int durationMs) {
+        if (snapshotId != null && !snapshotId.trim().isEmpty()
+                && !currentSnapshotId.isEmpty()
+                && !snapshotId.trim().equals(currentSnapshotId)) {
+            return "{\"ok\":false,\"stale\":true,\"message\":\"屏幕快照已过期\"}";
+        }
+        SnapshotEntry entry = refId != null ? currentSnapshotNodes.get(refId.trim()) : null;
+        if (entry == null) {
+            return "{\"ok\":false,\"message\":\"未在当前快照中找到控件 " + escapeJson(refId) + "\"}";
+        }
+
+        int dur = Math.max(500, Math.min(durationMs > 0 ? durationMs : 700, 2500));
+        boolean ok = performLongClickCoordinate(entry.centerX, entry.centerY, dur);
+        return "{\"ok\":" + ok + ",\"x\":" + entry.centerX + ",\"y\":" + entry.centerY + ",\"message\":\"" + (ok ? "已长按控件 " + escapeJson(entry.ref) : "长按派发失败") + "\"}";
+    }
+
+    /**
+     * 通过快照 ref 向目标输入框输入文字（支持清空、剪贴板兜底与自动提交）
+     */
+    public String inputByRef(String snapshotId, String refId, String text, boolean clearFirst, boolean autoSubmit) {
+        if (refId == null || refId.trim().isEmpty()) {
+            boolean ok = performSmartInputText(null, text, !clearFirst, autoSubmit);
+            return "{\"ok\":" + ok + ",\"message\":\"" + (ok ? "已向当前输入框填入文字" : "未找到可编辑输入框") + "\"}";
+        }
+        if (snapshotId != null && !snapshotId.trim().isEmpty()
+                && !currentSnapshotId.isEmpty()
+                && !snapshotId.trim().equals(currentSnapshotId)) {
+            return "{\"ok\":false,\"stale\":true,\"message\":\"屏幕快照已过期\"}";
+        }
+        SnapshotEntry entry = currentSnapshotNodes.get(refId.trim());
+        if (entry == null) {
+            boolean ok = performSmartInputText(null, text, !clearFirst, autoSubmit);
+            return "{\"ok\":" + ok + ",\"message\":\"" + (ok ? "已智能定位输入框并填入文字" : "未找到控件 " + escapeJson(refId)) + "\"}";
+        }
+
+        FloatAgentService.showTapRipple(entry.centerX, entry.centerY);
+
+        AccessibilityNodeInfo root = getRootInActiveWindow();
+        if (root == null) {
+            return "{\"ok\":false,\"message\":\"无法获取活动窗口\"}";
+        }
+
+        AccessibilityNodeInfo target = findNodeMatchingSnapshot(root, entry);
+        if (target == null || !target.isEditable()) {
+            if (target != null) target.recycle();
+            // 先点击该位置唤醒输入框，再回退 smartInput
+            performClickCoordinate(entry.centerX, entry.centerY);
+            root.recycle();
+            boolean ok = performSmartInputText(entry.viewId, text, !clearFirst, autoSubmit);
+            return "{\"ok\":" + ok + ",\"message\":\"" + (ok ? "已定位输入框并填入文字" : "目标控件不可编辑") + "\"}";
+        }
+
+        if (!target.isFocused()) {
+            target.performAction(AccessibilityNodeInfo.ACTION_FOCUS);
+            target.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+        }
+
+        Rect inputBounds = new Rect();
+        target.getBoundsInScreen(inputBounds);
+        String rawInput = text != null ? text : "";
+        String finalText = rawInput;
+        if (!clearFirst) {
+            CharSequence existing = target.getText();
+            CharSequence hint = (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) ? target.getHintText() : null;
+            String existingStr = existing != null ? existing.toString() : "";
+            String hintStr = hint != null ? hint.toString() : "";
+            if (!existingStr.isEmpty() && !existingStr.equals(hintStr)) {
+                finalText = existingStr + rawInput;
+            }
+        }
+
+        Bundle arguments = new Bundle();
+        arguments.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, finalText);
+        boolean ok = target.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, arguments);
+        if (!ok && !finalText.isEmpty()) {
+            ok = pasteTextViaClipboard(target, finalText, clearFirst);
+        }
+
+        target.recycle();
+        root.recycle();
+
+        if (ok && autoSubmit) {
+            final Rect finalBounds = inputBounds;
+            int[] delays = new int[]{ 260, 580 };
+            for (int d : delays) {
+                mainHandler.postDelayed(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (!FloatAgentService.sEmergencyStopRequested) {
+                            performSmartSubmitAction(finalBounds);
+                        }
+                    }
+                }, d);
+            }
+        }
+
+        return "{\"ok\":" + ok + ",\"message\":\"" + (ok ? "已向 " + escapeJson(entry.ref) + " 填入文字" : "文本输入失败") + "\"}";
+    }
+
+    /**
+     * 安全区比例滚动（避开系统顶部状态栏与底部导航栏）
+     */
+    public boolean scrollDirection(String direction, float ratio) {
+        DisplayMetrics dm = getResources().getDisplayMetrics();
+        int w = dm.widthPixels;
+        int h = dm.heightPixels;
+        float r = Math.max(0.25f, Math.min(ratio > 0 ? ratio : 0.65f, 0.85f));
+        String dir = direction != null ? direction.trim().toLowerCase(Locale.ROOT) : "down";
+        int spanY = (int) (h * 0.56f * r);
+        int midY = (int) (h * 0.52f);
+        int spanX = (int) (w * 0.68f * r);
+        int midX = w / 2;
+
+        if ("down".equals(dir)) {
+            return performSwipe(midX, midY + spanY / 2, midX, midY - spanY / 2, 340);
+        } else if ("up".equals(dir)) {
+            return performSwipe(midX, midY - spanY / 2, midX, midY + spanY / 2, 340);
+        } else if ("left".equals(dir)) {
+            return performSwipe(midX + spanX / 2, midY, midX - spanX / 2, midY, 320);
+        } else if ("right".equals(dir)) {
+            return performSwipe(midX - spanX / 2, midY, midX + spanX / 2, midY, 320);
+        }
+        return false;
+    }
+
+    private AccessibilityNodeInfo findNodeMatchingSnapshot(AccessibilityNodeInfo root, SnapshotEntry entry) {
+        if (root == null || entry == null) return null;
+        if (entry.viewId != null && !entry.viewId.isEmpty()) {
+            List<AccessibilityNodeInfo> byId = root.findAccessibilityNodeInfosByViewId(entry.viewId);
+            if (byId != null && !byId.isEmpty()) {
+                AccessibilityNodeInfo best = null;
+                int bestDist = Integer.MAX_VALUE;
+                for (AccessibilityNodeInfo cand : byId) {
+                    Rect b = new Rect();
+                    cand.getBoundsInScreen(b);
+                    int dist = Math.abs(b.centerX() - entry.centerX) + Math.abs(b.centerY() - entry.centerY);
+                    if (dist < bestDist) {
+                        bestDist = dist;
+                        if (best != null) best.recycle();
+                        best = cand;
+                    } else {
+                        cand.recycle();
+                    }
+                }
+                if (best != null && bestDist < 80) {
+                    return best;
+                }
+                if (best != null) best.recycle();
+            }
+        }
+        return findNodeByBoundsAndText(root, entry);
+    }
+
+    private AccessibilityNodeInfo findNodeByBoundsAndText(AccessibilityNodeInfo node, SnapshotEntry entry) {
+        if (node == null) return null;
+        if (node.isVisibleToUser()) {
+            Rect b = new Rect();
+            node.getBoundsInScreen(b);
+            int dist = Math.abs(b.centerX() - entry.centerX) + Math.abs(b.centerY() - entry.centerY);
+            if (dist <= 28) {
+                CharSequence t = node.getText();
+                CharSequence d = node.getContentDescription();
+                String ts = t != null ? t.toString().trim() : "";
+                String ds = d != null ? d.toString().trim() : "";
+                if (entry.password && node.isPassword()) {
+                    return AccessibilityNodeInfo.obtain(node);
+                }
+                if ((!entry.text.isEmpty() && entry.text.equals(ts))
+                        || (!entry.desc.isEmpty() && entry.desc.equals(ds))
+                        || (entry.text.isEmpty() && entry.desc.isEmpty() && b.equals(entry.bounds))) {
+                    return AccessibilityNodeInfo.obtain(node);
+                }
+            }
+        }
+        int childCount = node.getChildCount();
+        for (int i = 0; i < childCount; i++) {
+            AccessibilityNodeInfo child = node.getChild(i);
+            if (child != null) {
+                AccessibilityNodeInfo hit = findNodeByBoundsAndText(child, entry);
+                child.recycle();
+                if (hit != null) return hit;
+            }
+        }
+        return null;
     }
 
     /**
@@ -181,6 +707,7 @@ public class AgentAccessibilityService extends AccessibilityService {
      */
     public boolean performClickCoordinate(int x, int y) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return false;
+        FloatAgentService.showTapRipple(x, y);
         Path path = new Path();
         path.moveTo(x, y);
         GestureDescription.Builder builder = new GestureDescription.Builder();
@@ -193,6 +720,7 @@ public class AgentAccessibilityService extends AccessibilityService {
      */
     public boolean performLongClickCoordinate(int x, int y, int durationMs) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return false;
+        FloatAgentService.showTapRipple(x, y);
         Path path = new Path();
         path.moveTo(x, y);
         GestureDescription.Builder builder = new GestureDescription.Builder();
@@ -206,6 +734,7 @@ public class AgentAccessibilityService extends AccessibilityService {
      */
     public boolean performDoubleClickCoordinate(final int x, final int y) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return false;
+        FloatAgentService.showTapRipple(x, y);
         boolean firstOk = performQuickTap(x, y, 40);
         mainHandler.postDelayed(new Runnable() {
             @Override
@@ -603,6 +1132,7 @@ public class AgentAccessibilityService extends AccessibilityService {
      */
     public boolean performSwipe(int startX, int startY, int endX, int endY, int durationMs) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return false;
+        FloatAgentService.showTapRipple(startX, startY);
         Path path = new Path();
         path.moveTo(startX, startY);
         path.lineTo(endX, endY);
@@ -1594,6 +2124,8 @@ public class AgentAccessibilityService extends AccessibilityService {
                 return performGlobalAction(GLOBAL_ACTION_NOTIFICATIONS);
             case "quick_settings":
                 return performGlobalAction(GLOBAL_ACTION_QUICK_SETTINGS);
+            case "enter":
+                return performSmartSubmitAction(null);
             case "power_dialog":
                 return performGlobalAction(GLOBAL_ACTION_POWER_DIALOG);
             case "screenshot":

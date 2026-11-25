@@ -782,7 +782,8 @@
   .bond-heart-tag,
   .mood-live-chip,
   .persona-chip-tagline,
-  .avatar-halo {
+  .avatar-halo,
+  #topbar-edit-charcard-btn {
     display: none !important;
   }
 
@@ -864,6 +865,50 @@
     margin: 0 !important;
     pointer-events: none !important;
     justify-content: center !important;
+    overflow: hidden !important;
+  }
+
+  .active-persona-chip .persona-chip-info {
+    min-width: 0 !important;
+    max-width: 100% !important;
+    overflow: hidden !important;
+  }
+
+  .active-persona-chip .persona-name-line {
+    min-width: 0 !important;
+    max-width: 100% !important;
+    overflow: hidden !important;
+    justify-content: center !important;
+    gap: 5px !important;
+  }
+
+  .active-persona-chip .persona-chip-name {
+    min-width: 0 !important;
+    flex: 0 1 auto !important;
+  }
+
+  #topbar-character-badge {
+    flex: 0 0 auto !important;
+    padding: 1px 6px !important;
+    font-size: 10px !important;
+    line-height: 1.35 !important;
+    white-space: nowrap !important;
+  }
+
+  #magic-quick-popover.anchored-popover {
+    position: fixed !important;
+    left: 10px !important;
+    right: 10px !important;
+    bottom: calc(var(--mobile-composer-h, 82px) + 12px + env(safe-area-inset-bottom, 0px)) !important;
+    top: auto !important;
+    transform: none !important;
+    width: auto !important;
+    max-width: calc(100vw - 20px) !important;
+    max-height: min(56dvh, 380px) !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    box-sizing: border-box !important;
+    margin: 0 !important;
   }
 
   .ds-topbar-title,
@@ -2061,5 +2106,11 @@
   #boot-splash .boot-splash-progress-bar {
     animation: none !important;
     transition: none !important;
+  }
+}
+
+@media (max-width: 420px) {
+  #topbar-character-badge {
+    display: none !important;
   }
 }

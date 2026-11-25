@@ -31,7 +31,7 @@ body[data-ui-mode="roleplay"],
   --shadow-soft: 0 14px 36px -10px rgba(0, 0, 0, 0.55);
 
   --bg-app: #0E1015;
-  --bg-sidebar: rgba(16, 18, 26, 0.72);
+  --bg-sidebar: rgba(14, 17, 26, 0.94);
   --bg-composer: rgba(22, 25, 36, 0.68);
   --bg-surface: rgba(255, 255, 255, 0.045);
   --bg-surface-hover: rgba(229, 193, 133, 0.1);
@@ -42,9 +42,9 @@ body[data-ui-mode="roleplay"],
 }
 
 /* 晨雾丝绸（当用户显式在设置中切换为浅色模式 color-scheme: light 时生效） */
-html[data-ui-mode="roleplay"][style*="color-scheme: light"],
-html[style*="color-scheme: light"] body[data-ui-mode="roleplay"],
-html[style*="color-scheme: light"] .app-shell[data-ui-mode="roleplay"] {
+html[data-ui-mode="roleplay"][style*="color-scheme: light"]:not([style*="light dark"]),
+html[style*="color-scheme: light"]:not([style*="light dark"]) body[data-ui-mode="roleplay"],
+html[style*="color-scheme: light"]:not([style*="light dark"]) .app-shell[data-ui-mode="roleplay"] {
   --theater-persona-glow: rgba(184, 139, 114, 0.16);
   --bg-stage: radial-gradient(circle at 75% 25%, var(--theater-persona-glow) 0%, rgba(234, 230, 240, 0.92) 66%), #F6F5F8;
   --glass-surface: rgba(255, 255, 255, 0.72);
@@ -64,7 +64,7 @@ html[style*="color-scheme: light"] .app-shell[data-ui-mode="roleplay"] {
   --shadow-soft: 0 10px 28px -8px rgba(30, 27, 36, 0.09);
 
   --bg-app: #F6F5F8;
-  --bg-sidebar: rgba(246, 245, 248, 0.82);
+  --bg-sidebar: rgba(248, 247, 251, 0.96);
   --bg-composer: rgba(255, 255, 255, 0.86);
   --bg-surface: rgba(30, 27, 36, 0.04);
   --bg-surface-hover: rgba(184, 139, 114, 0.11);
@@ -576,7 +576,7 @@ body[data-ui-mode="roleplay"] .ambient-aurora .orb-gold {
   background: linear-gradient(to top, rgba(14, 16, 21, 0.85) 35%, transparent 100%) !important;
 }
 
-html[style*="color-scheme: light"] .app-shell[data-ui-mode="roleplay"] .composer-dock {
+html[style*="color-scheme: light"]:not([style*="light dark"]) .app-shell[data-ui-mode="roleplay"] .composer-dock {
   background: linear-gradient(to top, rgba(246, 245, 248, 0.9) 35%, transparent 100%) !important;
 }
 
@@ -824,7 +824,7 @@ html[style*="color-scheme: light"] .astrolabe-track {
   position: relative;
 }
 
-html[style*="color-scheme: light"] .app-shell[data-ui-mode="roleplay"] .diary-card {
+html[style*="color-scheme: light"]:not([style*="light dark"]) .app-shell[data-ui-mode="roleplay"] .diary-card {
   background: linear-gradient(155deg, rgba(255, 252, 245, 0.94), rgba(246, 240, 234, 0.92)) !important;
   border: 1px solid rgba(184, 139, 114, 0.34) !important;
 }
@@ -863,7 +863,7 @@ html[style*="color-scheme: light"] .app-shell[data-ui-mode="roleplay"] .diary-ca
   margin-bottom: 10px;
 }
 
-html[style*="color-scheme: light"] .app-shell[data-ui-mode="roleplay"] .constellation-compass-card {
+html[style*="color-scheme: light"]:not([style*="light dark"]) .app-shell[data-ui-mode="roleplay"] .constellation-compass-card {
   background: radial-gradient(circle at 50% 40%, rgba(184, 139, 114, 0.1), rgba(255, 255, 255, 0.84));
 }
 
@@ -1025,7 +1025,7 @@ body[data-ui-mode="roleplay"] #plaza-cards-grid .script-select-card {
   transition: transform 0.32s cubic-bezier(0.22, 1, 0.36, 1), border-color 0.28s ease, box-shadow 0.32s ease;
 }
 
-html[style*="color-scheme: light"] body[data-ui-mode="roleplay"] #plaza-cards-grid .script-select-card {
+html[style*="color-scheme: light"]:not([style*="light dark"]) body[data-ui-mode="roleplay"] #plaza-cards-grid .script-select-card {
   background:
     radial-gradient(circle at 85% 15%, var(--card-aura, rgba(184, 139, 114, 0.16)) 0%, transparent 55%),
     linear-gradient(170deg, rgba(255, 255, 255, 0.95), rgba(242, 238, 246, 0.96)) !important;
@@ -1294,23 +1294,23 @@ body[data-ui-mode="roleplay"] #plaza-cards-grid .ssc-del-btn {
 
 /* 黑金剧场风：剧本扮演 / 角色演绎双子模式暗色适配 */
 body[data-ui-mode="roleplay"] .theater-submode-bar {
-  background: rgba(255, 255, 255, 0.05);
-  border-color: rgba(229, 193, 133, 0.14);
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(229, 193, 133, 0.22);
 }
 
 body[data-ui-mode="roleplay"] .theater-submode-btn {
-  color: rgba(226, 232, 240, 0.72);
+  color: rgba(232, 236, 245, 0.86);
 }
 
 body[data-ui-mode="roleplay"] .theater-submode-btn.active {
-  background: linear-gradient(135deg, rgba(229, 193, 133, 0.22), rgba(226, 85, 157, 0.16));
-  color: #f8fafc;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.32), inset 0 0 0 1px rgba(229, 193, 133, 0.35);
+  background: linear-gradient(135deg, rgba(229, 193, 133, 0.28), rgba(226, 85, 157, 0.22));
+  color: #ffffff;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.32), inset 0 0 0 1px rgba(229, 193, 133, 0.45);
 }
 
 body[data-ui-mode="roleplay"] .character-mode-card {
-  background: linear-gradient(135deg, rgba(229, 193, 133, 0.08), rgba(139, 92, 246, 0.1));
-  border-color: rgba(229, 193, 133, 0.24);
+  background: linear-gradient(135deg, rgba(36, 32, 50, 0.92), rgba(26, 24, 42, 0.94));
+  border-color: rgba(229, 193, 133, 0.34);
 }
 
 body[data-ui-mode="roleplay"] .cmc-badge {
@@ -1318,13 +1318,13 @@ body[data-ui-mode="roleplay"] .cmc-badge {
 }
 
 body[data-ui-mode="roleplay"] .cmc-desc {
-  color: rgba(203, 213, 225, 0.78);
+  color: rgba(226, 232, 240, 0.88);
 }
 
 body[data-ui-mode="roleplay"] .cmc-mini-btn:not(.primary) {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.14);
-  color: #e2e8f0;
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.24);
+  color: #f8fafc;
 }
 
 body[data-ui-mode="roleplay"] .script-cast-in-char-fold {
@@ -1335,4 +1335,95 @@ body[data-ui-mode="roleplay"] .character-chat-badge {
   background: rgba(34, 197, 94, 0.16);
   color: #86efac;
   border-color: rgba(74, 222, 128, 0.35);
+}
+
+/* 显式浅色模式与浅色皮肤下的剧本扮演 / 角色演绎高对比度适配（防止白底白字） */
+html[style*="color-scheme: light"]:not([style*="light dark"]) body[data-ui-mode="roleplay"] .theater-submode-bar,
+html[data-skin="mist-silk"] body[data-ui-mode="roleplay"] .theater-submode-bar,
+html[data-skin="sakura-dawn"] body[data-ui-mode="roleplay"] .theater-submode-bar,
+html[data-skin="eink-paper"] body[data-ui-mode="roleplay"] .theater-submode-bar {
+  background: rgba(30, 27, 36, 0.06);
+  border-color: rgba(30, 27, 36, 0.12);
+}
+
+html[style*="color-scheme: light"]:not([style*="light dark"]) body[data-ui-mode="roleplay"] .theater-submode-btn,
+html[data-skin="mist-silk"] body[data-ui-mode="roleplay"] .theater-submode-btn,
+html[data-skin="sakura-dawn"] body[data-ui-mode="roleplay"] .theater-submode-btn,
+html[data-skin="eink-paper"] body[data-ui-mode="roleplay"] .theater-submode-btn {
+  color: #4b4458;
+}
+
+html[style*="color-scheme: light"]:not([style*="light dark"]) body[data-ui-mode="roleplay"] .theater-submode-btn.active,
+html[data-skin="mist-silk"] body[data-ui-mode="roleplay"] .theater-submode-btn.active,
+html[data-skin="sakura-dawn"] body[data-ui-mode="roleplay"] .theater-submode-btn.active,
+html[data-skin="eink-paper"] body[data-ui-mode="roleplay"] .theater-submode-btn.active {
+  background: #ffffff;
+  color: #1e1b24;
+  box-shadow: 0 2px 8px rgba(30, 27, 36, 0.1), inset 0 0 0 1px rgba(184, 139, 114, 0.32);
+}
+
+html[style*="color-scheme: light"]:not([style*="light dark"]) body[data-ui-mode="roleplay"] .character-mode-card,
+html[data-skin="mist-silk"] body[data-ui-mode="roleplay"] .character-mode-card,
+html[data-skin="sakura-dawn"] body[data-ui-mode="roleplay"] .character-mode-card,
+html[data-skin="eink-paper"] body[data-ui-mode="roleplay"] .character-mode-card {
+  background: rgba(255, 255, 255, 0.92);
+  border-color: rgba(184, 139, 114, 0.34);
+}
+
+html[style*="color-scheme: light"]:not([style*="light dark"]) body[data-ui-mode="roleplay"] .cmc-badge,
+html[data-skin="mist-silk"] body[data-ui-mode="roleplay"] .cmc-badge,
+html[data-skin="sakura-dawn"] body[data-ui-mode="roleplay"] .cmc-badge,
+html[data-skin="eink-paper"] body[data-ui-mode="roleplay"] .cmc-badge {
+  color: #1e1b24;
+}
+
+html[style*="color-scheme: light"]:not([style*="light dark"]) body[data-ui-mode="roleplay"] .cmc-desc,
+html[data-skin="mist-silk"] body[data-ui-mode="roleplay"] .cmc-desc,
+html[data-skin="sakura-dawn"] body[data-ui-mode="roleplay"] .cmc-desc,
+html[data-skin="eink-paper"] body[data-ui-mode="roleplay"] .cmc-desc {
+  color: #4b4458;
+}
+
+html[style*="color-scheme: light"]:not([style*="light dark"]) body[data-ui-mode="roleplay"] .cmc-mini-btn:not(.primary),
+html[data-skin="mist-silk"] body[data-ui-mode="roleplay"] .cmc-mini-btn:not(.primary),
+html[data-skin="sakura-dawn"] body[data-ui-mode="roleplay"] .cmc-mini-btn:not(.primary),
+html[data-skin="eink-paper"] body[data-ui-mode="roleplay"] .cmc-mini-btn:not(.primary) {
+  background: rgba(30, 27, 36, 0.07);
+  border-color: rgba(30, 27, 36, 0.16);
+  color: #1e1b24;
+}
+
+html[style*="color-scheme: light"]:not([style*="light dark"]) body[data-ui-mode="roleplay"] .character-chat-badge,
+html[data-skin="mist-silk"] body[data-ui-mode="roleplay"] .character-chat-badge,
+html[data-skin="sakura-dawn"] body[data-ui-mode="roleplay"] .character-chat-badge,
+html[data-skin="eink-paper"] body[data-ui-mode="roleplay"] .character-chat-badge {
+  background: rgba(34, 197, 94, 0.14);
+  color: #15803d;
+  border-color: rgba(34, 197, 94, 0.3);
+}
+
+/* 移动端剧场侧边栏高不透明度承托与输入舱防溢出防护 */
+@media (max-width: 860px) {
+  .app-shell[data-ui-mode="roleplay"] .sidebar {
+    background: rgba(14, 17, 26, 0.97) !important;
+    backdrop-filter: blur(20px) saturate(135%) !important;
+    -webkit-backdrop-filter: blur(20px) saturate(135%) !important;
+    border-right: 1px solid rgba(229, 193, 133, 0.2) !important;
+  }
+
+  html[style*="color-scheme: light"]:not([style*="light dark"]) .app-shell[data-ui-mode="roleplay"] .sidebar,
+  html[data-skin="mist-silk"] .app-shell[data-ui-mode="roleplay"] .sidebar,
+  html[data-skin="sakura-dawn"] .app-shell[data-ui-mode="roleplay"] .sidebar,
+  html[data-skin="eink-paper"] .app-shell[data-ui-mode="roleplay"] .sidebar {
+    background: rgba(248, 247, 251, 0.98) !important;
+    border-right: 1px solid rgba(30, 27, 36, 0.1) !important;
+  }
+
+  .app-shell[data-ui-mode="roleplay"] .composer-card {
+    max-width: 100% !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+    overflow: hidden !important;
+    border-radius: 18px !important;
+  }
 }

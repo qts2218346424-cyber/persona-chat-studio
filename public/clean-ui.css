@@ -337,6 +337,10 @@ details.sidebar-fold:not([open]) .fold-caret {
 /* 灵感弹出面板 */
 .magic-popover-panel {
   width: min(440px, 88vw);
+  max-width: calc(100vw - 24px);
+  max-height: min(60dvh, 440px);
+  overflow-y: auto;
+  box-sizing: border-box;
   padding: 11px 13px !important;
 }
 
@@ -5857,6 +5861,10 @@ dialog::backdrop {
   align-items: center;
   justify-content: center;
   gap: 4px;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .theater-submode-btn.active {
@@ -5881,6 +5889,7 @@ dialog::backdrop {
 
 .cmc-top {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 6px;
@@ -5893,11 +5902,13 @@ dialog::backdrop {
   font-size: 12.5px;
   font-weight: 700;
   color: var(--text-primary);
+  min-width: 0;
 }
 
 .cmc-actions {
   display: inline-flex;
   gap: 5px;
+  flex-shrink: 0;
 }
 
 .cmc-mini-btn {
@@ -6027,6 +6038,8 @@ dialog::backdrop {
 .character-chat-badge {
   display: inline-flex;
   align-items: center;
+  flex-shrink: 0;
+  white-space: nowrap;
   padding: 2px 8px;
   border-radius: 999px;
   font-size: 11px;
@@ -6037,6 +6050,8 @@ dialog::backdrop {
 }
 
 .topbar-edit-char-btn {
+  flex-shrink: 0;
+  white-space: nowrap;
   border: 1px solid var(--border-subtle);
   background: var(--bg-surface);
   color: var(--text-secondary);

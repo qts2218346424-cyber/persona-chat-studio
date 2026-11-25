@@ -1,6 +1,6 @@
 /**
- * 本机双引擎桥接网关 (127.0.0.1:18765)
- * 供云端服务器通过加密 SSH 反向隧道直连本机 Antigravity (agy.exe) 与 Google Gemini CLI。
+ * 本机 Antigravity 桥接网关 (127.0.0.1:18765)
+ * 供云端服务器通过加密 SSH 反向隧道直连本机 Antigravity (agy.exe)。
  *
  * 严格安全约束：
  * - 仅监听 127.0.0.1，不暴露公网端口
@@ -27,50 +27,6 @@ function readBridgeSecretConfig() {
   } catch {
     return {};
   }
-}
-
-function getGeminiCliEntry() {
-  const appData = process.env.APPDATA || '';
-  const candidates = [
-    appData ? path.join(appData, 'npm', 'node_modules', '@google', 'gemini-cli', 'bundle', 'gemini.js') : '',
-    appData ? path.join(appData, 'npm', 'node_modules', '@google', 'gemini-cli', 'dist', 'index.js') : ''
-  ].filter(Boolean);
-
-  for (const p of candidates) {
-    if (fs.existsSync(p)) {
-      return { type: 'node', entry: p };
-    }
-  }
-
-  if (process.platform === 'win32') {
-    try {
-      const out = execFileSync('where.exe', ['gemini'], {
-        encoding: 'utf8',
-        stdio: ['ignore', 'pipe', 'ignore'],
-        timeout: 3000
-      }).trim();
-      const firstLine = out.split(/\r?\n/)[0]?.trim();
-      if (firstLine) {
-        const dir = path.dirname(firstLine);
-        const bundleJs = path.join(dir, 'node_modules', '@google', 'gemini-cli', 'bundle', 'gemini.js');
-        if (fs.existsSync(bundleJs)) return { type: 'node', entry: bundleJs };
-        const cmdPath = firstLine.endsWith('.cmd') ? firstLine : `${firstLine}.cmd`;
-        if (fs.existsSync(cmdPath)) return { type: 'bin', entry: cmdPath };
-      }
-    } catch {}
-  } else {
-    try {
-      const out = execFileSync('which', ['gemini'], {
-        encoding: 'utf8',
-        stdio: ['ignore', 'pipe', 'ignore'],
-        timeout: 3000
-      }).trim();
-      const firstLine = out.split(/\r?\n/)[0]?.trim();
-      if (firstLine && fs.existsSync(firstLine)) return { type: 'bin', entry: firstLine };
-    } catch {}
-  }
-
-  return null;
 }
 
 function extractMessageText(content) {
@@ -244,130 +200,6 @@ function runAgyEngine({ prompt, model, enableThinking, onReasoning, onContent, s
   });
 }
 
-function runGeminiCliEngine({ prompt, model, enableThinking, onReasoning, onContent, signal, onChildSpawned }) {
-  return new Promise((resolve, reject) => {
-    const geminiBin = getGeminiCliEntry();
-    if (!geminiBin) {
-      return reject(new Error('未检测到本机 @google/gemini-cli'));
-    }
-
-    const isolatedCwd = path.join(os.tmpdir(), 'star-whisper-gemini-cwd');
-    fs.mkdirSync(isolatedCwd, { recursive: true });
-
-    const splitter = new NativeThinkSplitter({
-      onReasoning: enableThinking ? onReasoning : () => {},
-      onContent,
-      enableThinking
-    });
-
-    const cliArgs = [
-      '--skip-trust',
-      '--output-format', 'stream-json',
-      '--model', model || 'gemini-2.5-flash',
-      '-p', '请严格依据标准输入(stdin)中的上下文进行回复。'
-    ];
-
-    const spawnCmd = geminiBin.type === 'node' ? process.execPath : geminiBin.entry;
-    const spawnArgs = geminiBin.type === 'node' ? [geminiBin.entry, ...cliArgs] : cliArgs;
-
-    const child = spawn(spawnCmd, spawnArgs, {
-      cwd: isolatedCwd,
-      windowsHide: true,
-      env: { ...process.env, GEMINI_CLI_TRUST_WORKSPACE: 'true' },
-      shell: geminiBin.type === 'bin' && process.platform === 'win32',
-      stdio: ['pipe', 'pipe', 'pipe']
-    });
-    if (onChildSpawned) onChildSpawned(child);
-
-    let resolved = false;
-    let lineBuffer = '';
-    let emittedAny = false;
-    let stderrBuf = '';
-
-    const onAbort = () => {
-      killProcessTree(child);
-      if (!resolved) {
-        resolved = true;
-        reject(new Error('请求已中断'));
-      }
-    };
-    if (signal?.aborted) {
-      onAbort();
-      return;
-    }
-    signal?.addEventListener('abort', onAbort, { once: true });
-
-    try {
-      child.stdin.write(prompt, 'utf8');
-      child.stdin.end();
-    } catch {}
-
-    const handleJsonEvent = (evt) => {
-      if (!evt || typeof evt !== 'object') return;
-      if (evt.type === 'message' && evt.role === 'assistant' && evt.content) {
-        const chunkText = typeof evt.content === 'string' ? evt.content : extractMessageText(evt.content);
-        if (chunkText) {
-          emittedAny = true;
-          splitter.feedContent(chunkText);
-        }
-      } else if (evt.type === 'result' && evt.response && !emittedAny) {
-        emittedAny = true;
-        splitter.feedContent(String(evt.response));
-      } else if (evt.type === 'error' && evt.message) {
-        stderrBuf += `\n${evt.message}`;
-      }
-    };
-
-    child.stdout.on('data', (chunk) => {
-      lineBuffer += chunk.toString('utf8');
-      const lines = lineBuffer.split(/\r?\n/);
-      lineBuffer = lines.pop() || '';
-      for (const rawLine of lines) {
-        const line = rawLine.trim();
-        if (!line) continue;
-        try {
-          handleJsonEvent(JSON.parse(line));
-        } catch {}
-      }
-    });
-
-    child.stderr.on('data', (d) => {
-      stderrBuf += d.toString('utf8');
-    });
-
-    child.on('error', (err) => {
-      signal?.removeEventListener('abort', onAbort);
-      if (!resolved) {
-        resolved = true;
-        reject(err);
-      }
-    });
-
-    child.on('close', (code) => {
-      signal?.removeEventListener('abort', onAbort);
-      if (lineBuffer.trim()) {
-        try {
-          handleJsonEvent(JSON.parse(lineBuffer.trim()));
-        } catch {}
-      }
-      splitter.flush();
-      if (resolved) return;
-      resolved = true;
-      if (!emittedAny) {
-        const errLower = stderrBuf.toLowerCase();
-        if (/auth|login|credentials|oauth|sign in|unauthorized/.test(errLower)) {
-          const authMsg = 'Gemini CLI 尚未登录 Google 账号，请在终端执行 gemini 完成一次授权登录';
-          console.warn(`[本地桥接] ${authMsg}`);
-          return reject(new Error(authMsg));
-        }
-        reject(new Error(`gemini 未输出内容 (code=${code}): ${stderrBuf.trim().slice(0, 200)}`));
-      } else {
-        resolve({ engine: 'gemini', model: model || 'gemini-2.5-flash' });
-      }
-    });
-  });
-}
-
 function sendJson(res, status, obj) {
   const body = JSON.stringify(obj);
   res.writeHead(status, {
@@ -406,15 +238,12 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === 'GET' && urlPath === '/health') {
     const agyPath = getLocalAntigravityCliPath();
-    const geminiEntry = getGeminiCliEntry();
     return sendJson(res, 200, {
       ok: true,
-      primaryEngine: cfg.primaryEngine || 'agy',
-      fallbackEngine: cfg.fallbackEngine || 'gemini',
-      engines: {
-        agy: { available: Boolean(agyPath), path: agyPath || null },
-        gemini: { available: Boolean(geminiEntry), path: geminiEntry ? geminiEntry.entry : null }
-      },
+      engine: 'agy',
+      available: Boolean(agyPath),
+      path: agyPath || null,
+      model: cfg.agyModel || 'gemini-3.8-flash-low',
       activeRequests
     });
   }
@@ -427,9 +256,8 @@ const server = http.createServer(async (req, res) => {
     return sendJson(res, 200, {
       object: 'list',
       data: [
-        { id: 'agy-auto', object: 'model', owned_by: 'local-bridge' },
-        { id: 'agy', object: 'model', owned_by: 'local-antigravity' },
-        { id: 'gemini-cli', object: 'model', owned_by: 'google-gemini-cli' }
+        { id: 'agy-auto', object: 'model', owned_by: 'local-antigravity' },
+        { id: 'agy', object: 'model', owned_by: 'local-antigravity' }
       ]
     });
   }
@@ -446,28 +274,13 @@ const server = http.createServer(async (req, res) => {
     let firstTokenMs = null;
     activeRequests += 1;
 
-    const reqModel = String(body.model || '').trim().toLowerCase();
-    const headerEngine = String(req.headers['x-bridge-engine'] || '').trim().toLowerCase();
     const messages = Array.isArray(body.messages) ? body.messages : [];
     const enableThinking = body.reasoning_effort !== 'none';
     const prompt = assembleBridgePrompt(messages, enableThinking);
 
-    const primary = cfg.primaryEngine === 'gemini' ? 'gemini' : 'agy';
-    const fallback = primary === 'agy' ? 'gemini' : 'agy';
-    let order = [primary, fallback];
-    if (reqModel === 'gemini-cli' || headerEngine === 'gemini') {
-      order = ['gemini', 'agy'];
-    } else if (reqModel === 'agy' || headerEngine === 'agy') {
-      order = ['agy', 'gemini'];
-    }
-
-    const agyAvailable = Boolean(getLocalAntigravityCliPath());
-    const geminiAvailable = Boolean(getGeminiCliEntry());
-    order = order.filter((e) => (e === 'agy' ? agyAvailable : geminiAvailable));
-
-    if (order.length === 0) {
+    if (!getLocalAntigravityCliPath()) {
       activeRequests = Math.max(0, activeRequests - 1);
-      return sendJson(res, 503, { error: { message: '本机无可用的 Antigravity 或 Gemini CLI 引擎' } });
+      return sendJson(res, 503, { error: { message: '本机未检测到 Antigravity (agy.exe)' } });
     }
 
     const abortController = new AbortController();
@@ -487,14 +300,14 @@ const server = http.createServer(async (req, res) => {
     let fullReasoning = '';
     let fullContent = '';
 
-    const ensureStreamHeaders = (engineName) => {
+    const ensureStreamHeaders = () => {
       if (headersSent || !isStream) return;
       headersSent = true;
       res.writeHead(200, {
         'Content-Type': 'text/event-stream; charset=utf-8',
         'Cache-Control': 'no-cache, no-transform',
         Connection: 'keep-alive',
-        'X-Bridge-Used-Engine': engineName
+        'X-Bridge-Used-Engine': 'agy'
       });
       keepAliveTimer = setInterval(() => {
         if (!res.writableEnded) {
@@ -515,72 +328,34 @@ const server = http.createServer(async (req, res) => {
       res.write(`data: ${JSON.stringify(payload)}\n\n`);
     };
 
-    let usedEngine = null;
-    let lastError = null;
-
     try {
-      for (const eng of order) {
-        if (abortController.signal.aborted) break;
-        let hasEmittedThisEngine = false;
-        const onReasoning = (delta) => {
+      await runAgyEngine({
+        prompt,
+        model: cfg.agyModel || 'gemini-3.8-flash-low',
+        enableThinking,
+        onReasoning: (delta) => {
           if (!delta) return;
           if (firstTokenMs === null) firstTokenMs = Date.now() - reqStart;
-          hasEmittedThisEngine = true;
-          ensureStreamHeaders(eng);
+          ensureStreamHeaders();
           fullReasoning += delta;
           writeChunk({ reasoning_content: delta });
-        };
-        const onContent = (delta) => {
+        },
+        onContent: (delta) => {
           if (!delta) return;
           if (firstTokenMs === null) firstTokenMs = Date.now() - reqStart;
-          hasEmittedThisEngine = true;
-          ensureStreamHeaders(eng);
+          ensureStreamHeaders();
           fullContent += delta;
           writeChunk({ content: delta });
-        };
-
-        try {
-          if (eng === 'agy') {
-            await runAgyEngine({
-              prompt,
-              model: cfg.agyModel || 'gemini-3.8-flash-low',
-              enableThinking,
-              onReasoning,
-              onContent,
-              signal: abortController.signal,
-              onChildSpawned: (c) => { currentChild = c; }
-            });
-          } else {
-            await runGeminiCliEngine({
-              prompt,
-              model: cfg.geminiModel || 'gemini-2.5-flash',
-              enableThinking,
-              onReasoning,
-              onContent,
-              signal: abortController.signal,
-              onChildSpawned: (c) => { currentChild = c; }
-            });
-          }
-          usedEngine = eng;
-          break;
-        } catch (err) {
-          lastError = err;
-          if (abortController.signal.aborted || hasEmittedThisEngine) {
-            throw err;
-          }
-          console.warn(`[本地桥接] 引擎 ${eng} 失败，尝试回退下一引擎: ${err.message}`);
-        }
-      }
-
-      if (!usedEngine) {
-        throw lastError || new Error('所有本地引擎均未返回有效内容');
-      }
+        },
+        signal: abortController.signal,
+        onChildSpawned: (c) => { currentChild = c; }
+      });
 
       const totalMs = Date.now() - reqStart;
-      console.log(`[本地桥接] 收到请求 -> 引擎=${usedEngine} 耗时=${totalMs}ms 首字=${firstTokenMs ?? totalMs}ms 状态=成功`);
+      console.log(`[本地桥接] 收到请求 -> 引擎=agy 耗时=${totalMs}ms 首字=${firstTokenMs ?? totalMs}ms 状态=成功`);
 
       if (isStream) {
-        ensureStreamHeaders(usedEngine);
+        ensureStreamHeaders();
         const stopPayload = {
           id: chatId,
           object: 'chat.completion.chunk',
@@ -631,5 +406,5 @@ const server = http.createServer(async (req, res) => {
 const cfgInit = readBridgeSecretConfig();
 const LISTEN_PORT = Number(cfgInit.port) || 18765;
 server.listen(LISTEN_PORT, '127.0.0.1', () => {
-  console.log(`[本地桥接] 双引擎网关已启动: http://127.0.0.1:${LISTEN_PORT}`);
+  console.log(`[本地桥接] Antigravity 网关已启动: http://127.0.0.1:${LISTEN_PORT}`);
 });

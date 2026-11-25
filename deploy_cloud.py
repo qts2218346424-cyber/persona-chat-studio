@@ -144,12 +144,12 @@ def main():
                 t_port = int(sec.get('port') or 18765)
                 custom_endpoints.append({
                     'id': 'home_pc_antigravity',
-                    'name': '本机电脑 Antigravity / Gemini 双核直连',
+                    'name': '本机电脑 Antigravity 直连',
                     'apiFormat': 'openai',
                     'baseURL': f'http://127.0.0.1:{t_port}/v1/chat/completions',
                     'apiKey': sec['token'],
                     'defaultModel': 'agy-auto',
-                    'models': ['agy-auto', 'agy', 'gemini-cli']
+                    'models': ['agy-auto', 'agy']
                 })
         except Exception:
             pass

@@ -73,7 +73,7 @@
     hasMoreMessages: false,
     totalMessages: 0,
     oldestMessageId: 0,
-    appVersion: '2.4.1',
+    appVersion: '2.4.2',
     tourIndex: 0,
     tourActive: false,
     llmMode: localStorage.getItem('user_llm_mode') || 'local_antigravity',
@@ -277,7 +277,7 @@
   }
 
   function syncWebVersionBadges(verStr) {
-    const raw = String(verStr || state.appVersion || '2.4.1').trim().replace(/^v/i, '');
+    const raw = String(verStr || state.appVersion || '2.4.2').trim().replace(/^v/i, '');
     if (!raw) return;
     const vLabel = `v${raw}`;
     const isNativeApk = Boolean(
@@ -3519,7 +3519,7 @@
       tunnelProbe?.online ? '本机电脑 Antigravity 直连' : report.channels?.localCli?.transport === 'local_cli' ? '本机 CLI 就绪' : '电脑离线时自动回退'
     );
 
-    setTxt('adm-sys-meta', `v${sys.appVersion || '2.4.1'} · ${sys.platform || ''} · Node ${sys.nodeVersion || ''} · ${sys.cpuCores || 1} 核 (负载 ${sys.load1m ?? 0})`);
+    setTxt('adm-sys-meta', `v${sys.appVersion || '2.4.2'} · ${sys.platform || ''} · Node ${sys.nodeVersion || ''} · ${sys.cpuCores || 1} 核 (负载 ${sys.load1m ?? 0})`);
     setTxt('adm-stat-mem', `${sys.memUsedPct ?? 0}% (进程 ${sys.rssMb ?? 0} MB)`);
     setTxt('adm-stat-db', `${formatBytesCompact(dbInfo.dbSizeBytes)} / ${formatBytesCompact(dbInfo.walSizeBytes)}`);
     setTxt('adm-stat-uptime', formatUptimeCompact(sys.uptimeSec));
@@ -5105,6 +5105,23 @@
     document.getElementById('val-affection').textContent = `${n.affection} / 100`;
     document.getElementById('val-trust').textContent = `${n.trust} / 100`;
     document.getElementById('val-intimacy').textContent = `${n.intimacy} / 100`;
+
+    const weatherEl = document.getElementById('nurture-weather-badge');
+    const charStateEl = document.getElementById('nurture-char-state');
+    const eventEl = document.getElementById('nurture-active-event');
+    const eventRowEl = document.getElementById('nurture-event-row');
+    if (weatherEl) {
+      const periodText = n.time_period ? `${n.time_period} · ` : '';
+      weatherEl.textContent = `${periodText}${n.world_weather || '🌤️ 微风舒适'}`;
+    }
+    if (charStateEl) {
+      charStateEl.textContent = n.character_state || '正闲着，留意着你的动静';
+    }
+    if (eventEl) {
+      const ev = String(n.active_event || '').trim();
+      eventEl.textContent = ev || '暂无突发小事，随心聊聊即可';
+      if (eventRowEl) eventRowEl.classList.toggle('is-empty', !ev);
+    }
 
     // 更新剧场模式三环同心星轨仪
     const updateAstrolabeRing = (ringId, valId, score, radius) => {
@@ -7909,6 +7926,28 @@
     if (reqSeq !== loadSessionSeq) return;
     await applySessionDetailPayload(sessionId, data, { reqSeq, fromCache: false });
   }
+
+  document.getElementById('refresh-world-ctx-btn')?.addEventListener('click', async (e) => {
+    if (!state.activeSessionId) return;
+    const btn = e.currentTarget;
+    btn.disabled = true;
+    btn.textContent = '切换中…';
+    try {
+      const res = await apiJson(`/api/sessions/${encodeURIComponent(state.activeSessionId)}/world-refresh`, {
+        method: 'POST'
+      });
+      if (res?.nurturing) {
+        state.nurturing = res.nurturing;
+        renderNurturingAndDiary();
+        showToast('已更新天气、状态与当前微事件', 2000);
+      }
+    } catch (err) {
+      showToast(err.message || '切换情境失败');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '换个情境';
+    }
+  });
 
   document.getElementById('run-dream-btn').addEventListener('click', async (e) => {
     if (!state.activeSessionId) return;

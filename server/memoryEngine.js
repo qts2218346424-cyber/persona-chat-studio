@@ -1,5 +1,9 @@
 const { db, genId, STORY_SCRIPTS } = require('./db');
-const { formatNurturingSnapshot } = require('./nurturingEngine');
+const {
+  formatNurturingSnapshot,
+  ensureAndEvolveWorldContext,
+  computeDynamicReplyPacing
+} = require('./nurturingEngine');
 
 const FEMALE_PERSONA_IDS = new Set([
   'persona_nagisa_sakura',
@@ -946,11 +950,14 @@ function buildThreeTierContext({
     speaking_style: replaceRoleplayMacros(rawPersona.speaking_style, userNick, rawPersona.name),
     greeting: replaceRoleplayMacros(rawPersona.greeting, userNick, rawPersona.name)
   };
-  const nurturing = formatNurturingSnapshot(session);
-
   const allMessages = db
     .prepare('SELECT id, role, content, reasoning FROM messages WHERE session_id = ? ORDER BY id ASC')
     .all(sessionId);
+
+  const worldContext = !isNativeMode
+    ? ensureAndEvolveWorldContext(session, persona, latestUserText || '', allMessages.length)
+    : null;
+  const nurturing = formatNurturingSnapshot(session);
 
   const activeWindowMessages = selectBudgetedActiveWindow(allMessages, slidingTurns, 36000);
   const recentSnippet = activeWindowMessages
@@ -1080,16 +1087,19 @@ function buildThreeTierContext({
         : '',
       `\n## 真人模拟对话三大铁律（违者直接失败，务必严格遵守）`,
       `1. **🚫 绝对禁止旁白、动作描写与舞台腔**：**严禁出现 \`*任何星号动作描写*\`、\`（任何括号神态/动作旁白）\`、第三人称心理叙述或小说体环境渲染！** 只输出真人嘴巴里直接说出来的话（或直接发出去的微信消息文字）。`,
-      `2. **真实人类聊天节奏与口语呼吸感**：像真人发消息/日常唠嗑一样说话！通常 **1~3 句、10~75 字左右** 即可（只有聊到走心话题或认真分享故事时才自然展开长一点），自带自然口语词、停顿、调侃、反问、接梗或小情绪；禁止写排比抒情小作文，禁止每句末尾都强行抛“A还是B”的选择题。`,
-      `3. **独立活人感与真实边界**：你有自己的真实生活、工作琐事、作息习惯、小脾气和独立观点，不是顺从的 AI 客服。必须第一时间接住「${callName}」刚才说的具体话茬做出真实人类反应；严禁暴露 AI 身份、严禁出现“请问有什么可以帮您”等机械词、严禁编造未曾聊过的虚假记忆。`
+      `2. **真实人类聊天节奏与口语呼吸感**：像真人发消息/日常唠嗑一样说话！篇幅完全随心情、关系、状态和话题变化——有时只回三五个字或 1 句话，聊顺了再 2~3 句，走心深聊才展开；自带自然口语词、停顿、调侃、反问或小情绪，禁止写排比抒情小作文，禁止每句末尾强行抛“A还是B”的选择题。`,
+      `3. **独立活人感与真实边界**：你有自己的真实生活、即时状态、天气体感、小脾气和独立观点，不是顺从的 AI 客服。必须第一时间接住「${callName}」刚才说的具体话茬做出真实人类反应；严禁暴露 AI 身份、严禁出现“请问有什么可以帮您”等机械词、严禁编造未曾聊过的虚假记忆。`
     ]
       .filter(Boolean)
       .join('\n');
 
     dynamicTailStatusBlock = [
-      `## 当前真实相处状态`,
-      `- 亲密程度与关系基调：${nurturing.stage.promptDirective}`,
-      `- 你此刻的心情：${nurturing.current_mood}`,
+      `## 此刻真实世界与身心状态`,
+      `- **时段与天气**：${worldContext?.timePeriod || ''} · ${worldContext?.weather || '晴朗微风'}`,
+      `- **你此刻在干嘛/状态**：${worldContext?.characterState || '正闲着看手机'}`,
+      `- **你此刻的心情**：${nurturing.current_mood}`,
+      `- **亲密程度与关系基调**：${nurturing.stage.promptDirective}`,
+      worldContext?.activeEvent ? `- **手头刚发生/牵挂的小事**：${worldContext.activeEvent}` : '',
       renderedDirectorNote ? `- 当下聊天的补充背景提示：${renderedDirectorNote}` : ''
     ]
       .filter(Boolean)
@@ -1109,17 +1119,20 @@ function buildThreeTierContext({
         ? `\n## 🎯 本对话专属独立设定 / 平行世界规则（仅当前存档独立生效，优先级高于通用背景）\n${renderedSessionPrompt}`
         : '',
       `\n## 真实活人感与实时互动铁律（最高优先级 · 严禁模板八股）`,
-      `1. **先接招，再推进（绝不自说自话）**：你必须认真读懂「${userNick}」上一句话里的具体意思、态度变化、反问、玩笑、否定或意外选择，**第一时间对 TA 刚才说的那句话做出有针对性、符合性格的真实回应**。如果 TA 拒绝了提议、转移了话题、问了具体问题或开了玩笑，你必须顺着 TA 的方向反应（惊讶、反驳、顺从、吐槽或解释），绝不允许无视对方发言强行背剧本！`,
-      `2. **打破机械结构与词汇重复**：禁止每轮都套用“*微风/光斑/睫毛颤动* + 感叹抒情 + 固定二选一反问”的千篇一律写法！神态动作描写要简练精准、贴合当下场景，**日常斗嘴或短句交锋时 20~80 字灵动短句即可，关键转折或深聊时再自然展开**，不要刻意凑字数，也不要每句末尾都强行抛“A还是B”的选择题！`,
-      `3. **🚫 严禁串戏与严禁编造记忆红线**：只能引用本提示词中明确列出的【永久核心记忆】【前情浓缩摘要】及下方【真实对话历史】里实际聊过的内容！绝对禁止无中生有编造对方“以前/上次说过某句话或某种喜好”，也禁止串戏提及设定以外的无关器物。`
+      `1. **先接招，再回应（绝不自说自话）**：你必须读懂「${userNick}」上一句话的真实意思、语气（敷衍/撒娇/试探/认真/吐槽），第一时间做出贴合性格与当下心情的真实人类反应。`,
+      `2. **打破AI长文与机械八股**：严禁每轮都凑“*环境描写+微动作* + 一大段深情台词 + 固定二选一反问”！真人相处时而惜字如金只回一句短话，时而心情好或聊深事才多说几句。不要刻意凑字数！`,
+      `3. **🚫 严禁串戏与严禁编造记忆红线**：只能引用本提示词中明确列出的【永久核心记忆】【前情浓缩摘要】及下方【真实对话历史】里实际聊过的内容！绝对禁止无中生有编造对方“以前/上次说过某句话或某种喜好”。`
     ]
       .filter(Boolean)
       .join('\n');
 
     dynamicTailStatusBlock = [
-      `## 实时关系阶段与场景心境指引`,
+      `## 此刻真实世界与角色状态（请自然融入语气与反应，切勿机械复述标签）`,
+      `- **当前时段与天气**：${worldContext?.timePeriod || ''} · ${worldContext?.weather || '微风舒适'}`,
+      `- **人物实时状态**：${worldContext?.characterState || '专注注视着你'}`,
+      `- **此刻心境基调**：${nurturing.current_mood}`,
       `- ${nurturing.stage.promptDirective}`,
-      `- 此刻心境基调：${nurturing.current_mood}`,
+      worldContext?.activeEvent ? `- **当前关联微事件**：${worldContext.activeEvent}` : '',
       isCustomUserNick
         ? `- ⚠️ 最新称呼提醒：对方现在的名字是「${userNick}」，请在回复中自然称呼对方为「${userNick}」（即使上文早期消息中曾出现过「星屿旅人」等旧称呼，也必须立即改口叫「${userNick}」！）`
         : '',
@@ -1128,6 +1141,19 @@ function buildThreeTierContext({
       .filter(Boolean)
       .join('\n');
   }
+
+  const pacing = !isNativeMode
+    ? computeDynamicReplyPacing({
+        session,
+        persona,
+        nurturing,
+        worldContext,
+        userText: latestUserText || '',
+        hasTriggeredLore: triggeredLorebooks.length > 0,
+        hasRecalledMemories: recalledMemories.length > 0,
+        isCharacterChat
+      })
+    : null;
 
   // 固定输出协议置于静态前缀后紧接位置，防止因动态记忆增减导致前缀漂移
   const enableThought = isNativeMode ? session.ds_thinking === 1 : session.enable_inner_thought === 1;
@@ -1182,6 +1208,9 @@ function buildThreeTierContext({
   if (dynamicTailStatusBlock) {
     tier2Parts.push(dynamicTailStatusBlock);
   }
+  if (pacing?.promptDirective) {
+    tier2Parts.push(pacing.promptDirective);
+  }
   const tier2MemoryBlock = tier2Parts.join('\n\n');
 
   const fullSystemPrompt = [tier1PersonaBlock, thoughtProtocolBlock, tier2MemoryBlock]
@@ -1208,6 +1237,8 @@ function buildThreeTierContext({
     session,
     userNickname: userNick,
     nurturing,
+    worldContext,
+    pacing,
     triggeredLorebooks,
     messagesPayload,
     recalledMemories,

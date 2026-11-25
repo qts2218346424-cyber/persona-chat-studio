@@ -115,7 +115,20 @@ function extractUserTopicPhrase(text) {
   return (stripped || clean).slice(0, 26);
 }
 
-function buildResponsiveDemoTurn({ persona, pronoun, shortName, userText, greetingCall, recalledMemories = [], directorNote = '', totalHistoryCount = 1 }) {
+function buildResponsiveDemoTurn({
+  persona,
+  pronoun,
+  shortName,
+  userText,
+  greetingCall,
+  recalledMemories = [],
+  directorNote = '',
+  totalHistoryCount = 1,
+  nurturing = null,
+  worldContext = null,
+  pacing = null,
+  isCharacterChat = false
+}) {
   const clean = String(userText || '').trim();
   const actionMatch = clean.match(/\*([^*]+)\*/);
   const spoken = clean.replace(/\*[^*]*\*/g, '').trim();
@@ -123,68 +136,125 @@ function buildResponsiveDemoTurn({ persona, pronoun, shortName, userText, greeti
   const styleHint = `${persona?.personality || ''} ${persona?.speaking_style || ''}`;
   const isTsundere = /傲娇|毒舌|嘴硬|高冷|清冷|禁欲/.test(styleHint);
   const isPlayful = /元气|可爱|呆萌|活泼|幽默/.test(styleHint);
+  const mood = String(nurturing?.current_mood || '温柔浅笑');
+  const stageLevel = Number(nurturing?.stage?.level || 1);
+  const weather = String(worldContext?.weather || '').replace(/^[^\u4e00-\u9fa5]+/, '').trim();
+  const charState = String(worldContext?.characterState || '').trim();
+  const activeEvent = String(worldContext?.activeEvent || '').trim();
+  const pacingMode = pacing?.mode || 'casual';
+
   const isNegativeOrRefuse = /^(不要|不去|不行|不想|算了|没兴趣|拒绝|才不要|才不|别)/i.test(spoken) || /不想去|不想聊|换个|换话题|别提|不要去|懒得/.test(spoken);
   const isQuestion = /[?？]$/.test(spoken) || /^(为什么|怎么|难道|真的|是不是|什么|哪里|谁|吗|呢)/.test(spoken) || /(?:吗|呢|怎么|为什么|啥|什么意思)[?？]?$/.test(spoken);
   const isPhysicalAffection = /牵|握|抱|靠|摸|拂去|拍拍|披上|蹭|亲|贴|拉住/.test(clean);
   const isSweetOrConfess = /喜欢|好温柔|想你|陪我|答应|约定|拉勾|在意|心疼|可爱|帅/.test(clean);
+  const isWeatherAsk = /天气|下雨|冷不冷|热不热|下雪|刮风/.test(clean);
+  const isStateAsk = /在干嘛|干什么|忙吗|睡了吗|在吗/.test(clean);
   const memEcho = recalledMemories.find((m) => m.category !== 'Pinned' && m.slot_key !== 'scene_origin');
+  const wrapSpeech = (act, speech) => (isCharacterChat || !act ? speech : `*${act}* “${speech}”`);
 
   if (actionMatch && !spoken) {
     const actDesc = actionMatch[1].trim();
     return {
-      thought: `他突然「${actDesc.slice(0, 22)}」，一时竟有些反应不过来，心跳都漏了一拍。`,
+      thought: `他突然「${actDesc.slice(0, 22)}」，一时竟有些反应不过来。`,
       reply: isTsundere
-        ? `*被你这突如其来的举动弄得微微一僵，偏过头掩饰地轻咳了一声，视线却又很快转回来。*\n\n${greetingCall}突然${actDesc}做什么……话先说在前头，我可没有被你吓到。`
-        : `*注意到你的小动作，${pronoun}眉眼瞬间柔和下来，顺势接住了你的节奏。*\n\n${greetingCall}怎么不声不响地就${actDesc}呀？有什么话想对我说，不用藏着，直接开口就好。`
+        ? wrapSpeech('微微一顿，别开视线轻咳一声', `${greetingCall}突然${actDesc}干嘛……吓我一跳。`)
+        : wrapSpeech('眉眼柔和下来，抬眸看你', `${greetingCall}怎么不声不响就${actDesc}呀？`)
+    };
+  }
+
+  if (isWeatherAsk) {
+    const wLine = weather || '外面风挺舒服的';
+    return {
+      thought: `顺着天气聊起手头的事，感觉还挺真实的。`,
+      reply: wrapSpeech(
+        '往窗外看了一眼',
+        `${greetingCall}刚看了眼外面，${wLine}。${/雨|冷|寒/.test(wLine) ? '你出门别穿太少。' : '挺适合透透气的。'}`
+      )
+    };
+  }
+
+  if (isStateAsk) {
+    const sLine = charState || '刚闲下来歇口气';
+    const evLine = activeEvent && pacingMode !== 'brief' ? `顺便一提，${activeEvent}。` : '';
+    return {
+      thought: `在问我现在的状态，随口如实回一句吧。`,
+      reply: wrapSpeech(
+        stageLevel >= 3 ? '懒洋洋抬眼看你' : '停下手里的事看向你',
+        `${greetingCall}${sLine}。${evLine}怎么突然找我？`
+      )
+    };
+  }
+
+  if (pacingMode === 'brief' && !isPhysicalAffection && !isSweetOrConfess && !isQuestion) {
+    const shortPool = /冷淡|撇嘴/.test(mood)
+      ? [
+          wrapSpeech('淡淡瞥了你一眼', '嗯，听着呢。'),
+          wrapSpeech('', `${greetingCall}……行吧，随你。`),
+          wrapSpeech('抱臂靠在一旁', '就这？')
+        ]
+      : /疲惫|犯困/.test(mood)
+      ? [
+          wrapSpeech('揉了揉眉心', '嗯……我在，有点困了。'),
+          wrapSpeech('', `${greetingCall}刚歇着，怎么了？`)
+        ]
+      : [
+          wrapSpeech('抬眼看你', `${greetingCall}在的，说吧。`),
+          wrapSpeech('', isTsundere ? '嗯？怎么突然冒出这句。' : '哈哈，刚看到消息，怎么啦？'),
+          wrapSpeech('', activeEvent ? `刚巧碰到件小事——${activeEvent}。` : '嗯，刚忙完这阵。')
+        ];
+    return {
+      thought: `简短搭话一句就好，不用硬拉太长。`,
+      reply: shortPool[(clean.length + totalHistoryCount) % shortPool.length]
     };
   }
 
   if (isPhysicalAffection) {
     return {
-      thought: `离得这么近，原本想好的说辞全被这一瞬间的温度打乱了。`,
+      thought: `离得这么近，节奏一下被打乱了。`,
       reply: isTsundere
-        ? `*动作顿了一瞬，耳廓悄悄泛起一点热意，却没有躲开，只把视线别向一旁低声开口：*\n\n${greetingCall}……你这家伙，未免也太不懂保持距离了。${topic ? `刚还在说「${topic}」，` : ''}怎么一转眼就动手动脚的？`
-        : `*感受到你的温度，${pronoun}睫毛轻颤了一下，唇角自然弯起温软的弧度。*\n\n${greetingCall}突然靠过来这么近……${topic ? `刚才说「${topic}」的时候，我还以为你又要逗我呢。` : '我还挺喜欢这样的。'}`
+        ? wrapSpeech('耳尖悄悄泛热，却没躲开', `${greetingCall}……怎么突然靠这么近，也不嫌闹。`)
+        : wrapSpeech('睫毛轻颤了一下，唇角弯起', `${greetingCall}突然这么靠过来……我可真有点顶不住。`)
     };
   }
 
   if (isNegativeOrRefuse) {
     return {
-      thought: `哎呀，看样子刚才那个提议他并不买账——也对，强按头可不行，顺着他的意思改换方向吧。`,
+      thought: `看来这个提议他不太买账，顺着台阶退一步吧。`,
       reply: isTsundere
-        ? `*挑了挑眉打量你一眼，双手抱在胸前哼了一声，语气却顺着你的意思退了一步：*\n\n${greetingCall}行行行，听你的就是了，谁稀罕非按原计划走不可。既然你说「${topic || '不要'}」，那你说说看，现在打算怎么安排？`
-        : `*听你这么直接地拒绝，${pronoun}先是微微一怔，随后忍不住笑出了声，干脆地把刚才的提议放到一边：*\n\n${greetingCall}好呀，既然你不喜欢那样，那我们就照你说的来！说说看，你现在更想做点什么，我都陪着你。`
+        ? wrapSpeech('挑眉哼了一声', `${greetingCall}行，听你的。那你说说打算怎么安排？`)
+        : wrapSpeech('忍不住笑了出来', `${greetingCall}好呀，既然你不喜欢那样，那我们换个方式，你说了算。`)
     };
   }
 
   if (isQuestion) {
-    const qCore = topic ? `「${topic}」` : '这件事';
+    const qCore = topic ? `「${topic}」` : '这事';
     return {
-      thought: `他忽然追问起${qCore}，还挺敏锐的……不能糊弄过去，得认真给个说法才行。`,
+      thought: `他突然追问${qCore}，得认真把话接住才行。`,
       reply: isTsundere
-        ? `*听到你的发问，${pronoun}微微扬起下颌看了你两秒，似乎在斟酌怎么开口才不显得太刻意：*\n\n${greetingCall}你问${qCore}？……其实也没有你想得那么复杂。真要细说起来，大概是因为当时根本没料到你也会在意这种小细节吧。怎么，你对这个答案还满意？`
-        : `*被你认真地这么一问，${pronoun}也收起了玩笑的神色，往前凑近半步看着你的眼睛：*\n\n${greetingCall}关于你问的${qCore}……其实我刚才也一直在琢磨。坦白讲，我现在心里最真实的想法就是想把眼前的事陪你一起弄明白，你觉得我的判断对不对？`
+        ? wrapSpeech('垂眸想了两秒', `${greetingCall}你问${qCore}？……其实也没你想得那么复杂，就是顺着当下心意来的。怎么，还不满意？`)
+        : wrapSpeech('认真看向你的眼睛', `${greetingCall}说到${qCore}……其实我刚才也一直在琢磨。${activeEvent ? `正好刚碰上「${activeEvent}」，` : ''}总觉得和你一块弄明白才踏实，你觉得呢？`)
     };
   }
 
   if (isSweetOrConfess) {
     return {
-      thought: `怎么突然说出这么直白的话……就算心里已经开心得不行，表面上也差点没绷住。`,
+      thought: `怎么突然说出这么直白的话……表面还得尽量稳住。`,
       reply: isPlayful
-        ? `*听到这句话，${pronoun}眼睛一下子亮了起来，忍不住往前蹭了半步笑眯眯地盯着你：*\n\n${greetingCall}哇，这话可是你自己亲口说的哦！「${topic || '这句话'}」我可要用小本本记一辈子，不许偷偷反悔！`
-        : `*脚步轻轻一停，${pronoun}转过头定定望向你，眼底那点平时藏得很深的温柔终于彻底漾开来：*\n\n${greetingCall}……你明明知道，听到你说「${topic || '这样的话'}」时，我是最没有抵抗力的。谢谢你愿意这么坦率地告诉我。`
+        ? wrapSpeech('眼睛一下子亮起来', `${greetingCall}这话可是你亲口说的！不许反悔啊！`)
+        : wrapSpeech('停住脚步定定望向你', `${greetingCall}……听到你说这种话，我可真的一点办法都没有。`)
     };
   }
 
-  const memNote = memEcho ? `（顺便一提，我还记得你提过「${memEcho.content.replace(/^[^：]+：/, '')}」）` : '';
-  const sceneText = directorNote && directorNote.trim() ? `眼下${directorNote.trim().slice(0, 24)}，` : '';
+  const memNote = memEcho ? `（对了，我还记得「${memEcho.content.replace(/^[^：]+：/, '').slice(0, 18)}」）` : '';
+  const eventNote = activeEvent && pacingMode === 'normal' ? `刚好刚才${activeEvent}，` : '';
+  const weatherNote = /雨|雪|冷/.test(weather) && stageLevel >= 2 ? `外面${weather}，待会注意别着凉。` : '';
   const variants = [
-    `*听完你说「${topic || clean.slice(0, 18)}」，${pronoun}眉梢微动，顺手接过话茬：*\n\n${greetingCall}原来你是这个意思啊——我还以为你会换个更保守的说法呢。${sceneText}${memNote}不过照你现在这个思路往下走，下一步我倒是想到一个挺有意思的切入点，要不要听听看？`,
-    `*${pronoun}侧过脸认真听你把话说完，嘴角轻轻挑起一点笑意：*\n\n${greetingCall}「${topic || clean.slice(0, 18)}」……这话从你嘴里说出来，倒意外地很有说服力。${memNote}那接下来就按你的想法试试看吧，真出了什么岔子，有我兜着呢。`,
-    `*神情松弛下来，${pronoun}朝你的方向挪近了些，目光顺着你的话继续往下探：*\n\n${greetingCall}难怪你刚才那么说，听到「${topic || clean.slice(0, 18)}」这一句，我算是彻底明白你的顾虑了。换作平时我肯定还要再犹豫两步，但今天既然有你在，我听你的判断。`
+    wrapSpeech('眉梢微动，顺手接过话茬', `${greetingCall}原来你是这意思。${eventNote}${memNote}${weatherNote || '那接下来按你的想法试试？'}`),
+    wrapSpeech('嘴角挑起一点笑意', `${greetingCall}这话从你嘴里说出来倒挺新鲜。${eventNote || memNote}行，有我在旁边兜着呢。`),
+    wrapSpeech('神情松弛下来', `${greetingCall}这么一说我算明白了。${weatherNote}${eventNote ? `话说回来，${eventNote}` : ''}听你的判断就是。`)
   ];
   return {
-    thought: `听着${greetingCall ? greetingCall.replace(/[*，]/g, '') : '眼前人'}提到「${topic || clean.slice(0, 20)}」，心里一下明白了对方的真实想法，得顺着这份心意自然接上去。`,
+    thought: `听着${greetingCall ? greetingCall.replace(/[*，]/g, '') : '眼前人'}提到「${topic || clean.slice(0, 20)}」，顺着眼下状态自然接上去。`,
     reply: variants[(clean.length + totalHistoryCount) % variants.length]
   };
 }
@@ -193,6 +263,9 @@ async function streamSmartDemoEngine({
   persona,
   userNickname = '',
   nurturing,
+  worldContext = null,
+  pacing = null,
+  sessionMode = 'roleplay',
   directorNote,
   triggeredLorebooks,
   recalledMemories,
@@ -261,7 +334,11 @@ async function streamSmartDemoEngine({
       greetingCall,
       recalledMemories: recalledMemories || [],
       directorNote,
-      totalHistoryCount
+      totalHistoryCount,
+      nurturing,
+      worldContext,
+      pacing,
+      isCharacterChat: sessionMode === 'character_chat'
     });
     thoughtText = `[心境：${moodTag}] ${respTurn.thought}`;
     replyText = respTurn.reply;
@@ -526,6 +603,9 @@ async function streamPersonaChat({
       persona: contextBundle.persona,
       userNickname: contextBundle.userNickname,
       nurturing: contextBundle.nurturing,
+      worldContext: contextBundle.worldContext,
+      pacing: contextBundle.pacing,
+      sessionMode: contextBundle.session?.session_mode || 'roleplay',
       directorNote: contextBundle.session.session_prompt || contextBundle.session.director_note,
       triggeredLorebooks: contextBundle.triggeredLorebooks,
       recalledMemories: contextBundle.recalledMemories,
@@ -565,6 +645,9 @@ async function streamPersonaChat({
         persona: contextBundle.persona,
         userNickname: contextBundle.userNickname,
         nurturing: contextBundle.nurturing,
+        worldContext: contextBundle.worldContext,
+        pacing: contextBundle.pacing,
+        sessionMode: contextBundle.session?.session_mode || 'roleplay',
         directorNote: contextBundle.session.session_prompt || contextBundle.session.director_note,
         triggeredLorebooks: contextBundle.triggeredLorebooks,
         recalledMemories: contextBundle.recalledMemories,
@@ -616,6 +699,9 @@ async function streamPersonaChat({
         persona: contextBundle.persona,
         userNickname: contextBundle.userNickname,
         nurturing: contextBundle.nurturing,
+        worldContext: contextBundle.worldContext,
+        pacing: contextBundle.pacing,
+        sessionMode: contextBundle.session?.session_mode || 'roleplay',
         directorNote: contextBundle.session.session_prompt || contextBundle.session.director_note,
         triggeredLorebooks: contextBundle.triggeredLorebooks,
         recalledMemories: contextBundle.recalledMemories,

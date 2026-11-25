@@ -14,6 +14,7 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.content.pm.ServiceInfo;
+import android.content.res.AssetFileDescriptor;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.LinearGradient;
@@ -178,6 +179,7 @@ public class FloatAgentService extends Service {
     private volatile long qqMusicLastSyncMs = 0L;
     private volatile String qqMusicCurrentLyric = "";
     private volatile String lastFetchedLyricsKey = "";
+    private int inactiveMusicStreak = 0;
     private final List<LyricLine> qqMusicLyrics = Collections.synchronizedList(new ArrayList<LyricLine>());
 
     // 原生 MediaRecorder + 云端 ASR 语音识别状态
@@ -1938,6 +1940,18 @@ public class FloatAgentService extends Service {
         ));
     }
 
+    // ========= 音乐播放态判断 & 防打断声效控制 =========
+    private boolean isExternalMusicPlayingNow() {
+        if (qqMusicPlaying) return true;
+        try {
+            AudioManager am = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
+            if (am != null && am.isMusicActive()) {
+                return true;
+            }
+        } catch (Throwable ignored) {}
+        return false;
+    }
+
     // ========= 鲸鱼娘动作 + 25 条原声音源 + AudioTrack 唱歌 =========
     private void playWhaleVoice(int rawResId, int drawableResId, String animType, String subtitle, boolean isManualAction) {
         if (singerEngine != null && singerEngine.isSinging()) {
@@ -1950,23 +1964,52 @@ public class FloatAgentService extends Service {
 
         setPetPoseDrawable(drawableResId);
         playPetBounceAnim(animType);
+
+        // 默认在音乐播放模式下保持安静，绝不主动出声抢占音频焦点打断 QQ 音乐播放/暂停状态
+        boolean musicPlaying = isExternalMusicPlayingNow();
+        if (musicPlaying) {
+            String silentSub = isManualAction
+                    ? (subtitle + "（🎵 播歌免打扰中）")
+                    : subtitle;
+            showPetSubtitle(silentSub, 3500);
+            if ("idle".equals(sCurrentStatus) && !isDraggingPet) {
+                mainHandler.postDelayed(happyResetRunnable, 2200);
+            }
+            return;
+        }
+
         showPetSubtitle(subtitle, 4500);
 
         try {
-            petVoicePlayer = MediaPlayer.create(this, rawResId);
-            if (petVoicePlayer != null) {
-                petVoicePlayer.setOnCompletionListener(new MediaPlayer.OnCompletionListener() {
+            AssetFileDescriptor afd = getResources().openRawResourceFd(rawResId);
+            if (afd != null) {
+                MediaPlayer mp = new MediaPlayer();
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                    mp.setAudioAttributes(new AudioAttributes.Builder()
+                            .setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
+                            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                            .build());
+                } else {
+                    mp.setAudioStreamType(AudioManager.STREAM_NOTIFICATION);
+                }
+                mp.setDataSource(afd.getFileDescriptor(), afd.getStartOffset(), afd.getLength());
+                afd.close();
+                mp.setOnCompletionListener(new MediaPlayer.OnCompletionListener() {
                     @Override
-                    public void onCompletion(MediaPlayer mp) {
+                    public void onCompletion(MediaPlayer completedMp) {
                         stopWhaleVoicePlayer();
                         if ("idle".equals(sCurrentStatus) && !isDraggingPet) {
                             mainHandler.postDelayed(happyResetRunnable, 1200);
                         }
                     }
                 });
+                mp.prepare();
+                petVoicePlayer = mp;
                 petVoicePlayer.start();
             }
-        } catch (Throwable ignored) {}
+        } catch (Throwable ignored) {
+            stopWhaleVoicePlayer();
+        }
     }
 
     private void stopWhaleVoicePlayer() {
@@ -2096,6 +2139,13 @@ public class FloatAgentService extends Service {
                 singSongIndex++;
                 return;
             }
+        }
+        if (isExternalMusicPlayingNow()) {
+            setPetPoseDrawable(R.drawable.feiyu_dance);
+            playPetBounceAnim("dance");
+            showPetSubtitle("🎵 音乐正在播放中，大肥鱼安静伴舞不打扰你听歌~", 3200);
+            Toast.makeText(this, "🎵 QQ 音乐播放中已静音伴舞（暂停音乐后可听大肥鱼原声清唱）", Toast.LENGTH_SHORT).show();
+            return;
         }
         stopWhaleVoicePlayer();
         final int songId = singSongIndex % 3;
@@ -2362,8 +2412,33 @@ public class FloatAgentService extends Service {
 
     private void tickMusicAndLyrics() {
         if (sInstance == null) return;
-        if (QqMusicListenerService.isNotificationAccessEnabled(this)) {
+        boolean hasNotifPerm = QqMusicListenerService.isNotificationAccessEnabled(this);
+        if (hasNotifPerm) {
             QqMusicListenerService.pollActiveMusicSession(this);
+        } else if (!qqMusicTitle.isEmpty()) {
+            // 未开启通知读取权限时，通过系统音频通道实时同步暂停与恢复状态
+            try {
+                AudioManager am = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
+                boolean active = am != null && am.isMusicActive();
+                if (active) {
+                    inactiveMusicStreak = 0;
+                    if (!qqMusicPlaying) {
+                        qqMusicPlaying = true;
+                        qqMusicLastSyncMs = System.currentTimeMillis();
+                        refreshMusicUi();
+                    }
+                } else if (qqMusicPlaying) {
+                    inactiveMusicStreak++;
+                    if (inactiveMusicStreak >= 3) {
+                        qqMusicPlaying = false;
+                        if (qqMusicLastSyncMs > 0) {
+                            qqMusicPosMs += Math.max(0L, System.currentTimeMillis() - qqMusicLastSyncMs);
+                            qqMusicLastSyncMs = 0L;
+                        }
+                        refreshMusicUi();
+                    }
+                }
+            } catch (Throwable ignored) {}
         }
         if (qqMusicPlaying && !qqMusicTitle.isEmpty()) {
             updateCurrentLyricFromClock();
@@ -3290,7 +3365,10 @@ public class FloatAgentService extends Service {
             return;
         }
         expandPanel();
-        triggerHeadPatAction();
+        if (!isExternalMusicPlayingNow()) {
+            setPetPoseDrawable(R.drawable.feiyu_happy);
+            playPetBounceAnim("bounce");
+        }
     }
 
     private void expandPanel() {
@@ -3801,8 +3879,8 @@ public class FloatAgentService extends Service {
                 int minBuf = AudioTrack.getMinBufferSize(sr, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT);
                 track = new AudioTrack(
                         new AudioAttributes.Builder()
-                                .setUsage(AudioAttributes.USAGE_MEDIA)
-                                .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                                .setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
+                                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
                                 .build(),
                         new AudioFormat.Builder()
                                 .setSampleRate(sr)

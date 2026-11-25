@@ -194,10 +194,10 @@ const {{ db, getRawPlatformConfigInternal, updateAdminPlatformConfig, saveAdminA
 db.prepare("DELETE FROM personas WHERE id = \\x27persona_linqi\\x27").run();
 db.prepare("UPDATE site_announcements SET enabled = 0").run();
 saveAdminAnnouncement("admin", {{
-  title: "星语恋庭 v2.4.1 更新：大肥鱼主动生活动作、防误触与全透明桌面歌词上线",
-  content: "1. 【大肥鱼自主行为与动作升级】：新增定时自主干饭/散步/看书/讨饭/摇尾生活动作循环，呼吸姿态自然摇曳。\\n2. 【防误触保护 & 语音尾巴自由开关】：开启防误触后单点不弹窗仅萌动回应，连点 3 下解锁面板；折叠态语音小尾巴可一键隐藏关闭。\\n3. 【全透明悬浮桌面歌词】：支持纯透明无底框歌词直接漂浮手机页面上方（触摸穿透不挡操作，可拖动调高度），随身版升级至 v2.4.1 (Build 142)！",
+  title: "星语恋庭 v2.4.2 更新：大肥鱼音乐模式免打扰陪伴，绝不打断听歌播放/暂停",
+  content: "1. 【音乐播放默认免打扰静音】：检测到正在听歌（含 QQ 音乐或系统音乐活跃）时，大肥鱼默认保持安静不主动开口也不抢占音频焦点，仅以动作与轻提示气泡伴舞，绝不打断你的音乐播放/暂停状态。\\n2. 【音频属性重构与焦点零冲突】：全面切至非媒体提示音通道与 AudioTrack 提示音频流，点击展开面板改为静音动作，避免误触发声中断播放器。\\n3. 【无通知权限音乐状态精准联动】：即使未授予通知读取权限，也能通过系统音频状态感知音乐暂停/恢复并同步隐现桌面透明歌词，随身版升级至 v2.4.2 (Build 143)！",
   enabled: true,
-  version: 142
+  version: 143
 }});
 db.prepare("UPDATE sessions SET companion_config = NULL").run();
 db.prepare("UPDATE user_settings SET value = \\x27demo\\x27 WHERE key = \\x27provider\\x27").run();

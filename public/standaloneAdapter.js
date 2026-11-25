@@ -1982,7 +1982,7 @@
       return jsonResponse({ session_id: sid, sessions: decorateSessions(dbObj) }, 201);
     }
 
-    const sessSubMatch = pathname.match(/^\/api\/sessions\/([^/]+)\/(memories|dream|export|import-history|compress|companion|companion\/remind|companion\/voice-chat)$/);
+    const sessSubMatch = pathname.match(/^\/api\/sessions\/([^/]+)\/(memories|dream|world-refresh|export|import-history|compress|companion|companion\/remind|companion\/voice-chat)$/);
     if (sessSubMatch) {
       const sid = decodeURIComponent(sessSubMatch[1]);
       const sub = sessSubMatch[2];
@@ -2130,6 +2130,31 @@
         });
         saveLocalDb(dbObj);
         return jsonResponse({ memories: decorateMemories(dbObj.memories[sid]) }, 201);
+      }
+
+      if (sub === 'world-refresh' && method === 'POST') {
+        const weathers = ['☀️ 晴朗微风 · 暖阳刚好', '🌧️ 细雨绵绵 · 空气湿润微凉', '⛅ 多云舒爽 · 不冷不热', '🌬️ 晚风微凉 · 适合待在室内'];
+        const states = ['靠在窗边听雨歇口气', '正闲着刷手机顺便等你消息', '刚泡好热茶，心情还算松弛'];
+        const events = ['便利店门口缩着一只躲雨的小橘猫', '刚才差点把桌上的水杯碰洒', '路过花店顺手带了一枝洋桔梗'];
+        sess.world_weather = weathers[Math.floor(Math.random() * weathers.length)];
+        sess.character_state = states[Math.floor(Math.random() * states.length)];
+        sess.active_event = events[Math.floor(Math.random() * events.length)];
+        saveDb(dbObj);
+        return jsonResponse({
+          ok: true,
+          nurturing: {
+            affection: sess.affection || 22,
+            trust: sess.trust || 26,
+            intimacy: sess.intimacy || 18,
+            current_mood: sess.current_mood || '✨ 温柔浅笑',
+            character_state: sess.character_state,
+            world_weather: sess.world_weather,
+            active_event: sess.active_event,
+            time_period: '此刻',
+            stage: calcStage(sess),
+            secret_diary: []
+          }
+        });
       }
 
       if (sub === 'dream' && method === 'POST') {

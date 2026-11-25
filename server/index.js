@@ -86,6 +86,7 @@ const {
 } = require('./memoryEngine');
 const {
   formatNurturingSnapshot,
+  ensureAndEvolveWorldContext,
   evaluateTurnNurturing,
   runDreamConsolidation
 } = require('./nurturingEngine');
@@ -508,6 +509,12 @@ function buildSessionDetailPayload(session, userId, opts = {}) {
   let persona = formatPersonaRow(resolveEffectivePersona(session));
   let autoDreamDiary = null;
 
+  if ((session.session_mode || 'roleplay') !== 'deepseek_native') {
+    try {
+      ensureAndEvolveWorldContext(session, persona, '', totalMessages);
+    } catch {}
+  }
+
   // 离线超过 6 小时自动在后台静默执行一次「夜间做梦」（生成私密手札 & 巩固高频记忆）
   if ((session.session_mode || 'roleplay') === 'roleplay' && messages.length >= 2) {
     const nowTs = Date.now();
@@ -595,8 +602,8 @@ function extractAuthToken(req, parsedUrl = null) {
   return '';
 }
 
-const APP_LATEST_VERSION = '2.4.1';
-const APP_LATEST_VERSION_CODE = 142;
+const APP_LATEST_VERSION = '2.4.2';
+const APP_LATEST_VERSION_CODE = 143;
 const APP_OFFICIAL_CERT_SHA256 = '6fd05e32a3cabf327140129d866e55a342fe30daa3384c67aad4b3cbdd98a17b';
 const APP_UPDATE_TICKET_SECRET = crypto
   .createHash('sha256')
@@ -887,9 +894,9 @@ async function handleApi(req, res, pathname, parsedUrl) {
       forceUpdate,
       diffGenerations,
       changelog: [
-        '【大肥鱼自主生活动作 & 防误触保护】新增定时自主干饭/溜达/看书/讨饭/摇尾动作循环，不再静态发呆；新增「🛡️防误触」模式，单点不弹窗仅萌动回应，连点3下即可解锁面板',
-        '【全透明悬浮桌面歌词】QQ 音乐与鲸鱼娘清唱支持纯透明背景文字+高对比描边直接漂浮手机屏幕（默认触摸穿透不挡手），支持一键开关与拖拽调节歌词高度',
-        '【语音尾巴自由开关】可自由显示或隐藏折叠态「🎙语音尾巴」还你极简萌宠本体，双端同步升级至 v2.4.1 (Build 142)'
+        '【音乐模式默认静音免打扰陪伴】检测到正在听歌（QQ 音乐或系统媒体活跃）时，大肥鱼默认保持安静不主动说话与不抢占音频焦点，仅靠动作与轻提示气泡伴舞，绝不打断音乐播放/暂停',
+        '【无冲突提示音频属性与展开静音】原声与清唱全面改用非媒体提示音通道，点击折叠态大肥鱼展开面板仅静音弹跳',
+        '【无通知权限音乐状态精准同步】未授予通知读取权限时亦可通过音频状态自动感知音乐暂停/恢复，同步隐现全透明悬浮歌词，双端同步升级至 v2.4.2 (Build 143)'
       ]
     };
 
@@ -3489,6 +3496,32 @@ async function handleApi(req, res, pathname, parsedUrl) {
     }
   }
 
+  // ========= 6.45 手动刷新天气/状态/微事件情境 =========
+  const worldRefreshMatch = pathname.match(/^\/api\/sessions\/([^/]+)\/world-refresh$/);
+  if (worldRefreshMatch && method === 'POST') {
+    const sessionId = decodeURIComponent(worldRefreshMatch[1]);
+    const session = db
+      .prepare('SELECT * FROM sessions WHERE id = ? AND user_id = ?')
+      .get(sessionId, userId);
+    if (!session) return sendJson(res, 404, { error: '未找到该会话' });
+
+    const persona = formatPersonaRow(resolveEffectivePersona(session));
+    // 强制清空上次时间戳与旧事件以便滚动到新情境
+    db.prepare('UPDATE sessions SET world_weather = ?, active_event = ?, world_state_updated_at = 0 WHERE id = ?').run(
+      '',
+      '',
+      sessionId
+    );
+    const refreshedRow = db.prepare('SELECT * FROM sessions WHERE id = ?').get(sessionId);
+    const msgCnt = Number(db.prepare('SELECT COUNT(*) AS cnt FROM messages WHERE session_id = ?').get(sessionId)?.cnt || 0);
+    ensureAndEvolveWorldContext(refreshedRow, persona, '', msgCnt);
+    const latestRow = db.prepare('SELECT * FROM sessions WHERE id = ?').get(sessionId);
+    return sendJson(res, 200, {
+      ok: true,
+      nurturing: formatNurturingSnapshot(latestRow)
+    });
+  }
+
   // ========= 6.5 平行时空剧情分支 & 单条消息精修回溯 =========
   const sessionBranchMatch = pathname.match(/^\/api\/sessions\/([^/]+)\/branch$/);
   if (sessionBranchMatch && method === 'POST') {
@@ -4593,6 +4626,8 @@ async function handleApi(req, res, pathname, parsedUrl) {
         recalled_memories: contextBundle.recalledMemories,
         triggered_lorebooks: contextBundle.triggeredLorebooks,
         nurturing: contextBundle.nurturing,
+        world_context: contextBundle.worldContext || null,
+        pacing: contextBundle.pacing ? { mode: contextBundle.pacing.mode, sentenceGuide: contextBundle.pacing.sentenceGuide } : null,
         rolling_summary: contextBundle.rollingSummary,
         provider: settings.provider,
         session_mode: session.session_mode

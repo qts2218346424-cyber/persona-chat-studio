@@ -332,7 +332,10 @@ async function probeLocalOfflineServer(localServers = {}) {
  * 2. 电影感与去模板化：动作描写融于神态，用词有呼吸感、拉扯感与文学张力，紧密接住用户输入的每一个细节与玩笑；
  * 3. 视觉敏锐观察：若用户上传图片，以侦探般的细腻目光在心流中剖析光影构图与氛围，并在正文中做出动人的角色接招。
  */
-function decorateMessagesForRoleplay(messagesPayload, { personaName = '', enableThought = true } = {}) {
+function decorateMessagesForRoleplay(
+  messagesPayload,
+  { personaName = '', enableThought = true, sessionMode = 'roleplay', pacing = null } = {}
+) {
   if (!Array.isArray(messagesPayload) || messagesPayload.length === 0) {
     return messagesPayload;
   }
@@ -341,31 +344,38 @@ function decorateMessagesForRoleplay(messagesPayload, { personaName = '', enable
   if (cloned[0].role !== 'system') return cloned;
 
   const actor = String(personaName || '').split(/[·\s]/)[0] || '当前角色';
-  const isOfficialAssistant = /你是 DeepSeek|编程助手/.test(cloned[0].content || '');
+  const sysText = String(cloned[0].content || '');
+  const isOfficialAssistant = /你是 DeepSeek|编程助手/.test(sysText);
   if (isOfficialAssistant) return cloned;
 
-  const deepseekThinkingDirective = enableThought
-    ? `\n\n## 💭 沉浸式深度思考流规范（DeepSeek-R1 灵魂心流复刻）
-若使用原生思考流（reasoning_content），**必须全程以「${actor}」的第一人称（“我”）用纯正、富有感情的简体中文展开深入推演，严禁输出英文或机械的客观分析词汇**。请像 DeepSeek 旗舰推理模型一样层层剥茧：
-1. **潜台词与情绪破译**：捕捉对方刚才的话、语气词（如“哼”、“……”）、标点或动作，看穿对方是在故意逗我、撒娇试探、假装不在乎，还是藏着未说出口的情绪；
-2. **多模态视觉观察（若对方发了图片）**：以极具审美与敏锐侦探般的目光，细致审视画面细节——主体特征、色调光影、背景小彩蛋、生活痕迹，推敲对方在这个时刻与“我”分享这张照片的真正心意；
-3. **内心防线与情感暗涌**：真实流露“我”作为「${actor}」第一反应下的生理本能与心理拉扯（如：心跳骤漏一拍、指尖微僵、想要反唇相讥却忍不住心软、假装镇定掩盖耳热），绝不扁平化；
-4. **破局接招构思**：推敲这一轮的最佳接招方式——设计一个有画面感、有电影质感的微动作，顺着对方的语境巧妙反客为主，既死守住人设风骨，又给对方足够的情绪张力与安全感。`
-    : `\n\n## 输出精简要求\n请保持极简思考，直接以「${actor}」的第一人称纯中文紧扣对方刚才的话与动作鲜活接招，不要输出 \`<think>\` 标签或任何机械分析。`;
+  const isCharacterChat =
+    sessionMode === 'character_chat' || /真人模拟对话核心协议/.test(sysText);
 
-  const deepseekExpressionDirective = `\n\n## 🎭 角色正文表达铁律（对话与心理必须泾渭分明，绝不混乱）
-1. **心声与正文绝不混淆**：
-   - 内部隐秘心理独白（如“听到回应的瞬间，我下意识松了口气……”）**仅存在于顶部的思考流中**；
-   - **正文中严禁在第一行或段首重复写一大段第一人称心理描写**！正文开头直接是角色对外界做出的真实神态或开口台词。
-2. **实际说话台词必须使用双引号包裹**：
-   - 只要是角色真正张嘴说出声的话，**必须一律用中文字符引号「“……”」明确包裹**（例如：“你好……谢谢你没有直接走过去。”）；
-   - 严禁台词不加引号导致玩家分不清是说出来的还是心里想的。
-3. **动作神态描写完整独立，严禁碎片化碎切**：
-   - 角色的微动作、神态与眼神一律使用 \`*动作/神态描写*\` 包裹，且作为台词的前置动作或独立小段（例如：\`*脸颊微热地别开视线，攥着书包带的手指悄悄松开* “你好……”\`）；
-   - **严禁把一句完整的台词碎切成两三截并在中间反复夹塞动作**（严禁写成 “你好……” *动作* “那个……” *动作* “放学后……”），动作与台词必须成段分明、自然流畅。
-4. **图文交互沉浸共鸣**：若对方发来图片，像两人并肩看着同一部手机屏幕一样，自然将对画面细节的真实评价、调侃或心动融入台词与微表情中。
-5. **去模板化与真实接招**：精准咬合对方刚才话里的关键细节，长短句结合，语言有停顿与微表情，绝不自说自话。
-6. **拟真即时通讯分句发消息**：模拟真实发消息习惯，单次回应言简意赅、富有生活气息，善用换行拆分为 2~4 条简练短段/短句，避免大段不换行的学术长文，使对话像一句一句发送出来一样生动自然。`;
+  const pacingSummary = pacing
+    ? `本轮篇幅严格遵守 ${pacing.minChars}~${pacing.maxChars} 字（${pacing.sentenceGuide}），宁短勿长。`
+    : '篇幅随对方话长与情绪自然伸缩——日常随聊 1~2 句短话即可，只有走心深聊才展开。';
+
+  const deepseekThinkingDirective = enableThought
+    ? `\n\n## 💭 沉浸式内心推演（DeepSeek-R1 心流）
+若输出思考流，必须以「${actor}」的第一人称（“我”）用口语化纯简体中文思考，严禁写英文或客观分析腔：
+1. **捕捉潜台词与当下情境**：感受对方话里的情绪温度，结合此刻心情、好感度、天气、自身状态与刚发生的小事做出真实内心反应；
+2. **多模态视觉观察（若有图片）**：自然留意画面里的细节和对方分享的心意；
+3. **定好开口分寸**：决定这一句是惜字如金简短回一句、随口吐槽，还是认真多聊几句——绝不强行写长段。`
+    : `\n\n## 输出精简要求\n直接以「${actor}」的第一人称纯中文自然接话，不输出 \`<think>\` 标签。`;
+
+  const deepseekExpressionDirective = isCharacterChat
+    ? `\n\n## 💬 真人口语表达铁律
+1. **绝对禁止星号动作和括号旁白**：只输出嘴里说出来或微信发出去的纯口语文字。
+2. **极度自然的人味节奏**：${pacingSummary}像真人发微信一样有长有短、有停顿和口语词，禁止端着写排比小作文。
+3. **图文共鸣**：若对方发了图片，直接自然点评吐槽画面细节。`
+    : `\n\n## 🎭 剧场正文活人感铁律
+1. **心声与正文绝不混淆**：心里想的只放思考流；正文只写直接对外表现出来的神态或说出口的话，严禁在段首大段重复心理活动。
+2. **说话台词使用双引号「“……”」**：开口说出的话用双引号包裹；若有动作或神态，用 \`*...*\` 独立置于句前或句间，绝不把一句话碎切得支离破碎。
+3. **打破每轮一大段的 AI 腔（核心！）**：
+   - ${pacingSummary}
+   - **当只需短句回应或心情疲惫/略冷淡/斗嘴时，允许只发 1 句纯台词，或只加 4~10 字极简神态（如 \`*抬眼看你* “嗯。”\`）**，绝不为了凑画面感硬扯光影微风！
+   - 只有聊到关键事件、情绪深处或对方发长文时，再拆成 2~3 句自然展开。
+4. **图文与环境共鸣**：若对方发了图片或提到天气/身边事件，像真人一样顺口接住。`;
 
   cloned[0].content = `${cloned[0].content}${deepseekThinkingDirective}${deepseekExpressionDirective}`;
   return cloned;
@@ -710,7 +720,9 @@ async function tryStreamViaAntigravityBridge({
   });
   const preparedMessages = decorateMessagesForRoleplay(enrichedPayload, {
     personaName,
-    enableThought
+    enableThought,
+    sessionMode: contextBundle?.session?.session_mode || 'roleplay',
+    pacing: contextBundle?.pacing || null
   });
 
   let hasEmittedContent = false;
@@ -984,19 +996,20 @@ function assemblePromptForCli(messagesPayload = [], { personaName = '', enableTh
     }
   }
 
-  // 严格注入 DeepSeek 身份认同，彻底消除外部底层模型痕迹
-  const deepseekIdentityPrompt =
-    `你是由深度求索（DeepSeek）公司研发的人工智能助手 DeepSeek。\n` +
-    `在当前星语恋庭对话系统中，你作为 DeepSeek 官方对话引擎（DeepSeek-V4.1-Flash）为用户提供服务。\n` +
-    `若用户询问你的名字、模型版本或所属机构，请明确表明自己是由深度求索研发的 DeepSeek 助手。\n` +
-    `你的思考过程与正式回答必须全程使用地道通顺的纯正中文。`;
+  const isOfficialAssistant = !systemPrompt || /你是 DeepSeek|编程助手/.test(systemPrompt);
+  const deepseekIdentityPrompt = isOfficialAssistant
+    ? `你是由深度求索（DeepSeek）公司研发的人工智能助手 DeepSeek。\n` +
+      `在当前星语恋庭对话系统中，你作为 DeepSeek 官方对话引擎（DeepSeek-V4.1-Flash）为用户提供服务。\n` +
+      `若用户询问你的名字、模型版本或所属机构，请明确表明自己是由深度求索研发的 DeepSeek 助手。\n` +
+      `你的思考过程与正式回答必须全程使用地道通顺的纯正中文。`
+    : `你正在进行沉浸式角色对话。请完全进入下方设定好的角色本人，严禁跳戏或自称 AI 助手，全程用纯正自然的简体中文互动。`;
 
   const thinkingGuide = enableThinking
-    ? `\n\n【深度思考铁律】：\n请在回答最开头必须使用 \`<thought>...</thought>\` 标签输出你深入细致的第一人称纯中文思考推理过程（剖析用户真正诉求、逻辑推导、方案权衡），在 \`</thought>\` 标签之后输出你给用户的正式中文回答。`
-    : `\n\n【输出要求】：请直接给出清晰通顺的正式中文回答，不要附带思考标签。`;
+    ? `\n\n【深度思考铁律】：\n请在回答最开头必须使用 \`<thought>...</thought>\` 标签输出你深入细致的第一人称纯中文思考推理过程（紧扣角色心境与对话潜台词），在 \`</thought>\` 标签之后输出正式中文回复。`
+    : `\n\n【输出要求】：请直接给出自然通顺的正式中文回复，不要附带思考标签。`;
 
   const assembled =
-    `【官方身份与原则】：\n${deepseekIdentityPrompt}\n\n` +
+    `【基础角色定位】：\n${deepseekIdentityPrompt}\n\n` +
     (systemPrompt ? `【系统人设与背景指令】：\n${systemPrompt}\n\n` : '') +
     (historyParts.length > 0 ? `【对话历史与当前交互】：\n${historyParts.join('\n\n')}\n\n` : '') +
     `请给出针对最新对话的回复：` +

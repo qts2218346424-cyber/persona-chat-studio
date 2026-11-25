@@ -261,6 +261,7 @@ function runGeminiCliEngine({ prompt, model, enableThinking, onReasoning, onCont
     });
 
     const cliArgs = [
+      '--skip-trust',
       '--output-format', 'stream-json',
       '--model', model || 'gemini-2.5-flash',
       '-p', '请严格依据标准输入(stdin)中的上下文进行回复。'
@@ -272,6 +273,7 @@ function runGeminiCliEngine({ prompt, model, enableThinking, onReasoning, onCont
     const child = spawn(spawnCmd, spawnArgs, {
       cwd: isolatedCwd,
       windowsHide: true,
+      env: { ...process.env, GEMINI_CLI_TRUST_WORKSPACE: 'true' },
       shell: geminiBin.type === 'bin' && process.platform === 'win32',
       stdio: ['pipe', 'pipe', 'pipe']
     });

@@ -194,10 +194,10 @@ const {{ db, getRawPlatformConfigInternal, updateAdminPlatformConfig, saveAdminA
 db.prepare("DELETE FROM personas WHERE id = \\x27persona_linqi\\x27").run();
 db.prepare("UPDATE site_announcements SET enabled = 0").run();
 saveAdminAnnouncement("admin", {{
-  title: "星语恋庭 v2.5.0 大版本发布：大肥鱼彻底告别电子哼调，支持导入手机真实歌声音频开唱！",
-  content: "1. 【导入实际歌声音频开唱】：不再用电子哼调！在大肥鱼面板点「📥导歌」或 App「肥鱼歌单」中一次多选导入手机本地 MP3/WAV/M4A 等实际声音，外置/面板点「🎤唱」即用真实声音欢唱并显示歌名进度！\\n2. 【内置真人音色唱词示例】：未导歌前亦使用真实甜美少女音色演唱《大白米饭之歌》《深海冒泡之歌》。\\n3. 【整合所有升级】：外置肥鱼互动条、QQ 音乐自动搜歌连播、悬浮快捷打字条与常用聊天文字批量导入，随身版升级至 v2.5.0 (Build 147)！",
+  title: "星语恋庭 v2.5.1 更新：支持导入手机实际歌声（告别哼调），QQ 音乐点歌直击单曲区！",
+  content: "1. 【QQ 音乐精确点击下方单曲区】：对照实际搜索页布局修复点歌区域，自动越过上方歌手卡/歌单卡，直击「单曲」分段下方第一首歌曲（或自动切换「歌曲」Tab 播放），不再误点歌单推荐卡片。\\n2. 【导入手机实际歌声开唱】：淘汰电子哼调！在大肥鱼面板「📥导歌」或 App「肥鱼歌单」批量导入手机 MP3/WAV/M4A 真实歌声，未导入前内置甜美少女真人音色唱词。\\n3. 【整合外置交互条 & 不抢焦点快捷打字条】：随身版升级至 v2.5.1 (Build 148)！",
   enabled: true,
-  version: 147
+  version: 148
 }});
 db.prepare("UPDATE sessions SET companion_config = NULL").run();
 db.prepare("UPDATE user_settings SET value = \\x27demo\\x27 WHERE key = \\x27provider\\x27").run();

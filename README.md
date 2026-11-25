@@ -22,7 +22,7 @@
 </p>
 
 <p>
-  <img src="https://img.shields.io/badge/Release-v2.5.0_Build_147-7C3AED?style=flat-square&logo=rocket&logoColor=white" alt="Version v2.5.0" />
+  <img src="https://img.shields.io/badge/Release-v2.5.1_Build_148-7C3AED?style=flat-square&logo=rocket&logoColor=white" alt="Version v2.5.1" />
   <img src="https://img.shields.io/badge/Node.js-%3E%3D22.5.0-339933?style=flat-square&logo=node.js&logoColor=white" alt="Node.js >= 22.5.0" />
   <img src="https://img.shields.io/badge/Dependencies-0_npm_Packages-FF6B6B?style=flat-square&logo=npm&logoColor=white" alt="Zero npm Dependencies" />
   <img src="https://img.shields.io/badge/Storage-node%3Asqlite-003B57?style=flat-square&logo=sqlite&logoColor=white" alt="Native SQLite" />
@@ -30,7 +30,7 @@
 </p>
 
 <p>
-  <a href="#-v250-最新版本核心特性">🚀 最新特性</a> •
+  <a href="#-v251-最新版本核心特性">🚀 最新特性</a> •
   <a href="#-三大工作台">🌐 三大工作台</a> •
   <a href="#-外观皮肤与头像工坊">🎨 外观工坊</a> •
   <a href="#-五大内置剧本与-20-位角色">🎬 剧本角色</a> •
@@ -47,12 +47,12 @@
 
 ---
 
-## 🚀 v2.5.0 最新版本核心特性
+## 🚀 v2.5.1 最新版本核心特性
 
-1. **鲸鱼娘真实声音歌唱引擎 & 多选音频导入（彻底告别电子哼调）**：彻底淘汰正弦波电子哼调；内置真实甜美中文少女唱词示例曲，并支持在悬浮面板「📥导歌」或 App「肥鱼歌单」里批量导入手机本地 `.mp3/.m4a/.wav/.ogg/.flac` 实际歌声音频，支持歌名编辑、永久缓存与桌宠实时歌词进度开唱。
-2. **悬浮窗外置肥鱼互动条 & 清晰媒体流发声**：大肥鱼本体下方直接提供「🍚喂 / 👋摸 / 💃舞 / 🎤唱 / 🫧梗」互动小药丸，点外面即看立绘动画；采用媒体音量流且不抢占 QQ 音乐音频焦点。
-3. **QQ 音乐自动点歌连播升级**：多阶段状态机精准避开清空`×`并点击顶部「搜索」及软键盘回车，自动进入单曲列表点击播放。
-4. **不抢焦点悬浮快捷打字条 & 常用聊天文字多端导入**：支持剪贴板、多行粘贴及 `.txt/.json` 文件批量导入常用聊天文字并双端同步，升级至 `v2.5.0 (Build 147)`。
+1. **QQ 音乐点歌精准锁定「单曲」列表播放**：搜索结果页自动跳过顶部歌手卡与歌单推荐卡，锁定下方「单曲」分段第一首歌或主动切入「歌曲」Tab 起播，兜底点位精确下移。
+2. **鲸鱼娘真实声音歌唱引擎 & 多选音频导入（彻底告别电子哼调）**：彻底淘汰正弦波电子哼调；内置真实甜美中文少女唱词示例曲，并支持在悬浮面板「📥导歌」或 App「肥鱼歌单」里批量导入手机本地 `.mp3/.m4a/.wav/.ogg/.flac` 实际歌声音频。
+3. **悬浮窗外置肥鱼互动条 & 清晰媒体流发声**：大肥鱼本体下方直接提供「🍚喂 / 👋摸 / 💃舞 / 🎤唱 / 🫧梗」互动小药丸，点外面即看立绘动画；采用媒体音量流且不抢占 QQ 音乐音频焦点。
+4. **不抢焦点悬浮快捷打字条 & 常用聊天文字多端导入**：支持剪贴板、多行粘贴及 `.txt/.json` 文件批量导入常用聊天文字并双端同步，升级至 `v2.5.1 (Build 148)`。
 5. **三通道独立隔离连接中心与极速预压缩管线**：本地直连 / DeepSeek 官方 API / 自定义云端 API 独立切换，`scripts/build-static-assets.mjs` 全面提供 `.gz` 与 `.br` 极速加载。
 
 ---

@@ -22,7 +22,7 @@
 </p>
 
 <p>
-  <img src="https://img.shields.io/badge/Release-v2.4.0_Build_141-7C3AED?style=flat-square&logo=rocket&logoColor=white" alt="Version v2.4.0" />
+  <img src="https://img.shields.io/badge/Release-v2.4.1_Build_142-7C3AED?style=flat-square&logo=rocket&logoColor=white" alt="Version v2.4.1" />
   <img src="https://img.shields.io/badge/Node.js-%3E%3D22.5.0-339933?style=flat-square&logo=node.js&logoColor=white" alt="Node.js >= 22.5.0" />
   <img src="https://img.shields.io/badge/Dependencies-0_npm_Packages-FF6B6B?style=flat-square&logo=npm&logoColor=white" alt="Zero npm Dependencies" />
   <img src="https://img.shields.io/badge/Storage-node%3Asqlite-003B57?style=flat-square&logo=sqlite&logoColor=white" alt="Native SQLite" />
@@ -30,7 +30,7 @@
 </p>
 
 <p>
-  <a href="#-v240-最新版本核心特性">🚀 最新特性</a> •
+  <a href="#-v241-最新版本核心特性">🚀 最新特性</a> •
   <a href="#-三大工作台">🌐 三大工作台</a> •
   <a href="#-外观皮肤与头像工坊">🎨 外观工坊</a> •
   <a href="#-五大内置剧本与-20-位角色">🎬 剧本角色</a> •
@@ -47,12 +47,12 @@
 
 ---
 
-## 🚀 v2.4.0 最新版本核心特性
+## 🚀 v2.4.1 最新版本核心特性
 
-1. **鲸鱼娘 12 姿态原声语音动作 & 米饭小歌清唱**：桌面悬浮窗导入全套 12 姿态大肥鱼透明立绘与 25 条互联网原声语音，支持喂米饭、摸头、跳舞、讲热梗等动作响应，并内置原生 `AudioTrack` 八音盒 3 首米饭主题唱歌与逐句滚动歌词。
-2. **QQ 音乐深度联动 + 实时时间轴歌词**：通过 `MediaSession` 与无障碍通知感知同步 QQ 音乐曲目及暂停态，搭配后端 `/api/music/lyrics` 实时 LRC 歌词同步滚动，支持语音/快捷点播歌曲与切上下首。
-3. **语音全流程多提示 & 折叠态快捷说话**：悬浮窗折叠态新增一键直达麦克风按钮，录音中展示动态声波、分贝收音提醒及试说口令向导，支持“说完直发”免二次点击。
-4. **手机端剧情模式真 QQ 气泡与背景 & 随身版同步升级**：彻底去除外围白框实现「一段话一个独立气泡」，双端同步升级至 `v2.4.0 (Build 141)`。
+1. **大肥鱼自主生活动作、防误触保护 & 语音尾巴自由开关**：桌面悬浮大肥鱼会自动定时干饭、散步、看书、讨饭、摇尾并伴随灵动呼吸晃动；新增「防误触」模式单点不弹窗（连点 3 下解锁面板）；折叠态「语音尾巴」可自由一键隐藏开启。
+2. **全透明悬浮桌面歌词**：QQ 音乐播放或鲸鱼娘唱歌时，纯透明无底框高对比度歌词直接漂浮手机屏幕上方，默认触摸穿透不挡手指操作，并支持解锁拖调高度位置。
+3. **鲸鱼娘 12 姿态原声语音动作 & 米饭小歌清唱**：完整 12 姿态立绘与 25 条原声语音，内置 3 首米饭主题八音盒清唱曲目。
+4. **手机端剧情模式真 QQ 气泡与随身版同步升级**：一段话一个独立气泡搭配 QQ 纯净背景，双端同步升级至 `v2.4.1 (Build 142)`。
 5. **三通道独立隔离连接中心与极速预压缩管线**：本地直连 / DeepSeek 官方 API / 自定义云端 API 独立切换，`scripts/build-static-assets.mjs` 全面提供 `.gz` 与 `.br` 极速加载。
 
 ---

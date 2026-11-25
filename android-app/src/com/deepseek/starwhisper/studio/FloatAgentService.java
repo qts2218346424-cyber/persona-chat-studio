@@ -11,6 +11,7 @@ import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.content.pm.ServiceInfo;
 import android.graphics.Canvas;
@@ -80,6 +81,7 @@ import java.util.regex.Pattern;
 public class FloatAgentService extends Service {
     private static final String FG_CHANNEL_ID = "pa_agent_running";
     private static final int FG_NOTIFICATION_ID = 2201;
+    private static final String PREFS_NAME = "whale_float_prefs";
     private static final String ASR_ENDPOINT = "https://star.claudexxb.online/api/asr/transcribe";
     private static final String LYRICS_ENDPOINT = "https://star.claudexxb.online/api/music/lyrics";
 
@@ -120,6 +122,27 @@ public class FloatAgentService extends Service {
     private TextView autoSendToggleBtn;
     private boolean voiceAutoSend = true;
     private boolean voiceQuickDirectMode = false;
+
+    // 桌宠个性开关与透明悬浮歌词状态（持久化保存在 SharedPreferences）
+    private boolean showVoiceTail = true;
+    private boolean antiMistouchEnabled = false;
+    private boolean floatingLyricsEnabled = true;
+    private boolean lyricsDragMode = false;
+    private int savedLyricsY = 180;
+    private int tripleTapCount = 0;
+    private long lastMistouchTapMs = 0L;
+    private long lastMistouchToastMs = 0L;
+    private int autoLifeStep = 0;
+
+    // 独立全透明背景桌面漂浮歌词窗
+    private LinearLayout floatingLyricRootView;
+    private WindowManager.LayoutParams floatingLyricParams;
+    private TextView floatingLyricSubText;
+    private TextView floatingLyricMainText;
+    private TextView voiceTailToggleBtn;
+    private TextView antiMistouchToggleBtn;
+    private TextView floatingLyricsToggleBtn;
+    private TextView floatingLyricsMoveBtn;
 
     private ValueAnimator petBreathAnim;
     private ValueAnimator petActionAnim;
@@ -221,8 +244,73 @@ public class FloatAgentService extends Service {
         public void run() {
             if (!isExpanded && !isDraggingPet && "idle".equals(sCurrentStatus) && petBubbleContainer != null
                     && !qqMusicPlaying && (singerEngine == null || !singerEngine.isSinging())) {
-                setPetPoseDrawable(R.drawable.feiyu_sleepy);
-                petBubbleContainer.animate().alpha(0.76f).setDuration(280).start();
+                petBubbleContainer.animate().alpha(0.88f).setDuration(350).start();
+            }
+        }
+    };
+
+    private final Runnable lifePoseResetRunnable = new Runnable() {
+        @Override
+        public void run() {
+            if ("idle".equals(sCurrentStatus) && !isDraggingPet && !isRecordingVoice && !qqMusicPlaying
+                    && (singerEngine == null || !singerEngine.isSinging())) {
+                setPetPoseDrawable(R.drawable.feiyu_idle);
+            }
+        }
+    };
+
+    private final Runnable autonomousLifeRunnable = new Runnable() {
+        @Override
+        public void run() {
+            if (sInstance == null) return;
+            if (!isExpanded && !isDraggingPet && "idle".equals(sCurrentStatus)
+                    && !isRecordingVoice && !qqMusicPlaying
+                    && (singerEngine == null || !singerEngine.isSinging())) {
+                int step = autoLifeStep % 6;
+                autoLifeStep++;
+                int pose = R.drawable.feiyu_eating;
+                String anim = "eat";
+                switch (step) {
+                    case 0:
+                        pose = R.drawable.feiyu_eating;
+                        anim = "eat";
+                        break;
+                    case 1:
+                        pose = R.drawable.feiyu_walk;
+                        anim = "walk";
+                        break;
+                    case 2:
+                        pose = R.drawable.feiyu_focus;
+                        anim = "bounce";
+                        break;
+                    case 3:
+                        pose = R.drawable.feiyu_dance;
+                        anim = "dance";
+                        break;
+                    case 4:
+                        pose = R.drawable.feiyu_beg;
+                        anim = "eat";
+                        break;
+                    case 5:
+                    default:
+                        pose = R.drawable.feiyu_happy;
+                        anim = "bounce";
+                        break;
+                }
+                setPetPoseDrawable(pose);
+                playPetBounceAnim(anim);
+                mainHandler.removeCallbacks(lifePoseResetRunnable);
+                mainHandler.postDelayed(lifePoseResetRunnable, 4200);
+            }
+            mainHandler.postDelayed(this, 11000);
+        }
+    };
+
+    private final Runnable floatingLyricLockRunnable = new Runnable() {
+        @Override
+        public void run() {
+            if (lyricsDragMode) {
+                setLyricsDragMode(false);
             }
         }
     };
@@ -487,9 +575,42 @@ public class FloatAgentService extends Service {
         });
     }
 
+    public static void openPanelFromBridge() {
+        final FloatAgentService inst = sInstance;
+        if (inst == null) return;
+        inst.mainHandler.post(new Runnable() {
+            @Override
+            public void run() {
+                inst.expandPanel();
+            }
+        });
+    }
+
     @Override
     public IBinder onBind(Intent intent) {
         return null;
+    }
+
+    private void loadPrefs() {
+        try {
+            SharedPreferences sp = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+            showVoiceTail = sp.getBoolean("show_voice_tail", true);
+            antiMistouchEnabled = sp.getBoolean("anti_mistouch", false);
+            floatingLyricsEnabled = sp.getBoolean("floating_lyrics", true);
+            savedLyricsY = sp.getInt("lyrics_y", dp(88));
+        } catch (Exception ignored) {}
+    }
+
+    private void savePrefBool(String key, boolean val) {
+        try {
+            getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit().putBoolean(key, val).apply();
+        } catch (Exception ignored) {}
+    }
+
+    private void savePrefInt(String key, int val) {
+        try {
+            getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit().putInt(key, val).apply();
+        } catch (Exception ignored) {}
     }
 
     @Override
@@ -497,16 +618,19 @@ public class FloatAgentService extends Service {
         super.onCreate();
         sInstance = this;
         sEmergencyStopRequested = false;
+        loadPrefs();
         singerEngine = new WhaleSingerEngine();
         initEdgeGlowOverlay();
+        initFloatingLyricOverlay();
         initFloatingView();
         mainHandler.postDelayed(lyricTickRunnable, 700);
+        mainHandler.postDelayed(autonomousLifeRunnable, 5500);
         // 开窗轻微打个招呼
         mainHandler.postDelayed(new Runnable() {
             @Override
             public void run() {
                 if (sInstance != null && isRunning()) {
-                    showPetSubtitle("🐟 大肥鱼来啦！想喂我吃米饭、听我唱歌还是放 QQ 音乐？", 3800);
+                    showPetSubtitle("🐟 大肥鱼来啦！会自己干饭溜达，还能开防误触与透明歌词~", 3800);
                 }
             }
         }, 650);
@@ -722,6 +846,7 @@ public class FloatAgentService extends Service {
         petBubbleContainer.addView(quickMicBadgeView);
         petBubbleContainer.addView(statusPillView);
 
+        applyVoiceTailVisibility();
         applyStatusStyle("idle", "dsh-Go", false);
         startPetBreathAnim();
 
@@ -732,7 +857,7 @@ public class FloatAgentService extends Service {
         floatRootView.addView(petBubbleContainer);
         floatRootView.addView(expandPanel);
 
-        // 拖拽拎起鲸鱼娘 + 晕乎彩蛋 + 贴边吸附 + 轻触互动/双击
+        // 拖拽拎起鲸鱼娘 + 晕乎彩蛋 + 贴边吸附 + 防误触保护 + 轻触/双击/三连击解锁
         View.OnTouchListener dragListener = new View.OnTouchListener() {
             private int initialX;
             private int initialY;
@@ -796,8 +921,33 @@ public class FloatAgentService extends Service {
                             petAvatarView.setRotation(0f);
                         }
 
-                        if (!wasDragging && duration < 280 && diffX < dp(8) && diffY < dp(8)) {
+                        if (!wasDragging && duration < 300 && diffX < dp(8) && diffY < dp(8)) {
                             long now = System.currentTimeMillis();
+                            if (antiMistouchEnabled) {
+                                // 防误触模式：单点不弹窗，仅萌萌弹跳回应；连点 3 下解锁面板
+                                if (now - lastMistouchTapMs <= 520L) {
+                                    tripleTapCount++;
+                                } else {
+                                    tripleTapCount = 1;
+                                }
+                                lastMistouchTapMs = now;
+                                if (tripleTapCount >= 3) {
+                                    tripleTapCount = 0;
+                                    handleBubbleClick();
+                                } else {
+                                    setPetPoseDrawable(R.drawable.feiyu_happy);
+                                    playPetBounceAnim("bounce");
+                                    mainHandler.removeCallbacks(lifePoseResetRunnable);
+                                    mainHandler.postDelayed(lifePoseResetRunnable, 1500);
+                                    if (tripleTapCount == 1 && now - lastMistouchToastMs > 12000L) {
+                                        lastMistouchToastMs = now;
+                                        Toast.makeText(FloatAgentService.this,
+                                                "🛡️ 防误触保护中：单点不弹窗（连点 3 下打开面板）",
+                                                Toast.LENGTH_SHORT).show();
+                                    }
+                                }
+                                return true;
+                            }
                             if (now - lastTapPetMs < 320) {
                                 lastTapPetMs = 0L;
                                 triggerFeedRiceAction();
@@ -814,8 +964,13 @@ public class FloatAgentService extends Service {
                                 }, 310);
                             }
                         } else if (!wasDragging && duration >= 580 && diffX < dp(10) && diffY < dp(10)) {
-                            // 长按鲸鱼娘直接开始快捷语音
-                            startQuickCollapsedVoice();
+                            // 长按：防误触模式下不触发录音，普通模式下快捷开麦
+                            if (!antiMistouchEnabled) {
+                                startQuickCollapsedVoice();
+                            } else {
+                                setPetPoseDrawable(R.drawable.feiyu_beg);
+                                playPetBounceAnim("bounce");
+                            }
                         } else {
                             int petW = petBubbleContainer.getWidth() > 0 ? petBubbleContainer.getWidth() : dp(64);
                             int center = layoutParams.x + petW / 2;
@@ -846,19 +1001,173 @@ public class FloatAgentService extends Service {
         }
     }
 
+    private void applyVoiceTailVisibility() {
+        if (quickMicBadgeView != null) {
+            quickMicBadgeView.setVisibility(showVoiceTail ? View.VISIBLE : View.GONE);
+        }
+    }
+
+    // ========= 全透明背景桌面漂浮歌词窗（默认触摸穿透不挡操作，可拖动调位置） =========
+    private void initFloatingLyricOverlay() {
+        if (windowManager == null) {
+            windowManager = (WindowManager) getSystemService(Context.WINDOW_SERVICE);
+        }
+        if (windowManager == null) return;
+
+        DisplayMetrics dm = getResources().getDisplayMetrics();
+        int width = Math.min((int) (dm.widthPixels * 0.92f), dp(360));
+
+        floatingLyricRootView = new LinearLayout(this);
+        floatingLyricRootView.setOrientation(LinearLayout.VERTICAL);
+        floatingLyricRootView.setGravity(Gravity.CENTER_HORIZONTAL);
+        floatingLyricRootView.setPadding(dp(10), dp(4), dp(10), dp(4));
+        floatingLyricRootView.setBackgroundColor(Color.TRANSPARENT);
+
+        floatingLyricSubText = new TextView(this);
+        floatingLyricSubText.setTextSize(11f);
+        floatingLyricSubText.setTextColor(Color.parseColor("#E0F2FE"));
+        floatingLyricSubText.setGravity(Gravity.CENTER);
+        floatingLyricSubText.setSingleLine(true);
+        floatingLyricSubText.setEllipsize(TextUtils.TruncateAt.END);
+        floatingLyricSubText.setShadowLayer(dp(3), 0f, dp(1), Color.parseColor("#E6000000"));
+
+        floatingLyricMainText = new TextView(this);
+        floatingLyricMainText.setTextSize(16.5f);
+        floatingLyricMainText.setTypeface(null, android.graphics.Typeface.BOLD);
+        floatingLyricMainText.setTextColor(Color.parseColor("#FFFFFF"));
+        floatingLyricMainText.setGravity(Gravity.CENTER);
+        floatingLyricMainText.setMaxLines(2);
+        floatingLyricMainText.setEllipsize(TextUtils.TruncateAt.END);
+        floatingLyricMainText.setShadowLayer(dp(4), 0f, dp(1), Color.parseColor("#F0000000"));
+
+        floatingLyricRootView.addView(floatingLyricSubText);
+        floatingLyricRootView.addView(floatingLyricMainText);
+        floatingLyricRootView.setVisibility(View.GONE);
+
+        floatingLyricParams = new WindowManager.LayoutParams(
+                width,
+                WindowManager.LayoutParams.WRAP_CONTENT,
+                overlayWindowType(),
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                        | WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+                        | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+                        | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                PixelFormat.TRANSLUCENT
+        );
+        floatingLyricParams.gravity = Gravity.TOP | Gravity.CENTER_HORIZONTAL;
+        floatingLyricParams.y = savedLyricsY;
+
+        floatingLyricRootView.setOnTouchListener(new View.OnTouchListener() {
+            private int startY;
+            private float touchY;
+
+            @Override
+            public boolean onTouch(View v, MotionEvent event) {
+                if (!lyricsDragMode) return false;
+                DisplayMetrics d = getResources().getDisplayMetrics();
+                switch (event.getAction()) {
+                    case MotionEvent.ACTION_DOWN:
+                        mainHandler.removeCallbacks(floatingLyricLockRunnable);
+                        startY = floatingLyricParams.y;
+                        touchY = event.getRawY();
+                        return true;
+                    case MotionEvent.ACTION_MOVE:
+                        int nextY = startY + (int) (event.getRawY() - touchY);
+                        floatingLyricParams.y = Math.max(dp(32), Math.min(nextY, d.heightPixels - dp(96)));
+                        try {
+                            windowManager.updateViewLayout(floatingLyricRootView, floatingLyricParams);
+                        } catch (Exception ignored) {}
+                        return true;
+                    case MotionEvent.ACTION_UP:
+                    case MotionEvent.ACTION_CANCEL:
+                        savedLyricsY = floatingLyricParams.y;
+                        savePrefInt("lyrics_y", savedLyricsY);
+                        mainHandler.postDelayed(floatingLyricLockRunnable, 1400);
+                        return true;
+                }
+                return false;
+            }
+        });
+
+        try {
+            windowManager.addView(floatingLyricRootView, floatingLyricParams);
+        } catch (Exception ignored) {
+            floatingLyricRootView = null;
+        }
+    }
+
+    private void setLyricsDragMode(boolean enableDrag) {
+        if (floatingLyricRootView == null || floatingLyricParams == null || windowManager == null) return;
+        lyricsDragMode = enableDrag;
+        mainHandler.removeCallbacks(floatingLyricLockRunnable);
+        if (enableDrag) {
+            floatingLyricParams.flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                    | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+                    | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS;
+            setViewBg(floatingLyricRootView, createRoundRect("#330F172A", 12, "#38BDF8", 1));
+            floatingLyricSubText.setText("📌 上下拖动此条可调整透明歌词位置（松手自动锁定穿透）");
+            if (TextUtils.isEmpty(floatingLyricMainText.getText())) {
+                floatingLyricMainText.setText("🎵 故事的小黄花 从出生那年就飘着~");
+            }
+            floatingLyricRootView.setVisibility(View.VISIBLE);
+            mainHandler.postDelayed(floatingLyricLockRunnable, 8000);
+        } else {
+            floatingLyricParams.flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                    | WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+                    | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+                    | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS;
+            floatingLyricRootView.setBackgroundColor(Color.TRANSPARENT);
+            updateFloatingLyricOverlay();
+            Toast.makeText(this, "已锁定透明歌词位置（恢复屏幕穿透）", Toast.LENGTH_SHORT).show();
+        }
+        try {
+            windowManager.updateViewLayout(floatingLyricRootView, floatingLyricParams);
+        } catch (Exception ignored) {}
+    }
+
+    private void updateFloatingLyricOverlay() {
+        if (floatingLyricRootView == null) return;
+        if (lyricsDragMode) return;
+        if (!floatingLyricsEnabled) {
+            floatingLyricRootView.setVisibility(View.GONE);
+            return;
+        }
+        boolean isSingingNow = singerEngine != null && singerEngine.isSinging();
+        if (isSingingNow) {
+            String line = singerEngine.getCurrentLine();
+            floatingLyricSubText.setText("🎤 鲸鱼娘正在清唱");
+            floatingLyricMainText.setText(!TextUtils.isEmpty(line) ? line : "🎵 冒尖一碗大白米饭~");
+            floatingLyricRootView.setVisibility(View.VISIBLE);
+            return;
+        }
+        if (qqMusicPlaying && !qqMusicTitle.isEmpty()) {
+            String artistPart = qqMusicArtist.isEmpty() ? "" : (" - " + qqMusicArtist);
+            floatingLyricSubText.setText("🎵 " + qqMusicTitle + artistPart);
+            String lyr = !qqMusicCurrentLyric.isEmpty() ? qqMusicCurrentLyric : ("♪ " + qqMusicTitle);
+            floatingLyricMainText.setText(lyr);
+            floatingLyricRootView.setVisibility(View.VISIBLE);
+            return;
+        }
+        floatingLyricRootView.setVisibility(View.GONE);
+    }
+
     private void startPetBreathAnim() {
         if (petBreathAnim != null) {
             petBreathAnim.cancel();
         }
-        petBreathAnim = ValueAnimator.ofFloat(0f, -dp(4));
-        petBreathAnim.setDuration(1450);
+        petBreathAnim = ValueAnimator.ofFloat(0f, 1f);
+        petBreathAnim.setDuration(1550);
         petBreathAnim.setRepeatMode(ValueAnimator.REVERSE);
         petBreathAnim.setRepeatCount(ValueAnimator.INFINITE);
         petBreathAnim.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
             @Override
             public void onAnimationUpdate(ValueAnimator animation) {
                 if (petAvatarView != null && !isDraggingPet && !isExpanded) {
-                    petAvatarView.setTranslationY((float) animation.getAnimatedValue());
+                    float f = (float) animation.getAnimatedValue();
+                    petAvatarView.setTranslationY(-dp(5) * f);
+                    petAvatarView.setScaleX(1f + 0.03f * f);
+                    petAvatarView.setScaleY(1f + 0.04f * f);
+                    petAvatarView.setRotation(-2.2f + 4.4f * f);
                 }
             }
         });
@@ -887,6 +1196,20 @@ public class FloatAgentService extends Service {
                     target.setScaleY(1f + 0.08f * f);
                     target.setScaleX(1f - 0.04f * f);
                     target.setTranslationY(-dp(4) * f);
+                }
+            });
+        } else if ("walk".equals(animType)) {
+            petActionAnim = ValueAnimator.ofFloat(-1f, 1f);
+            petActionAnim.setDuration(520);
+            petActionAnim.setRepeatCount(5);
+            petActionAnim.setRepeatMode(ValueAnimator.REVERSE);
+            petActionAnim.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
+                @Override
+                public void onAnimationUpdate(ValueAnimator a) {
+                    float f = (float) a.getAnimatedValue();
+                    target.setTranslationX(dp(6) * f);
+                    target.setTranslationY(-dp(3) * Math.abs(f));
+                    target.setRotation(5f * f);
                 }
             });
         } else if ("dance".equals(animType)) {
@@ -934,6 +1257,7 @@ public class FloatAgentService extends Service {
                 target.setRotation(0f);
                 target.setScaleX(1f);
                 target.setScaleY(1f);
+                target.setTranslationX(0f);
                 target.setTranslationY(0f);
             }
         });
@@ -950,7 +1274,7 @@ public class FloatAgentService extends Service {
     private void scheduleIdleSleep() {
         mainHandler.removeCallbacks(idleSleepRunnable);
         if (!isExpanded && "idle".equals(sCurrentStatus) && !qqMusicPlaying && (singerEngine == null || !singerEngine.isSinging())) {
-            mainHandler.postDelayed(idleSleepRunnable, 6000);
+            mainHandler.postDelayed(idleSleepRunnable, 45000);
         }
     }
 
@@ -1115,7 +1439,67 @@ public class FloatAgentService extends Service {
         petActionRow.addView(memeBtn);
         panel.addView(petActionRow);
 
-        // 4. QQ 音乐联动迷你卡片（实时歌词 + 切歌 + 点歌）
+        // 3b. 个性开关一行：防误触保护 + 折叠语音尾巴开关 + 透明悬浮歌词开关
+        LinearLayout prefSwitchRow = new LinearLayout(this);
+        prefSwitchRow.setOrientation(LinearLayout.HORIZONTAL);
+        LinearLayout.LayoutParams psLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        psLp.topMargin = dp(6);
+        prefSwitchRow.setLayoutParams(psLp);
+
+        antiMistouchToggleBtn = createGridBtn("🛡️防误触:关");
+        antiMistouchToggleBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                antiMistouchEnabled = !antiMistouchEnabled;
+                savePrefBool("anti_mistouch", antiMistouchEnabled);
+                refreshPrefSwitchButtons();
+                Toast.makeText(FloatAgentService.this,
+                        antiMistouchEnabled
+                                ? "已开启防误触：单点大肥鱼不弹窗（连点 3 下打开面板）"
+                                : "已关闭防误触：单击即可展开面板",
+                        Toast.LENGTH_LONG).show();
+            }
+        });
+
+        voiceTailToggleBtn = createGridBtn("🎙语音尾巴:开");
+        voiceTailToggleBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                showVoiceTail = !showVoiceTail;
+                savePrefBool("show_voice_tail", showVoiceTail);
+                applyVoiceTailVisibility();
+                refreshPrefSwitchButtons();
+                Toast.makeText(FloatAgentService.this,
+                        showVoiceTail ? "已显示折叠态快捷语音尾巴" : "已隐藏折叠态语音尾巴（只保留大肥鱼本体）",
+                        Toast.LENGTH_SHORT).show();
+            }
+        });
+
+        floatingLyricsToggleBtn = createGridBtn("🪟透明歌词:开");
+        LinearLayout.LayoutParams fltLp = (LinearLayout.LayoutParams) floatingLyricsToggleBtn.getLayoutParams();
+        fltLp.rightMargin = 0;
+        floatingLyricsToggleBtn.setLayoutParams(fltLp);
+        floatingLyricsToggleBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                floatingLyricsEnabled = !floatingLyricsEnabled;
+                savePrefBool("floating_lyrics", floatingLyricsEnabled);
+                refreshPrefSwitchButtons();
+                updateFloatingLyricOverlay();
+                refreshCollapsedPill();
+                Toast.makeText(FloatAgentService.this,
+                        floatingLyricsEnabled ? "已开启纯透明桌面悬浮歌词" : "已关闭桌面悬浮歌词",
+                        Toast.LENGTH_SHORT).show();
+            }
+        });
+
+        prefSwitchRow.addView(antiMistouchToggleBtn);
+        prefSwitchRow.addView(voiceTailToggleBtn);
+        prefSwitchRow.addView(floatingLyricsToggleBtn);
+        panel.addView(prefSwitchRow);
+        refreshPrefSwitchButtons();
+
+        // 4. QQ 音乐联动迷你卡片（实时歌词 + 切歌 + 点歌 + 透明歌词调节）
         panel.addView(buildQqMusicCard());
 
         // 5. 主任务 / 语音输入舱 + 动态语音提示向导条
@@ -1396,9 +1780,6 @@ public class FloatAgentService extends Service {
         });
 
         TextView pickSongBtn = createGridBtn("🔍点歌");
-        LinearLayout.LayoutParams pickLp = (LinearLayout.LayoutParams) pickSongBtn.getLayoutParams();
-        pickLp.rightMargin = 0;
-        pickSongBtn.setLayoutParams(pickLp);
         pickSongBtn.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -1409,10 +1790,28 @@ public class FloatAgentService extends Service {
             }
         });
 
+        floatingLyricsMoveBtn = createGridBtn("📌调词位");
+        LinearLayout.LayoutParams mvLp = (LinearLayout.LayoutParams) floatingLyricsMoveBtn.getLayoutParams();
+        mvLp.rightMargin = 0;
+        floatingLyricsMoveBtn.setLayoutParams(mvLp);
+        floatingLyricsMoveBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                if (!floatingLyricsEnabled) {
+                    floatingLyricsEnabled = true;
+                    savePrefBool("floating_lyrics", true);
+                    refreshPrefSwitchButtons();
+                }
+                collapsePanel();
+                setLyricsDragMode(true);
+            }
+        });
+
         ctrlRow.addView(prevBtn);
         ctrlRow.addView(musicPlayPauseBtn);
         ctrlRow.addView(nextBtn);
         ctrlRow.addView(pickSongBtn);
+        ctrlRow.addView(floatingLyricsMoveBtn);
         card.addView(ctrlRow);
 
         // 折叠点歌输入框
@@ -1494,6 +1893,39 @@ public class FloatAgentService extends Service {
         return box;
     }
 
+    private void refreshPrefSwitchButtons() {
+        if (antiMistouchToggleBtn != null) {
+            antiMistouchToggleBtn.setText(antiMistouchEnabled ? "🛡️防误触:开" : "🛡️防误触:关");
+            antiMistouchToggleBtn.setTextColor(Color.parseColor(antiMistouchEnabled ? "#A7F3D0" : "#CBD5E1"));
+            setViewBg(antiMistouchToggleBtn, createRoundRect(
+                    antiMistouchEnabled ? "#064E3B" : "#1E293B",
+                    8,
+                    antiMistouchEnabled ? "#10B981" : "#334155",
+                    1
+            ));
+        }
+        if (voiceTailToggleBtn != null) {
+            voiceTailToggleBtn.setText(showVoiceTail ? "🎙语音尾巴:开" : "🎙语音尾巴:关");
+            voiceTailToggleBtn.setTextColor(Color.parseColor(showVoiceTail ? "#BAE6FD" : "#94A3B8"));
+            setViewBg(voiceTailToggleBtn, createRoundRect(
+                    showVoiceTail ? "#0C4A6E" : "#1E293B",
+                    8,
+                    showVoiceTail ? "#0EA5E9" : "#334155",
+                    1
+            ));
+        }
+        if (floatingLyricsToggleBtn != null) {
+            floatingLyricsToggleBtn.setText(floatingLyricsEnabled ? "🪟透明歌词:开" : "🪟透明歌词:关");
+            floatingLyricsToggleBtn.setTextColor(Color.parseColor(floatingLyricsEnabled ? "#FDE68A" : "#94A3B8"));
+            setViewBg(floatingLyricsToggleBtn, createRoundRect(
+                    floatingLyricsEnabled ? "#451A03" : "#1E293B",
+                    8,
+                    floatingLyricsEnabled ? "#F59E0B" : "#334155",
+                    1
+            ));
+        }
+    }
+
     private void refreshAutoSendChip() {
         if (autoSendToggleBtn == null) return;
         autoSendToggleBtn.setText(voiceAutoSend ? "⚡说完直发:开" : "⚡说完直发:关");
@@ -1557,6 +1989,7 @@ public class FloatAgentService extends Service {
             feedbackTextView.setText(text);
             feedbackTextView.setTextColor(Color.parseColor("#BAE6FD"));
         }
+        updateFloatingLyricOverlay();
         refreshCollapsedPill();
         mainHandler.removeCallbacks(subtitleResetRunnable);
         if (durationMs > 0) {
@@ -1698,6 +2131,48 @@ public class FloatAgentService extends Service {
             if (singerEngine != null) singerEngine.stop();
             setPetPoseDrawable(R.drawable.feiyu_idle);
             showPetSubtitle("好哒，大肥鱼乖乖闭麦啦~ 🫧", 2600);
+            return true;
+        }
+        if (t.contains("关闭防误触") || t.contains("解锁防误触")) {
+            antiMistouchEnabled = false;
+            savePrefBool("anti_mistouch", false);
+            refreshPrefSwitchButtons();
+            showPetSubtitle("🔓 已关闭防误触模式，点我即可展开面板~", 3000);
+            return true;
+        }
+        if (t.contains("防误触") || t.contains("锁定悬浮窗")) {
+            antiMistouchEnabled = true;
+            savePrefBool("anti_mistouch", true);
+            refreshPrefSwitchButtons();
+            showPetSubtitle("🛡️ 已开启防误触：单点不会弹窗，连点3下打开面板~", 3400);
+            return true;
+        }
+        if (t.contains("关闭语音尾巴") || t.contains("隐藏语音")) {
+            showVoiceTail = false;
+            savePrefBool("show_voice_tail", false);
+            applyVoiceTailVisibility();
+            refreshPrefSwitchButtons();
+            return true;
+        }
+        if (t.contains("开启语音尾巴") || t.contains("打开语音尾巴") || t.contains("显示语音")) {
+            showVoiceTail = true;
+            savePrefBool("show_voice_tail", true);
+            applyVoiceTailVisibility();
+            refreshPrefSwitchButtons();
+            return true;
+        }
+        if (t.contains("关闭桌面歌词") || t.contains("关闭透明歌词")) {
+            floatingLyricsEnabled = false;
+            savePrefBool("floating_lyrics", false);
+            refreshPrefSwitchButtons();
+            updateFloatingLyricOverlay();
+            return true;
+        }
+        if (t.contains("打开桌面歌词") || t.contains("开启桌面歌词") || t.contains("开启透明歌词")) {
+            floatingLyricsEnabled = true;
+            savePrefBool("floating_lyrics", true);
+            refreshPrefSwitchButtons();
+            updateFloatingLyricOverlay();
             return true;
         }
         if (t.contains("热梗") || t.contains("笑话") || t.contains("说句话") || t.contains("配音") || t.contains("撒娇")) {
@@ -1941,6 +2416,7 @@ public class FloatAgentService extends Service {
             boolean granted = QqMusicListenerService.isNotificationAccessEnabled(this);
             musicPermHintView.setVisibility(granted ? View.GONE : View.VISIBLE);
         }
+        updateFloatingLyricOverlay();
         refreshCollapsedPill();
     }
 
@@ -1954,16 +2430,19 @@ public class FloatAgentService extends Service {
             statusTextView.setText("🎙️ 倾听中…说完点右侧钮");
             return;
         }
-        if (singerEngine != null && singerEngine.isSinging()) {
-            statusPillView.setVisibility(View.VISIBLE);
-            statusTextView.setText(singerEngine.getCurrentLine());
-            return;
-        }
-        if (qqMusicPlaying && !qqMusicTitle.isEmpty()) {
-            statusPillView.setVisibility(View.VISIBLE);
-            String lyr = !qqMusicCurrentLyric.isEmpty() ? qqMusicCurrentLyric : qqMusicTitle;
-            statusTextView.setText("🎵 " + lyr);
-            return;
+        // 已开启透明悬浮桌面歌词时，大肥鱼折叠态旁边保持极简干净，不重复显示黑底歌词条
+        if (!floatingLyricsEnabled) {
+            if (singerEngine != null && singerEngine.isSinging()) {
+                statusPillView.setVisibility(View.VISIBLE);
+                statusTextView.setText(singerEngine.getCurrentLine());
+                return;
+            }
+            if (qqMusicPlaying && !qqMusicTitle.isEmpty()) {
+                statusPillView.setVisibility(View.VISIBLE);
+                String lyr = !qqMusicCurrentLyric.isEmpty() ? qqMusicCurrentLyric : qqMusicTitle;
+                statusTextView.setText("🎵 " + lyr);
+                return;
+            }
         }
         statusPillView.setVisibility(View.GONE);
     }
@@ -3227,6 +3706,10 @@ public class FloatAgentService extends Service {
         if (edgeGlowView != null && windowManager != null) {
             try { windowManager.removeView(edgeGlowView); } catch (Exception ignored) {}
             edgeGlowView = null;
+        }
+        if (floatingLyricRootView != null && windowManager != null) {
+            try { windowManager.removeView(floatingLyricRootView); } catch (Exception ignored) {}
+            floatingLyricRootView = null;
         }
         AgentAccessibilityService a11y = AgentAccessibilityService.getInstance();
         if (a11y != null) {

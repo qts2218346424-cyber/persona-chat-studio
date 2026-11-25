@@ -1,5 +1,5 @@
 /* ==========================================================================
-   Phone Agent 手机端 AI 辅助助理与 dsh-Go 规划循环模块 (v2.4.0)
+   Phone Agent 手机端 AI 辅助助理与 dsh-Go 规划循环模块 (v2.4.1)
    1. 高度还原 dsh-Go 控屏内核：snapshotId/ref 精准控屏、ScreenVerdict 非阻塞验证、
       三档 SafetyGate 安全确认 + App 白名单、执行中途随时插话/排队、无障碍内联引导
    2. 高度还原 dsh-Go 交互 UI：运行中流光胶囊 + 完成后自动折叠单行轨迹 + 自然语言回复
@@ -7,8 +7,8 @@
    ========================================================================== */
 
 (() => {
-  const CURRENT_APK_VERSION = '2.4.0';
-  const CURRENT_APK_CODE = 141;
+  const CURRENT_APK_VERSION = '2.4.1';
+  const CURRENT_APK_CODE = 142;
   const DEEPSEEK_API_KEYS_URL = 'https://platform.deepseek.com/api_keys';
   const PUBLIC_WEB_ORIGIN = 'https://star.claudexxb.online';
   const GITHUB_RELEASES_URL = 'https://github.com/qts2218346424-cyber/persona-chat-studio/releases';
@@ -2146,7 +2146,7 @@
     const clean = String(text || '').trim();
     if (!clean || COMPOUND_TASK_SPLIT_RE.test(clean)) return false;
 
-    if (/^(回桌面|桌面|主页|home|返回|后退|上一页|back|最近任务|多任务|后台|切回上个应用|上个应用|切上个app|切换应用|下拉通知|通知栏|通知|控制中心|快捷设置|快捷开关|截屏|截图|屏幕截图|锁屏|息屏|电源菜单|音量\+|音量-|音量加|音量减|调大音量|调小音量|增大音量|降低音量|静音|取消静音|切换静音|下一首|下一首歌|切歌|换首歌|换一首歌|上一首|上一首歌|暂停音乐|停一下音乐|播放音乐|继续播放|继续放歌|读屏幕|读取屏幕|查看屏幕|点中间|点击中间|唱歌|唱首歌|唱一首|唱一首歌|给我唱歌|喂米饭|吃米饭|摸摸头|跳个舞|讲热梗)$/i.test(clean)) {
+    if (/^(回桌面|桌面|主页|home|返回|后退|上一页|back|最近任务|多任务|后台|切回上个应用|上个应用|切上个app|切换应用|下拉通知|通知栏|通知|控制中心|快捷设置|快捷开关|截屏|截图|屏幕截图|锁屏|息屏|电源菜单|音量\+|音量-|音量加|音量减|调大音量|调小音量|增大音量|降低音量|静音|取消静音|切换静音|下一首|下一首歌|切歌|换首歌|换一首歌|上一首|上一首歌|暂停音乐|停一下音乐|播放音乐|继续播放|继续放歌|读屏幕|读取屏幕|查看屏幕|点中间|点击中间|唱歌|唱首歌|唱一首|唱一首歌|给我唱歌|喂米饭|吃米饭|摸摸头|跳个舞|讲热梗|开启防误触|打开防误触|关闭防误触|解锁防误触|关闭语音尾巴|隐藏语音尾巴|开启语音尾巴|打开语音尾巴|关闭桌面歌词|关闭透明歌词|打开桌面歌词|开启桌面歌词|开启透明歌词)$/i.test(clean)) {
       return true;
     }
     if (/^(?:用qq音乐|在qq音乐|qq音乐)?\s*(?:播放|放一首|放首|点播|我想听|来一首|唱一首|听一下|听一首)\s*.+$/i.test(clean) && !/视频/.test(clean)) {
@@ -2240,8 +2240,8 @@
     const b = getBridge();
     if (!b) return { handled: false, reason: 'no_bridge' };
 
-    // 0. 鲸鱼娘桌面宠物互动（干饭/摸头/跳舞/唱歌/热梗）优先联动悬浮窗原声与动作
-    if (/^(?:喂米饭|吃米饭|喂食|干饭|摸摸头|摸头|跳个舞|跳舞|唱歌|唱首歌|唱一首|唱一首歌|给我唱歌|停唱|别唱了|讲热梗)$/i.test(clean) || (clean.includes('米饭') && clean.length <= 10)) {
+    // 0. 鲸鱼娘桌面宠物互动（干饭/摸头/跳舞/唱歌/热梗/防误触/语音尾巴/桌面歌词）优先联动悬浮窗原声与动作
+    if (/^(?:喂米饭|吃米饭|喂食|干饭|摸摸头|摸头|跳个舞|跳舞|唱歌|唱首歌|唱一首|唱一首歌|给我唱歌|停唱|别唱了|讲热梗|开启防误触|打开防误触|关闭防误触|解锁防误触|关闭语音尾巴|隐藏语音尾巴|开启语音尾巴|打开语音尾巴|关闭桌面歌词|关闭透明歌词|打开桌面歌词|开启桌面歌词|开启透明歌词)$/i.test(clean) || (clean.includes('米饭') && clean.length <= 10)) {
       if (typeof b.startFloatAgent === 'function' && typeof b.isFloatAgentRunning === 'function' && !b.isFloatAgentRunning()) {
         try { b.startFloatAgent(); } catch {}
       }

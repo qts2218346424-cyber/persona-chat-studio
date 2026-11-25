@@ -194,10 +194,10 @@ const {{ db, getRawPlatformConfigInternal, updateAdminPlatformConfig, saveAdminA
 db.prepare("DELETE FROM personas WHERE id = \\x27persona_linqi\\x27").run();
 db.prepare("UPDATE site_announcements SET enabled = 0").run();
 saveAdminAnnouncement("admin", {{
-  title: "星语恋庭 v2.4.0 重磅更新：鲸鱼娘原声唱歌动作、QQ 音乐歌词联动上线",
-  content: "1. 【鲸鱼娘 12 姿态原声语音 & 米饭唱歌】：悬浮窗新增 25 条互联网热门原声语音、喂白米饭/摸头/跳舞互动及水灵八音盒 3 首米饭主题唱歌歌词！\\n2. 【QQ 音乐深度联动 + 同步歌词】：支持语音点播歌曲、切上下首/暂停、云端时间轴 LRC 滚动歌词同步显示在鲸鱼娘悬浮胶囊中。\\n3. 【语音全流程多提示 & 手机 QQ 真气泡】：折叠态一键快捷语音 + 实时声波音量条提示；手机剧情模式纯净 QQ 背景一段一气泡，双端同步升级 v2.4.0 (Build 141)！",
+  title: "星语恋庭 v2.4.1 更新：大肥鱼主动生活动作、防误触与全透明桌面歌词上线",
+  content: "1. 【大肥鱼自主行为与动作升级】：新增定时自主干饭/散步/看书/讨饭/摇尾生活动作循环，呼吸姿态自然摇曳。\\n2. 【防误触保护 & 语音尾巴自由开关】：开启防误触后单点不弹窗仅萌动回应，连点 3 下解锁面板；折叠态语音小尾巴可一键隐藏关闭。\\n3. 【全透明悬浮桌面歌词】：支持纯透明无底框歌词直接漂浮手机页面上方（触摸穿透不挡操作，可拖动调高度），随身版升级至 v2.4.1 (Build 142)！",
   enabled: true,
-  version: 141
+  version: 142
 }});
 db.prepare("UPDATE sessions SET companion_config = NULL").run();
 db.prepare("UPDATE user_settings SET value = \\x27demo\\x27 WHERE key = \\x27provider\\x27").run();

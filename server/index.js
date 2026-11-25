@@ -595,8 +595,8 @@ function extractAuthToken(req, parsedUrl = null) {
   return '';
 }
 
-const APP_LATEST_VERSION = '2.4.0';
-const APP_LATEST_VERSION_CODE = 141;
+const APP_LATEST_VERSION = '2.4.1';
+const APP_LATEST_VERSION_CODE = 142;
 const APP_OFFICIAL_CERT_SHA256 = '6fd05e32a3cabf327140129d866e55a342fe30daa3384c67aad4b3cbdd98a17b';
 const APP_UPDATE_TICKET_SECRET = crypto
   .createHash('sha256')
@@ -887,9 +887,9 @@ async function handleApi(req, res, pathname, parsedUrl) {
       forceUpdate,
       diffGenerations,
       changelog: [
-        '【鲸鱼娘 12 姿态原声语音 & 唱歌】引入全套 12 姿态大肥鱼立绘与 25 条互联网原声语音（干饭米饭/摸头摇尾/热梗傲娇/拖拽晕乎），新增水灵八音盒 3 首米饭主题唱歌与同步歌词',
-        '【QQ 音乐深度联动与歌词】支持语音点播、切上下首、暂停播放及云端 /api/music/lyrics 实时时间轴歌词同步滚动，悬浮折叠态直显歌词胶囊',
-        '【语音全流程多提示 & 手机端 QQ 真气泡】新增折叠态一键快捷语音与实时声波音量反馈、口令引导；手机剧情模式「一段话一个独立气泡」+ 洁净 QQ 背景升级至 v2.4.0 (Build 141)'
+        '【大肥鱼自主生活动作 & 防误触保护】新增定时自主干饭/溜达/看书/讨饭/摇尾动作循环，不再静态发呆；新增「🛡️防误触」模式，单点不弹窗仅萌动回应，连点3下即可解锁面板',
+        '【全透明悬浮桌面歌词】QQ 音乐与鲸鱼娘清唱支持纯透明背景文字+高对比描边直接漂浮手机屏幕（默认触摸穿透不挡手），支持一键开关与拖拽调节歌词高度',
+        '【语音尾巴自由开关】可自由显示或隐藏折叠态「🎙语音尾巴」还你极简萌宠本体，双端同步升级至 v2.4.1 (Build 142)'
       ]
     };
 

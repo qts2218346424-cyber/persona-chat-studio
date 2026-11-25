@@ -1011,6 +1011,11 @@ public class MainActivity extends Activity {
         }
 
         @JavascriptInterface
+        public void openFloatPanel() {
+            FloatAgentService.openPanelFromBridge();
+        }
+
+        @JavascriptInterface
         public boolean dispatchGlobalAction(String action) {
             AgentAccessibilityService service = AgentAccessibilityService.getInstance();
             if (service == null) return false;

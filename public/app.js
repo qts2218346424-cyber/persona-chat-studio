@@ -73,7 +73,7 @@
     hasMoreMessages: false,
     totalMessages: 0,
     oldestMessageId: 0,
-    appVersion: '2.4.0',
+    appVersion: '2.4.1',
     tourIndex: 0,
     tourActive: false,
     llmMode: localStorage.getItem('user_llm_mode') || 'local_antigravity',
@@ -277,7 +277,7 @@
   }
 
   function syncWebVersionBadges(verStr) {
-    const raw = String(verStr || state.appVersion || '2.4.0').trim().replace(/^v/i, '');
+    const raw = String(verStr || state.appVersion || '2.4.1').trim().replace(/^v/i, '');
     if (!raw) return;
     const vLabel = `v${raw}`;
     const isNativeApk = Boolean(
@@ -3519,7 +3519,7 @@
       tunnelProbe?.online ? '本机电脑 Antigravity 直连' : report.channels?.localCli?.transport === 'local_cli' ? '本机 CLI 就绪' : '电脑离线时自动回退'
     );
 
-    setTxt('adm-sys-meta', `v${sys.appVersion || '2.4.0'} · ${sys.platform || ''} · Node ${sys.nodeVersion || ''} · ${sys.cpuCores || 1} 核 (负载 ${sys.load1m ?? 0})`);
+    setTxt('adm-sys-meta', `v${sys.appVersion || '2.4.1'} · ${sys.platform || ''} · Node ${sys.nodeVersion || ''} · ${sys.cpuCores || 1} 核 (负载 ${sys.load1m ?? 0})`);
     setTxt('adm-stat-mem', `${sys.memUsedPct ?? 0}% (进程 ${sys.rssMb ?? 0} MB)`);
     setTxt('adm-stat-db', `${formatBytesCompact(dbInfo.dbSizeBytes)} / ${formatBytesCompact(dbInfo.walSizeBytes)}`);
     setTxt('adm-stat-uptime', formatUptimeCompact(sys.uptimeSec));

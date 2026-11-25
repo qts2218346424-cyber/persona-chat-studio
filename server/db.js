@@ -393,6 +393,10 @@ ensureColumn('memories', 'last_recalled_at', 'INTEGER NOT NULL DEFAULT 0');
 ensureColumn('memories', 'superseded_by', 'TEXT DEFAULT NULL');
 ensureColumn('sessions', 'last_dream_at', 'INTEGER NOT NULL DEFAULT 0');
 ensureColumn('sessions', 'current_chapter_index', 'INTEGER NOT NULL DEFAULT 0');
+ensureColumn('sessions', 'character_state', "TEXT NOT NULL DEFAULT ''");
+ensureColumn('sessions', 'world_weather', "TEXT NOT NULL DEFAULT ''");
+ensureColumn('sessions', 'active_event', "TEXT NOT NULL DEFAULT ''");
+ensureColumn('sessions', 'world_state_updated_at', 'INTEGER NOT NULL DEFAULT 0');
 
 function genId(prefix = 'id') {
   return `${prefix}_${crypto.randomBytes(6).toString('hex')}`;

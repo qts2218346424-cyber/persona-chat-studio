@@ -602,8 +602,8 @@ function extractAuthToken(req, parsedUrl = null) {
   return '';
 }
 
-const APP_LATEST_VERSION = '2.4.4';
-const APP_LATEST_VERSION_CODE = 145;
+const APP_LATEST_VERSION = '2.4.5';
+const APP_LATEST_VERSION_CODE = 146;
 const APP_OFFICIAL_CERT_SHA256 = '6fd05e32a3cabf327140129d866e55a342fe30daa3384c67aad4b3cbdd98a17b';
 const APP_UPDATE_TICKET_SECRET = crypto
   .createHash('sha256')
@@ -894,9 +894,9 @@ async function handleApi(req, res, pathname, parsedUrl) {
       forceUpdate,
       diffGenerations,
       changelog: [
-        '【悬浮窗外置肥鱼互动条】折叠态大肥鱼脚下新增紧凑「🍚喂 / 👋摸 / 💃舞 / 🎤唱 / 🫧梗」互动小药丸，点面板外就能直接逗肥鱼并实时看全身动画与台词气泡反应（支持面板内一键开关隐藏）',
-        '【面板动作自动外出表演】从展开面板内点击互动动作也会瞬间收起面板，让大肥鱼跳出来为你展示完整立绘与动作',
-        '【QQ音乐自动搜歌连播 & 快捷打字条】同步包含 QQ 音乐搜歌状态机、不抢焦点悬浮快捷打字条与常用聊天文字多端批量导入，双端升级至 v2.4.4 (Build 145)'
+        '【修复大肥鱼没声音问题】将大肥鱼 25 条原声语音与八音盒歌声从系统通知流恢复为媒体音量流（USAGE_MEDIA 且不申请音频焦点），彻底解决手机静音/振动或关闭通知铃声时大肥鱼变哑巴的问题',
+        '【修复连点静音与音乐状态误判】新增自身音频停止冷却窗与点歌预判状态自愈，避免连点喂饭/摸头/切歌时把自己的声音误判为外部音乐',
+        '【全功能整合升级】含外置肥鱼互动条、QQ 音乐自动搜歌连播、不抢焦点悬浮快捷打字条与常用聊天文字批量导入，双端同步升级至 v2.4.5 (Build 146)'
       ]
     };
 

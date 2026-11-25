@@ -185,6 +185,7 @@ public class FloatAgentService extends Service {
     // 原生 MediaPlayer 语音 + AudioTrack 唱歌引擎
     private MediaPlayer petVoicePlayer = null;
     private WhaleSingerEngine singerEngine = null;
+    private volatile long lastWhaleAudioStopMs = 0L;
     private int feedIndex = 0;
     private int patIndex = 0;
     private int danceIndex = 0;
@@ -582,7 +583,7 @@ public class FloatAgentService extends Service {
             public void run() {
                 String clean = query.trim();
                 if (!clean.isEmpty()) {
-                    inst.handleMusicMetadataUpdate("com.tencent.qqmusic", clean, "", true, 0L, 0L, false);
+                    inst.handleMusicMetadataUpdate("com.tencent.qqmusic", clean, "", false, 0L, 0L, false);
                 }
             }
         });
@@ -2251,7 +2252,31 @@ public class FloatAgentService extends Service {
 
     // ========= 音乐播放态判断 & 防打断声效控制 =========
     private boolean isExternalMusicPlayingNow() {
-        if (qqMusicPlaying) return true;
+        boolean selfPlayingOrCooling = (System.currentTimeMillis() - lastWhaleAudioStopMs < 950L)
+                || (singerEngine != null && singerEngine.isSinging());
+        if (!selfPlayingOrCooling && petVoicePlayer != null) {
+            try {
+                if (petVoicePlayer.isPlaying()) selfPlayingOrCooling = true;
+            } catch (Exception ignored) {}
+        }
+
+        if (qqMusicPlaying) {
+            // 若用户未开通知读取且 qqMusicPlaying 滞留超过 3 秒，对照系统媒体活跃态做自愈校验
+            if (!selfPlayingOrCooling && !QqMusicListenerService.isNotificationAccessEnabled(this)) {
+                try {
+                    AudioManager am = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
+                    if (am != null && !am.isMusicActive()) {
+                        return false;
+                    }
+                } catch (Throwable ignored) {}
+            }
+            return true;
+        }
+
+        // 自身刚发声或正在发声时的冷却期内，绝不把自身残余缓冲误判为外部音乐！
+        if (selfPlayingOrCooling) {
+            return false;
+        }
         try {
             AudioManager am = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
             if (am != null && am.isMusicActive()) {
@@ -2263,6 +2288,8 @@ public class FloatAgentService extends Service {
 
     // ========= 鲸鱼娘动作 + 25 条原声音源 + AudioTrack 唱歌 =========
     private void playWhaleVoice(int rawResId, int drawableResId, String animType, String subtitle, boolean isManualAction) {
+        // 必须先判断外部是否在播歌，再停掉大肥鱼自己上一句的播放器，防止残留音频缓冲误判成“外部在放歌”
+        boolean musicPlaying = isExternalMusicPlayingNow();
         if (singerEngine != null && singerEngine.isSinging()) {
             singerEngine.stop();
         }
@@ -2274,8 +2301,7 @@ public class FloatAgentService extends Service {
         setPetPoseDrawable(drawableResId);
         playPetBounceAnim(animType);
 
-        // 默认在音乐播放模式下保持安静，绝不主动出声抢占音频焦点打断 QQ 音乐播放/暂停状态
-        boolean musicPlaying = isExternalMusicPlayingNow();
+        // 音乐播放模式下默认保持安静，不主动出声打扰听歌
         if (musicPlaying) {
             String silentSub = isManualAction
                     ? (subtitle + "（🎵 播歌免打扰中）")
@@ -2293,13 +2319,14 @@ public class FloatAgentService extends Service {
             AssetFileDescriptor afd = getResources().openRawResourceFd(rawResId);
             if (afd != null) {
                 MediaPlayer mp = new MediaPlayer();
+                // 使用媒体音量通道（避免手机静音/振动或通知音量为 0 时大肥鱼彻底无声），且不申请 AudioFocus
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                     mp.setAudioAttributes(new AudioAttributes.Builder()
-                            .setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
-                            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                            .setUsage(AudioAttributes.USAGE_MEDIA)
+                            .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
                             .build());
                 } else {
-                    mp.setAudioStreamType(AudioManager.STREAM_NOTIFICATION);
+                    mp.setAudioStreamType(AudioManager.STREAM_MUSIC);
                 }
                 mp.setDataSource(afd.getFileDescriptor(), afd.getStartOffset(), afd.getLength());
                 afd.close();
@@ -2313,6 +2340,7 @@ public class FloatAgentService extends Service {
                     }
                 });
                 mp.prepare();
+                mp.setVolume(1.0f, 1.0f);
                 petVoicePlayer = mp;
                 petVoicePlayer.start();
             }
@@ -2323,6 +2351,7 @@ public class FloatAgentService extends Service {
 
     private void stopWhaleVoicePlayer() {
         if (petVoicePlayer != null) {
+            lastWhaleAudioStopMs = System.currentTimeMillis();
             try {
                 if (petVoicePlayer.isPlaying()) petVoicePlayer.stop();
             } catch (Exception ignored) {}
@@ -4696,6 +4725,9 @@ public class FloatAgentService extends Service {
         }
 
         void stop() {
+            if (singing) {
+                lastWhaleAudioStopMs = System.currentTimeMillis();
+            }
             singing = false;
             currentLine = "";
             if (playThread != null) {
@@ -4744,8 +4776,8 @@ public class FloatAgentService extends Service {
                 int minBuf = AudioTrack.getMinBufferSize(sr, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT);
                 track = new AudioTrack(
                         new AudioAttributes.Builder()
-                                .setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
-                                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                                .setUsage(AudioAttributes.USAGE_MEDIA)
+                                .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
                                 .build(),
                         new AudioFormat.Builder()
                                 .setSampleRate(sr)

@@ -194,10 +194,10 @@ const {{ db, getRawPlatformConfigInternal, updateAdminPlatformConfig, saveAdminA
 db.prepare("DELETE FROM personas WHERE id = \\x27persona_linqi\\x27").run();
 db.prepare("UPDATE site_announcements SET enabled = 0").run();
 saveAdminAnnouncement("admin", {{
-  title: "星语恋庭 v2.4.3 更新：QQ 音乐自动搜歌连播、悬浮快捷打字条与常用聊天文字导入上线",
-  content: "1. 【QQ 音乐点歌自动搜索连播】：重构点歌多步状态机，输入歌名后自动跳过清空×精确点按「搜索」并派发软键盘搜索，轮询结果列表/单曲 Tab 自动点击第一首起播。\\n2. 【不抢焦点悬浮快捷打字条】：新增可拖动「⌨️ 快捷打字模式」，开启后直接悬停点击常用语连发或仅填入，再也不收起打断连续聊天。\\n3. 【常用聊天文字多端批量导入】：支持从系统剪贴板、多行文本或手机 .txt/.json 文件导入常用话术并双端实时同步，随身版升级至 v2.4.3 (Build 144)！",
+  title: "星语恋庭 v2.4.4 更新：大肥鱼外置交互动作条上线，点外面直接看肥鱼卖萌反应！",
+  content: "1. 【悬浮窗外置肥鱼互动条】：不用点开大面板！折叠态大肥鱼脚下直接新增「🍚喂 / 👋摸 / 💃舞 / 🎤唱 / 🫧梗」互动小药丸，点完立即可看大肥鱼全身立绘切换、Q弹动画与台词气泡（支持一键隐藏开启）。\\n2. 【面板内互动自动退回外面表演】：在面板内点击喂米饭/摸头/跳舞也会先收起面板，让大肥鱼跳到外面给你表演。\\n3. 【集成 QQ 音乐自动搜歌连播 & 不抢焦点悬浮快捷打字条 & 常用聊天文字导入】：随身版升级至 v2.4.4 (Build 145)！",
   enabled: true,
-  version: 144
+  version: 145
 }});
 db.prepare("UPDATE sessions SET companion_config = NULL").run();
 db.prepare("UPDATE user_settings SET value = \\x27demo\\x27 WHERE key = \\x27provider\\x27").run();

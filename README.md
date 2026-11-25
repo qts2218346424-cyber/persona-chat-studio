@@ -22,7 +22,7 @@
 </p>
 
 <p>
-  <img src="https://img.shields.io/badge/Release-v2.4.3_Build_144-7C3AED?style=flat-square&logo=rocket&logoColor=white" alt="Version v2.4.3" />
+  <img src="https://img.shields.io/badge/Release-v2.4.4_Build_145-7C3AED?style=flat-square&logo=rocket&logoColor=white" alt="Version v2.4.4" />
   <img src="https://img.shields.io/badge/Node.js-%3E%3D22.5.0-339933?style=flat-square&logo=node.js&logoColor=white" alt="Node.js >= 22.5.0" />
   <img src="https://img.shields.io/badge/Dependencies-0_npm_Packages-FF6B6B?style=flat-square&logo=npm&logoColor=white" alt="Zero npm Dependencies" />
   <img src="https://img.shields.io/badge/Storage-node%3Asqlite-003B57?style=flat-square&logo=sqlite&logoColor=white" alt="Native SQLite" />
@@ -30,7 +30,7 @@
 </p>
 
 <p>
-  <a href="#-v243-最新版本核心特性">🚀 最新特性</a> •
+  <a href="#-v244-最新版本核心特性">🚀 最新特性</a> •
   <a href="#-三大工作台">🌐 三大工作台</a> •
   <a href="#-外观皮肤与头像工坊">🎨 外观工坊</a> •
   <a href="#-五大内置剧本与-20-位角色">🎬 剧本角色</a> •
@@ -47,12 +47,12 @@
 
 ---
 
-## 🚀 v2.4.3 最新版本核心特性
+## 🚀 v2.4.4 最新版本核心特性
 
-1. **QQ 音乐自动点歌连播升级**：点歌引擎重构为多阶段节点轮询状态机，精准跳过输入框与清空`×`点击顶部右侧「搜索」与软键盘回车搜索，并自动切入单曲结果点击起播。
-2. **不抢焦点悬浮快捷打字条 & 常用聊天文字多端导入**：新增可拖动悬浮快捷打字条（支持点击直发或仅填入），并在原生悬浮窗与网页端手机模式同步支持从剪贴板、多行粘贴或 `.txt/.json` 文件批量导入常用聊天文字。
-3. **大肥鱼音乐模式免打扰陪伴**：听歌时默认安静伴舞不主动说话，无阻焦点提示音通道与自动感知音乐暂停/恢复歌词联动。
-4. **大肥鱼自主生活动作、防误触保护 & 全透明桌面歌词**：定时生活动作循环、防误触连点 3 下解锁面板、纯透明背景触摸穿透歌词及双端同步升级至 `v2.4.3 (Build 144)`。
+1. **悬浮窗外置肥鱼互动条**：大肥鱼本体下方新增紧凑「🍚喂 / 👋摸 / 💃舞 / 🎤唱 / 🫧梗」互动小药丸，点外面就能直接逗肥鱼并实时观看立绘表情与动画反应（支持面板内一键开关或点 `×` 隐藏）；从面板内点互动动作亦会自动收起面板让肥鱼出来表演。
+2. **QQ 音乐自动点歌连播升级**：点歌引擎重构为多阶段节点轮询状态机，精准跳过输入框与清空`×`点击顶部右侧「搜索」与软键盘回车搜索，并自动切入单曲结果点击起播。
+3. **不抢焦点悬浮快捷打字条 & 常用聊天文字多端导入**：新增可拖动悬浮快捷打字条（支持点击直发或仅填入），并在原生悬浮窗与网页端手机模式同步支持从剪贴板、多行粘贴或 `.txt/.json` 文件批量导入常用聊天文字。
+4. **大肥鱼音乐模式免打扰陪伴**：听歌时默认安静伴舞不主动说话，无阻焦点提示音通道与自动感知音乐暂停/恢复歌词联动，双端同步升级至 `v2.4.4 (Build 145)`。
 5. **三通道独立隔离连接中心与极速预压缩管线**：本地直连 / DeepSeek 官方 API / 自定义云端 API 独立切换，`scripts/build-static-assets.mjs` 全面提供 `.gz` 与 `.br` 极速加载。
 
 ---

@@ -132,6 +132,7 @@ public class FloatAgentService extends Service {
 
     // 桌宠个性开关与透明悬浮歌词状态（持久化保存在 SharedPreferences）
     private boolean showVoiceTail = true;
+    private boolean showExternalPetBar = true;
     private boolean antiMistouchEnabled = false;
     private boolean floatingLyricsEnabled = true;
     private boolean lyricsDragMode = false;
@@ -141,12 +142,14 @@ public class FloatAgentService extends Service {
     private long lastMistouchToastMs = 0L;
     private int autoLifeStep = 0;
 
-    // 独立全透明背景桌面漂浮歌词窗
+    // 独立全透明背景桌面漂浮歌词窗与外置互动条
+    private LinearLayout externalPetActionBar;
     private LinearLayout floatingLyricRootView;
     private WindowManager.LayoutParams floatingLyricParams;
     private TextView floatingLyricSubText;
     private TextView floatingLyricMainText;
     private TextView voiceTailToggleBtn;
+    private TextView extPetBarToggleBtn;
     private TextView antiMistouchToggleBtn;
     private TextView floatingLyricsToggleBtn;
     private TextView floatingLyricsMoveBtn;
@@ -717,6 +720,7 @@ public class FloatAgentService extends Service {
         try {
             SharedPreferences sp = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
             showVoiceTail = sp.getBoolean("show_voice_tail", true);
+            showExternalPetBar = sp.getBoolean("show_ext_pet_bar", true);
             antiMistouchEnabled = sp.getBoolean("anti_mistouch", false);
             floatingLyricsEnabled = sp.getBoolean("floating_lyrics", true);
             savedLyricsY = sp.getInt("lyrics_y", dp(88));
@@ -920,15 +924,19 @@ public class FloatAgentService extends Service {
 
         floatRootView = new FrameLayout(this);
 
-        // 1. 折叠态：Q 版鲸鱼娘 + 快捷小麦克风按钮 + 歌词/台词动态胶囊
+        // 1. 折叠态：上排 Q 版鲸鱼娘 + 快捷小麦克风按钮 + 动态台词胶囊；下排外置肥鱼互动小药丸条
         petBubbleContainer = new LinearLayout(this);
-        petBubbleContainer.setOrientation(LinearLayout.HORIZONTAL);
-        petBubbleContainer.setGravity(Gravity.CENTER_VERTICAL);
+        petBubbleContainer.setOrientation(LinearLayout.VERTICAL);
+        petBubbleContainer.setGravity(Gravity.START);
+
+        LinearLayout petTopRow = new LinearLayout(this);
+        petTopRow.setOrientation(LinearLayout.HORIZONTAL);
+        petTopRow.setGravity(Gravity.CENTER_VERTICAL);
 
         petAvatarView = new ImageView(this);
         petAvatarView.setImageResource(R.drawable.feiyu_idle);
         petAvatarView.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        LinearLayout.LayoutParams avatarLp = new LinearLayout.LayoutParams(dp(56), dp(56));
+        LinearLayout.LayoutParams avatarLp = new LinearLayout.LayoutParams(dp(62), dp(62));
         petAvatarView.setLayoutParams(avatarLp);
 
         // 折叠态旁轻量「🎙」直达语音钮（不展开面板也能一键说话！）
@@ -998,11 +1006,82 @@ public class FloatAgentService extends Service {
             }
         });
 
-        petBubbleContainer.addView(petAvatarView);
-        petBubbleContainer.addView(quickMicBadgeView);
-        petBubbleContainer.addView(statusPillView);
+        petTopRow.addView(petAvatarView);
+        petTopRow.addView(quickMicBadgeView);
+        petTopRow.addView(statusPillView);
+
+        // 下排：外置大肥鱼互动条（就在悬浮窗外面直接喂饭/摸头/跳舞/唱歌/讲热梗，实时看肥鱼反应）
+        externalPetActionBar = new LinearLayout(this);
+        externalPetActionBar.setOrientation(LinearLayout.HORIZONTAL);
+        externalPetActionBar.setGravity(Gravity.CENTER_VERTICAL);
+        externalPetActionBar.setPadding(dp(4), dp(3), dp(4), dp(3));
+        setViewBg(externalPetActionBar, createRoundRect("#D90F172A", 12, "#38BDF8", 1));
+        LinearLayout.LayoutParams extBarLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        extBarLp.topMargin = dp(3);
+        externalPetActionBar.setLayoutParams(extBarLp);
+
+        TextView extFeed = createExternalActionPill("🍚喂", "#3B2506", "#FDE68A", "#F59E0B");
+        extFeed.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                triggerFeedRiceAction();
+            }
+        });
+        TextView extPat = createExternalActionPill("👋摸", "#1E293B", "#E2E8F0", "#475569");
+        extPat.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                triggerHeadPatAction();
+            }
+        });
+        TextView extDance = createExternalActionPill("💃舞", "#1E293B", "#E2E8F0", "#475569");
+        extDance.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                triggerDanceAction();
+            }
+        });
+        TextView extSing = createExternalActionPill("🎤唱", "#3B102E", "#F9A8D4", "#EC4899");
+        extSing.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                triggerSingSongAction();
+            }
+        });
+        TextView extMeme = createExternalActionPill("🫧梗", "#1E293B", "#BAE6FD", "#0EA5E9");
+        extMeme.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                triggerRandomMemeVoice();
+            }
+        });
+        TextView extHide = createExternalActionPill("✕", "#1E293B", "#94A3B8", "#334155");
+        LinearLayout.LayoutParams ehLp = (LinearLayout.LayoutParams) extHide.getLayoutParams();
+        ehLp.rightMargin = 0;
+        extHide.setLayoutParams(ehLp);
+        extHide.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                showExternalPetBar = false;
+                savePrefBool("show_ext_pet_bar", false);
+                applyExternalPetBarVisibility();
+                refreshPrefSwitchButtons();
+                Toast.makeText(FloatAgentService.this, "已收起外置互动条（点击大肥鱼打开面板可重新开启）", Toast.LENGTH_SHORT).show();
+            }
+        });
+
+        externalPetActionBar.addView(extFeed);
+        externalPetActionBar.addView(extPat);
+        externalPetActionBar.addView(extDance);
+        externalPetActionBar.addView(extSing);
+        externalPetActionBar.addView(extMeme);
+        externalPetActionBar.addView(extHide);
+
+        petBubbleContainer.addView(petTopRow);
+        petBubbleContainer.addView(externalPetActionBar);
 
         applyVoiceTailVisibility();
+        applyExternalPetBarVisibility();
         applyStatusStyle("idle", "dsh-Go", false);
         startPetBreathAnim();
 
@@ -1161,6 +1240,27 @@ public class FloatAgentService extends Service {
         if (quickMicBadgeView != null) {
             quickMicBadgeView.setVisibility(showVoiceTail ? View.VISIBLE : View.GONE);
         }
+    }
+
+    private void applyExternalPetBarVisibility() {
+        if (externalPetActionBar != null) {
+            externalPetActionBar.setVisibility(showExternalPetBar ? View.VISIBLE : View.GONE);
+        }
+    }
+
+    private TextView createExternalActionPill(String label, String fillHex, String textHex, String strokeHex) {
+        TextView btn = new TextView(this);
+        btn.setText(label);
+        btn.setTextSize(10.5f);
+        btn.setTextColor(Color.parseColor(textHex));
+        btn.setGravity(Gravity.CENTER);
+        btn.setSingleLine(true);
+        btn.setPadding(dp(7), dp(3), dp(7), dp(3));
+        setViewBg(btn, createRoundRect(fillHex, 9, strokeHex, 1));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.rightMargin = dp(4);
+        btn.setLayoutParams(lp);
+        return btn;
     }
 
     // ========= 全透明背景桌面漂浮歌词窗（默认触摸穿透不挡操作，可拖动调位置） =========
@@ -1534,7 +1634,7 @@ public class FloatAgentService extends Service {
         });
         panel.addView(subtitleBannerView);
 
-        // 3. 鲸鱼娘互动动作栏（喂米饭 / 摸头 / 跳舞 / 唱歌 / 热梗）
+        // 3. 鲸鱼娘互动动作栏（点击自动退到悬浮窗外面表演给你看！）
         LinearLayout petActionRow = new LinearLayout(this);
         petActionRow.setOrientation(LinearLayout.HORIZONTAL);
         LinearLayout.LayoutParams actBarLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
@@ -1547,6 +1647,7 @@ public class FloatAgentService extends Service {
         feedBtn.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
+                collapsePanel();
                 triggerFeedRiceAction();
             }
         });
@@ -1555,6 +1656,7 @@ public class FloatAgentService extends Service {
         patBtn.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
+                collapsePanel();
                 triggerHeadPatAction();
             }
         });
@@ -1563,6 +1665,7 @@ public class FloatAgentService extends Service {
         danceBtn.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
+                collapsePanel();
                 triggerDanceAction();
             }
         });
@@ -1573,6 +1676,7 @@ public class FloatAgentService extends Service {
         singBtn.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
+                collapsePanel();
                 triggerSingSongAction();
             }
         });
@@ -1584,6 +1688,7 @@ public class FloatAgentService extends Service {
         memeBtn.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
+                collapsePanel();
                 triggerRandomMemeVoice();
             }
         });
@@ -1595,14 +1700,15 @@ public class FloatAgentService extends Service {
         petActionRow.addView(memeBtn);
         panel.addView(petActionRow);
 
-        // 3b. 个性开关一行：防误触保护 + 折叠语音尾巴开关 + 透明悬浮歌词开关
+        // 3b. 个性开关一行：防误触 + 语音尾巴 + 外置互动条 + 透明歌词
         LinearLayout prefSwitchRow = new LinearLayout(this);
         prefSwitchRow.setOrientation(LinearLayout.HORIZONTAL);
         LinearLayout.LayoutParams psLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         psLp.topMargin = dp(6);
         prefSwitchRow.setLayoutParams(psLp);
 
-        antiMistouchToggleBtn = createGridBtn("🛡️防误触:关");
+        antiMistouchToggleBtn = createGridBtn("🛡️防误触");
+        antiMistouchToggleBtn.setTextSize(9.5f);
         antiMistouchToggleBtn.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -1617,7 +1723,8 @@ public class FloatAgentService extends Service {
             }
         });
 
-        voiceTailToggleBtn = createGridBtn("🎙语音尾巴:开");
+        voiceTailToggleBtn = createGridBtn("🎙尾巴:开");
+        voiceTailToggleBtn.setTextSize(9.5f);
         voiceTailToggleBtn.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -1631,7 +1738,23 @@ public class FloatAgentService extends Service {
             }
         });
 
-        floatingLyricsToggleBtn = createGridBtn("🪟透明歌词:开");
+        extPetBarToggleBtn = createGridBtn("🐾外置:开");
+        extPetBarToggleBtn.setTextSize(9.5f);
+        extPetBarToggleBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                showExternalPetBar = !showExternalPetBar;
+                savePrefBool("show_ext_pet_bar", showExternalPetBar);
+                applyExternalPetBarVisibility();
+                refreshPrefSwitchButtons();
+                Toast.makeText(FloatAgentService.this,
+                        showExternalPetBar ? "已显示大肥鱼外置互动条（就在外面直接点！）" : "已隐藏外置互动条",
+                        Toast.LENGTH_SHORT).show();
+            }
+        });
+
+        floatingLyricsToggleBtn = createGridBtn("🪟歌词:开");
+        floatingLyricsToggleBtn.setTextSize(9.5f);
         LinearLayout.LayoutParams fltLp = (LinearLayout.LayoutParams) floatingLyricsToggleBtn.getLayoutParams();
         fltLp.rightMargin = 0;
         floatingLyricsToggleBtn.setLayoutParams(fltLp);
@@ -1651,6 +1774,7 @@ public class FloatAgentService extends Service {
 
         prefSwitchRow.addView(antiMistouchToggleBtn);
         prefSwitchRow.addView(voiceTailToggleBtn);
+        prefSwitchRow.addView(extPetBarToggleBtn);
         prefSwitchRow.addView(floatingLyricsToggleBtn);
         panel.addView(prefSwitchRow);
         refreshPrefSwitchButtons();
@@ -2072,7 +2196,7 @@ public class FloatAgentService extends Service {
 
     private void refreshPrefSwitchButtons() {
         if (antiMistouchToggleBtn != null) {
-            antiMistouchToggleBtn.setText(antiMistouchEnabled ? "🛡️防误触:开" : "🛡️防误触:关");
+            antiMistouchToggleBtn.setText(antiMistouchEnabled ? "🛡️防误:开" : "🛡️防误:关");
             antiMistouchToggleBtn.setTextColor(Color.parseColor(antiMistouchEnabled ? "#A7F3D0" : "#CBD5E1"));
             setViewBg(antiMistouchToggleBtn, createRoundRect(
                     antiMistouchEnabled ? "#064E3B" : "#1E293B",
@@ -2082,7 +2206,7 @@ public class FloatAgentService extends Service {
             ));
         }
         if (voiceTailToggleBtn != null) {
-            voiceTailToggleBtn.setText(showVoiceTail ? "🎙语音尾巴:开" : "🎙语音尾巴:关");
+            voiceTailToggleBtn.setText(showVoiceTail ? "🎙尾巴:开" : "🎙尾巴:关");
             voiceTailToggleBtn.setTextColor(Color.parseColor(showVoiceTail ? "#BAE6FD" : "#94A3B8"));
             setViewBg(voiceTailToggleBtn, createRoundRect(
                     showVoiceTail ? "#0C4A6E" : "#1E293B",
@@ -2091,8 +2215,18 @@ public class FloatAgentService extends Service {
                     1
             ));
         }
+        if (extPetBarToggleBtn != null) {
+            extPetBarToggleBtn.setText(showExternalPetBar ? "🐾外置:开" : "🐾外置:关");
+            extPetBarToggleBtn.setTextColor(Color.parseColor(showExternalPetBar ? "#C4B5FD" : "#94A3B8"));
+            setViewBg(extPetBarToggleBtn, createRoundRect(
+                    showExternalPetBar ? "#2E1065" : "#1E293B",
+                    8,
+                    showExternalPetBar ? "#8B5CF6" : "#334155",
+                    1
+            ));
+        }
         if (floatingLyricsToggleBtn != null) {
-            floatingLyricsToggleBtn.setText(floatingLyricsEnabled ? "🪟透明歌词:开" : "🪟透明歌词:关");
+            floatingLyricsToggleBtn.setText(floatingLyricsEnabled ? "🪟歌词:开" : "🪟歌词:关");
             floatingLyricsToggleBtn.setTextColor(Color.parseColor(floatingLyricsEnabled ? "#FDE68A" : "#94A3B8"));
             setViewBg(floatingLyricsToggleBtn, createRoundRect(
                     floatingLyricsEnabled ? "#451A03" : "#1E293B",
@@ -2402,6 +2536,20 @@ public class FloatAgentService extends Service {
         }
         if (t.contains("关闭快捷打字") || t.contains("退出快捷打字")) {
             hideQuickTypingBar();
+            return true;
+        }
+        if (t.contains("关闭外置") || t.contains("隐藏外置")) {
+            showExternalPetBar = false;
+            savePrefBool("show_ext_pet_bar", false);
+            applyExternalPetBarVisibility();
+            refreshPrefSwitchButtons();
+            return true;
+        }
+        if (t.contains("打开外置") || t.contains("开启外置") || t.contains("显示外置")) {
+            showExternalPetBar = true;
+            savePrefBool("show_ext_pet_bar", true);
+            applyExternalPetBarVisibility();
+            refreshPrefSwitchButtons();
             return true;
         }
         if (t.contains("快捷打字") || t.contains("常用语") || t.contains("打开打字模式")) {

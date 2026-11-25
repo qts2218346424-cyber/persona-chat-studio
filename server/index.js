@@ -602,8 +602,8 @@ function extractAuthToken(req, parsedUrl = null) {
   return '';
 }
 
-const APP_LATEST_VERSION = '2.4.3';
-const APP_LATEST_VERSION_CODE = 144;
+const APP_LATEST_VERSION = '2.4.4';
+const APP_LATEST_VERSION_CODE = 145;
 const APP_OFFICIAL_CERT_SHA256 = '6fd05e32a3cabf327140129d866e55a342fe30daa3384c67aad4b3cbdd98a17b';
 const APP_UPDATE_TICKET_SECRET = crypto
   .createHash('sha256')
@@ -894,9 +894,9 @@ async function handleApi(req, res, pathname, parsedUrl) {
       forceUpdate,
       diffGenerations,
       changelog: [
-        '【QQ 音乐点歌多步状态机重构】修复输入歌名后卡在搜索页不点搜索与误点清空×的问题：写入歌名等待按钮刷新后精确点击顶部右侧「搜索」并派发 IME 搜索，自动轮询结果列表/单曲 Tab 并播放首曲',
-        '【悬浮快捷打字条 & 焦点兼容】新增不抢占微信/QQ 输入焦点的「⌨️ 悬浮快捷打字条」，支持自由拖动与点击常用语连发/仅填切换，修复智能打字回切延迟与右侧发送按钮误识别',
-        '【常用聊天文字多端批量/文件导入】支持从剪贴板、多行文本或手机 .txt/.json 文件一键批量导入常用聊天文字，双端同步升级至 v2.4.3 (Build 144)'
+        '【悬浮窗外置肥鱼互动条】折叠态大肥鱼脚下新增紧凑「🍚喂 / 👋摸 / 💃舞 / 🎤唱 / 🫧梗」互动小药丸，点面板外就能直接逗肥鱼并实时看全身动画与台词气泡反应（支持面板内一键开关隐藏）',
+        '【面板动作自动外出表演】从展开面板内点击互动动作也会瞬间收起面板，让大肥鱼跳出来为你展示完整立绘与动作',
+        '【QQ音乐自动搜歌连播 & 快捷打字条】同步包含 QQ 音乐搜歌状态机、不抢焦点悬浮快捷打字条与常用聊天文字多端批量导入，双端升级至 v2.4.4 (Build 145)'
       ]
     };
 

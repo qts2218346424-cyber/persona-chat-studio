@@ -262,7 +262,7 @@ function getFileSizeSafe(filePath) {
 
 async function collectSystemHealthReport(
   db,
-  { getRawPlatformConfigInternal, verifyPassword, getSystemRuntimeFlags, appVersion = '2.2.0', rateLimitBuckets } = {}
+  { getRawPlatformConfigInternal, verifyPassword, getSystemRuntimeFlags, appVersion = '2.3.0', rateLimitBuckets } = {}
 ) {
   const now = Date.now();
   const totalMem = os.totalmem();

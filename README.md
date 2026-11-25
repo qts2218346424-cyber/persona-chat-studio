@@ -22,7 +22,7 @@
 </p>
 
 <p>
-  <img src="https://img.shields.io/badge/Release-v2.2.0_Build_138-7C3AED?style=flat-square&logo=rocket&logoColor=white" alt="Version v2.2.0" />
+  <img src="https://img.shields.io/badge/Release-v2.3.0_Build_139-7C3AED?style=flat-square&logo=rocket&logoColor=white" alt="Version v2.3.0" />
   <img src="https://img.shields.io/badge/Node.js-%3E%3D22.5.0-339933?style=flat-square&logo=node.js&logoColor=white" alt="Node.js >= 22.5.0" />
   <img src="https://img.shields.io/badge/Dependencies-0_npm_Packages-FF6B6B?style=flat-square&logo=npm&logoColor=white" alt="Zero npm Dependencies" />
   <img src="https://img.shields.io/badge/Storage-node%3Asqlite-003B57?style=flat-square&logo=sqlite&logoColor=white" alt="Native SQLite" />
@@ -30,7 +30,7 @@
 </p>
 
 <p>
-  <a href="#-v220-最新版本核心特性">🚀 最新特性</a> •
+  <a href="#-v230-最新版本核心特性">🚀 最新特性</a> •
   <a href="#-三大工作台">🌐 三大工作台</a> •
   <a href="#-外观皮肤与头像工坊">🎨 外观工坊</a> •
   <a href="#-五大内置剧本与-20-位角色">🎬 剧本角色</a> •
@@ -47,15 +47,13 @@
 
 ---
 
-## 🚀 v2.2.0 最新版本核心特性
+## 🚀 v2.3.0 最新版本核心特性
 
-1. **手机辅助控屏内核深度重构**：参考 `dsh-go` 架构重构移动端辅助控屏核心与交互 UI，支持更稳定的动作执行链路与即时可视化状态反馈。
-2. **云端直连本机 Antigravity 隧道**：新增 [localBridgeDaemon.js](server/localBridgeDaemon.js) 与加密 SSH 反向隧道（支持 Windows 开机静默自启），允许云端线上服务直接复用个人电脑本机 `Antigravity` 配额；电脑关机或断开隧道时自动毫秒级无缝回退云端 DeepSeek 官方 API。
-3. **移动端与剧场 UI 精细打磨**：修复侧边栏背景透明遮挡可读性问题，解决剧情模式与角色扮演气泡溢出；优化手机端单行操作栏与半透明毛玻璃气泡视觉质感。
-4. **「角色演绎模式（真人模拟对话）」与 24 款二次元头像**：内置「剧本扮演 | 角色演绎」双子模式秒切与分类二次元头像素材库，支持本地裁剪上传与一键换头像。
-5. **Android 原生随身版同步升级**：随身版 APK 同步升级至 `v2.2.0 (Build 138)`，内置最新离线静态资产与性能提升，支持应用内 SHA-256 校验与一键覆盖更新。
-6. **三通道独立隔离连接中心**：本地直连 / DeepSeek 官方 API / 自定义云端 API 独立保存与无缝切换。
-7. **极速预压缩管线**：`scripts/build-static-assets.mjs` 合并构建前端 Bundle，全面提供 `.gz` 与 `.br` 极速加载。
+1. **鲸鱼娘悬浮窗桌面宠物 & 全机型语音修复**：手机辅助悬浮窗升级 7 姿态动态鲸鱼娘桌面宠物形象，集成 `MediaRecorder` + 云端语音转写引擎，修复安卓各机型语音输入异常。
+2. **手机端剧情模式 QQ 气泡与背景重构**：彻底移除外围嵌套大框，实现"一句话一个独立气泡"的 QQ 连发体验；加宽左侧历史对话栏；新增适配系统深浅色与自定义壁纸的 QQ 风格聊天背景。
+3. **dsh-Go 控屏内核对齐、站长实时监控与兼容登录**：深化 `dsh-go` 控屏与单行折叠轨迹 UI，升级站长安全健康度实时控制台与热配置管理，支持非邮箱用户名格式登录。
+4. **Android 原生随身版同步升级**：随身版 APK 同步升级至 `v2.3.0 (Build 139)`，支持应用内 SHA-256 校验与云端一键覆盖更新。
+5. **三通道独立隔离连接中心与极速预压缩管线**：本地直连 / DeepSeek 官方 API / 自定义云端 API 独立切换，`scripts/build-static-assets.mjs` 全面提供 `.gz` 与 `.br` 极速加载。
 
 ---
 

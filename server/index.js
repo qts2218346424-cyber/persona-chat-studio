@@ -595,8 +595,8 @@ function extractAuthToken(req, parsedUrl = null) {
   return '';
 }
 
-const APP_LATEST_VERSION = '2.2.0';
-const APP_LATEST_VERSION_CODE = 138;
+const APP_LATEST_VERSION = '2.3.0';
+const APP_LATEST_VERSION_CODE = 139;
 const APP_OFFICIAL_CERT_SHA256 = '6fd05e32a3cabf327140129d866e55a342fe30daa3384c67aad4b3cbdd98a17b';
 const APP_UPDATE_TICKET_SECRET = crypto
   .createHash('sha256')
@@ -887,9 +887,9 @@ async function handleApi(req, res, pathname, parsedUrl) {
       forceUpdate,
       diffGenerations,
       changelog: [
-        '【手机控屏内核深度重构】参考 dsh-go 重构手机辅助控屏内核与交互体验，指令执行更稳、反馈更直观',
-        '【云端直连本机 Antigravity 隧道】新增本机 Antigravity 桥接网关与加密 SSH 反向隧道（支持开机静默自启），电脑离线时自动平滑回退云端 DeepSeek 官方 API',
-        '【移动端与剧场 UI 精细修复】修复侧边栏背景透明看不清及剧情模式角色扮演 UI 溢出问题，网页端与随身版同步升级至 v2.2.0 (Build 138)'
+        '【鲸鱼娘桌面悬浮窗 & 全机型语音修复】手机辅助悬浮窗升级 7 姿态鲸鱼娘桌面宠物形象，接入 MediaRecorder + 云端 Whisper 语音转写，修复安卓各机型悬浮窗语音无法识别问题',
+        '【手机端剧情模式 QQ 气泡与背景重构】去掉外围套娃大框实现“一句话一个独立气泡”连发体验，加宽左侧历史对话栏解决标题挤压，并打造清透适配亮暗的 QQ 风格聊天背景',
+        '【dsh-go 控屏对齐、站长监控与兼容登录】深化 dsh-go 控屏内核与轨迹折叠 UI，升级站长安全健康度实时控制台，支持非邮箱用户名格式登录，同步升级至 v2.3.0 (Build 139)'
       ]
     };
 

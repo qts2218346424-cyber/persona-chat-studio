@@ -194,10 +194,10 @@ const {{ db, getRawPlatformConfigInternal, updateAdminPlatformConfig, saveAdminA
 db.prepare("DELETE FROM personas WHERE id = \\x27persona_linqi\\x27").run();
 db.prepare("UPDATE site_announcements SET enabled = 0").run();
 saveAdminAnnouncement("admin", {{
-  title: "星语恋庭 v2.2.0 重磅更新：手机控屏内核重构 & 云端直连本机 Antigravity 上线",
-  content: "1. 【手机控屏内核深度重构】：参考 dsh-go 重构手机辅助控屏内核与交互体验，指令执行更稳、状态反馈更直观。\\n2. 【云端直连本机 Antigravity 隧道】：支持本机电脑运行加密反向隧道，让云端服务直接调用你的 Antigravity 配额，电脑离线时自动平滑回退 DeepSeek 官方 API。\\n3. 【界面细节与双端同步升级】：修复侧边栏透明遮挡及剧情模式角色扮演 UI 溢出，网页版与 Android 随身版同步升级至 v2.2.0 (Build 138)，建议随身版用户点击「检查更新」体验最新版！",
+  title: "星语恋庭 v2.3.0 重磅更新：鲸鱼娘悬浮窗宠物、手机剧情 QQ 气泡 & 站长安全中心上线",
+  content: "1. 【鲸鱼娘悬浮窗桌面宠物 & 全机型语音修复】：悬浮窗升级 7 姿态鲸鱼娘宠物形象，接入 MediaRecorder 云端语音转写，修复各机型语音录入问题。\\n2. 【手机端剧情模式 QQ 气泡与背景重构】：去除外围大框实现逐句独立气泡连发，加宽左侧历史对话栏，新增亮暗自适应 QQ 聊天背景。\\n3. 【dsh-go 内核对齐、站长监控与兼容登录】：深化 dsh-go 控屏轨迹折叠体验，升级站长实时健康度控制台并兼容非邮箱用户名登录，双端同步升级至 v2.3.0 (Build 139)！",
   enabled: true,
-  version: 138
+  version: 139
 }});
 db.prepare("UPDATE sessions SET companion_config = NULL").run();
 db.prepare("UPDATE user_settings SET value = \\x27demo\\x27 WHERE key = \\x27provider\\x27").run();

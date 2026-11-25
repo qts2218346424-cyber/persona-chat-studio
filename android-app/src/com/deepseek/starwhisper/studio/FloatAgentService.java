@@ -20,16 +20,14 @@ import android.graphics.Paint;
 import android.graphics.PixelFormat;
 import android.graphics.Shader;
 import android.graphics.drawable.GradientDrawable;
+import android.media.MediaRecorder;
 import android.os.Build;
-import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
 import android.os.Vibrator;
-import android.speech.RecognitionListener;
-import android.speech.RecognizerIntent;
-import android.speech.SpeechRecognizer;
 import android.text.TextUtils;
+import android.util.Base64;
 import android.util.DisplayMetrics;
 import android.util.TypedValue;
 import android.view.Gravity;
@@ -43,24 +41,34 @@ import android.view.inputmethod.InputMethodManager;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.HorizontalScrollView;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import org.json.JSONObject;
+
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 
 /**
- * dsh-Go 风格手机控屏悬浮层与后台保活服务 (ControlOverlay)
- * 1. 屏幕边缘柔和呼吸光带（EdgeGlowView）：不拦截任何触摸，提示 AI 控屏状态；
- * 2. 触控落点涟漪（TapRippleView）：点击/滑动前展示柔和落点光圈；
- * 3. 贴边极简胶囊（闲置 5s 自动靠边半透明休眠）+ 运行中独立右侧停止微按钮；
- * 4. 双层极简控屏面板：主任务/插话输入框 + 高频快控条 + 默认折叠的本地快捷工具箱；
- * 5. 三档 SafetyGate 悬浮确认卡 + Android 14 ForegroundService 保活通知。
+ * dsh-Go 风格「鲸鱼娘」控屏桌面宠物悬浮层与后台保活服务
+ * 1. 折叠态化身 Q 版鲸鱼娘（大肥鱼）桌宠：支持待机/思考/忙碌/拖拽/打瞌睡/开心 6 种姿态联动与呼吸浮动；
+ * 2. 悬浮窗语音采用原生 MediaRecorder (AAC/M4A) + 云端 /api/asr/transcribe 直连识别，全机型免 Google 服务可用；
+ * 3. 保留屏幕边缘呼吸光带、触控落点涟漪、双层控屏面板、三档 SafetyGate 确认卡与前台保活通知。
  */
 public class FloatAgentService extends Service {
     private static final String FG_CHANNEL_ID = "pa_agent_running";
     private static final int FG_NOTIFICATION_ID = 2201;
+    private static final String ASR_ENDPOINT = "https://star.claudexxb.online/api/asr/transcribe";
 
     private static volatile FloatAgentService sInstance = null;
     public static volatile boolean sEmergencyStopRequested = false;
@@ -72,11 +80,16 @@ public class FloatAgentService extends Service {
     private WindowManager.LayoutParams edgeGlowParams;
 
     private FrameLayout floatRootView;
+    private LinearLayout petBubbleContainer;
+    private ImageView petAvatarView;
     private LinearLayout statusPillView;
     private View statusDotView;
     private TextView statusTextView;
     private TextView pillStopBtn;
     private LinearLayout expandPanel;
+
+    private ValueAnimator petBreathAnim;
+    private boolean isDraggingPet = false;
 
     private TextView a11yBadgeView;
     private EditText cmdEditText;
@@ -87,10 +100,21 @@ public class FloatAgentService extends Service {
     private LinearLayout localToolsBox;
     private boolean localToolsExpanded = false;
 
-    private SpeechRecognizer speechRecognizer = null;
-    private boolean isListeningSpeech = false;
+    // 原生 MediaRecorder + 云端 ASR 语音识别状态
+    private MediaRecorder mediaRecorder = null;
+    private File voiceCacheFile = null;
+    private boolean isRecordingVoice = false;
+    private boolean isTranscribingVoice = false;
     private EditText activeSpeechTarget = null;
     private TextView activeSpeechVoiceBtn = null;
+    private final Runnable maxRecordTimeoutRunnable = new Runnable() {
+        @Override
+        public void run() {
+            if (isRecordingVoice) {
+                stopVoiceRecordAndTranscribe();
+            }
+        }
+    };
 
     private final List<TextView> tabButtons = new ArrayList<>();
     private final List<LinearLayout> tabPages = new ArrayList<>();
@@ -106,11 +130,24 @@ public class FloatAgentService extends Service {
     private int savedPillX = 24;
     private int savedPillY = 260;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
-    private final Runnable idleDimRunnable = new Runnable() {
+
+    private final Runnable idleSleepRunnable = new Runnable() {
         @Override
         public void run() {
-            if (!isExpanded && "idle".equals(sCurrentStatus) && statusPillView != null) {
-                statusPillView.animate().alpha(0.62f).setDuration(260).start();
+            if (!isExpanded && !isDraggingPet && "idle".equals(sCurrentStatus) && petBubbleContainer != null) {
+                if (petAvatarView != null) {
+                    petAvatarView.setImageResource(R.drawable.feiyu_sleepy);
+                }
+                petBubbleContainer.animate().alpha(0.74f).setDuration(280).start();
+            }
+        }
+    };
+
+    private final Runnable happyResetRunnable = new Runnable() {
+        @Override
+        public void run() {
+            if ("idle".equals(sCurrentStatus) && petAvatarView != null && !isDraggingPet) {
+                petAvatarView.setImageResource(R.drawable.feiyu_idle);
             }
         }
     };
@@ -131,11 +168,7 @@ public class FloatAgentService extends Service {
                 @Override
                 public void run() {
                     if (inst.edgeGlowView != null) {
-                        if (!enabled) {
-                            inst.edgeGlowView.setState("idle");
-                        } else {
-                            inst.edgeGlowView.setState(sCurrentStatus);
-                        }
+                        inst.edgeGlowView.setState(enabled ? sCurrentStatus : "idle");
                     }
                 }
             });
@@ -224,13 +257,16 @@ public class FloatAgentService extends Service {
     }
 
     public static void updateState(final String state, final String text) {
+        final String prevStatus = sCurrentStatus;
         sCurrentStatus = state != null ? state : "idle";
         final FloatAgentService instance = sInstance;
         if (instance != null && instance.statusTextView != null) {
             instance.mainHandler.post(new Runnable() {
                 @Override
                 public void run() {
-                    instance.applyStatusStyle(sCurrentStatus, text);
+                    boolean justFinishedTask = "idle".equals(sCurrentStatus)
+                            && ("thinking".equals(prevStatus) || "executing".equals(prevStatus) || "acting".equals(prevStatus));
+                    instance.applyStatusStyle(sCurrentStatus, text, justFinishedTask);
                     instance.refreshDynamicWidgets();
                     if (instance.edgeGlowView != null) {
                         instance.edgeGlowView.setState(sEdgeGlowEnabled ? sCurrentStatus : "idle");
@@ -383,37 +419,50 @@ public class FloatAgentService extends Service {
 
         layoutParams.gravity = Gravity.TOP | Gravity.START;
         savedPillX = dp(8);
-        savedPillY = dp(148);
+        savedPillY = dp(160);
         layoutParams.x = savedPillX;
         layoutParams.y = savedPillY;
 
         floatRootView = new FrameLayout(this);
 
-        // 1. 折叠态：dsh-go 极简深炭磨砂胶囊 + 状态点 + 运行态独立停止微按钮
+        // 1. 折叠态：Q 版鲸鱼娘桌面宠物 + 动态状态小气泡
+        petBubbleContainer = new LinearLayout(this);
+        petBubbleContainer.setOrientation(LinearLayout.HORIZONTAL);
+        petBubbleContainer.setGravity(Gravity.CENTER_VERTICAL);
+
+        petAvatarView = new ImageView(this);
+        petAvatarView.setImageResource(R.drawable.feiyu_idle);
+        petAvatarView.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        LinearLayout.LayoutParams avatarLp = new LinearLayout.LayoutParams(dp(56), dp(56));
+        petAvatarView.setLayoutParams(avatarLp);
+
         statusPillView = new LinearLayout(this);
         statusPillView.setOrientation(LinearLayout.HORIZONTAL);
         statusPillView.setGravity(Gravity.CENTER_VERTICAL);
-        statusPillView.setPadding(dp(11), dp(7), dp(10), dp(7));
+        statusPillView.setPadding(dp(9), dp(5), dp(8), dp(5));
+        LinearLayout.LayoutParams pillLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        pillLp.leftMargin = dp(2);
+        statusPillView.setLayoutParams(pillLp);
 
         statusDotView = new View(this);
-        LinearLayout.LayoutParams dotLp = new LinearLayout.LayoutParams(dp(8), dp(8));
-        dotLp.rightMargin = dp(7);
+        LinearLayout.LayoutParams dotLp = new LinearLayout.LayoutParams(dp(7), dp(7));
+        dotLp.rightMargin = dp(5);
         statusDotView.setLayoutParams(dotLp);
 
         statusTextView = new TextView(this);
-        statusTextView.setTextSize(12);
-        statusTextView.setMaxWidth(dp(156));
+        statusTextView.setTextSize(11.5f);
+        statusTextView.setMaxWidth(dp(136));
         statusTextView.setSingleLine(true);
         statusTextView.setEllipsize(TextUtils.TruncateAt.END);
         statusTextView.setTextColor(Color.parseColor("#F8FAFC"));
 
         pillStopBtn = new TextView(this);
         pillStopBtn.setText("⏹");
-        pillStopBtn.setTextSize(11);
+        pillStopBtn.setTextSize(10.5f);
         pillStopBtn.setTextColor(Color.parseColor("#FCA5A5"));
-        pillStopBtn.setPadding(dp(7), dp(2), dp(5), dp(2));
+        pillStopBtn.setPadding(dp(6), dp(2), dp(5), dp(2));
         LinearLayout.LayoutParams stopBtnLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        stopBtnLp.leftMargin = dp(6);
+        stopBtnLp.leftMargin = dp(5);
         pillStopBtn.setLayoutParams(stopBtnLp);
         setViewBg(pillStopBtn, createRoundRect("#450A0A", 10, "#EF4444", 1));
         pillStopBtn.setVisibility(View.GONE);
@@ -421,23 +470,29 @@ public class FloatAgentService extends Service {
             @Override
             public void onClick(View v) {
                 requestNormalStop();
-                Toast.makeText(FloatAgentService.this, "已停止当前控屏任务", Toast.LENGTH_SHORT).show();
+                Toast.makeText(FloatAgentService.this, "鲸鱼娘已停止当前控屏任务", Toast.LENGTH_SHORT).show();
             }
         });
 
         statusPillView.addView(statusDotView);
         statusPillView.addView(statusTextView);
         statusPillView.addView(pillStopBtn);
-        applyStatusStyle("idle", "dsh-Go");
 
-        // 2. 展开态：dsh-go 风格控屏浮窗（默认极简，本地快捷工具可折叠）
+        petBubbleContainer.addView(petAvatarView);
+        petBubbleContainer.addView(statusPillView);
+
+        applyStatusStyle("idle", "dsh-Go", false);
+        startPetBreathAnim();
+
+        // 2. 展开态：鲸鱼娘 · dsh-Go 控屏浮窗
         expandPanel = buildExpandPanel();
         expandPanel.setVisibility(View.GONE);
 
-        floatRootView.addView(statusPillView);
+        floatRootView.addView(petBubbleContainer);
         floatRootView.addView(expandPanel);
 
-        statusPillView.setOnTouchListener(new View.OnTouchListener() {
+        // 拖拽拎起鲸鱼娘 + 贴边吸附 + 轻触展开
+        View.OnTouchListener dragListener = new View.OnTouchListener() {
             private int initialX;
             private int initialY;
             private float initialTouchX;
@@ -449,7 +504,7 @@ public class FloatAgentService extends Service {
                 DisplayMetrics dm = getResources().getDisplayMetrics();
                 switch (event.getAction()) {
                     case MotionEvent.ACTION_DOWN:
-                        wakePillOpacity();
+                        wakePetOpacity();
                         initialX = layoutParams.x;
                         initialY = layoutParams.y;
                         initialTouchX = event.getRawX();
@@ -458,10 +513,19 @@ public class FloatAgentService extends Service {
                         return true;
 
                     case MotionEvent.ACTION_MOVE:
-                        int nextX = initialX + (int) (event.getRawX() - initialTouchX);
-                        int nextY = initialY + (int) (event.getRawY() - initialTouchY);
+                        float dx = event.getRawX() - initialTouchX;
+                        float dy = event.getRawY() - initialTouchY;
+                        if (!isDraggingPet && Math.hypot(dx, dy) > dp(6)) {
+                            isDraggingPet = true;
+                            if (petAvatarView != null) {
+                                petAvatarView.setImageResource(R.drawable.feiyu_drag);
+                                petAvatarView.setRotation(dx >= 0 ? 6f : -6f);
+                            }
+                        }
+                        int nextX = initialX + (int) dx;
+                        int nextY = initialY + (int) dy;
                         int maxY = Math.max(dp(100), dm.heightPixels - dp(80));
-                        layoutParams.x = Math.max(0, Math.min(nextX, dm.widthPixels - dp(60)));
+                        layoutParams.x = Math.max(0, Math.min(nextX, dm.widthPixels - dp(56)));
                         layoutParams.y = Math.max(dp(28), Math.min(nextY, maxY));
                         try {
                             windowManager.updateViewLayout(floatRootView, layoutParams);
@@ -469,51 +533,79 @@ public class FloatAgentService extends Service {
                         return true;
 
                     case MotionEvent.ACTION_UP:
+                    case MotionEvent.ACTION_CANCEL:
                         long duration = System.currentTimeMillis() - touchStartTime;
                         float diffX = Math.abs(event.getRawX() - initialTouchX);
                         float diffY = Math.abs(event.getRawY() - initialTouchY);
+                        boolean wasDragging = isDraggingPet;
+                        isDraggingPet = false;
+                        if (petAvatarView != null) {
+                            petAvatarView.setRotation(0f);
+                        }
 
-                        if (duration < 280 && diffX < dp(8) && diffY < dp(8)) {
+                        if (!wasDragging && duration < 280 && diffX < dp(8) && diffY < dp(8)) {
                             handleBubbleClick();
                         } else {
-                            int pillW = statusPillView.getWidth() > 0 ? statusPillView.getWidth() : dp(96);
-                            int center = layoutParams.x + pillW / 2;
-                            int margin = dp(8);
+                            int petW = petBubbleContainer.getWidth() > 0 ? petBubbleContainer.getWidth() : dp(64);
+                            int center = layoutParams.x + petW / 2;
+                            int margin = dp(6);
                             layoutParams.x = (center < dm.widthPixels / 2)
                                     ? margin
-                                    : Math.max(margin, dm.widthPixels - pillW - margin);
+                                    : Math.max(margin, dm.widthPixels - petW - margin);
                             savedPillX = layoutParams.x;
                             savedPillY = layoutParams.y;
                             try {
                                 windowManager.updateViewLayout(floatRootView, layoutParams);
                             } catch (Exception ignored) {}
-                            scheduleIdleDim();
+                            applyStatusStyle(sCurrentStatus, statusTextView != null ? statusTextView.getText().toString() : "dsh-Go", false);
+                            scheduleIdleSleep();
                         }
                         return true;
                 }
                 return false;
             }
-        });
+        };
+        petAvatarView.setOnTouchListener(dragListener);
+        statusPillView.setOnTouchListener(dragListener);
 
         try {
             windowManager.addView(floatRootView, layoutParams);
-            scheduleIdleDim();
+            scheduleIdleSleep();
         } catch (Exception e) {
             Toast.makeText(this, "悬浮窗初始化失败，请检查系统悬浮窗权限", Toast.LENGTH_SHORT).show();
         }
     }
 
-    private void wakePillOpacity() {
-        mainHandler.removeCallbacks(idleDimRunnable);
-        if (statusPillView != null) {
-            statusPillView.animate().alpha(1.0f).setDuration(140).start();
+    private void startPetBreathAnim() {
+        if (petBreathAnim != null) {
+            petBreathAnim.cancel();
+        }
+        petBreathAnim = ValueAnimator.ofFloat(0f, -dp(4));
+        petBreathAnim.setDuration(1450);
+        petBreathAnim.setRepeatMode(ValueAnimator.REVERSE);
+        petBreathAnim.setRepeatCount(ValueAnimator.INFINITE);
+        petBreathAnim.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
+            @Override
+            public void onAnimationUpdate(ValueAnimator animation) {
+                if (petAvatarView != null && !isDraggingPet && !isExpanded) {
+                    petAvatarView.setTranslationY((float) animation.getAnimatedValue());
+                }
+            }
+        });
+        petBreathAnim.start();
+    }
+
+    private void wakePetOpacity() {
+        mainHandler.removeCallbacks(idleSleepRunnable);
+        if (petBubbleContainer != null) {
+            petBubbleContainer.animate().alpha(1.0f).setDuration(140).start();
         }
     }
 
-    private void scheduleIdleDim() {
-        mainHandler.removeCallbacks(idleDimRunnable);
+    private void scheduleIdleSleep() {
+        mainHandler.removeCallbacks(idleSleepRunnable);
         if (!isExpanded && "idle".equals(sCurrentStatus)) {
-            mainHandler.postDelayed(idleDimRunnable, 5000);
+            mainHandler.postDelayed(idleSleepRunnable, 5000);
         }
     }
 
@@ -525,24 +617,22 @@ public class FloatAgentService extends Service {
         panel.setOrientation(LinearLayout.VERTICAL);
         panel.setLayoutParams(new ViewGroup.LayoutParams(panelWidth, ViewGroup.LayoutParams.WRAP_CONTENT));
         panel.setPadding(dp(14), dp(12), dp(14), dp(12));
-        setViewBg(panel, createRoundRect("#F2111827", 18, "#334155", 1));
+        setViewBg(panel, createRoundRect("#F2111827", 18, "#3B82F6", 1));
 
-        // 1. 顶栏：圆点 + dsh-Go 控屏 + 无障碍状态微标 + 回主界面 + 收起
+        // 1. 顶栏：鲸鱼娘头像 + 标题 + 无障碍状态微标 + 主界面 + 收起
         LinearLayout headRow = new LinearLayout(this);
         headRow.setOrientation(LinearLayout.HORIZONTAL);
         headRow.setGravity(Gravity.CENTER_VERTICAL);
 
-        View brandDot = new View(this);
-        LinearLayout.LayoutParams bDotLp = new LinearLayout.LayoutParams(dp(8), dp(8));
-        bDotLp.rightMargin = dp(7);
-        brandDot.setLayoutParams(bDotLp);
-        GradientDrawable bDotShape = new GradientDrawable();
-        bDotShape.setShape(GradientDrawable.OVAL);
-        bDotShape.setColor(Color.parseColor("#4D6BFE"));
-        setViewBg(brandDot, bDotShape);
+        ImageView headPetIcon = new ImageView(this);
+        headPetIcon.setImageResource(R.drawable.feiyu_idle);
+        headPetIcon.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        LinearLayout.LayoutParams hIconLp = new LinearLayout.LayoutParams(dp(26), dp(26));
+        hIconLp.rightMargin = dp(7);
+        headPetIcon.setLayoutParams(hIconLp);
 
         TextView titleTv = new TextView(this);
-        titleTv.setText("dsh-Go 控屏");
+        titleTv.setText("鲸鱼娘 · 控屏");
         titleTv.setTextColor(Color.parseColor("#F8FAFC"));
         titleTv.setTextSize(13.5f);
         titleTv.setTypeface(null, android.graphics.Typeface.BOLD);
@@ -570,7 +660,7 @@ public class FloatAgentService extends Service {
         homeAppTv.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                bringMainActivityToFront(null);
+                bringMainActivityToFront(null, false);
             }
         });
 
@@ -586,21 +676,21 @@ public class FloatAgentService extends Service {
             }
         });
 
-        headRow.addView(brandDot);
+        headRow.addView(headPetIcon);
         headRow.addView(titleTv);
         headRow.addView(a11yBadgeView);
         headRow.addView(homeAppTv);
         headRow.addView(closeTv);
         panel.addView(headRow);
 
-        // 2. 主任务/插话输入舱（运行中发送自动作为插话指令注入，不强行跳转切屏）
+        // 2. 主任务/插话输入舱（含 MediaRecorder + 云端 ASR 语音按钮）
         LinearLayout inputRow = new LinearLayout(this);
         inputRow.setOrientation(LinearLayout.HORIZONTAL);
         inputRow.setGravity(Gravity.CENTER_VERTICAL);
         inputRow.setPadding(0, dp(10), 0, dp(8));
 
         cmdEditText = new EditText(this);
-        cmdEditText.setHint("说句话让 AI 操控，或运行中插话纠偏…");
+        cmdEditText.setHint("对鲸鱼娘说话或打字，运行中可插话…");
         cmdEditText.setHintTextColor(Color.parseColor("#64748B"));
         cmdEditText.setTextColor(Color.WHITE);
         cmdEditText.setTextSize(12);
@@ -630,7 +720,7 @@ public class FloatAgentService extends Service {
         voiceBtn.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                toggleSpeechRecognitionFor(cmdEditText, voiceBtn);
+                toggleVoiceRecordFor(cmdEditText, voiceBtn);
             }
         });
 
@@ -736,7 +826,7 @@ public class FloatAgentService extends Service {
 
         // 5. 底部状态回执条
         feedbackTextView = new TextView(this);
-        feedbackTextView.setText("dsh-Go 控屏就绪，支持中途插话与安全确认");
+        feedbackTextView.setText("大肥鱼控屏就绪，点「语音」即可说话下单~");
         feedbackTextView.setTextColor(Color.parseColor("#94A3B8"));
         feedbackTextView.setTextSize(10.5f);
         feedbackTextView.setPadding(dp(2), dp(7), dp(2), dp(0));
@@ -753,16 +843,16 @@ public class FloatAgentService extends Service {
                 ? cmdEditText.getText().toString().trim()
                 : "";
         if (TextUtils.isEmpty(cmd)) {
-            Toast.makeText(this, "请输入任务指令或插话内容", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "请输入任务指令或点击语音说话", Toast.LENGTH_SHORT).show();
             return;
         }
         cmdEditText.setText("");
         collapsePanel();
         boolean dispatched = MainActivity.dispatchFloatInterjectToWebView(cmd);
         if (!dispatched) {
-            bringMainActivityToFront(cmd);
+            bringMainActivityToFront(cmd, false);
         } else {
-            Toast.makeText(this, "已发送给 dsh-Go 智能体执行", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "鲸鱼娘已收到，正在规划执行", Toast.LENGTH_SHORT).show();
         }
     }
 
@@ -1007,7 +1097,7 @@ public class FloatAgentService extends Service {
         typingVoiceBtn.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                toggleSpeechRecognitionFor(typingEditText, typingVoiceBtn);
+                toggleVoiceRecordFor(typingEditText, typingVoiceBtn);
             }
         });
         typingInputRow.addView(typingEditText);
@@ -1252,7 +1342,7 @@ public class FloatAgentService extends Service {
         } catch (Exception ignored) {}
     }
 
-    private void bringMainActivityToFront(String pendingTask) {
+    private void bringMainActivityToFront(String pendingTask, boolean requestAudioPerm) {
         collapsePanel();
         try {
             Intent intent = new Intent(this, MainActivity.class);
@@ -1260,93 +1350,197 @@ public class FloatAgentService extends Service {
             if (pendingTask != null && !pendingTask.trim().isEmpty()) {
                 intent.putExtra(MainActivity.EXTRA_PENDING_AGENT_TASK, pendingTask.trim());
             }
+            if (requestAudioPerm) {
+                intent.putExtra(MainActivity.EXTRA_REQUEST_AUDIO_PERM, true);
+            }
             startActivity(intent);
         } catch (Exception ignored) {}
     }
 
-    private void toggleSpeechRecognitionFor(final EditText targetEditText, final TextView voiceBtn) {
-        if (targetEditText == null) return;
-        if (isListeningSpeech) {
-            stopSpeechRecognition();
+    // ========= 原生 MediaRecorder + 云端 ASR 直连语音输入（全机型可用） =========
+    private void toggleVoiceRecordFor(final EditText targetEditText, final TextView voiceBtn) {
+        if (targetEditText == null || isTranscribingVoice) return;
+
+        if (isRecordingVoice) {
+            stopVoiceRecordAndTranscribe();
             return;
         }
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-                Toast.makeText(this, "语音输入需要麦克风权限", Toast.LENGTH_LONG).show();
-                bringMainActivityToFront("");
+                Toast.makeText(this, "请授予麦克风权限后再点语音输入", Toast.LENGTH_LONG).show();
+                bringMainActivityToFront("", true);
                 return;
             }
         }
-        if (!SpeechRecognizer.isRecognitionAvailable(this)) {
-            Toast.makeText(this, "当前设备未安装系统语音识别服务", Toast.LENGTH_LONG).show();
-            return;
-        }
+
         try {
-            if (speechRecognizer != null) {
-                try { speechRecognizer.destroy(); } catch (Exception ignored) {}
-                speechRecognizer = null;
+            releaseMediaRecorder();
+            voiceCacheFile = new File(getCacheDir(), "float_voice_cmd.m4a");
+            if (voiceCacheFile.exists()) {
+                voiceCacheFile.delete();
             }
-            speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this);
+
+            mediaRecorder = new MediaRecorder();
+            mediaRecorder.setAudioSource(MediaRecorder.AudioSource.MIC);
+            mediaRecorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4);
+            mediaRecorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC);
+            mediaRecorder.setAudioSamplingRate(16000);
+            mediaRecorder.setAudioEncodingBitRate(64000);
+            mediaRecorder.setOutputFile(voiceCacheFile.getAbsolutePath());
+            mediaRecorder.prepare();
+            mediaRecorder.start();
+
             activeSpeechTarget = targetEditText;
             activeSpeechVoiceBtn = voiceBtn;
-            speechRecognizer.setRecognitionListener(new RecognitionListener() {
-                @Override public void onReadyForSpeech(Bundle params) {
-                    isListeningSpeech = true;
-                    updateVoiceBtnUi(true);
-                    showFeedback("正在倾听，请说话…");
-                }
-                @Override public void onBeginningOfSpeech() {}
-                @Override public void onRmsChanged(float rmsdB) {}
-                @Override public void onBufferReceived(byte[] buffer) {}
-                @Override public void onEndOfSpeech() { showFeedback("正在识别语音…"); }
-                @Override public void onError(int error) {
-                    isListeningSpeech = false;
-                    updateVoiceBtnUi(false);
-                    showFeedback("语音识别已结束");
-                }
-                @Override public void onResults(Bundle results) {
-                    isListeningSpeech = false;
-                    updateVoiceBtnUi(false);
-                    if (results != null) {
-                        ArrayList<String> matches = results.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
-                        if (matches != null && !matches.isEmpty() && activeSpeechTarget != null) {
-                            String recognized = matches.get(0).trim();
-                            String old = activeSpeechTarget.getText() != null ? activeSpeechTarget.getText().toString() : "";
-                            String sep = old.isEmpty() || old.endsWith(" ") ? "" : " ";
-                            activeSpeechTarget.setText(old + sep + recognized);
-                            activeSpeechTarget.setSelection(activeSpeechTarget.getText().length());
-                            showFeedback("已听写: " + recognized);
+            isRecordingVoice = true;
+            updateVoiceBtnUi("recording");
+            showFeedback("正在倾听中…说完再点一次「完成」");
+            Toast.makeText(this, "正在录音，说完请再点一次「完成」", Toast.LENGTH_SHORT).show();
+
+            mainHandler.removeCallbacks(maxRecordTimeoutRunnable);
+            mainHandler.postDelayed(maxRecordTimeoutRunnable, 30000);
+        } catch (Exception e) {
+            isRecordingVoice = false;
+            releaseMediaRecorder();
+            updateVoiceBtnUi("idle");
+            showFeedback("录音启动失败：" + e.getMessage());
+            Toast.makeText(this, "启动麦克风录音失败：" + e.getMessage(), Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void stopVoiceRecordAndTranscribe() {
+        mainHandler.removeCallbacks(maxRecordTimeoutRunnable);
+        if (!isRecordingVoice) return;
+        isRecordingVoice = false;
+
+        try {
+            if (mediaRecorder != null) {
+                mediaRecorder.stop();
+            }
+        } catch (Exception ignored) {}
+        releaseMediaRecorder();
+
+        if (voiceCacheFile == null || !voiceCacheFile.exists() || voiceCacheFile.length() < 600) {
+            updateVoiceBtnUi("idle");
+            showFeedback("未检测到有效语音，请靠近麦克风再试");
+            Toast.makeText(this, "说话时间太短，请再试一次", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        final File audioFile = voiceCacheFile;
+        isTranscribingVoice = true;
+        updateVoiceBtnUi("transcribing");
+        showFeedback("鲸鱼娘正在识别语音内容…");
+
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                String recognizedText = null;
+                String errTip = null;
+                HttpURLConnection conn = null;
+                try {
+                    byte[] audioBytes = readFileBytes(audioFile);
+                    String base64 = Base64.encodeToString(audioBytes, Base64.NO_WRAP);
+                    String dataUrl = "data:audio/mp4;base64," + base64;
+
+                    JSONObject reqJson = new JSONObject();
+                    reqJson.put("audio_data_url", dataUrl);
+
+                    URL url = new URL(ASR_ENDPOINT);
+                    conn = (HttpURLConnection) url.openConnection();
+                    conn.setRequestMethod("POST");
+                    conn.setConnectTimeout(10000);
+                    conn.setReadTimeout(16000);
+                    conn.setDoOutput(true);
+                    conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
+
+                    byte[] payload = reqJson.toString().getBytes(StandardCharsets.UTF_8);
+                    try (OutputStream os = conn.getOutputStream()) {
+                        os.write(payload);
+                    }
+
+                    int code = conn.getResponseCode();
+                    InputStream is = code >= 200 && code < 300 ? conn.getInputStream() : conn.getErrorStream();
+                    String respStr = is != null ? new String(readStreamBytes(is), StandardCharsets.UTF_8) : "";
+                    if (code >= 200 && code < 300 && !respStr.isEmpty()) {
+                        JSONObject respObj = new JSONObject(respStr);
+                        if (respObj.optBoolean("ok", false)) {
+                            recognizedText = respObj.optString("text", "").trim();
+                        } else {
+                            errTip = "未识别到清晰人声";
                         }
+                    } else {
+                        errTip = "语音服务响应异常 (" + code + ")";
+                    }
+                } catch (Exception ex) {
+                    errTip = "语音识别网络异常：" + ex.getMessage();
+                } finally {
+                    if (conn != null) {
+                        conn.disconnect();
                     }
                 }
-                @Override public void onPartialResults(Bundle partialResults) {}
-                @Override public void onEvent(int eventType, Bundle params) {}
-            });
-            Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
-            intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
-            intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, "zh-CN");
-            intent.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
-            intent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1);
-            speechRecognizer.startListening(intent);
-        } catch (Exception e) {
-            isListeningSpeech = false;
-            updateVoiceBtnUi(false);
-            Toast.makeText(this, "启动语音识别失败: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+
+                final String finalText = recognizedText;
+                final String finalErr = errTip;
+                mainHandler.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        isTranscribingVoice = false;
+                        updateVoiceBtnUi("idle");
+                        if (finalText != null && !finalText.isEmpty() && activeSpeechTarget != null) {
+                            String old = activeSpeechTarget.getText() != null ? activeSpeechTarget.getText().toString() : "";
+                            String sep = old.isEmpty() || old.endsWith(" ") ? "" : " ";
+                            activeSpeechTarget.setText(old + sep + finalText);
+                            activeSpeechTarget.setSelection(activeSpeechTarget.getText().length());
+                            showFeedback("语音已输入：" + finalText);
+                            Toast.makeText(FloatAgentService.this, "已识别：" + finalText, Toast.LENGTH_SHORT).show();
+                        } else {
+                            String msg = finalErr != null ? finalErr : "未识别到清晰语音，请再试一次";
+                            showFeedback(msg);
+                            Toast.makeText(FloatAgentService.this, msg, Toast.LENGTH_SHORT).show();
+                        }
+                    }
+                });
+            }
+        }).start();
+    }
+
+    private void releaseMediaRecorder() {
+        if (mediaRecorder != null) {
+            try { mediaRecorder.reset(); } catch (Exception ignored) {}
+            try { mediaRecorder.release(); } catch (Exception ignored) {}
+            mediaRecorder = null;
         }
     }
 
-    private void stopSpeechRecognition() {
-        if (speechRecognizer != null) {
-            try { speechRecognizer.stopListening(); } catch (Exception ignored) {}
+    private byte[] readFileBytes(File file) throws Exception {
+        try (FileInputStream fis = new FileInputStream(file)) {
+            return readStreamBytes(fis);
         }
-        isListeningSpeech = false;
-        updateVoiceBtnUi(false);
     }
 
-    private void updateVoiceBtnUi(boolean listening) {
-        if (activeSpeechVoiceBtn != null) {
-            activeSpeechVoiceBtn.setText(listening ? "停止" : "语音");
-            setViewBg(activeSpeechVoiceBtn, createRoundRect(listening ? "#EF4444" : "#0EA5E9", 9, null, 0));
+    private byte[] readStreamBytes(InputStream is) throws Exception {
+        ByteArrayOutputStream bos = new ByteArrayOutputStream();
+        byte[] buf = new byte[4096];
+        int n;
+        while ((n = is.read(buf)) != -1) {
+            bos.write(buf, 0, n);
+        }
+        return bos.toByteArray();
+    }
+
+    private void updateVoiceBtnUi(String state) {
+        if (activeSpeechVoiceBtn == null) return;
+        if ("recording".equals(state)) {
+            activeSpeechVoiceBtn.setText("完成");
+            setViewBg(activeSpeechVoiceBtn, createRoundRect("#EF4444", 9, null, 0));
+        } else if ("transcribing".equals(state)) {
+            activeSpeechVoiceBtn.setText("识别中");
+            setViewBg(activeSpeechVoiceBtn, createRoundRect("#6366F1", 9, null, 0));
+        } else {
+            activeSpeechVoiceBtn.setText("语音");
+            setViewBg(activeSpeechVoiceBtn, createRoundRect("#0EA5E9", 9, null, 0));
         }
     }
 
@@ -1363,11 +1557,11 @@ public class FloatAgentService extends Service {
     private void expandPanel() {
         if (isExpanded) return;
         isExpanded = true;
-        wakePillOpacity();
+        wakePetOpacity();
         savedPillX = layoutParams.x;
         savedPillY = layoutParams.y;
 
-        if (statusPillView != null) statusPillView.setVisibility(View.GONE);
+        if (petBubbleContainer != null) petBubbleContainer.setVisibility(View.GONE);
         expandPanel.setVisibility(View.VISIBLE);
         refreshDynamicWidgets();
 
@@ -1389,7 +1583,7 @@ public class FloatAgentService extends Service {
         hideKeyboardFor(typingEditText);
 
         expandPanel.setVisibility(View.GONE);
-        if (statusPillView != null) statusPillView.setVisibility(View.VISIBLE);
+        if (petBubbleContainer != null) petBubbleContainer.setVisibility(View.VISIBLE);
 
         layoutParams.x = savedPillX;
         layoutParams.y = savedPillY;
@@ -1397,7 +1591,7 @@ public class FloatAgentService extends Service {
         try {
             windowManager.updateViewLayout(floatRootView, layoutParams);
         } catch (Exception ignored) {}
-        scheduleIdleDim();
+        scheduleIdleSleep();
     }
 
     private void hideKeyboardFor(EditText et) {
@@ -1443,18 +1637,22 @@ public class FloatAgentService extends Service {
         }, delayMs);
     }
 
-    private void applyStatusStyle(String state, String text) {
+    private void applyStatusStyle(String state, String text, boolean celebrateHappy) {
         if (statusTextView == null || statusPillView == null) return;
-        wakePillOpacity();
+        wakePetOpacity();
+        mainHandler.removeCallbacks(happyResetRunnable);
+
         GradientDrawable pillBg = new GradientDrawable();
         pillBg.setColor(Color.parseColor("#EB111827"));
-        pillBg.setCornerRadius(dp(22));
+        pillBg.setCornerRadius(dp(18));
 
         GradientDrawable dotShape = new GradientDrawable();
         dotShape.setShape(GradientDrawable.OVAL);
 
         String displayTxt = (text != null && !text.trim().isEmpty()) ? text.trim() : "dsh-Go";
         boolean showStop = false;
+        boolean showPill = true;
+
         switch (state) {
             case "confirming":
                 pillBg.setStroke(dp(1), Color.parseColor("#F59E0B"));
@@ -1462,6 +1660,7 @@ public class FloatAgentService extends Service {
                 dotShape.setColor(Color.parseColor("#F59E0B"));
                 statusTextView.setText(displayTxt);
                 statusTextView.setTextColor(Color.parseColor("#FDE68A"));
+                if (petAvatarView != null && !isDraggingPet) petAvatarView.setImageResource(R.drawable.feiyu_happy);
                 showStop = true;
                 break;
             case "thinking":
@@ -1469,6 +1668,7 @@ public class FloatAgentService extends Service {
                 dotShape.setColor(Color.parseColor("#60A5FA"));
                 statusTextView.setText(displayTxt);
                 statusTextView.setTextColor(Color.parseColor("#F8FAFC"));
+                if (petAvatarView != null && !isDraggingPet) petAvatarView.setImageResource(R.drawable.feiyu_focus);
                 showStop = true;
                 break;
             case "executing":
@@ -1477,6 +1677,7 @@ public class FloatAgentService extends Service {
                 dotShape.setColor(Color.parseColor("#38BDF8"));
                 statusTextView.setText(displayTxt);
                 statusTextView.setTextColor(Color.parseColor("#F8FAFC"));
+                if (petAvatarView != null && !isDraggingPet) petAvatarView.setImageResource(R.drawable.feiyu_busy);
                 showStop = true;
                 break;
             case "stopped":
@@ -1484,16 +1685,28 @@ public class FloatAgentService extends Service {
                 dotShape.setColor(Color.parseColor("#EF4444"));
                 statusTextView.setText(displayTxt);
                 statusTextView.setTextColor(Color.parseColor("#FCA5A5"));
+                if (petAvatarView != null && !isDraggingPet) petAvatarView.setImageResource(R.drawable.feiyu_derp);
                 break;
             case "idle":
             default:
                 pillBg.setStroke(dp(1), Color.parseColor("#334155"));
                 dotShape.setColor(Color.parseColor("#10B981"));
-                statusTextView.setText(displayTxt);
+                statusTextView.setText("dsh-Go");
                 statusTextView.setTextColor(Color.parseColor("#F8FAFC"));
+                // 空闲时仅保留萌萌的鲸鱼娘本体（轻盈不挡屏）
+                showPill = false;
+                if (petAvatarView != null && !isDraggingPet) {
+                    if (celebrateHappy) {
+                        petAvatarView.setImageResource(R.drawable.feiyu_happy);
+                        mainHandler.postDelayed(happyResetRunnable, 1800);
+                    } else {
+                        petAvatarView.setImageResource(R.drawable.feiyu_idle);
+                    }
+                }
                 break;
         }
 
+        statusPillView.setVisibility(showPill ? View.VISIBLE : View.GONE);
         if (pillStopBtn != null) {
             pillStopBtn.setVisibility(showStop ? View.VISIBLE : View.GONE);
         }
@@ -1501,14 +1714,14 @@ public class FloatAgentService extends Service {
             setViewBg(statusDotView, dotShape);
         }
         setViewBg(statusPillView, pillBg);
-        scheduleIdleDim();
+        scheduleIdleSleep();
     }
 
     private void displayConfirmBanner(String summary, String actionDesc, String riskLevel, String targetApp, boolean hardSensitive) {
         if (windowManager == null) return;
         hideConfirmBanner();
 
-        applyStatusStyle("confirming", "待确认: " + (summary != null ? summary : "敏感操作"));
+        applyStatusStyle("confirming", "待确认: " + (summary != null ? summary : "敏感操作"), false);
         setEdgeGlowState("confirming");
 
         try {
@@ -1692,7 +1905,7 @@ public class FloatAgentService extends Service {
             if (nm != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 NotificationChannel ch = new NotificationChannel(
                         FG_CHANNEL_ID,
-                        "dsh-Go 手机控屏保活",
+                        "dsh-Go 鲸鱼娘控屏保活",
                         NotificationManager.IMPORTANCE_LOW
                 );
                 ch.setDescription("AI 跨应用执行手机操作时保持后台稳定运行");
@@ -1715,7 +1928,7 @@ public class FloatAgentService extends Service {
                     ? statusText.trim()
                     : "正在执行手机辅助任务";
 
-            builder.setContentTitle("dsh-Go 手机控屏运行中")
+            builder.setContentTitle("鲸鱼娘 · dsh-Go 控屏中")
                     .setContentText(desc)
                     .setSmallIcon(R.mipmap.ic_launcher)
                     .setContentIntent(pi)
@@ -1733,7 +1946,12 @@ public class FloatAgentService extends Service {
 
     @Override
     public void onDestroy() {
-        stopSpeechRecognition();
+        mainHandler.removeCallbacksAndMessages(null);
+        releaseMediaRecorder();
+        if (petBreathAnim != null) {
+            petBreathAnim.cancel();
+            petBreathAnim = null;
+        }
         hideConfirmBanner();
         updateForegroundNotification(false, "");
         if (edgeGlowView != null && windowManager != null) {
@@ -1755,9 +1973,6 @@ public class FloatAgentService extends Service {
         }
     }
 
-    /**
-     * 屏幕边缘柔和呼吸光带视图（完全不拦截触摸事件）
-     */
     private final class EdgeGlowView extends View {
         private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private int glowColor = Color.parseColor("#4D6BFE");
@@ -1835,9 +2050,6 @@ public class FloatAgentService extends Service {
         }
     }
 
-    /**
-     * 触控落点柔和扩散光圈视图
-     */
     private final class TapRippleView extends View {
         private final Paint ringPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint dotPaint = new Paint(Paint.ANTI_ALIAS_FLAG);

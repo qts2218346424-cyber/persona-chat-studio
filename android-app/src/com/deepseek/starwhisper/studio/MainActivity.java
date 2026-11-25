@@ -46,6 +46,7 @@ import java.util.Map;
  */
 public class MainActivity extends Activity {
     public static final String EXTRA_PENDING_AGENT_TASK = "extra_pending_agent_task";
+    public static final String EXTRA_REQUEST_AUDIO_PERM = "extra_request_audio_perm";
     private static final String VIRTUAL_HOST = "appassets.androidplatform.net";
     private static final String START_URL = "https://" + VIRTUAL_HOST + "/index.html";
     private static final int FILE_CHOOSER_REQ_CODE = 1001;
@@ -142,6 +143,13 @@ public class MainActivity extends Activity {
 
     private void handleIncomingAgentIntent(Intent intent) {
         if (intent == null) return;
+        if (intent.getBooleanExtra(EXTRA_REQUEST_AUDIO_PERM, false)) {
+            intent.removeExtra(EXTRA_REQUEST_AUDIO_PERM);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
+                    && checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, AUDIO_PERM_REQ_CODE);
+            }
+        }
         String task = intent.getStringExtra(EXTRA_PENDING_AGENT_TASK);
         if (task != null && !task.trim().isEmpty()) {
             intent.removeExtra(EXTRA_PENDING_AGENT_TASK);

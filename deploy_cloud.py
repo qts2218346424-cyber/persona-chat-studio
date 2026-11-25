@@ -194,10 +194,10 @@ const {{ db, getRawPlatformConfigInternal, updateAdminPlatformConfig, saveAdminA
 db.prepare("DELETE FROM personas WHERE id = \\x27persona_linqi\\x27").run();
 db.prepare("UPDATE site_announcements SET enabled = 0").run();
 saveAdminAnnouncement("admin", {{
-  title: "星语恋庭 v2.3.0 重磅更新：鲸鱼娘悬浮窗宠物、手机剧情 QQ 气泡 & 站长安全中心上线",
-  content: "1. 【鲸鱼娘悬浮窗桌面宠物 & 全机型语音修复】：悬浮窗升级 7 姿态鲸鱼娘宠物形象，接入 MediaRecorder 云端语音转写，修复各机型语音录入问题。\\n2. 【手机端剧情模式 QQ 气泡与背景重构】：去除外围大框实现逐句独立气泡连发，加宽左侧历史对话栏，新增亮暗自适应 QQ 聊天背景。\\n3. 【dsh-go 内核对齐、站长监控与兼容登录】：深化 dsh-go 控屏轨迹折叠体验，升级站长实时健康度控制台并兼容非邮箱用户名登录，双端同步升级至 v2.3.0 (Build 139)！",
+  title: "星语恋庭 v2.3.1 更新：手机端真 QQ 一段一气泡 & 纯净聊天底图",
+  content: "1. 【彻底告别套娃白框，真 QQ 风格气泡】：移除皮肤残留外围白框，按自然段「一段话一个独立气泡」呈现，搭配纯净素雅 QQ 灰底、纯白/天蓝气泡与轻量灰字操作条。\\n2. 【鲸鱼娘悬浮窗宠物 & 全机型语音修复】：7 姿态动态鲸鱼娘悬浮窗与 MediaRecorder 云端语音转写全机型可用。\\n3. 【双端同步升级】：网页端与随身版 APK 升级至 v2.3.1 (Build 140)，随身版用户点击「检查更新」即可体验！",
   enabled: true,
-  version: 139
+  version: 140
 }});
 db.prepare("UPDATE sessions SET companion_config = NULL").run();
 db.prepare("UPDATE user_settings SET value = \\x27demo\\x27 WHERE key = \\x27provider\\x27").run();

@@ -22,7 +22,7 @@
 </p>
 
 <p>
-  <img src="https://img.shields.io/badge/Release-v2.3.0_Build_139-7C3AED?style=flat-square&logo=rocket&logoColor=white" alt="Version v2.3.0" />
+  <img src="https://img.shields.io/badge/Release-v2.3.1_Build_140-7C3AED?style=flat-square&logo=rocket&logoColor=white" alt="Version v2.3.1" />
   <img src="https://img.shields.io/badge/Node.js-%3E%3D22.5.0-339933?style=flat-square&logo=node.js&logoColor=white" alt="Node.js >= 22.5.0" />
   <img src="https://img.shields.io/badge/Dependencies-0_npm_Packages-FF6B6B?style=flat-square&logo=npm&logoColor=white" alt="Zero npm Dependencies" />
   <img src="https://img.shields.io/badge/Storage-node%3Asqlite-003B57?style=flat-square&logo=sqlite&logoColor=white" alt="Native SQLite" />
@@ -30,7 +30,7 @@
 </p>
 
 <p>
-  <a href="#-v230-最新版本核心特性">🚀 最新特性</a> •
+  <a href="#-v231-最新版本核心特性">🚀 最新特性</a> •
   <a href="#-三大工作台">🌐 三大工作台</a> •
   <a href="#-外观皮肤与头像工坊">🎨 外观工坊</a> •
   <a href="#-五大内置剧本与-20-位角色">🎬 剧本角色</a> •
@@ -47,12 +47,12 @@
 
 ---
 
-## 🚀 v2.3.0 最新版本核心特性
+## 🚀 v2.3.1 最新版本核心特性
 
-1. **鲸鱼娘悬浮窗桌面宠物 & 全机型语音修复**：手机辅助悬浮窗升级 7 姿态动态鲸鱼娘桌面宠物形象，集成 `MediaRecorder` + 云端语音转写引擎，修复安卓各机型语音输入异常。
-2. **手机端剧情模式 QQ 气泡与背景重构**：彻底移除外围嵌套大框，实现"一句话一个独立气泡"的 QQ 连发体验；加宽左侧历史对话栏；新增适配系统深浅色与自定义壁纸的 QQ 风格聊天背景。
-3. **dsh-Go 控屏内核对齐、站长实时监控与兼容登录**：深化 `dsh-go` 控屏与单行折叠轨迹 UI，升级站长安全健康度实时控制台与热配置管理，支持非邮箱用户名格式登录。
-4. **Android 原生随身版同步升级**：随身版 APK 同步升级至 `v2.3.0 (Build 139)`，支持应用内 SHA-256 校验与云端一键覆盖更新。
+1. **手机端剧情模式真 QQ 气泡与背景重构**：彻底移除外围嵌套白框，采用「一段话一个独立气泡」的自然段连发排版与 QQ 纯净浅灰底色（支持深浅色自适应与自定义壁纸），操作栏轻灰无框收纳；同步加宽桌面与手机端左侧历史对话栏。
+2. **鲸鱼娘悬浮窗桌面宠物 & 全机型语音修复**：手机辅助悬浮窗升级 7 姿态动态鲸鱼娘桌面宠物形象，集成 `MediaRecorder` + 云端语音转写引擎，修复安卓各机型语音输入异常。
+3. **dsh-Go 控屏内核对齐、站长实时监控与兼容登录**：深化 `dsh-go` 控屏与单行折叠轨迹 UI，升级站长安全健康度实时控制台，支持非邮箱用户名格式登录。
+4. **Android 原生随身版同步升级**：随身版 APK 同步升级至 `v2.3.1 (Build 140)`，支持应用内 SHA-256 校验与云端一键覆盖更新。
 5. **三通道独立隔离连接中心与极速预压缩管线**：本地直连 / DeepSeek 官方 API / 自定义云端 API 独立切换，`scripts/build-static-assets.mjs` 全面提供 `.gz` 与 `.br` 极速加载。
 
 ---

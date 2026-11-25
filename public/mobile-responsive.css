@@ -579,10 +579,10 @@ body[data-ui-mode="phone-agent"] .auth-gate .info-callout {
   }
 
   .sidebar .ws-mode-btn {
-    min-height: 38px !important;
-    padding: 7px 10px !important;
-    font-size: 13px !important;
-    font-weight: 700 !important;
+    min-height: 34px !important;
+    padding: 5px 8px !important;
+    font-size: 12.5px !important;
+    font-weight: 600 !important;
   }
 
   /* 移动端全尺寸（<=860px）统一隐藏顶栏极客监控与次级冗余图标，保留展开侧栏文字与更多菜单 */
@@ -606,15 +606,15 @@ body[data-ui-mode="phone-agent"] .auth-gate .info-callout {
     display: none !important;
   }
 
-  /* 加大移动端侧栏「+ 创建新角色」「+ 新对话」「导入」触控热区（>=36px），杜绝点偏关抽屉 */
+  /* 协调移动端侧栏「+ 创建新角色」「+ 新对话」「导入」胶囊尺寸，与分组标题保持视觉平衡 */
   .sidebar .text-action-btn,
   #create-persona-btn,
   #new-chat-btn,
   #sidebar-import-history-btn {
-    min-height: 36px !important;
-    padding: 6px 11px !important;
-    font-size: 12.5px !important;
-    font-weight: 700 !important;
+    min-height: 28px !important;
+    padding: 4px 10px !important;
+    font-size: 12px !important;
+    font-weight: 600 !important;
     border-radius: 999px !important;
     background: light-dark(rgba(236, 94, 167, 0.12), rgba(236, 94, 167, 0.22)) !important;
     color: var(--brand-primary) !important;

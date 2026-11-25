@@ -595,8 +595,8 @@ function extractAuthToken(req, parsedUrl = null) {
   return '';
 }
 
-const APP_LATEST_VERSION = '2.3.0';
-const APP_LATEST_VERSION_CODE = 139;
+const APP_LATEST_VERSION = '2.3.1';
+const APP_LATEST_VERSION_CODE = 140;
 const APP_OFFICIAL_CERT_SHA256 = '6fd05e32a3cabf327140129d866e55a342fe30daa3384c67aad4b3cbdd98a17b';
 const APP_UPDATE_TICKET_SECRET = crypto
   .createHash('sha256')
@@ -889,7 +889,7 @@ async function handleApi(req, res, pathname, parsedUrl) {
       changelog: [
         '【鲸鱼娘桌面悬浮窗 & 全机型语音修复】手机辅助悬浮窗升级 7 姿态鲸鱼娘桌面宠物形象，接入 MediaRecorder + 云端 Whisper 语音转写，修复安卓各机型悬浮窗语音无法识别问题',
         '【手机端剧情模式 QQ 气泡与背景重构】去掉外围套娃大框实现“一句话一个独立气泡”连发体验，加宽左侧历史对话栏解决标题挤压，并打造清透适配亮暗的 QQ 风格聊天背景',
-        '【dsh-go 控屏对齐、站长监控与兼容登录】深化 dsh-go 控屏内核与轨迹折叠 UI，升级站长安全健康度实时控制台，支持非邮箱用户名格式登录，同步升级至 v2.3.0 (Build 139)'
+        '【手机端剧情模式真 QQ 聊天重构】彻底清除气泡外围白色大框，改用纯净清爽 QQ 浅灰聊天底图与「一段话一个独立气泡」连发排版，同步升级至 v2.3.1 (Build 140)'
       ]
     };
 

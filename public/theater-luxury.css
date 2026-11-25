@@ -182,19 +182,22 @@ body[data-ui-mode="roleplay"] .ambient-aurora .orb-gold {
 
 .app-shell[data-ui-mode="roleplay"] .section-label {
   color: var(--text-muted) !important;
-  letter-spacing: 0.06em;
-  font-size: 11px !important;
+  letter-spacing: 0.03em;
+  font-size: 12.5px !important;
+  font-weight: 600 !important;
 }
 
 .app-shell[data-ui-mode="roleplay"] .text-action-btn {
   color: var(--accent-gold-text) !important;
 }
 
+.app-shell[data-ui-mode="roleplay"] .persona-card-item,
 .app-shell[data-ui-mode="roleplay"] .persona-item,
 .app-shell[data-ui-mode="roleplay"] .session-item {
   background: transparent !important;
   border: 1px solid transparent !important;
   border-radius: 12px !important;
+  flex-shrink: 0 !important;
   transition: background-color 0.22s ease, border-color 0.22s ease, transform 0.2s ease;
 }
 
@@ -1449,16 +1452,31 @@ html[data-skin="eink-paper"] body[data-ui-mode="roleplay"] .character-chat-badge
 }
 
 .app-shell[data-ui-mode="roleplay"] #left-sidebar #session-list .session-item {
-  padding: 9px 10px !important;
+  width: 100% !important;
+  min-height: 40px !important;
+  box-sizing: border-box !important;
+  flex-shrink: 0 !important;
+  padding: 8px 10px !important;
   gap: 6px !important;
 }
 
 .app-shell[data-ui-mode="roleplay"] #left-sidebar #session-list .session-title-text {
+  font-family: var(--theater-font-sans) !important;
+  font-size: 13.5px !important;
+  line-height: 1.35 !important;
   white-space: nowrap !important;
   overflow: hidden !important;
   text-overflow: ellipsis !important;
   -webkit-mask-image: none !important;
   mask-image: none !important;
+}
+
+.app-shell[data-ui-mode="roleplay"] #left-sidebar #session-list .session-group-label {
+  font-family: var(--theater-font-sans) !important;
+  font-size: 11.5px !important;
+  font-weight: 600 !important;
+  padding: 10px 6px 4px !important;
+  flex-shrink: 0 !important;
 }
 
 /* 14.3 手机版剧情模式（<= 860px）：加宽左侧抽屉 + QQ 聊天背景 + 去外框逐句独立 QQ 气泡 */
@@ -1474,12 +1492,50 @@ html[data-skin="eink-paper"] body[data-ui-mode="roleplay"] .character-chat-badge
   }
 
   .app-shell[data-ui-mode="roleplay"] #left-sidebar .persona-list {
-    max-height: 132px !important;
+    max-height: 164px !important;
+    gap: 4px !important;
+  }
+
+  .app-shell[data-ui-mode="roleplay"] #left-sidebar .persona-card-item {
+    flex-shrink: 0 !important;
+    min-height: 44px !important;
+    padding: 7px 10px !important;
+  }
+
+  .app-shell[data-ui-mode="roleplay"] #left-sidebar .p-name,
+  .app-shell[data-ui-mode="roleplay"] #left-sidebar .persona-name {
+    font-family: var(--theater-font-sans) !important;
+    font-size: 13.5px !important;
+    font-weight: 600 !important;
+    line-height: 1.35 !important;
+  }
+
+  .app-shell[data-ui-mode="roleplay"] #left-sidebar .p-sub {
+    font-size: 12px !important;
+    line-height: 1.35 !important;
+  }
+
+  .app-shell[data-ui-mode="roleplay"] #left-sidebar .p-route-pill {
+    font-size: 11px !important;
+    padding: 2px 7px !important;
+  }
+
+  .app-shell[data-ui-mode="roleplay"] #left-sidebar #session-list .session-item {
+    width: 100% !important;
+    min-height: 40px !important;
+    flex-shrink: 0 !important;
+    padding: 8px 10px !important;
   }
 
   .app-shell[data-ui-mode="roleplay"] #left-sidebar #session-list .session-title-text {
-    font-size: 14px !important;
+    font-family: var(--theater-font-sans) !important;
+    font-size: 13.5px !important;
+    line-height: 1.35 !important;
     color: light-dark(#1E293B, #E2E8F0) !important;
+  }
+
+  .app-shell[data-ui-mode="roleplay"] #left-sidebar #session-list .session-item.active .session-title-text {
+    font-weight: 600 !important;
   }
 
   .app-shell[data-ui-mode="roleplay"] #left-sidebar .session-item:hover {
@@ -1514,11 +1570,20 @@ html[data-skin="eink-paper"] body[data-ui-mode="roleplay"] .character-chat-badge
   }
 
   body[data-ui-mode="roleplay"] #left-sidebar .cmc-badge {
+    font-size: 12.5px !important;
     color: light-dark(#18202C, #F8FAFC) !important;
   }
 
   body[data-ui-mode="roleplay"] #left-sidebar .cmc-desc {
+    font-size: 12px !important;
+    line-height: 1.45 !important;
     color: light-dark(#475569, #CBD5E1) !important;
+  }
+
+  body[data-ui-mode="roleplay"] #left-sidebar .cmc-mini-btn {
+    font-size: 11.5px !important;
+    padding: 4px 10px !important;
+    min-height: 26px !important;
   }
 
   body[data-ui-mode="roleplay"] #left-sidebar .cmc-mini-btn:not(.primary) {
@@ -1534,7 +1599,16 @@ html[data-skin="eink-paper"] body[data-ui-mode="roleplay"] .character-chat-badge
     color: light-dark(#18202C, #F1F5F9) !important;
   }
 
+  body[data-ui-mode="roleplay"] #left-sidebar .section-label {
+    font-size: 12.5px !important;
+    font-weight: 600 !important;
+  }
+
   body[data-ui-mode="roleplay"] #left-sidebar .text-action-btn {
+    min-height: 28px !important;
+    padding: 4px 10px !important;
+    font-size: 12px !important;
+    font-weight: 600 !important;
     color: light-dark(#1680F0, #60A5FA) !important;
     background: light-dark(rgba(22, 128, 240, 0.1), rgba(59, 130, 246, 0.2)) !important;
   }
@@ -1555,128 +1629,118 @@ html[data-skin="eink-paper"] body[data-ui-mode="roleplay"] .character-chat-badge
     color: light-dark(#1E293B, #E2E8F0) !important;
   }
 
-  /* QQ 聊天自适应令牌与渐变变量（纯色用 light-dark，渐变背景用标准变量 + 暗黑媒体查询） */
+  /* QQ 聊天自适应令牌与纯净底色（亮色还原手机 QQ #F2F3F5 洁净灰底 + #FFFFFF 白气泡 + #0099FF 蓝气泡） */
   html[data-ui-mode="roleplay"],
   body[data-ui-mode="roleplay"],
-  .app-shell[data-ui-mode="roleplay"] {
-    --text-primary: light-dark(#18202C, #F1F5F9);
-    --text-secondary: light-dark(#334155, #CBD5E1);
-    --text-narrative: light-dark(#475569, #CBD5E1);
-    --text-muted: light-dark(#64748B, #94A3B8);
-    --bg-composer: light-dark(rgba(255, 255, 255, 0.96), rgba(24, 33, 50, 0.94));
-    --bg-surface: light-dark(rgba(15, 23, 42, 0.045), rgba(255, 255, 255, 0.06));
-    --border-subtle: 1px solid light-dark(rgba(15, 23, 42, 0.08), rgba(148, 163, 184, 0.16));
-    --qq-stage-bg:
-      radial-gradient(circle at 12% 18%, rgba(255, 255, 255, 0.72) 0%, transparent 46%),
-      radial-gradient(circle at 86% 78%, rgba(186, 226, 255, 0.56) 0%, transparent 52%),
-      linear-gradient(180deg, #E6F0FC 0%, #EDF4FC 48%, #F4F7FC 100%);
-    --qq-dock-bg: linear-gradient(180deg, rgba(244, 247, 252, 0) 0%, rgba(244, 247, 252, 0.92) 28%, #F4F7FC 100%);
-    --qq-user-bubble-bg: linear-gradient(135deg, #2FA4FA 0%, #1680F0 100%);
+  #app-shell[data-ui-mode="roleplay"] {
+    --text-primary: light-dark(#191C24, #F1F5F9);
+    --text-secondary: light-dark(#374151, #CBD5E1);
+    --text-narrative: light-dark(#4B5563, #CBD5E1);
+    --text-muted: light-dark(#8A909A, #94A3B8);
+    --bg-composer: light-dark(#FFFFFF, #22252D);
+    --bg-surface: light-dark(rgba(0, 0, 0, 0.045), rgba(255, 255, 255, 0.06));
+    --border-subtle: 1px solid light-dark(rgba(0, 0, 0, 0.05), rgba(255, 255, 255, 0.08));
+    --qq-stage-bg: #F2F3F5;
+    --qq-dock-bg: #F5F6F8;
+    --qq-user-bubble-bg: #0099FF;
   }
 
   html[data-ui-mode="roleplay"][style*="color-scheme: dark"],
   html[data-ui-mode="roleplay"][style*="color-scheme: dark"] body[data-ui-mode="roleplay"],
-  html[data-ui-mode="roleplay"][style*="color-scheme: dark"] .app-shell[data-ui-mode="roleplay"] {
-    --qq-stage-bg:
-      radial-gradient(circle at 16% 18%, rgba(30, 58, 138, 0.22) 0%, transparent 48%),
-      linear-gradient(180deg, #0D1522 0%, #111B2C 52%, #0E1624 100%);
-    --qq-dock-bg: linear-gradient(180deg, rgba(14, 22, 36, 0) 0%, rgba(14, 22, 36, 0.92) 28%, #0E1624 100%);
-    --qq-user-bubble-bg: linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%);
+  html[data-ui-mode="roleplay"][style*="color-scheme: dark"] #app-shell[data-ui-mode="roleplay"] {
+    --qq-stage-bg: #111318;
+    --qq-dock-bg: #16181E;
+    --qq-user-bubble-bg: #1E6EEB;
   }
 
-  /* 隐藏暗黑曜石紫金光斑，让 QQ 清爽背景不被覆盖 */
+  /* 隐藏所有杂色光斑，呈现 QQ 纯净清爽聊天底图 */
   body[data-ui-mode="roleplay"] .ambient-aurora {
-    opacity: 0.28 !important;
-  }
-
-  body[data-ui-mode="roleplay"] .ambient-aurora .orb-sakura {
-    background: radial-gradient(circle, light-dark(rgba(56, 189, 248, 0.18), rgba(37, 99, 235, 0.18)) 0%, transparent 72%) !important;
-  }
-
-  body[data-ui-mode="roleplay"] .ambient-aurora .orb-violet {
-    background: radial-gradient(circle, light-dark(rgba(125, 211, 252, 0.16), rgba(56, 189, 248, 0.12)) 0%, transparent 72%) !important;
-  }
-
-  body[data-ui-mode="roleplay"] .ambient-aurora .orb-gold {
+    display: none !important;
     opacity: 0 !important;
   }
 
-  /* 手机版剧情模式 QQ 聊天背景（未启用自定义壁纸时生效，整屏连贯渐变无接缝） */
+  /* 手机版剧情模式 QQ 聊天背景（未启用自定义壁纸时生效） */
   html:not([data-has-wallpaper="1"]) body[data-ui-mode="roleplay"],
-  html:not([data-has-wallpaper="1"]) .app-shell[data-ui-mode="roleplay"] {
+  html:not([data-has-wallpaper="1"]) #app-shell[data-ui-mode="roleplay"] {
     background: var(--qq-stage-bg) !important;
   }
 
-  html:not([data-has-wallpaper="1"]) .app-shell[data-ui-mode="roleplay"] .chat-stage,
-  html:not([data-has-wallpaper="1"]) .app-shell[data-ui-mode="roleplay"] .messages-viewport {
+  html:not([data-has-wallpaper="1"]) #app-shell[data-ui-mode="roleplay"] .chat-stage,
+  html:not([data-has-wallpaper="1"]) #app-shell[data-ui-mode="roleplay"] #messages-viewport {
     background: transparent !important;
   }
 
-  /* QQ 聊天顶栏与输入栏协调自适应 */
-  html:not([data-has-wallpaper="1"]) .app-shell[data-ui-mode="roleplay"] .stage-topbar {
-    background: light-dark(rgba(243, 248, 254, 0.9), rgba(16, 24, 38, 0.9)) !important;
-    border-bottom: 1px solid light-dark(rgba(15, 23, 42, 0.06), rgba(148, 163, 184, 0.14)) !important;
-    backdrop-filter: blur(16px) saturate(130%) !important;
-    -webkit-backdrop-filter: blur(16px) saturate(130%) !important;
+  /* QQ 极简顶栏（与背景融为一体，不厚重） */
+  html:not([data-has-wallpaper="1"]) #app-shell[data-ui-mode="roleplay"] .stage-topbar {
+    background: light-dark(rgba(242, 243, 245, 0.94), rgba(17, 19, 24, 0.94)) !important;
+    border-bottom: 1px solid light-dark(rgba(0, 0, 0, 0.045), rgba(255, 255, 255, 0.06)) !important;
+    backdrop-filter: blur(12px) !important;
+    -webkit-backdrop-filter: blur(12px) !important;
   }
 
-  .app-shell[data-ui-mode="roleplay"] .stage-topbar .persona-chip-name {
+  #app-shell[data-ui-mode="roleplay"] .stage-topbar .persona-chip-name {
     font-family: var(--theater-font-sans) !important;
     font-size: 16px !important;
     font-weight: 700 !important;
-    color: light-dark(#18202C, #F8FAFC) !important;
+    color: light-dark(#111827, #F8FAFC) !important;
   }
 
-  html:not([data-has-wallpaper="1"]) .app-shell[data-ui-mode="roleplay"] .composer-dock {
+  /* QQ 底部输入栏：紧致平铺轻底 + 纯白圆角输入条 */
+  html:not([data-has-wallpaper="1"]) #app-shell[data-ui-mode="roleplay"] .composer-dock {
     background: var(--qq-dock-bg) !important;
+    border-top: 1px solid light-dark(rgba(0, 0, 0, 0.045), rgba(255, 255, 255, 0.06)) !important;
+    padding-top: 8px !important;
   }
 
-  .app-shell[data-ui-mode="roleplay"] .composer-card {
-    background: light-dark(#FFFFFF, #1A2334) !important;
-    border: 1px solid light-dark(rgba(15, 23, 42, 0.08), rgba(148, 163, 184, 0.18)) !important;
-    box-shadow: 0 4px 16px light-dark(rgba(15, 36, 68, 0.06), rgba(0, 0, 0, 0.35)) !important;
+  #app-shell[data-ui-mode="roleplay"] .composer-card {
+    background: light-dark(#FFFFFF, #1F232B) !important;
+    border: none !important;
+    border-radius: 14px !important;
+    box-shadow: 0 1px 2px light-dark(rgba(0, 0, 0, 0.03), rgba(0, 0, 0, 0.25)) !important;
   }
 
-  .app-shell[data-ui-mode="roleplay"] .composer-card textarea,
-  .app-shell[data-ui-mode="roleplay"] .composer-card #msg-input {
-    color: light-dark(#18202C, #F1F5F9) !important;
+  #app-shell[data-ui-mode="roleplay"] .composer-card textarea,
+  #app-shell[data-ui-mode="roleplay"] .composer-card #msg-input {
+    color: light-dark(#191C24, #F1F5F9) !important;
   }
 
-  .app-shell[data-ui-mode="roleplay"] .composer-card textarea::placeholder {
-    color: light-dark(#94A3B8, #64748B) !important;
+  #app-shell[data-ui-mode="roleplay"] .composer-card textarea::placeholder {
+    color: light-dark(#9CA3AF, #6B7280) !important;
   }
 
-  /* 剧场开场横幅卡适配 QQ 清爽背景 */
-  .app-shell[data-ui-mode="roleplay"] .persona-story-banner {
-    background: light-dark(rgba(255, 255, 255, 0.88), rgba(26, 35, 52, 0.86)) !important;
-    border: 1px solid light-dark(rgba(22, 128, 240, 0.14), rgba(96, 165, 250, 0.2)) !important;
-    color: light-dark(#334155, #CBD5E1) !important;
-    box-shadow: 0 4px 14px light-dark(rgba(15, 36, 68, 0.05), rgba(0, 0, 0, 0.28)) !important;
+  /* 剧场开场横幅卡适配 QQ 清爽灰底 */
+  #app-shell[data-ui-mode="roleplay"] .persona-story-banner {
+    background: light-dark(rgba(255, 255, 255, 0.85), rgba(34, 37, 45, 0.88)) !important;
+    border: none !important;
+    color: light-dark(#4B5563, #CBD5E1) !important;
+    box-shadow: 0 1px 3px light-dark(rgba(0, 0, 0, 0.03), rgba(0, 0, 0, 0.24)) !important;
   }
 
-  /* 对话间距与头像对齐（类似 QQ 聊天气泡与头像顶齐） */
-  .app-shell[data-ui-mode="roleplay"] .messages-container {
+  /* 对话间距与头像对齐（1:1 复刻手机 QQ 气泡间距） */
+  #app-shell[data-ui-mode="roleplay"] #messages-container {
     gap: 14px !important;
   }
 
-  .app-shell[data-ui-mode="roleplay"] .messages-container .msg-row {
+  #app-shell[data-ui-mode="roleplay"] #messages-container .msg-row {
     align-items: flex-start !important;
-    gap: 9px !important;
-    margin-bottom: 4px !important;
+    gap: 10px !important;
+    margin-bottom: 2px !important;
   }
 
-  .app-shell[data-ui-mode="roleplay"] .messages-container .msg-row .msg-avatar {
-    width: 34px !important;
-    height: 34px !important;
-    min-width: 34px !important;
+  #app-shell[data-ui-mode="roleplay"] #messages-container .msg-row .msg-avatar {
+    width: 36px !important;
+    height: 36px !important;
+    min-width: 36px !important;
     font-size: 16px !important;
-    margin-top: 1px !important;
-    box-shadow: 0 2px 6px light-dark(rgba(15, 23, 42, 0.08), rgba(0, 0, 0, 0.35)) !important;
+    margin-top: 0 !important;
+    box-shadow: none !important;
+    border: none !important;
   }
 
-  /* 彻底清除 AI 回复外围的“大框 + 二级玻璃底框”，只留一句一个独立气泡 */
-  html .app-shell[data-ui-mode="roleplay"] .messages-container .msg-row.assistant .msg-body {
+  /* 三 ID 最高权重彻底清除所有外层容器（覆盖 appearance.css / ui-polish-v2.css 白矩形框） */
+  html body #app-shell[data-ui-mode="roleplay"] #messages-viewport #messages-container .msg-row.assistant .msg-body {
     background: transparent !important;
+    background-color: transparent !important;
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
     border: none !important;
@@ -1684,16 +1748,17 @@ html[data-skin="eink-paper"] body[data-ui-mode="roleplay"] .character-chat-badge
     border-radius: 0 !important;
     box-shadow: none !important;
     padding: 0 !important;
-    max-width: calc(100% - 44px) !important;
+    max-width: calc(100% - 48px) !important;
     min-width: 0 !important;
   }
 
-  html .app-shell[data-ui-mode="roleplay"] .messages-container .msg-row.assistant .assistant-prose {
+  html body #app-shell[data-ui-mode="roleplay"] #messages-viewport #messages-container .msg-row.assistant .assistant-prose {
     display: flex !important;
     flex-direction: column !important;
     align-items: flex-start !important;
-    gap: 7px !important;
+    gap: 8px !important;
     background: transparent !important;
+    background-color: transparent !important;
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
     border: none !important;
@@ -1701,93 +1766,95 @@ html[data-skin="eink-paper"] body[data-ui-mode="roleplay"] .character-chat-badge
     box-shadow: none !important;
     padding: 0 !important;
     font-size: 15px !important;
-    line-height: 1.56 !important;
+    line-height: 1.54 !important;
     letter-spacing: 0 !important;
   }
 
-  /* 每一句话作为一个独立的 QQ 纯净气泡 */
-  html .app-shell[data-ui-mode="roleplay"] .messages-container .msg-row.assistant .assistant-prose p,
-  html .app-shell[data-ui-mode="roleplay"] .messages-container .msg-row.assistant .assistant-prose p.qq-bubble-item,
-  html .app-shell[data-ui-mode="roleplay"] .messages-container .msg-row.assistant .assistant-prose blockquote {
+  /* 每一段话作为一个干净利落的 QQ 纯白/暗色气泡（均齐 12px 圆角、无厚边框、无重阴影） */
+  html body #app-shell[data-ui-mode="roleplay"] #messages-viewport #messages-container .msg-row.assistant .assistant-prose p,
+  html body #app-shell[data-ui-mode="roleplay"] #messages-viewport #messages-container .msg-row.assistant .assistant-prose p.qq-bubble-item,
+  html body #app-shell[data-ui-mode="roleplay"] #messages-viewport #messages-container .msg-row.assistant .assistant-prose blockquote {
     display: block !important;
     margin: 0 !important;
-    padding: 10px 14px !important;
+    padding: 9px 13px !important;
     width: fit-content !important;
     max-width: 100% !important;
     font-size: 15px !important;
-    line-height: 1.58 !important;
+    line-height: 1.55 !important;
     word-break: break-word !important;
-    border-radius: 16px !important;
-    background: light-dark(#FFFFFF, #1E2738) !important;
-    color: light-dark(#18202C, #F1F5F9) !important;
-    border: 1px solid light-dark(rgba(15, 23, 42, 0.05), rgba(148, 163, 184, 0.16)) !important;
-    box-shadow: 0 2px 8px light-dark(rgba(15, 36, 68, 0.06), rgba(0, 0, 0, 0.28)) !important;
+    border-radius: 12px !important;
+    background: light-dark(#FFFFFF, #22252D) !important;
+    color: light-dark(#191C24, #F1F5F9) !important;
+    border: none !important;
+    box-shadow: 0 1px 2px light-dark(rgba(0, 0, 0, 0.03), rgba(0, 0, 0, 0.22)) !important;
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
   }
 
-  /* 贴近角色头像的首句气泡保留 QQ 左上收口小尖角 */
-  html .app-shell[data-ui-mode="roleplay"] .messages-container .msg-row.assistant .assistant-prose > p:first-child,
-  html .app-shell[data-ui-mode="roleplay"] .messages-container .msg-row.assistant .assistant-prose > blockquote:first-child {
-    border-top-left-radius: 4px !important;
-  }
-
-  /* QQ 气泡内动作描写与台词高可读层次 */
-  html .app-shell[data-ui-mode="roleplay"] .messages-container .msg-row.assistant .assistant-prose em.rp-action {
-    color: light-dark(#64748B, #94A3B8) !important;
+  /* QQ 气泡内动作与台词清晰柔和阅读层次 */
+  html body #app-shell[data-ui-mode="roleplay"] #messages-viewport #messages-container .msg-row.assistant .assistant-prose em.rp-action {
+    color: light-dark(#6B7280, #9CA3AF) !important;
     font-style: italic !important;
   }
 
-  html .app-shell[data-ui-mode="roleplay"] .messages-container .msg-row.assistant .assistant-prose .rp-speech {
-    color: light-dark(#0F172A, #F8FAFC) !important;
+  html body #app-shell[data-ui-mode="roleplay"] #messages-viewport #messages-container .msg-row.assistant .assistant-prose .rp-speech {
+    color: light-dark(#111827, #F9FAFB) !important;
     font-weight: 500 !important;
   }
 
-  /* 心声独白卡与气泡统一轻量卡片感 */
-  html .app-shell[data-ui-mode="roleplay"] .messages-container .msg-row.assistant .thought-details {
+  /* 心声独白卡轻量化（类似 QQ 系统轻灰提示条，不抢气泡主视觉） */
+  html body #app-shell[data-ui-mode="roleplay"] #messages-viewport #messages-container .msg-row.assistant .thought-details {
     margin: 0 0 6px 0 !important;
     max-width: 100% !important;
     width: fit-content !important;
-    border-radius: 12px !important;
-    background: light-dark(rgba(255, 255, 255, 0.78), rgba(30, 41, 59, 0.72)) !important;
-    border: 1px solid light-dark(rgba(15, 23, 42, 0.07), rgba(148, 163, 184, 0.18)) !important;
+    border-radius: 9px !important;
+    background: light-dark(rgba(0, 0, 0, 0.045), rgba(255, 255, 255, 0.07)) !important;
+    border: none !important;
+    box-shadow: none !important;
   }
 
-  html .app-shell[data-ui-mode="roleplay"] .messages-container .msg-row.assistant .thought-summary {
+  html body #app-shell[data-ui-mode="roleplay"] #messages-viewport #messages-container .msg-row.assistant .thought-summary {
     background: transparent !important;
-    color: light-dark(#475569, #CBD5E1) !important;
+    color: light-dark(#6B7280, #9CA3AF) !important;
+    font-size: 12px !important;
+    padding: 4px 10px !important;
   }
 
-  /* AI 底部操作按钮轻量化排列，不抢 QQ 气泡视线 */
-  html .app-shell[data-ui-mode="roleplay"] .messages-container .msg-row.assistant .msg-footer-bar {
-    margin-top: 6px !important;
-    padding: 0 2px !important;
-    opacity: 0.78 !important;
+  /* 底部操作栏收起白底胶囊，仅保留极轻无边框灰字文字点按 */
+  html body #app-shell[data-ui-mode="roleplay"] #messages-viewport #messages-container .msg-row.assistant .msg-footer-bar {
+    margin-top: 4px !important;
+    padding: 0 !important;
+    gap: 6px !important;
+    opacity: 0.72 !important;
   }
 
-  html .app-shell[data-ui-mode="roleplay"] .messages-container .msg-row.assistant .msg-footer-bar .msg-tool-btn {
-    background: light-dark(rgba(255, 255, 255, 0.72), rgba(30, 41, 59, 0.65)) !important;
-    border: 1px solid light-dark(rgba(15, 23, 42, 0.07), rgba(148, 163, 184, 0.16)) !important;
-    color: light-dark(#475569, #CBD5E1) !important;
-    border-radius: 999px !important;
+  html body #app-shell[data-ui-mode="roleplay"] #messages-viewport #messages-container .msg-row.assistant .msg-footer-bar .msg-tool-btn {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    color: light-dark(#8A909A, #9CA3AF) !important;
+    padding: 2px 6px !important;
+    min-height: 26px !important;
+    font-size: 11.5px !important;
+    border-radius: 6px !important;
   }
 
-  /* 玩家自己发出的消息：QQ 标志性右对齐晴空蓝渐变气泡 */
-  html .app-shell[data-ui-mode="roleplay"] .messages-container .msg-row.user .msg-body,
-  html .app-shell[data-ui-mode="roleplay"] .messages-container .msg-row.user .msg-body.user-bubble {
+  /* 我方用户气泡：1:1 QQ 天蓝纯色气泡（均齐 12px 圆角、干净无杂光） */
+  html body #app-shell[data-ui-mode="roleplay"] #messages-viewport #messages-container .msg-row.user .msg-body,
+  html body #app-shell[data-ui-mode="roleplay"] #messages-viewport #messages-container .msg-row.user .msg-body.user-bubble {
     background: var(--qq-user-bubble-bg) !important;
     color: #FFFFFF !important;
     border: none !important;
-    border-radius: 16px 4px 16px 16px !important;
-    padding: 10px 14px !important;
+    border-radius: 12px !important;
+    padding: 9px 13px !important;
     font-size: 15px !important;
-    line-height: 1.56 !important;
-    max-width: min(78dvw, 100%) !important;
-    box-shadow: 0 3px 10px light-dark(rgba(22, 128, 240, 0.24), rgba(0, 0, 0, 0.34)) !important;
+    line-height: 1.54 !important;
+    max-width: min(76dvw, 100%) !important;
+    box-shadow: none !important;
   }
 
-  html .app-shell[data-ui-mode="roleplay"] .messages-container .msg-row.user .user-bubble em.rp-action {
-    color: rgba(255, 255, 255, 0.88) !important;
+  html body #app-shell[data-ui-mode="roleplay"] #messages-viewport #messages-container .msg-row.user .user-bubble em.rp-action {
+    color: rgba(255, 255, 255, 0.9) !important;
     font-style: italic !important;
   }
 }
@@ -1796,12 +1863,10 @@ html[data-skin="eink-paper"] body[data-ui-mode="roleplay"] .character-chat-badge
   html[data-ui-mode="roleplay"]:not([style*="color-scheme: light"]),
   html[data-ui-mode="roleplay"][style*="light dark"],
   html[data-ui-mode="roleplay"][style*="light dark"] body[data-ui-mode="roleplay"],
-  html[data-ui-mode="roleplay"][style*="light dark"] .app-shell[data-ui-mode="roleplay"] {
-    --qq-stage-bg:
-      radial-gradient(circle at 16% 18%, rgba(30, 58, 138, 0.22) 0%, transparent 48%),
-      linear-gradient(180deg, #0D1522 0%, #111B2C 52%, #0E1624 100%);
-    --qq-dock-bg: linear-gradient(180deg, rgba(14, 22, 36, 0) 0%, rgba(14, 22, 36, 0.92) 28%, #0E1624 100%);
-    --qq-user-bubble-bg: linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%);
+  html[data-ui-mode="roleplay"][style*="light dark"] #app-shell[data-ui-mode="roleplay"] {
+    --qq-stage-bg: #111318;
+    --qq-dock-bg: #16181E;
+    --qq-user-bubble-bg: #1E6EEB;
   }
 }
 

@@ -5141,7 +5141,7 @@ lastInteractionAt: Date.now(),
 hasMoreMessages: false,
 totalMessages: 0,
 oldestMessageId: 0,
-appVersion: '2.3.0',
+appVersion: '2.3.1',
 tourIndex: 0,
 tourActive: false,
 llmMode: localStorage.getItem('user_llm_mode') || 'local_antigravity',
@@ -5329,7 +5329,7 @@ return null;
 }
 }
 function syncWebVersionBadges(verStr) {
-const raw = String(verStr || state.appVersion || '2.3.0').trim().replace(/^v/i, '');
+const raw = String(verStr || state.appVersion || '2.3.1').trim().replace(/^v/i, '');
 if (!raw) return;
 const vLabel = `v${raw}`;
 const isNativeApk = Boolean(
@@ -5910,7 +5910,7 @@ if (!rawText) return '';
 const isStreaming = Boolean(options?.isStreaming);
 const textStr = String(rawText);
 const canCache = !isStreaming && textStr.length <= 40000;
-const cacheKey = canCache ? `rp2\x00${textStr}` : '';
+const cacheKey = canCache ? `rp3\x00${textStr}` : '';
 if (cacheKey) {
 const cached = getCachedMarkdownResult(cacheKey);
 if (cached !== null) return cached;
@@ -5927,120 +5927,6 @@ return String(text || '')
 .replace(/\*([^*\n]+)\*/g, '<em class="rp-action">$1</em>')
 .replace(/“([^”\n]+)”/g, '<span class="rp-speech">“$1”</span>')
 .replace(/`([^`\n]+)`/g, '<code>$1</code>');
-}
-function splitRoleplaySentences(line) {
-const src = String(line || '').trim();
-if (!src) return [];
-if (/^@@CODEBLOCK_\d+@@$/.test(src)) return [src];
-const protectedRanges = [];
-const inlineMaskRe = /`[^`\n]+`|\*\*[^*\n]+\*\*|\*[^*\n]+\*/g;
-let match;
-while ((match = inlineMaskRe.exec(src)) !== null) {
-protectedRanges.push([match.index, match.index + match[0].length, match[0]]);
-}
-const isInsideProtected = (idx) => {
-for (let r = 0; r < protectedRanges.length; r++) {
-const [start, end] = protectedRanges[r];
-if (idx > start && idx < end - 1) return true;
-}
-return false;
-};
-const getProtectedAtEnd = (idx) => {
-for (let r = 0; r < protectedRanges.length; r++) {
-const [start, end, txt] = protectedRanges[r];
-if (idx === end - 1) return { start, end, txt };
-}
-return null;
-};
-const sentences = [];
-let bufStart = 0;
-let quoteDepth = 0;
-let parenDepth = 0;
-const len = src.length;
-const pushChunk = (endIdx) => {
-const chunk = src.slice(bufStart, endIdx).trim();
-if (chunk) sentences.push(chunk);
-bufStart = endIdx;
-while (bufStart < len && /\s/.test(src[bufStart])) {
-bufStart += 1;
-}
-};
-let i = 0;
-while (i < len) {
-const ch = src[i];
-if (ch === '“' || ch === '「' || ch === '『') {
-quoteDepth += 1;
-} else if (ch === '”' || ch === '」' || ch === '』') {
-if (quoteDepth > 0) quoteDepth -= 1;
-const prev = i > 0 ? src[i - 1] : '';
-if (
-quoteDepth === 0 &&
-parenDepth === 0 &&
-/[。！？!?…]/.test(prev) &&
-!isInsideProtected(i)
-) {
-let endIdx = i + 1;
-while (endIdx < len && /[”」』）)\]]/.test(src[endIdx])) {
-endIdx += 1;
-}
-if (endIdx < len && src.slice(endIdx).trim().length > 0) {
-pushChunk(endIdx);
-i = bufStart;
-continue;
-}
-}
-} else if (ch === '(' || ch === '（' || ch === '【') {
-parenDepth += 1;
-} else if (ch === ')' || ch === '）' || ch === '】') {
-if (parenDepth > 0) parenDepth -= 1;
-}
-if (quoteDepth === 0 && parenDepth === 0) {
-const protEnd = getProtectedAtEnd(i);
-if (
-protEnd &&
-protEnd.txt.startsWith('*') &&
-!protEnd.txt.startsWith('**') &&
-src.slice(bufStart, protEnd.start).trim() === ''
-) {
-const rest = src.slice(i + 1);
-if (/^\s+[“「『]/.test(rest)) {
-pushChunk(i + 1);
-i = bufStart;
-continue;
-}
-}
-}
-if (quoteDepth === 0 && parenDepth === 0 && !isInsideProtected(i)) {
-const isCnEnd = ch === '。' || ch === '！' || ch === '？' || ch === '!' || ch === '?';
-const isEllipsis = ch === '…' || (ch === '.' && src.slice(i, i + 3) === '...');
-const isDotSentenceEnd =
-ch === '.' &&
-!isEllipsis &&
-!(i > 0 && /[0-9a-zA-Z]/.test(src[i - 1]) && i + 1 < len && /[0-9a-zA-Z]/.test(src[i + 1])) &&
-i + 1 < len &&
-/[\s\u4e00-\u9fa5“「『]/.test(src[i + 1]);
-if (isCnEnd || isEllipsis || isDotSentenceEnd) {
-let endIdx = isEllipsis && ch === '.' ? i + 3 : i + 1;
-while (endIdx < len && /[。！？!?….]+/.test(src[endIdx])) {
-endIdx += 1;
-}
-while (endIdx < len && /[”’」』）)】\]]/.test(src[endIdx])) {
-endIdx += 1;
-}
-if (endIdx < len && src.slice(endIdx).trim().length > 0) {
-pushChunk(endIdx);
-i = bufStart;
-continue;
-}
-}
-}
-i += 1;
-}
-if (bufStart < len) {
-const tail = src.slice(bufStart).trim();
-if (tail) sentences.push(tail);
-}
-return sentences;
 }
 function renderRoleplayMarkdown(rawText) {
 if (!rawText) return '';
@@ -6078,16 +5964,7 @@ quoteLines.push(trimmed);
 continue;
 }
 flushQuotes();
-const sentences = splitRoleplaySentences(trimmed);
-for (let s = 0; s < sentences.length; s++) {
-const sent = sentences[s];
-if (!sent) continue;
-if (/^@@CODEBLOCK_\d+@@$/.test(sent)) {
-htmlBlocks.push(sent);
-} else {
-htmlBlocks.push(`<p class="qq-bubble-item">${formatRoleplayInline(sent)}</p>`);
-}
-}
+htmlBlocks.push(`<p class="qq-bubble-item">${formatRoleplayInline(trimmed)}</p>`);
 }
 flushQuotes();
 let joined = htmlBlocks.join('');
@@ -8422,7 +8299,7 @@ setTxt(
 'adm-kpi-channel-sub',
 tunnelProbe?.online ? '本机电脑 Antigravity 直连' : report.channels?.localCli?.transport === 'local_cli' ? '本机 CLI 就绪' : '电脑离线时自动回退'
 );
-setTxt('adm-sys-meta', `v${sys.appVersion || '2.3.0'} · ${sys.platform || ''} · Node ${sys.nodeVersion || ''} · ${sys.cpuCores || 1} 核 (负载 ${sys.load1m ?? 0})`);
+setTxt('adm-sys-meta', `v${sys.appVersion || '2.3.1'} · ${sys.platform || ''} · Node ${sys.nodeVersion || ''} · ${sys.cpuCores || 1} 核 (负载 ${sys.load1m ?? 0})`);
 setTxt('adm-stat-mem', `${sys.memUsedPct ?? 0}% (进程 ${sys.rssMb ?? 0} MB)`);
 setTxt('adm-stat-db', `${formatBytesCompact(dbInfo.dbSizeBytes)} / ${formatBytesCompact(dbInfo.walSizeBytes)}`);
 setTxt('adm-stat-uptime', formatUptimeCompact(sys.uptimeSec));
@@ -18988,8 +18865,8 @@ runCloneBtn.innerHTML = origHtml;
 })();
 ;
 (() => {
-const CURRENT_APK_VERSION = '2.3.0';
-const CURRENT_APK_CODE = 139;
+const CURRENT_APK_VERSION = '2.3.1';
+const CURRENT_APK_CODE = 140;
 const DEEPSEEK_API_KEYS_URL = 'https://platform.deepseek.com/api_keys';
 const PUBLIC_WEB_ORIGIN = 'https://star.claudexxb.online';
 const GITHUB_RELEASES_URL = 'https://github.com/qts2218346424-cyber/persona-chat-studio/releases';

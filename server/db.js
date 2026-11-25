@@ -3969,12 +3969,13 @@ function getAdminDashboardData() {
   const userRows = db
     .prepare(`
       SELECT u.*,
-             (SELECT COUNT(*) FROM sessions s WHERE s.user_id = u.id) AS session_count
+             (SELECT COUNT(*) FROM sessions s WHERE s.user_id = u.id) AS session_count,
+             (SELECT COUNT(*) FROM auth_sessions a WHERE a.user_id = u.id AND a.expires_at > ?) AS active_token_count
       FROM users u
       ORDER BY CASE WHEN u.role = 'admin' THEN 0 ELSE 1 END, u.created_at DESC
       LIMIT 100
     `)
-    .all();
+    .all(now);
 
   const safeUsers = userRows.map((u) => {
     const snap = buildMembershipSnapshot(u, now);
@@ -3991,10 +3992,15 @@ function getAdminDashboardData() {
       has_active_card: snap.has_active_card,
       remaining_text: snap.remaining_text,
       session_count: u.session_count || 0,
+      active_token_count: u.active_token_count || 0,
       total_used: snap.total_used,
       created_at: u.created_at
     };
   });
+
+  const bannedUsersCount = db.prepare('SELECT COUNT(*) AS cnt FROM users WHERE is_banned = 1').get().cnt;
+  const totalMessagesCount = db.prepare('SELECT COUNT(*) AS cnt FROM messages').get().cnt;
+  const activeOnlineTokensCount = db.prepare('SELECT COUNT(*) AS cnt FROM auth_sessions WHERE expires_at > ?').get(now).cnt;
 
   const recentOrders = db
     .prepare(`
@@ -4009,6 +4015,9 @@ function getAdminDashboardData() {
   return {
     stats: {
       total_users: totalUsers,
+      banned_users: bannedUsersCount || 0,
+      active_online_tokens: activeOnlineTokensCount || 0,
+      total_messages: totalMessagesCount || 0,
       active_sessions_today: activeSessionsToday,
       active_vip_users: activeVipUsers,
       total_orders: orderAgg.cnt || 0,
@@ -4804,7 +4813,88 @@ function saveAdminAnnouncement(adminUserId, { title, content, enabled = true, ve
   return getLatestAnnouncement();
 }
 
+function adminKickUserSessions(adminUserId, targetUserId) {
+  const row = db.prepare('SELECT id, nickname FROM users WHERE id = ?').get(targetUserId);
+  if (!row) throw new Error('目标用户不存在');
+  if (row.id === 'user_admin' || row.id === adminUserId) {
+    throw new Error('不可强制踢出当前主站长账号');
+  }
+  const res = db.prepare('DELETE FROM auth_sessions WHERE user_id = ?').run(targetUserId);
+  return { kicked_count: res.changes || 0, nickname: row.nickname, ...getAdminDashboardData() };
+}
+
+function adminRevokeNonAdminSessions(keepToken) {
+  const res = keepToken
+    ? db.prepare('DELETE FROM auth_sessions WHERE token != ?').run(keepToken)
+    : db.prepare("DELETE FROM auth_sessions WHERE user_id != 'user_admin'").run();
+  return { revoked_count: res.changes || 0 };
+}
+
+function getSystemRuntimeFlags() {
+  const rows = db
+    .prepare("SELECT key, value FROM platform_config WHERE key IN ('allow_registration', 'allow_guest_mode', 'maintenance_mode', 'maintenance_notice', 'rate_limit_login_per_min')")
+    .all();
+  const map = {};
+  for (const r of rows) {
+    map[r.key] = r.value;
+  }
+  return {
+    allow_registration: map.allow_registration === '0' ? '0' : '1',
+    allow_guest_mode: map.allow_guest_mode === '0' ? '0' : '1',
+    maintenance_mode: map.maintenance_mode === '1' ? '1' : '0',
+    maintenance_notice: map.maintenance_notice || '系统正在维护升级，请稍后再试',
+    rate_limit_login_per_min: String(Math.max(3, Math.min(120, parseInt(map.rate_limit_login_per_min || '12', 10) || 12)))
+  };
+}
+
+function updateSystemRuntimeFlags(patch = {}) {
+  const now = Date.now();
+  const stmt = db.prepare(`
+    INSERT INTO platform_config (key, value, updated_at)
+    VALUES (?, ?, ?)
+    ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
+  `);
+  const cur = getSystemRuntimeFlags();
+  const next = {
+    allow_registration:
+      patch.allow_registration !== undefined
+        ? patch.allow_registration === true || patch.allow_registration === '1' || patch.allow_registration === 1
+          ? '1'
+          : '0'
+        : cur.allow_registration,
+    allow_guest_mode:
+      patch.allow_guest_mode !== undefined
+        ? patch.allow_guest_mode === true || patch.allow_guest_mode === '1' || patch.allow_guest_mode === 1
+          ? '1'
+          : '0'
+        : cur.allow_guest_mode,
+    maintenance_mode:
+      patch.maintenance_mode !== undefined
+        ? patch.maintenance_mode === true || patch.maintenance_mode === '1' || patch.maintenance_mode === 1
+          ? '1'
+          : '0'
+        : cur.maintenance_mode,
+    maintenance_notice:
+      patch.maintenance_notice !== undefined
+        ? String(patch.maintenance_notice || '系统正在维护升级，请稍后再试').trim().slice(0, 200)
+        : cur.maintenance_notice,
+    rate_limit_login_per_min:
+      patch.rate_limit_login_per_min !== undefined
+        ? String(Math.max(3, Math.min(120, parseInt(patch.rate_limit_login_per_min || '12', 10) || 12)))
+        : cur.rate_limit_login_per_min
+  };
+  for (const [k, v] of Object.entries(next)) {
+    stmt.run(k, v, now);
+  }
+  return getSystemRuntimeFlags();
+}
+
 module.exports = {
+  verifyPassword,
+  adminKickUserSessions,
+  adminRevokeNonAdminSessions,
+  getSystemRuntimeFlags,
+  updateSystemRuntimeFlags,
   getLatestAnnouncement,
   getAdminAnnouncementsList,
   saveAdminAnnouncement,

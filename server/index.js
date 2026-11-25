@@ -60,8 +60,21 @@ const {
   adminDeleteUser,
   getLatestAnnouncement,
   getAdminAnnouncementsList,
-  saveAdminAnnouncement
+  saveAdminAnnouncement,
+  verifyPassword,
+  adminKickUserSessions,
+  adminRevokeNonAdminSessions,
+  getSystemRuntimeFlags,
+  updateSystemRuntimeFlags
 } = require('./db');
+const {
+  recordSecurityEvent,
+  bumpMetric,
+  getMaskedBridgeConfig,
+  updateBridgeConfig,
+  probeAllBridgeEndpoints,
+  collectSystemHealthReport
+} = require('./adminMonitor');
 const {
   replaceRoleplayMacros,
   decorateMemoriesWithRetention,
@@ -1065,7 +1078,14 @@ async function handleApi(req, res, pathname, parsedUrl) {
 
   if (method === 'POST' && pathname === '/api/auth/register') {
     const ip = getClientIp(req);
+    const runtimeFlags = getSystemRuntimeFlags();
+    if (runtimeFlags.allow_registration === '0') {
+      recordSecurityEvent({ level: 'info', type: 'register_blocked', ip, detail: '站长已关闭新用户注册，拦截注册请求' });
+      return sendJson(res, 403, { error: '站长暂未开放新用户注册，请稍后再试' });
+    }
     if (!checkRateLimit(`reg:${ip}`, 12, 60000)) {
+      bumpMetric('rateLimitHits');
+      recordSecurityEvent({ level: 'warn', type: 'rate_limit', ip, detail: '注册请求触发每分钟频率限制' });
       return sendJson(res, 429, { error: '注册请求过于频繁，请 1 分钟后再试' });
     }
     const body = await readJsonBody(req, 32 * 1024);
@@ -1076,6 +1096,7 @@ async function handleApi(req, res, pathname, parsedUrl) {
         password: body.password,
         avatar: body.avatar
       });
+      recordSecurityEvent({ level: 'info', type: 'user_register', ip, user: user.email, detail: `新用户注册成功 (${user.nickname})` });
       return sendJson(res, 201, { user, token, gifted_vip, gifted_days }, { 'Set-Cookie': buildAuthCookie(token) });
     } catch (err) {
       return sendJson(res, 400, { error: err.message });
@@ -1084,7 +1105,11 @@ async function handleApi(req, res, pathname, parsedUrl) {
 
   if (method === 'POST' && pathname === '/api/auth/login') {
     const ip = getClientIp(req);
-    if (!checkRateLimit(`login_attempt:${ip}`, 12, 60000)) {
+    const runtimeFlags = getSystemRuntimeFlags();
+    const loginLimit = Math.max(3, Math.min(120, parseInt(runtimeFlags.rate_limit_login_per_min || '12', 10) || 12));
+    if (!checkRateLimit(`login_attempt:${ip}`, loginLimit, 60000)) {
+      bumpMetric('rateLimitHits');
+      recordSecurityEvent({ level: 'warn', type: 'rate_limit', ip, detail: `登录请求触发限流 (${loginLimit}/分)` });
       return sendJson(res, 429, { error: '登录尝试过于频繁，请 1 分钟后再试' });
     }
     const body = await readJsonBody(req, 16 * 1024);
@@ -1095,11 +1120,19 @@ async function handleApi(req, res, pathname, parsedUrl) {
       });
       return sendJson(res, 200, { user, token }, { 'Set-Cookie': buildAuthCookie(token) });
     } catch (err) {
+      bumpMetric('loginFailCount');
+      recordSecurityEvent({ level: 'warn', type: 'login_failed', ip, user: String(body?.email || ''), detail: err.message || '账号或密码错误' });
       return sendJson(res, 401, { error: err.message || '邮箱账号或密码不正确，请检查后重试' });
     }
   }
 
   if (method === 'POST' && pathname === '/api/auth/demo-login') {
+    const ip = getClientIp(req);
+    const runtimeFlags = getSystemRuntimeFlags();
+    if (runtimeFlags.allow_guest_mode === '0') {
+      recordSecurityEvent({ level: 'info', type: 'guest_blocked', ip, detail: '站长已关闭访客体验模式，拦截免密登录' });
+      return sendJson(res, 403, { error: '站长已关闭访客免密体验，请注册或登录账号后使用' });
+    }
     try {
       const body = await readJsonBody(req).catch(() => ({}));
       const guestId = body?.guest_user_id || '';
@@ -1873,11 +1906,93 @@ async function handleApi(req, res, pathname, parsedUrl) {
   // ========= 3.5 站长管理后台专属接口族（全接口强制 RBAC 鉴权，绝无在线提权后门） =========
   if (pathname.startsWith('/api/admin/')) {
     if (!currentUser.is_admin) {
+      bumpMetric('authDeniedCount');
+      recordSecurityEvent({
+        level: 'danger',
+        type: 'admin_unauthorized',
+        ip: getClientIp(req),
+        user: currentUser.email || userId,
+        detail: `非管理员尝试越权访问 ${pathname}`
+      });
       return sendJson(res, 403, { error: '权限不足：该功能仅限站长账户访问', code: 'ADMIN_REQUIRED' });
     }
 
     if (method === 'GET' && pathname === '/api/admin/dashboard') {
       return sendJson(res, 200, getAdminDashboardData());
+    }
+
+    if (method === 'GET' && pathname === '/api/admin/health-monitor') {
+      const report = await collectSystemHealthReport(db, {
+        getRawPlatformConfigInternal,
+        verifyPassword,
+        getSystemRuntimeFlags,
+        appVersion: APP_LATEST_VERSION,
+        rateLimitBuckets
+      });
+      return sendJson(res, 200, report);
+    }
+
+    if (method === 'GET' && pathname === '/api/admin/bridge-config') {
+      return sendJson(res, 200, {
+        ok: true,
+        bridge: getMaskedBridgeConfig(),
+        runtime_flags: getSystemRuntimeFlags()
+      });
+    }
+
+    if (method === 'PUT' && pathname === '/api/admin/bridge-config') {
+      const body = await readJsonBody(req, 64 * 1024);
+      try {
+        const bridge = body.bridge ? updateBridgeConfig(body.bridge) : getMaskedBridgeConfig();
+        const runtimeFlags = body.runtime_flags ? updateSystemRuntimeFlags(body.runtime_flags) : getSystemRuntimeFlags();
+        recordSecurityEvent({
+          level: 'info',
+          type: 'admin_action',
+          ip: getClientIp(req),
+          user: currentUser.email || userId,
+          detail: '站长更新了底层桥接引擎与系统运行开关配置'
+        });
+        return sendJson(res, 200, { ok: true, bridge, runtime_flags: runtimeFlags });
+      } catch (err) {
+        return sendJson(res, 400, { error: err.message });
+      }
+    }
+
+    if (method === 'POST' && pathname === '/api/admin/bridge-config/probe') {
+      const result = await probeAllBridgeEndpoints();
+      return sendJson(res, 200, { ok: true, ...result });
+    }
+
+    if (method === 'POST' && pathname === '/api/admin/maintenance/wal-checkpoint') {
+      try {
+        const dbFile = path.join(__dirname, '..', 'data', 'persona_studio.sqlite');
+        const walFile = `${dbFile}-wal`;
+        const beforeWalBytes = fs.existsSync(walFile) ? fs.statSync(walFile).size : 0;
+        db.exec('PRAGMA wal_checkpoint(TRUNCATE);');
+        const afterWalBytes = fs.existsSync(walFile) ? fs.statSync(walFile).size : 0;
+        recordSecurityEvent({
+          level: 'info',
+          type: 'admin_action',
+          ip: getClientIp(req),
+          user: currentUser.email || userId,
+          detail: `执行 SQLite WAL 整理（${(beforeWalBytes / 1024).toFixed(1)}KB → ${(afterWalBytes / 1024).toFixed(1)}KB）`
+        });
+        return sendJson(res, 200, { ok: true, beforeWalBytes, afterWalBytes });
+      } catch (err) {
+        return sendJson(res, 500, { error: err.message || 'WAL 整理失败' });
+      }
+    }
+
+    if (method === 'POST' && pathname === '/api/admin/security/revoke-all-sessions') {
+      const resRev = adminRevokeNonAdminSessions(currentToken);
+      recordSecurityEvent({
+        level: 'warn',
+        type: 'admin_security',
+        ip: getClientIp(req),
+        user: currentUser.email || userId,
+        detail: `站长执行紧急全站会话吊销，共踢出 ${resRev.revoked_count} 个登录态`
+      });
+      return sendJson(res, 200, { ok: true, ...resRev, dashboard: getAdminDashboardData().stats });
     }
 
     if (method === 'GET' && pathname === '/api/admin/announcement') {
@@ -1975,6 +2090,24 @@ async function handleApi(req, res, pathname, parsedUrl) {
       }
     }
 
+    const kickMatch = pathname.match(/^\/api\/admin\/users\/([^/]+)\/kick$/);
+    if (kickMatch && method === 'POST') {
+      const targetUid = decodeURIComponent(kickMatch[1]);
+      try {
+        const dash = adminKickUserSessions(userId, targetUid);
+        recordSecurityEvent({
+          level: 'info',
+          type: 'admin_action',
+          ip: getClientIp(req),
+          user: currentUser.email || userId,
+          detail: `强制踢出用户「${dash.nickname}」下线（清除 ${dash.kicked_count} 个登录会话）`
+        });
+        return sendJson(res, 200, { ok: true, message: `已强制踢下线（清除 ${dash.kicked_count} 个在线会话）`, ...dash });
+      } catch (err) {
+        return sendJson(res, 400, { error: err.message });
+      }
+    }
+
     // 管理员重置指定用户密码
     const resetPwdMatch = pathname.match(/^\/api\/admin\/users\/([^/]+)\/reset-password$/);
     if (resetPwdMatch && method === 'POST') {
@@ -2026,10 +2159,17 @@ async function handleApi(req, res, pathname, parsedUrl) {
       }
     }
 
-    if (method === 'PUT' && pathname === '/api/admin/security/credentials') {
+    if ((method === 'PUT' || method === 'POST') && pathname === '/api/admin/security/credentials') {
       const body = await readJsonBody(req, 16 * 1024);
       try {
         const updatedAdmin = updateAdminCredentials(userId, body, currentToken);
+        recordSecurityEvent({
+          level: 'warn',
+          type: 'admin_security',
+          ip: getClientIp(req),
+          user: updatedAdmin.email || userId,
+          detail: '站长修改了登录邮箱或密码凭据'
+        });
         return sendJson(res, 200, { user: updatedAdmin });
       } catch (err) {
         return sendJson(res, 400, { error: err.message });
@@ -4087,6 +4227,11 @@ async function handleApi(req, res, pathname, parsedUrl) {
   }
 
   if (method === 'POST' && pathname === '/api/chat/stream') {
+    const runtimeFlags = getSystemRuntimeFlags();
+    if (runtimeFlags.maintenance_mode === '1' && !currentUser.is_admin) {
+      return sendJson(res, 503, { error: runtimeFlags.maintenance_notice || '系统正在维护升级，请稍后再试', code: 'MAINTENANCE_MODE' });
+    }
+    bumpMetric('chatStreamCount');
     const body = await readJsonBody(req, 8 * 1024 * 1024);
     const sessionId = body.session_id;
     const isRegenerate = Boolean(body.regenerate);
@@ -5247,6 +5392,7 @@ function serveStatic(req, res, pathname) {
 }
 
 const server = http.createServer(async (req, res) => {
+  bumpMetric('totalRequests');
   res._acceptEncoding = String(req.headers['accept-encoding'] || '');
   res._reqMethod = req.method || 'GET';
   try {
@@ -5259,8 +5405,17 @@ const server = http.createServer(async (req, res) => {
       serveStatic(req, res, pathname);
     }
   } catch (err) {
+    const code = err?.statusCode && err.statusCode >= 400 && err.statusCode < 500 ? err.statusCode : 500;
+    if (code >= 500) {
+      bumpMetric('error5xxCount');
+      recordSecurityEvent({
+        level: 'danger',
+        type: 'server_500',
+        ip: getClientIp(req),
+        detail: String(err?.message || '服务器未捕获异常').slice(0, 200)
+      });
+    }
     if (!res.headersSent) {
-      const code = err?.statusCode && err.statusCode >= 400 && err.statusCode < 500 ? err.statusCode : 500;
       const msg =
         code === 500
           ? '服务器繁忙，请稍后重试'

@@ -7621,55 +7621,126 @@ function ensureAdminModalStructure() {
 if (!adminConsoleDialog || !state.user?.is_admin) return false;
 if (adminConsoleDialog.querySelector('.modal-inner')) return true;
 adminConsoleDialog.innerHTML = `
-      <div class="modal-inner">
+      <div class="modal-inner adm-console-shell">
         <div class="modal-header">
           <div class="wallet-head-group">
             <h2 id="admin-console-title">星语恋庭 · 站长管理控制台</h2>
-            <span class="account-isolation-pill">站长最高权限已鉴权</span>
+            <span class="account-isolation-pill">最高权限已鉴权</span>
           </div>
-          <button type="button" class="icon-btn" id="close-admin-console-btn" aria-label="关闭站长后台"></button>
+          <button type="button" class="icon-btn" id="close-admin-console-btn" aria-label="关闭站长后台">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          </button>
         </div>
 
         <div class="wallet-feedback-banner hidden" id="admin-feedback-banner" role="status" aria-live="polite"></div>
 
-        <div class="vip-status-hero wallet-hero-grid admin-stats-hero" id="admin-stats-hero">
-          <div class="vip-hero-left">
-            <div class="wallet-tier-row">
-              <span class="vip-current-tag">全站运营与安全网关中心</span>
-            </div>
-            <p class="vip-hero-desc">
-              所有在线模型密钥与商业配音密钥均由服务端加密掩码托管，<strong>永不向前端明文回显</strong>；普通用户仅可见个人偏好与对话记录，无法访问本后台任何接口。
-            </p>
+        <div class="adm-kpi-grid" id="admin-kpi-cards">
+          <div class="adm-kpi-card">
+            <span class="adm-kpi-label">安全健康评分</span>
+            <strong class="adm-kpi-value" id="adm-kpi-health">--</strong>
+            <span class="adm-kpi-sub" id="adm-kpi-health-sub">等待体检…</span>
           </div>
-          <div class="wallet-metrics-group" id="admin-kpi-cards">
-            <div class="vip-hero-quota"><span class="quota-num" id="adm-kpi-users">0</span><span class="quota-unit">注册用户</span></div>
+          <div class="adm-kpi-card">
+            <span class="adm-kpi-label">注册用户</span>
+            <strong class="adm-kpi-value" id="adm-kpi-users">0</strong>
+            <span class="adm-kpi-sub" id="adm-kpi-users-sub">含封禁 0 人</span>
+          </div>
+          <div class="adm-kpi-card">
+            <span class="adm-kpi-label">在线登录态</span>
+            <strong class="adm-kpi-value" id="adm-kpi-online">0</strong>
+            <span class="adm-kpi-sub" id="adm-kpi-msgs-sub">累计消息 0 条</span>
+          </div>
+          <div class="adm-kpi-card">
+            <span class="adm-kpi-label">Antigravity 通道</span>
+            <strong class="adm-kpi-value adm-kpi-text" id="adm-kpi-channel">探测中</strong>
+            <span class="adm-kpi-sub" id="adm-kpi-channel-sub">双核智能体底座</span>
           </div>
         </div>
 
         <div class="wallet-tabs-shell">
           <div class="wallet-tablist" id="admin-tablist" role="tablist" aria-label="站长管理模块切换">
-            <button type="button" role="tab" class="wallet-tab" id="atab-overview" data-apanel="apanel-overview" aria-selected="true" tabindex="0">
-              <span>独立账户总览</span>
+            <button type="button" role="tab" class="wallet-tab" id="atab-monitor" data-apanel="apanel-monitor" aria-selected="true" tabindex="0">
+              <span>🛡️ 安全与健康监控</span>
+            </button>
+            <button type="button" role="tab" class="wallet-tab" id="atab-overview" data-apanel="apanel-overview" aria-selected="false" tabindex="-1">
+              <span>👥 用户管理</span>
+            </button>
+            <button type="button" role="tab" class="wallet-tab" id="atab-infra" data-apanel="apanel-infra" aria-selected="false" tabindex="-1">
+              <span>⚙️ 底层引擎与系统</span>
             </button>
             <button type="button" role="tab" class="wallet-tab" id="atab-gateway" data-apanel="apanel-gateway" aria-selected="false" tabindex="-1">
-              <span>平台模型 &amp; 语音网关</span>
+              <span>🌐 模型与语音网关</span>
             </button>
-            <button type="button" role="tab" class="wallet-tab" id="atab-security" data-apanel="apanel-security" aria-selected="false" tabindex="-1">
-              <span>站长安全凭据</span>
-            </button>
-            <button type="button" role="tab" class="wallet-tab" id="atab-announcement" data-apanel="apanel-announcement" aria-selected="false" tabindex="-1">
-              <span>📢 全站公告发布</span>
+            <button type="button" role="tab" class="wallet-tab" id="atab-ops" data-apanel="apanel-ops" aria-selected="false" tabindex="-1">
+              <span>📢 公告与站长安全</span>
             </button>
           </div>
 
           <div class="wallet-panels-stack">
-            <!-- 站长面板 1：用户全生命周期权限与账户管理 -->
-            <div role="tabpanel" id="apanel-overview" aria-labelledby="atab-overview">
+            <!-- 站长面板 1：安全与健康度实时监控 -->
+            <div role="tabpanel" id="apanel-monitor" aria-labelledby="atab-monitor">
+              <div class="wpanel-inner adm-panel-stack">
+                <div class="adm-section-head">
+                  <div>
+                    <h3 class="sub-sec-title">系统资源与服务健康态</h3>
+                    <p class="adm-section-desc" id="adm-sys-meta">正在读取服务器运行遥测数据…</p>
+                  </div>
+                  <div class="adm-btn-group">
+                    <button type="button" class="mini-btn" id="adm-refresh-health-btn">🔄 立即体检</button>
+                    <button type="button" class="mini-btn" id="adm-wal-checkpoint-btn">🧹 整理数据库 WAL</button>
+                    <button type="button" class="mini-btn adm-danger-btn" id="adm-revoke-all-btn">🚨 踢出全站其他登录态</button>
+                  </div>
+                </div>
+
+                <div class="adm-sys-metrics-row" id="adm-sys-metrics-row">
+                  <div class="adm-mini-stat"><span class="adm-mini-label">内存占用</span><strong id="adm-stat-mem">--</strong></div>
+                  <div class="adm-mini-stat"><span class="adm-mini-label">主库 / WAL</span><strong id="adm-stat-db">--</strong></div>
+                  <div class="adm-mini-stat"><span class="adm-mini-label">服务运行时长</span><strong id="adm-stat-uptime">--</strong></div>
+                  <div class="adm-mini-stat"><span class="adm-mini-label">请求 / 拦截异常</span><strong id="adm-stat-req">--</strong></div>
+                </div>
+
+                <div class="adm-card-box">
+                  <div class="adm-box-title">
+                    <span>推理通道与反向隧道实时探针</span>
+                    <button type="button" class="mini-btn" id="adm-probe-channels-btn">⚡ 一键测速探针</button>
+                  </div>
+                  <div id="adm-channel-probes-list" class="adm-probes-grid"></div>
+                </div>
+
+                <div class="adm-card-box">
+                  <div class="adm-box-title"><span>8 项安全合规自动化体检</span></div>
+                  <div id="adm-health-checks-grid" class="adm-checks-grid"></div>
+                </div>
+
+                <div class="adm-card-box">
+                  <div class="adm-box-title">
+                    <span>实时安全审计事件流</span>
+                    <div class="adm-filter-pills" id="adm-event-filters">
+                      <button type="button" class="adm-pill active" data-ev-filter="all">全部</button>
+                      <button type="button" class="adm-pill" data-ev-filter="risk">警告与高危</button>
+                      <button type="button" class="adm-pill" data-ev-filter="admin">管理审计</button>
+                    </div>
+                  </div>
+                  <div id="adm-security-events-list" class="adm-events-list"></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 站长面板 2：用户全生命周期权限与账户管理 -->
+            <div role="tabpanel" id="apanel-overview" aria-labelledby="atab-overview" hidden>
               <div class="wpanel-inner">
-                <div class="block-title-row" style="margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
-                  <h3 class="sub-sec-title" id="adm-users-heading">全站注册用户与权限管理中心</h3>
+                <div class="adm-section-head" style="margin-bottom: 12px;">
+                  <div>
+                    <h3 class="sub-sec-title" id="adm-users-heading">全站注册用户与权限管理中心</h3>
+                    <div class="adm-filter-pills" id="adm-user-filters" style="margin-top: 6px;">
+                      <button type="button" class="adm-pill active" data-user-filter="all">全部</button>
+                      <button type="button" class="adm-pill" data-user-filter="admin">管理员</button>
+                      <button type="button" class="adm-pill" data-user-filter="user">普通用户</button>
+                      <button type="button" class="adm-pill" data-user-filter="banned">已封禁</button>
+                    </div>
+                  </div>
                   <div style="display: flex; gap: 8px; align-items: center;">
-                    <input type="search" id="adm-users-search-input" placeholder="搜索昵称或邮箱..." style="padding: 5px 12px; border-radius: 6px; border: 1px solid var(--border, #cbd5e1); font-size: 13px; min-width: 180px;" />
+                    <input type="search" id="adm-users-search-input" placeholder="搜索昵称、邮箱或 ID..." style="padding: 6px 12px; border-radius: 8px; border: 1px solid var(--border, #cbd5e1); font-size: 13px; min-width: 190px;" />
                     <button type="button" class="mini-btn" id="adm-refresh-dash-btn">刷新列表</button>
                   </div>
                 </div>
@@ -7681,8 +7752,8 @@ adminConsoleDialog.innerHTML = `
                         <th scope="col">用户身份与邮箱</th>
                         <th scope="col">状态</th>
                         <th scope="col">权限角色</th>
-                        <th scope="col">积分 / 会话</th>
-                        <th scope="col" style="min-width: 220px; text-align: center;">账户全生命周期管理</th>
+                        <th scope="col">在线 / 积分 / 会话</th>
+                        <th scope="col" style="min-width: 260px; text-align: center;">账户全生命周期管理</th>
                       </tr>
                     </thead>
                     <tbody id="adm-users-tbody"></tbody>
@@ -7691,7 +7762,101 @@ adminConsoleDialog.innerHTML = `
               </div>
             </div>
 
-            <!-- 站长面板 2：平台托管大模型网关 & 商业配音音源配置 -->
+            <!-- 站长面板 3：底层引擎与系统运行设置 -->
+            <div role="tabpanel" id="apanel-infra" aria-labelledby="atab-infra" hidden>
+              <div class="wpanel-inner">
+                <form id="adm-infra-form" class="stack-form">
+                  <div class="admin-gen-form stack-form">
+                    <div class="block-title-row">
+                      <span>Antigravity 桥接底座热配置（修改后即时生效，无需重启）</span>
+                      <button type="button" class="mini-btn" id="adm-infra-probe-btn">⚡ 测试通道连通</button>
+                    </div>
+
+                    <div class="adm-toggle-grid">
+                      <label class="adm-switch-item">
+                        <input type="checkbox" id="adm-br-enabled" />
+                        <div><strong>启用 Antigravity 桥接底座</strong><span>开启后自动调度已配置的本地隧道或联动端点</span></div>
+                      </label>
+                      <label class="adm-switch-item">
+                        <input type="checkbox" id="adm-br-takeover" />
+                        <div><strong>接管体验/演示通道</strong><span>游客或默认通道优先由桥接底座响应</span></div>
+                      </label>
+                      <label class="adm-switch-item">
+                        <input type="checkbox" id="adm-br-prefer-local" />
+                        <div><strong>优先本机离线服务 (Ollama/LM Studio)</strong><span>先探测本机 11434/1234 再走云端端点</span></div>
+                      </label>
+                    </div>
+
+                    <div class="inline-row">
+                      <div class="field-group flex-1">
+                        <label for="adm-br-timeout">首字响应超时熔断 (毫秒, 5000~120000)</label>
+                        <input id="adm-br-timeout" type="number" min="5000" max="120000" step="1000" placeholder="60000" />
+                      </div>
+                      <div class="field-group flex-1">
+                        <label for="adm-br-effort">默认思考深度 (Reasoning Effort)</label>
+                        <select id="adm-br-effort">
+                          <option value="low">low · 极速首字直出（推荐）</option>
+                          <option value="medium">medium · 均衡深度思考</option>
+                          <option value="high">high · 深度长链路推理</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div class="inline-row">
+                      <div class="field-group flex-1">
+                        <label for="adm-br-ollama">Ollama 本机地址</label>
+                        <input id="adm-br-ollama" type="url" placeholder="http://127.0.0.1:11434" />
+                      </div>
+                      <div class="field-group flex-1">
+                        <label for="adm-br-lmstudio">LM Studio 本机地址</label>
+                        <input id="adm-br-lmstudio" type="url" placeholder="http://127.0.0.1:1234" />
+                      </div>
+                    </div>
+
+                    <div class="field-group">
+                      <label>当前已加载的底层桥接端点清单（密钥已脱敏）</label>
+                      <div id="adm-br-endpoints-list" class="adm-endpoints-list"></div>
+                    </div>
+                  </div>
+
+                  <div class="admin-gen-form stack-form">
+                    <div class="block-title-row">
+                      <span>全站准入、防爆破与运维开关</span>
+                    </div>
+                    <div class="adm-toggle-grid">
+                      <label class="adm-switch-item">
+                        <input type="checkbox" id="adm-flag-reg" />
+                        <div><strong>开放新用户注册</strong><span>关闭后新用户无法注册，已有账号不受影响</span></div>
+                      </label>
+                      <label class="adm-switch-item">
+                        <input type="checkbox" id="adm-flag-guest" />
+                        <div><strong>允许访客免密体验</strong><span>关闭后需登录正式账号才可进入对话</span></div>
+                      </label>
+                      <label class="adm-switch-item adm-switch-warn">
+                        <input type="checkbox" id="adm-flag-maint" />
+                        <div><strong>全站维护模式（仅站长可发消息）</strong><span>开启后普通用户发消息将收到维护公告</span></div>
+                      </label>
+                    </div>
+                    <div class="inline-row">
+                      <div class="field-group flex-1">
+                        <label for="adm-flag-maint-notice">维护模式提示语</label>
+                        <input id="adm-flag-maint-notice" type="text" maxlength="160" placeholder="系统正在维护升级，请稍后再试" />
+                      </div>
+                      <div class="field-group" style="width: 190px;">
+                        <label for="adm-flag-login-limit">登录防爆破上限 (次/分钟)</label>
+                        <input id="adm-flag-login-limit" type="number" min="3" max="120" placeholder="12" />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="form-footer-row">
+                    <button type="submit" class="primary-btn full-width">保存底层引擎与系统运行设置（热生效）</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+
+            <!-- 站长面板 4：平台托管大模型网关 & 商业配音音源配置 -->
             <div role="tabpanel" id="apanel-gateway" aria-labelledby="atab-gateway" hidden>
               <div class="wpanel-inner">
                 <form id="adm-platform-cfg-form" class="stack-form">
@@ -7844,61 +8009,55 @@ adminConsoleDialog.innerHTML = `
               </div>
             </div>
 
-            <!-- 站长面板 3：站长登录邮箱与强密码修改 -->
-            <div role="tabpanel" id="apanel-security" aria-labelledby="atab-security" hidden>
-              <div class="wpanel-inner">
-                <form id="adm-security-form" class="admin-gen-form stack-form">
-                  <h3 class="sub-sec-title">修改站长登录邮箱与高强度密码</h3>
-                  <p class="sub-sec-hint">
-                    为防止站长后台被暴力猜解，建议首次部署后立即修改初始密码（新密码至少 8 位）。修改成功后将自动吊销其他设备上的旧站长会话令牌。
-                  </p>
-                  <div class="field-group">
-                    <label for="adm-sec-email">站长登录邮箱</label>
-                    <input id="adm-sec-email" type="email" autocomplete="username" required />
-                  </div>
-                  <div class="field-group">
-                    <label for="adm-sec-cur-pwd">当前站长密码（必填校验）</label>
-                    <input id="adm-sec-cur-pwd" type="password" autocomplete="current-password" placeholder="请输入当前站长密码以确认身份" required />
-                  </div>
-                  <div class="field-group">
-                    <label for="adm-sec-new-pwd">新强密码（至少 8 位，仅改邮箱可留空）</label>
-                    <input id="adm-sec-new-pwd" type="password" autocomplete="new-password" minlength="8" placeholder="建议包含字母、数字与符号，至少 8 位" />
-                  </div>
-                  <div class="form-footer-row">
-                    <button type="submit" class="primary-btn">验证并更新站长安全凭据</button>
-                  </div>
-                </form>
-              </div>
-            </div>
-
-            <!-- 站长面板 4：全站系统公告管理与主动发布中心 -->
-            <div role="tabpanel" id="apanel-announcement" aria-labelledby="atab-announcement" hidden>
-              <div class="wpanel-inner">
-                <form id="adm-ann-form" class="stack-form">
+            <!-- 站长面板 5：全站系统公告与站长安全凭据 -->
+            <div role="tabpanel" id="apanel-ops" aria-labelledby="atab-ops" hidden>
+              <div class="wpanel-inner adm-panel-stack">
+                <form id="adm-ann-form" class="admin-gen-form stack-form">
                   <div class="block-title-row">
                     <span>📢 全站系统公告主动发布与下发管理中心</span>
                     <span class="user-role-badge">实时生效至开屏弹窗</span>
                   </div>
-                  <p class="section-lead-note" style="margin:4px 0 10px 0;font-size:12.5px;color:var(--text-sub);">
-                    超级管理员可在此主动发布全站公告（支持分段多行排版）。更新后所有用户在打开网页或启动手机版时会自动弹出开屏展示。
-                  </p>
                   <div class="field-group">
                     <label for="adm-ann-title">公告标题 *</label>
-                    <input id="adm-ann-title" type="text" placeholder="例：星语 v1.9.9 手机辅助全新升级公告" required />
+                    <input id="adm-ann-title" type="text" placeholder="例：星语 v2.2.0 重磅更新公告" required />
                   </div>
                   <div class="field-group">
                     <label for="adm-ann-content">公告正文内容 * (支持分段说明)</label>
-                    <textarea id="adm-ann-content" rows="6" style="resize:vertical;font-size:13px;line-height:1.6;" placeholder="请输入全站公告正文内容..." required></textarea>
+                    <textarea id="adm-ann-content" rows="5" style="resize:vertical;font-size:13px;line-height:1.6;" placeholder="请输入全站公告正文内容..." required></textarea>
                   </div>
-                  <div class="inline-row" style="margin-top:6px;align-items:center;">
+                  <div class="inline-row" style="align-items:center;">
                     <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:600;font-size:13px;">
                       <input type="checkbox" id="adm-ann-enabled" checked />
                       <span>全站立即启用并向所有用户展示</span>
                     </label>
                   </div>
-                  <div class="form-footer-row" style="margin-top:12px;display:flex;gap:10px;">
+                  <div class="form-footer-row" style="display:flex;gap:10px;">
                     <button type="submit" class="primary-btn" id="adm-ann-publish-btn">🚀 立即发布 / 更新全站公告</button>
                     <button type="button" class="mini-btn" id="adm-ann-offline-btn" style="padding:7px 14px;">下线并停用公告</button>
+                  </div>
+                </form>
+
+                <form id="adm-security-form" class="admin-gen-form stack-form">
+                  <h3 class="sub-sec-title">修改站长登录邮箱与高强度密码</h3>
+                  <p class="sub-sec-hint">
+                    为防止站长后台被暴力猜解，建议修改初始密码（新密码至少 8 位）。修改成功后将自动吊销其他设备上的旧站长会话令牌。
+                  </p>
+                  <div class="field-group">
+                    <label for="adm-sec-email">站长登录邮箱</label>
+                    <input id="adm-sec-email" type="email" autocomplete="username" required />
+                  </div>
+                  <div class="inline-row">
+                    <div class="field-group flex-1">
+                      <label for="adm-sec-cur-pwd">当前站长密码（必填校验）</label>
+                      <input id="adm-sec-cur-pwd" type="password" autocomplete="current-password" placeholder="请输入当前站长密码" required />
+                    </div>
+                    <div class="field-group flex-1">
+                      <label for="adm-sec-new-pwd">新强密码（至少 8 位，仅改邮箱可留空）</label>
+                      <input id="adm-sec-new-pwd" type="password" autocomplete="new-password" minlength="8" placeholder="建议字母+数字+符号" />
+                    </div>
+                  </div>
+                  <div class="form-footer-row">
+                    <button type="submit" class="primary-btn">验证并更新站长安全凭据</button>
                   </div>
                 </form>
               </div>
@@ -8015,6 +8174,193 @@ ttsMask.textContent = cfg.has_tts_key
 }
 }
 let adminUsersSearchKeyword = '';
+let adminUsersRoleFilter = 'all';
+let adminEventFilter = 'all';
+let latestAdminHealthReport = null;
+function formatBytesCompact(bytes) {
+const b = Number(bytes) || 0;
+if (b < 1024) return `${b} B`;
+if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`;
+return `${(b / (1024 * 1024)).toFixed(2)} MB`;
+}
+function formatUptimeCompact(sec) {
+const s = Math.max(0, Math.round(Number(sec) || 0));
+const d = Math.floor(s / 86400);
+const h = Math.floor((s % 86400) / 3600);
+const m = Math.floor((s % 3600) / 60);
+if (d > 0) return `${d}天 ${h}小时`;
+if (h > 0) return `${h}小时 ${m}分`;
+return `${m}分钟`;
+}
+function renderAdminSecurityEvents() {
+const box = document.getElementById('adm-security-events-list');
+if (!box) return;
+const rawEvents = latestAdminHealthReport?.security?.events || [];
+const list = rawEvents.filter((ev) => {
+if (adminEventFilter === 'risk') return ev.level === 'warn' || ev.level === 'danger';
+if (adminEventFilter === 'admin') return String(ev.type || '').startsWith('admin_');
+return true;
+});
+if (list.length === 0) {
+box.innerHTML = '<div class="adm-empty-state">当前筛选条件下暂无安全或审计事件记录</div>';
+return;
+}
+box.innerHTML = list
+.slice(0, 40)
+.map((ev) => {
+const lvl = ev.level === 'danger' ? 'danger' : ev.level === 'warn' ? 'warn' : 'info';
+const lvlLabel = lvl === 'danger' ? '高危' : lvl === 'warn' ? '警告' : '审计';
+const tStr = ev.ts ? new Date(ev.ts).toLocaleTimeString('zh-CN', { hour12: false }) : '--:--:--';
+return `
+          <div class="adm-event-row">
+            <span class="adm-badge adm-badge-${lvl}">${lvlLabel}</span>
+            <span class="adm-event-time">${escapeHtml(tStr)}</span>
+            <span class="adm-event-detail">${escapeHtml(ev.detail || ev.type)}</span>
+            ${ev.ip ? `<span class="adm-event-meta">${escapeHtml(ev.ip)}</span>` : ''}
+          </div>
+        `;
+})
+.join('');
+}
+function renderChannelProbesList(probes = [], localCli = null) {
+const box = document.getElementById('adm-channel-probes-list');
+if (!box) return;
+const cards = [];
+if (localCli) {
+const ok = Boolean(localCli.available);
+cards.push(`
+        <div class="adm-probe-card">
+          <div class="adm-probe-head">
+            <strong>宿主直连检测 (${escapeHtml(localCli.transport || 'none')})</strong>
+            <span class="adm-badge ${ok ? 'adm-badge-pass' : 'adm-badge-warn'}">${ok ? '已就绪' : '未激活'}</span>
+          </div>
+          <div class="adm-probe-sub">${escapeHtml(localCli.path || '')}</div>
+        </div>
+      `);
+}
+for (const p of probes) {
+cards.push(`
+        <div class="adm-probe-card">
+          <div class="adm-probe-head">
+            <strong>${escapeHtml(p.name || p.id)}</strong>
+            <span class="adm-badge ${p.online ? 'adm-badge-pass' : 'adm-badge-danger'}">${p.online ? `在线 · ${p.latencyMs ?? 0}ms` : '离线'}</span>
+          </div>
+          <div class="adm-probe-sub">${escapeHtml(p.detail || '')}</div>
+        </div>
+      `);
+}
+box.innerHTML = cards.length > 0 ? cards.join('') : '<div class="adm-empty-state">暂未配置任何桥接端点</div>';
+}
+function renderHealthMonitorView(report) {
+if (!report || !adminConsoleDialog) return;
+latestAdminHealthReport = report;
+const setTxt = (id, val) => {
+const el = document.getElementById(id);
+if (el) el.textContent = String(val);
+};
+const score = report.healthScore ?? 0;
+const healthEl = document.getElementById('adm-kpi-health');
+if (healthEl) {
+healthEl.textContent = `${score} 分`;
+healthEl.dataset.level = report.healthLevel || 'healthy';
+}
+setTxt(
+'adm-kpi-health-sub',
+report.healthLevel === 'healthy' ? '态势良好' : report.healthLevel === 'attention' ? '建议关注' : '存在高危项'
+);
+const dbInfo = report.database || {};
+const sys = report.system || {};
+const sec = report.security?.counters || {};
+setTxt('adm-kpi-online', dbInfo.activeOnlineTokens ?? 0);
+setTxt('adm-kpi-msgs-sub', `累计消息 ${dbInfo.totalMessages ?? 0} 条`);
+const probes = report.channels?.probes || [];
+const tunnelProbe = probes.find((p) => p.isTunnel);
+const anyOnline = probes.some((p) => p.online) || report.channels?.localCli?.transport === 'local_cli';
+setTxt('adm-kpi-channel', tunnelProbe?.online ? `隧道 ${tunnelProbe.latencyMs}ms` : anyOnline ? '云端兜底' : '离线');
+setTxt(
+'adm-kpi-channel-sub',
+tunnelProbe?.online ? '本机电脑 Antigravity 直连' : report.channels?.localCli?.transport === 'local_cli' ? '本机 CLI 就绪' : '电脑离线时自动回退'
+);
+setTxt('adm-sys-meta', `v${sys.appVersion || '2.2.0'} · ${sys.platform || ''} · Node ${sys.nodeVersion || ''} · ${sys.cpuCores || 1} 核 (负载 ${sys.load1m ?? 0})`);
+setTxt('adm-stat-mem', `${sys.memUsedPct ?? 0}% (进程 ${sys.rssMb ?? 0} MB)`);
+setTxt('adm-stat-db', `${formatBytesCompact(dbInfo.dbSizeBytes)} / ${formatBytesCompact(dbInfo.walSizeBytes)}`);
+setTxt('adm-stat-uptime', formatUptimeCompact(sys.uptimeSec));
+setTxt('adm-stat-req', `${sec.totalRequests ?? 0} / ${(sec.loginFailCount ?? 0) + (sec.authDeniedCount ?? 0)}`);
+renderChannelProbesList(probes, report.channels?.localCli);
+const checksGrid = document.getElementById('adm-health-checks-grid');
+if (checksGrid && Array.isArray(report.checks)) {
+checksGrid.innerHTML = report.checks
+.map((c) => {
+const st = c.status === 'fail' ? 'danger' : c.status === 'warn' ? 'warn' : 'pass';
+const label = st === 'danger' ? '高危' : st === 'warn' ? '注意' : '通过';
+return `
+            <div class="adm-check-item">
+              <div class="adm-check-head">
+                <strong>${escapeHtml(c.name)}</strong>
+                <span class="adm-badge adm-badge-${st}">${label}</span>
+              </div>
+              <p class="adm-check-desc">${escapeHtml(c.detail)}</p>
+            </div>
+          `;
+})
+.join('');
+}
+renderAdminSecurityEvents();
+}
+async function refreshAdminHealthMonitor() {
+if (!state.user?.is_admin) return;
+const report = await apiJson('/api/admin/health-monitor');
+renderHealthMonitorView(report);
+}
+function applyBridgeConfigToForm(payload) {
+if (!payload || !adminConsoleDialog) return;
+const opts = payload.bridge?.options || {};
+const flags = payload.runtime_flags || {};
+const setChk = (id, v) => {
+const el = document.getElementById(id);
+if (el) el.checked = Boolean(v);
+};
+const setVal = (id, v) => {
+const el = document.getElementById(id);
+if (el) el.value = v ?? '';
+};
+setChk('adm-br-enabled', opts.enabled !== false);
+setChk('adm-br-takeover', Boolean(opts.takeoverDemoChannel));
+setChk('adm-br-prefer-local', Boolean(opts.preferLocalOfflineServer));
+setVal('adm-br-timeout', opts.firstTokenTimeoutMs || 60000);
+setVal('adm-br-effort', opts.defaultReasoningEffort || 'low');
+setVal('adm-br-ollama', opts.localServers?.ollamaBaseUrl || 'http://127.0.0.1:11434');
+setVal('adm-br-lmstudio', opts.localServers?.lmStudioBaseUrl || 'http://127.0.0.1:1234');
+setChk('adm-flag-reg', flags.allow_registration !== '0');
+setChk('adm-flag-guest', flags.allow_guest_mode !== '0');
+setChk('adm-flag-maint', flags.maintenance_mode === '1');
+setVal('adm-flag-maint-notice', flags.maintenance_notice || '系统正在维护升级，请稍后再试');
+setVal('adm-flag-login-limit', flags.rate_limit_login_per_min || '12');
+const epBox = document.getElementById('adm-br-endpoints-list');
+if (epBox) {
+const eps = payload.bridge?.endpoints || [];
+epBox.innerHTML = eps.length === 0
+? '<div class="adm-empty-state">暂未配置外部桥接端点（当前仅依赖本机 CLI 或平台网关）</div>'
+: eps
+.map(
+(ep) => `
+              <div class="adm-ep-row">
+                <div>
+                  <strong>${escapeHtml(ep.name || ep.id)}</strong>
+                  <span class="adm-ep-meta">${escapeHtml(ep.source)} · ${escapeHtml(ep.baseOrigin)} · 模型: ${escapeHtml(ep.defaultModel)}</span>
+                </div>
+                <span class="adm-badge ${ep.hasKey ? 'adm-badge-pass' : 'adm-badge-warn'}">${ep.hasKey ? escapeHtml(ep.keyMasked) : '无密钥'}</span>
+              </div>
+            `
+)
+.join('');
+}
+}
+async function refreshAdminBridgeConfig() {
+if (!state.user?.is_admin) return;
+const data = await apiJson('/api/admin/bridge-config');
+applyBridgeConfigToForm(data);
+}
 function renderAdminDashboardView() {
 const dash = state.adminDashboard;
 if (!dash || !adminConsoleDialog) return;
@@ -8024,19 +8370,32 @@ const el = document.getElementById(id);
 if (el) el.textContent = String(val);
 };
 setTxt('adm-kpi-users', stats.total_users ?? 0);
+setTxt('adm-kpi-users-sub', `含封禁 ${stats.banned_users ?? 0} 人`);
+if (stats.active_online_tokens !== undefined) {
+setTxt('adm-kpi-online', stats.active_online_tokens);
+}
+if (stats.total_messages !== undefined) {
+setTxt('adm-kpi-msgs-sub', `累计消息 ${stats.total_messages} 条`);
+}
 const rawUsers = Array.isArray(dash.users) ? dash.users : [];
 const kw = String(adminUsersSearchKeyword || '').trim().toLowerCase();
-const users = kw
-? rawUsers.filter(u =>
+const users = rawUsers.filter((u) => {
+if (adminUsersRoleFilter === 'admin' && u.role !== 'admin') return false;
+if (adminUsersRoleFilter === 'user' && (u.role === 'admin' || u.is_banned)) return false;
+if (adminUsersRoleFilter === 'banned' && !u.is_banned) return false;
+if (kw) {
+return (
 String(u.nickname || '').toLowerCase().includes(kw) ||
 String(u.email || '').toLowerCase().includes(kw) ||
 String(u.id || '').toLowerCase().includes(kw)
-)
-: rawUsers;
+);
+}
+return true;
+});
 const usersTbody = document.getElementById('adm-users-tbody');
 if (usersTbody) {
 if (users.length === 0) {
-usersTbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--text-muted,#94a3b8);">' + (kw ? '未找到匹配「' + escapeHtml(kw) + '」的用户' : '暂无注册用户') + '</td></tr>';
+usersTbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--text-muted,#94a3b8);">' + (kw ? '未找到匹配「' + escapeHtml(kw) + '」的用户' : '当前筛选条件下暂无用户') + '</td></tr>';
 } else {
 usersTbody.innerHTML = users
 .map((u) => {
@@ -8052,10 +8411,17 @@ const roleBadge = u.role === 'admin'
 const dateStr = u.created_at ? new Date(u.created_at).toLocaleDateString() : '-';
 let actionButtons = '';
 if (isProtected) {
-actionButtons = `<span style="font-size:12px;color:var(--text-muted,#94a3b8);">${u.id === 'user_admin' ? '系统主站长 (受保护)' : '当前登录账号'}</span>`;
+actionButtons = `
+                <div style="display:flex;gap:6px;justify-content:center;flex-wrap:wrap;align-items:center;">
+                  <button type="button" class="mini-btn" data-action="adjust-assets" data-uid="${escapeHtml(u.id)}" data-name="${escapeHtml(u.nickname)}" title="调整积分或会员天数">调额</button>
+                  <span style="font-size:12px;color:var(--text-muted,#94a3b8);">${u.id === 'user_admin' ? '系统主站长' : '当前登录账号'}</span>
+                </div>
+              `;
 } else {
 actionButtons = `
-                <div style="display:flex;gap:6px;justify-content:center;flex-wrap:wrap;">
+                <div style="display:flex;gap:5px;justify-content:center;flex-wrap:wrap;">
+                  <button type="button" class="mini-btn" data-action="adjust-assets" data-uid="${escapeHtml(u.id)}" data-name="${escapeHtml(u.nickname)}" title="增减积分/在线次数或赠送会员天数">调额</button>
+                  <button type="button" class="mini-btn" data-action="kick-user" data-uid="${escapeHtml(u.id)}" data-name="${escapeHtml(u.nickname)}" title="强制清除该用户所有在线登录态">踢下线</button>
                   <button type="button" class="mini-btn" data-action="reset-pwd" data-uid="${escapeHtml(u.id)}" data-name="${escapeHtml(u.nickname)}" title="为该用户重置新密码">改密</button>
                   <button type="button" class="mini-btn" data-action="toggle-ban" data-uid="${escapeHtml(u.id)}" data-name="${escapeHtml(u.nickname)}" data-banned="${isBanned ? '1' : '0'}" style="${isBanned ? 'color:#10b981;font-weight:600;' : 'color:#ef4444;'}" title="${isBanned ? '解封此账号' : '立即封禁此账号并踢下线'}">${isBanned ? '解封' : '封禁'}</button>
                   <button type="button" class="mini-btn" data-action="toggle-role" data-uid="${escapeHtml(u.id)}" data-role="${escapeHtml(u.role || 'user')}" title="变更账号角色">${u.role === 'admin' ? '降为用户' : '设为管理'}</button>
@@ -8068,13 +8434,13 @@ return `
                 <th scope="row">
                   <div><strong>${escapeHtml(u.nickname)}</strong></div>
                   <div class="muted-count" style="font-size:12px;color:var(--text-muted,#64748b);">${escapeHtml(u.email)}</div>
-                  <div style="font-size:11px;color:var(--text-muted,#94a3b8);margin-top:2px;">注册时间: ${dateStr}</div>
+                  <div style="font-size:11px;color:var(--text-muted,#94a3b8);margin-top:2px;">注册: ${dateStr} · ${escapeHtml(u.tier_name || '普通')}</div>
                 </th>
                 <td style="vertical-align:middle;">${statusHtml}</td>
                 <td style="vertical-align:middle;">${roleBadge}</td>
                 <td style="vertical-align:middle;">
-                  <div>${u.session_count || 0} 个会话</div>
-                  <div style="font-size:12px;color:var(--text-muted,#64748b);">积分: ${u.points || 0}</div>
+                  <div style="font-variant-numeric:tabular-nums;">在线 ${u.active_token_count || 0} · ${u.session_count || 0} 会话</div>
+                  <div style="font-size:12px;color:var(--text-muted,#64748b);font-variant-numeric:tabular-nums;">积分: ${u.points || 0} · 次数: ${u.online_credits || 0}</div>
                 </td>
                 <td style="vertical-align:middle;text-align:center;">
                   ${actionButtons}
@@ -8120,6 +8486,99 @@ nextBtn.focus();
 document.getElementById('adm-refresh-dash-btn')?.addEventListener('click', async () => {
 await refreshAdminDashboard(false);
 showToast('全站账户列表已同步刷新');
+});
+document.getElementById('adm-refresh-health-btn')?.addEventListener('click', async () => {
+await refreshAdminHealthMonitor();
+showToast('安全健康度体检与实时探针已刷新');
+});
+document.getElementById('adm-probe-channels-btn')?.addEventListener('click', async (e) => {
+const btn = e.currentTarget;
+btn.disabled = true;
+btn.textContent = '测速中…';
+try {
+const res = await apiJson('/api/admin/bridge-config/probe', { method: 'POST', body: '{}' });
+renderChannelProbesList(res.probes || [], res.localCli);
+showToast('已完成全通道连通性实时探针');
+} catch (err) {
+showToast('探针测速失败: ' + err.message);
+} finally {
+btn.disabled = false;
+btn.textContent = '⚡ 一键测速探针';
+}
+});
+document.getElementById('adm-infra-probe-btn')?.addEventListener('click', async () => {
+try {
+const res = await apiJson('/api/admin/bridge-config/probe', { method: 'POST', body: '{}' });
+const onlineNames = (res.probes || []).filter((p) => p.online).map((p) => `${p.name}(${p.latencyMs}ms)`);
+showToast(onlineNames.length > 0 ? `连通成功: ${onlineNames.join('、')}` : '当前外部桥接端点均未在线，将依赖本机 CLI 或平台网关');
+} catch (err) {
+showToast('测试失败: ' + err.message);
+}
+});
+document.getElementById('adm-wal-checkpoint-btn')?.addEventListener('click', async () => {
+try {
+const res = await apiJson('/api/admin/maintenance/wal-checkpoint', { method: 'POST', body: '{}' });
+await refreshAdminHealthMonitor();
+showToast(`SQLite WAL 整理完成（${formatBytesCompact(res.beforeWalBytes)} → ${formatBytesCompact(res.afterWalBytes)}）`);
+} catch (err) {
+showToast('WAL 整理失败: ' + err.message);
+}
+});
+document.getElementById('adm-revoke-all-btn')?.addEventListener('click', async () => {
+if (!confirm('【紧急安全操作】\n确定要强制踢出全站除您当前会话外的所有登录态吗？所有其他设备将需要重新登录。')) return;
+try {
+const res = await apiJson('/api/admin/security/revoke-all-sessions', { method: 'POST', body: '{}' });
+await Promise.all([refreshAdminHealthMonitor(), refreshAdminDashboard(false)]);
+showToast(`已成功吊销 ${res.revoked_count ?? 0} 个全站其他登录会话！`);
+} catch (err) {
+showToast('操作失败: ' + err.message);
+}
+});
+document.getElementById('adm-event-filters')?.addEventListener('click', (e) => {
+const pill = e.target.closest('button[data-ev-filter]');
+if (!pill) return;
+adminEventFilter = pill.dataset.evFilter || 'all';
+document.querySelectorAll('#adm-event-filters .adm-pill').forEach((b) => b.classList.toggle('active', b === pill));
+renderAdminSecurityEvents();
+});
+document.getElementById('adm-user-filters')?.addEventListener('click', (e) => {
+const pill = e.target.closest('button[data-user-filter]');
+if (!pill) return;
+adminUsersRoleFilter = pill.dataset.userFilter || 'all';
+document.querySelectorAll('#adm-user-filters .adm-pill').forEach((b) => b.classList.toggle('active', b === pill));
+renderAdminDashboardView();
+});
+document.getElementById('adm-infra-form')?.addEventListener('submit', async (e) => {
+e.preventDefault();
+try {
+const payload = {
+bridge: {
+enabled: Boolean(document.getElementById('adm-br-enabled')?.checked),
+takeoverDemoChannel: Boolean(document.getElementById('adm-br-takeover')?.checked),
+preferLocalOfflineServer: Boolean(document.getElementById('adm-br-prefer-local')?.checked),
+firstTokenTimeoutMs: Number(document.getElementById('adm-br-timeout')?.value) || 60000,
+defaultReasoningEffort: document.getElementById('adm-br-effort')?.value || 'low',
+ollamaBaseUrl: document.getElementById('adm-br-ollama')?.value.trim() || 'http://127.0.0.1:11434',
+lmStudioBaseUrl: document.getElementById('adm-br-lmstudio')?.value.trim() || 'http://127.0.0.1:1234'
+},
+runtime_flags: {
+allow_registration: Boolean(document.getElementById('adm-flag-reg')?.checked),
+allow_guest_mode: Boolean(document.getElementById('adm-flag-guest')?.checked),
+maintenance_mode: Boolean(document.getElementById('adm-flag-maint')?.checked),
+maintenance_notice: document.getElementById('adm-flag-maint-notice')?.value.trim() || '系统正在维护升级，请稍后再试',
+rate_limit_login_per_min: Number(document.getElementById('adm-flag-login-limit')?.value) || 12
+}
+};
+const res = await apiJson('/api/admin/bridge-config', {
+method: 'PUT',
+body: JSON.stringify(payload)
+});
+applyBridgeConfigToForm(res);
+await refreshAdminHealthMonitor();
+showToast('底层桥接配置与系统运行开关已热生效！');
+} catch (err) {
+showToast('保存配置失败: ' + err.message);
+}
 });
 async function loadAdminAnnouncementData() {
 try {
@@ -8184,7 +8643,40 @@ if (!btn) return;
 const action = btn.dataset.action;
 const uid = btn.dataset.uid;
 const name = btn.dataset.name || '该用户';
-if (action === 'reset-pwd') {
+if (action === 'adjust-assets') {
+const rawPoints = prompt(`【调整用户「${name}」资产】\n请输入要增减的积分（支持负数，例如 500 或 -100，不改填 0）：`, '0');
+if (rawPoints === null) return;
+const rawCredits = prompt(`请输入要增减的在线高阶次数（不改填 0）：`, '0');
+if (rawCredits === null) return;
+const rawDays = prompt(`请输入要赠送的会员畅聊卡天数（例如 30，不赠填 0）：`, '0');
+if (rawDays === null) return;
+try {
+await apiJson(`/api/admin/users/${encodeURIComponent(uid)}/adjust`, {
+method: 'POST',
+body: JSON.stringify({
+add_points: parseInt(rawPoints || '0', 10) || 0,
+add_credits: parseInt(rawCredits || '0', 10) || 0,
+add_card_days: parseInt(rawDays || '0', 10) || 0
+})
+});
+showToast(`已成功调整用户「${name}」配额资产！`);
+await refreshAdminDashboard(false);
+} catch (err) {
+alert('调整资产失败：' + (err.message || '网络异常'));
+}
+} else if (action === 'kick-user') {
+if (!confirm(`确定要强制踢出用户「${name}」下线吗？该用户所有已登录设备将需重新登录。`)) return;
+try {
+const res = await apiJson(`/api/admin/users/${encodeURIComponent(uid)}/kick`, {
+method: 'POST',
+body: '{}'
+});
+showToast(res.message || `已踢出用户「${name}」下线`);
+await refreshAdminDashboard(false);
+} catch (err) {
+alert('踢下线失败：' + (err.message || '网络异常'));
+}
+} else if (action === 'reset-pwd') {
 const newPwd = prompt(`【管理员重置密码】\n请输入用户「${name}」的新密码（不少于 6 位）：`, '');
 if (!newPwd || !newPwd.trim()) return;
 if (newPwd.trim().length < 6) {
@@ -8398,7 +8890,7 @@ const currentPassword = document.getElementById('adm-sec-cur-pwd')?.value || '';
 const newPassword = document.getElementById('adm-sec-new-pwd')?.value || '';
 try {
 const res = await apiJson('/api/admin/security/credentials', {
-method: 'POST',
+method: 'PUT',
 body: JSON.stringify({
 new_email: email,
 current_password: currentPassword,
@@ -8418,7 +8910,7 @@ showToast(`${err.message}`);
 }
 });
 }
-async function openAdminConsoleModal(initialTab = 'atab-overview') {
+async function openAdminConsoleModal(initialTab = 'atab-monitor') {
 if (!state.user?.is_admin) {
 showToast('权限不足：仅站长管理员可进入后台');
 return;
@@ -8431,36 +8923,40 @@ if (!adminConsoleDialog.open) {
 adminConsoleDialog.showModal();
 }
 try {
-await refreshAdminDashboard(true);
+await Promise.all([
+refreshAdminDashboard(true),
+refreshAdminHealthMonitor(),
+refreshAdminBridgeConfig()
+]);
 } catch (err) {
 showToast(`${err.message}`);
 }
 }
 document.getElementById('open-admin-console-btn')?.addEventListener('click', () => {
-openAdminConsoleModal('atab-overview');
+openAdminConsoleModal('atab-monitor');
 });
 document.getElementById('ds-menu-admin-btn')?.addEventListener('click', () => {
 hidePopoverSafe('ds-user-popover');
-openAdminConsoleModal('atab-overview');
+openAdminConsoleModal('atab-monitor');
 });
 document.getElementById('topbar-admin-btn')?.addEventListener('click', () => {
-openAdminConsoleModal('atab-overview');
+openAdminConsoleModal('atab-monitor');
 });
 document.getElementById('more-admin-console-btn')?.addEventListener('click', () => {
 hidePopoverSafe('topbar-more-popover');
-openAdminConsoleModal('atab-overview');
+openAdminConsoleModal('atab-monitor');
 });
 document.getElementById('mfs-item-admin')?.addEventListener('click', () => {
 document.getElementById('mobile-fullscreen-settings')?.classList.add('hidden');
-openAdminConsoleModal('atab-overview');
+openAdminConsoleModal('atab-monitor');
 });
 document.getElementById('settings-open-admin-btn')?.addEventListener('click', () => {
 if (settingsDialog?.open) settingsDialog.close();
-openAdminConsoleModal('atab-overview');
+openAdminConsoleModal('atab-monitor');
 });
 document.getElementById('settings-admin-card-btn')?.addEventListener('click', () => {
 if (settingsDialog?.open) settingsDialog.close();
-openAdminConsoleModal('atab-overview');
+openAdminConsoleModal('atab-monitor');
 });
 function getActiveScriptObj() {
 return (

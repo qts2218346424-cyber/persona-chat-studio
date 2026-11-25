@@ -1188,8 +1188,26 @@ async function streamViaLocalAntigravityCli({
   });
 }
 
+function invalidateBridgeCache() {
+  cachedState.loadedAt = 0;
+}
+
+function getBridgeConfigPath() {
+  return BRIDGE_CONFIG_PATH;
+}
+
+function maskSecret(str) {
+  const s = String(str || '').trim();
+  if (!s) return '';
+  if (s.length <= 8) return '••••••••';
+  return `${s.slice(0, 4)}••••${s.slice(-4)}`;
+}
+
 module.exports = {
   loadBridgeRuntime,
+  invalidateBridgeCache,
+  getBridgeConfigPath,
+  maskSecret,
   tryStreamViaAntigravityBridge,
   getLocalBridgeSuiteCredentials,
   getLocalAntigravityCliPath,

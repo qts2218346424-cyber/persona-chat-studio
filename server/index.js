@@ -602,8 +602,8 @@ function extractAuthToken(req, parsedUrl = null) {
   return '';
 }
 
-const APP_LATEST_VERSION = '2.4.2';
-const APP_LATEST_VERSION_CODE = 143;
+const APP_LATEST_VERSION = '2.4.3';
+const APP_LATEST_VERSION_CODE = 144;
 const APP_OFFICIAL_CERT_SHA256 = '6fd05e32a3cabf327140129d866e55a342fe30daa3384c67aad4b3cbdd98a17b';
 const APP_UPDATE_TICKET_SECRET = crypto
   .createHash('sha256')
@@ -894,9 +894,9 @@ async function handleApi(req, res, pathname, parsedUrl) {
       forceUpdate,
       diffGenerations,
       changelog: [
-        '【音乐模式默认静音免打扰陪伴】检测到正在听歌（QQ 音乐或系统媒体活跃）时，大肥鱼默认保持安静不主动说话与不抢占音频焦点，仅靠动作与轻提示气泡伴舞，绝不打断音乐播放/暂停',
-        '【无冲突提示音频属性与展开静音】原声与清唱全面改用非媒体提示音通道，点击折叠态大肥鱼展开面板仅静音弹跳',
-        '【无通知权限音乐状态精准同步】未授予通知读取权限时亦可通过音频状态自动感知音乐暂停/恢复，同步隐现全透明悬浮歌词，双端同步升级至 v2.4.2 (Build 143)'
+        '【QQ 音乐点歌多步状态机重构】修复输入歌名后卡在搜索页不点搜索与误点清空×的问题：写入歌名等待按钮刷新后精确点击顶部右侧「搜索」并派发 IME 搜索，自动轮询结果列表/单曲 Tab 并播放首曲',
+        '【悬浮快捷打字条 & 焦点兼容】新增不抢占微信/QQ 输入焦点的「⌨️ 悬浮快捷打字条」，支持自由拖动与点击常用语连发/仅填切换，修复智能打字回切延迟与右侧发送按钮误识别',
+        '【常用聊天文字多端批量/文件导入】支持从剪贴板、多行文本或手机 .txt/.json 文件一键批量导入常用聊天文字，双端同步升级至 v2.4.3 (Build 144)'
       ]
     };
 

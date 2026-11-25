@@ -9,6 +9,8 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -50,9 +52,11 @@ import android.widget.FrameLayout;
 import android.widget.HorizontalScrollView;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.ByteArrayOutputStream;
@@ -83,6 +87,8 @@ public class FloatAgentService extends Service {
     private static final String FG_CHANNEL_ID = "pa_agent_running";
     private static final int FG_NOTIFICATION_ID = 2201;
     private static final String PREFS_NAME = "whale_float_prefs";
+    private static final String PREF_KEY_QUICK_PHRASES = "quick_phrases_v1";
+    private static final String PREF_KEY_QUICK_DIRECT = "quick_send_direct_v1";
     private static final String ASR_ENDPOINT = "https://star.claudexxb.online/api/asr/transcribe";
     private static final String LYRICS_ENDPOINT = "https://star.claudexxb.online/api/music/lyrics";
 
@@ -154,11 +160,24 @@ public class FloatAgentService extends Service {
     private TextView a11yBadgeView;
     private EditText cmdEditText;
     private EditText typingEditText;
+    private EditText batchImportEditText;
+    private LinearLayout batchImportBox;
+    private LinearLayout panelPhraseChipsWrap;
+    private TextView panelQuickModeBtn;
     private TextView feedbackTextView;
     private TextView autoSwipeToggleBtn;
     private TextView toolsToggleBtn;
     private LinearLayout localToolsBox;
     private boolean localToolsExpanded = false;
+
+    // 快捷打字模式与常用聊天文字库（支持本地持久化、剪贴板/文本批量导入及与网页端同步）
+    private final List<String> quickPhrases = new ArrayList<>();
+    private boolean quickTypingDirectSend = true;
+    private boolean quickTypingBarVisible = false;
+    private LinearLayout quickTypingBarView;
+    private WindowManager.LayoutParams quickTypingBarParams;
+    private LinearLayout quickBarChipsWrap;
+    private TextView quickBarModeBtn;
 
     // 原生 MediaPlayer 语音 + AudioTrack 唱歌引擎
     private MediaPlayer petVoicePlayer = null;
@@ -588,6 +607,107 @@ public class FloatAgentService extends Service {
         });
     }
 
+    public static void openQuickTypingBarFromBridge(final Context ctx) {
+        final FloatAgentService inst = sInstance;
+        if (inst != null) {
+            inst.mainHandler.post(new Runnable() {
+                @Override
+                public void run() {
+                    inst.collapsePanel();
+                    inst.showQuickTypingBar();
+                }
+            });
+        } else if (ctx != null) {
+            Toast.makeText(ctx, "请先开启桌面大肥鱼悬浮窗后再使用快捷打字模式", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    public static String getQuickPhrasesJsonFromPrefs(Context ctx) {
+        try {
+            SharedPreferences sp = ctx.getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+            String raw = sp.getString(PREF_KEY_QUICK_PHRASES, "");
+            if (raw != null && !raw.trim().isEmpty()) {
+                JSONArray arr = new JSONArray(raw);
+                if (arr.length() > 0) return arr.toString();
+            }
+        } catch (Exception ignored) {}
+        JSONArray def = new JSONArray();
+        for (String s : getDefaultQuickPhrases()) {
+            def.put(s);
+        }
+        return def.toString();
+    }
+
+    public static boolean saveQuickPhrasesJsonFromBridge(Context ctx, String jsonArrayStr) {
+        if (ctx == null) return false;
+        try {
+            List<String> list = parsePhrasesFromRawText(jsonArrayStr);
+            JSONArray arr = new JSONArray();
+            for (String s : list) {
+                arr.put(s);
+            }
+            ctx.getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+                    .edit()
+                    .putString(PREF_KEY_QUICK_PHRASES, arr.toString())
+                    .apply();
+            final FloatAgentService inst = sInstance;
+            if (inst != null) {
+                inst.mainHandler.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        inst.reloadQuickPhrases();
+                    }
+                });
+            }
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private static List<String> getDefaultQuickPhrases() {
+        List<String> defs = new ArrayList<>();
+        defs.add("在吗？等我一下下~");
+        defs.add("收到收到，马上处理！");
+        defs.add("哈哈哈哈笑死我了");
+        defs.add("辛苦啦，先去忙会儿~");
+        defs.add("好的，没问题！");
+        defs.add("大肥鱼帮你回一句：马上到！");
+        return defs;
+    }
+
+    private static List<String> parsePhrasesFromRawText(String raw) {
+        List<String> out = new ArrayList<>();
+        if (raw == null) return out;
+        String trimmed = raw.trim();
+        if (trimmed.isEmpty()) return out;
+
+        if (trimmed.startsWith("[")) {
+            try {
+                JSONArray arr = new JSONArray(trimmed);
+                for (int i = 0; i < arr.length() && out.size() < 80; i++) {
+                    String item = arr.optString(i, "").trim();
+                    if (!item.isEmpty() && !out.contains(item)) {
+                        out.add(item);
+                    }
+                }
+                return out;
+            } catch (Exception ignored) {}
+        }
+
+        String[] lines = trimmed.split("\\r?\\n|\\|\\|\\|");
+        for (String line : lines) {
+            String item = line.trim();
+            // 去除常见列表编号前缀（如 "1. "、"- "、"• "）
+            item = item.replaceFirst("^(?:\\d+[\\.、\\)]\\s*|[-*•]\\s+)", "").trim();
+            if (!item.isEmpty() && !out.contains(item)) {
+                out.add(item);
+                if (out.size() >= 80) break;
+            }
+        }
+        return out;
+    }
+
     @Override
     public IBinder onBind(Intent intent) {
         return null;
@@ -600,7 +720,41 @@ public class FloatAgentService extends Service {
             antiMistouchEnabled = sp.getBoolean("anti_mistouch", false);
             floatingLyricsEnabled = sp.getBoolean("floating_lyrics", true);
             savedLyricsY = sp.getInt("lyrics_y", dp(88));
+            quickTypingDirectSend = sp.getBoolean(PREF_KEY_QUICK_DIRECT, true);
         } catch (Exception ignored) {}
+        reloadQuickPhrases();
+    }
+
+    private void reloadQuickPhrases() {
+        quickPhrases.clear();
+        try {
+            String json = getQuickPhrasesJsonFromPrefs(this);
+            JSONArray arr = new JSONArray(json);
+            for (int i = 0; i < arr.length(); i++) {
+                String item = arr.optString(i, "").trim();
+                if (!item.isEmpty() && !quickPhrases.contains(item)) {
+                    quickPhrases.add(item);
+                }
+            }
+        } catch (Exception ignored) {}
+        if (quickPhrases.isEmpty()) {
+            quickPhrases.addAll(getDefaultQuickPhrases());
+        }
+        refreshPhraseViews();
+    }
+
+    private void persistQuickPhrases() {
+        try {
+            JSONArray arr = new JSONArray();
+            for (String s : quickPhrases) {
+                arr.put(s);
+            }
+            getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+                    .edit()
+                    .putString(PREF_KEY_QUICK_PHRASES, arr.toString())
+                    .apply();
+        } catch (Exception ignored) {}
+        refreshPhraseViews();
     }
 
     private void savePrefBool(String key, boolean val) {
@@ -1660,14 +1814,21 @@ public class FloatAgentService extends Service {
         quickStrip.addView(shotKeyBtn);
         panel.addView(quickStrip);
 
-        // 7. 可折叠本地快捷工具切换条
+        // 7. 快捷工具折叠切换 + 一键进入悬浮「快捷打字模式」
+        LinearLayout toolsBarRow = new LinearLayout(this);
+        toolsBarRow.setOrientation(LinearLayout.HORIZONTAL);
+        toolsBarRow.setGravity(Gravity.CENTER_VERTICAL);
+
         toolsToggleBtn = new TextView(this);
-        toolsToggleBtn.setText("展开本地快捷工具（刷视频 / 代打字 / 常用App） ▾");
+        toolsToggleBtn.setText("工具箱（刷视频 / 打字 / 应用）▾");
         toolsToggleBtn.setTextColor(Color.parseColor("#94A3B8"));
         toolsToggleBtn.setTextSize(11);
         toolsToggleBtn.setGravity(Gravity.CENTER);
         toolsToggleBtn.setPadding(dp(8), dp(6), dp(8), dp(6));
         setViewBg(toolsToggleBtn, createRoundRect("#1E293B", 8, "#334155", 1));
+        LinearLayout.LayoutParams ttLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
+        ttLp.rightMargin = dp(5);
+        toolsToggleBtn.setLayoutParams(ttLp);
         toolsToggleBtn.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -1676,11 +1837,25 @@ public class FloatAgentService extends Service {
                     localToolsBox.setVisibility(localToolsExpanded ? View.VISIBLE : View.GONE);
                 }
                 toolsToggleBtn.setText(localToolsExpanded
-                        ? "收起本地快捷工具 ▴"
-                        : "展开本地快捷工具（刷视频 / 代打字 / 常用App） ▾");
+                        ? "收起工具箱 ▴"
+                        : "工具箱（刷视频 / 打字 / 应用）▾");
             }
         });
-        panel.addView(toolsToggleBtn);
+
+        TextView quickTypingEntryBtn = createActionBtn("⌨️ 快捷打字", "#0EA5E9", "#FFFFFF");
+        quickTypingEntryBtn.setTextSize(11);
+        quickTypingEntryBtn.setPadding(dp(9), dp(6), dp(9), dp(6));
+        quickTypingEntryBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                collapsePanel();
+                showQuickTypingBar();
+            }
+        });
+
+        toolsBarRow.addView(toolsToggleBtn);
+        toolsBarRow.addView(quickTypingEntryBtn);
+        panel.addView(toolsBarRow);
 
         localToolsBox = buildCollapsibleLocalTools();
         localToolsBox.setVisibility(View.GONE);
@@ -2223,6 +2398,15 @@ public class FloatAgentService extends Service {
             savePrefBool("floating_lyrics", true);
             refreshPrefSwitchButtons();
             updateFloatingLyricOverlay();
+            return true;
+        }
+        if (t.contains("关闭快捷打字") || t.contains("退出快捷打字")) {
+            hideQuickTypingBar();
+            return true;
+        }
+        if (t.contains("快捷打字") || t.contains("常用语") || t.contains("打开打字模式")) {
+            collapsePanel();
+            showQuickTypingBar();
             return true;
         }
         if (t.contains("热梗") || t.contains("笑话") || t.contains("说句话") || t.contains("配音") || t.contains("撒娇")) {
@@ -2794,7 +2978,7 @@ public class FloatAgentService extends Service {
         typingInputRow.setLayoutParams(tRowLp);
 
         typingEditText = new EditText(this);
-        typingEditText.setHint("填入底层输入框的文字");
+        typingEditText.setHint("输入文字（可点下方「存常用语」反复使用）");
         typingEditText.setHintTextColor(Color.parseColor("#64748B"));
         typingEditText.setTextColor(Color.WHITE);
         typingEditText.setTextSize(12);
@@ -2820,6 +3004,10 @@ public class FloatAgentService extends Service {
 
         LinearLayout actRow = new LinearLayout(this);
         actRow.setOrientation(LinearLayout.HORIZONTAL);
+        LinearLayout.LayoutParams actRowLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        actRowLp.bottomMargin = dp(6);
+        actRow.setLayoutParams(actRowLp);
+
         TextView fillBtn = createGridBtn("填入");
         fillBtn.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -2860,6 +3048,185 @@ public class FloatAgentService extends Service {
         actRow.addView(clearBtn);
         actRow.addView(pasteBtn);
         page.addView(actRow);
+
+        // 常用聊天文字管理 & 批量导入工具栏
+        LinearLayout phraseToolRow = new LinearLayout(this);
+        phraseToolRow.setOrientation(LinearLayout.HORIZONTAL);
+        LinearLayout.LayoutParams ptrLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        ptrLp.bottomMargin = dp(5);
+        phraseToolRow.setLayoutParams(ptrLp);
+
+        panelQuickModeBtn = createGridBtn(quickTypingDirectSend ? "⚡点句直发" : "✏️点句仅填");
+        panelQuickModeBtn.setTextColor(Color.parseColor(quickTypingDirectSend ? "#93C5FD" : "#CBD5E1"));
+        panelQuickModeBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                quickTypingDirectSend = !quickTypingDirectSend;
+                savePrefBool(PREF_KEY_QUICK_DIRECT, quickTypingDirectSend);
+                refreshPhraseViews();
+                Toast.makeText(FloatAgentService.this,
+                        quickTypingDirectSend ? "点击常用语将直接填入并自动发送" : "点击常用语将只填入对方输入框",
+                        Toast.LENGTH_SHORT).show();
+            }
+        });
+
+        TextView savePhraseBtn = createGridBtn("➕存常用语");
+        savePhraseBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                String txt = typingEditText != null && typingEditText.getText() != null
+                        ? typingEditText.getText().toString().trim()
+                        : "";
+                if (txt.isEmpty()) {
+                    Toast.makeText(FloatAgentService.this, "请先在上方输入框写入文字再保存", Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                addQuickPhrasesBatch(Collections.singletonList(txt), false);
+                typingEditText.setText("");
+            }
+        });
+
+        TextView clipImportBtn = createGridBtn("📋剪贴板导入");
+        clipImportBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                importPhrasesFromClipboard();
+            }
+        });
+
+        TextView batchToggleBtn = createGridBtn("✏️批量导入");
+        LinearLayout.LayoutParams btLp = (LinearLayout.LayoutParams) batchToggleBtn.getLayoutParams();
+        btLp.rightMargin = 0;
+        batchToggleBtn.setLayoutParams(btLp);
+        batchToggleBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                if (batchImportBox != null) {
+                    boolean next = batchImportBox.getVisibility() != View.VISIBLE;
+                    batchImportBox.setVisibility(next ? View.VISIBLE : View.GONE);
+                }
+            }
+        });
+
+        phraseToolRow.addView(panelQuickModeBtn);
+        phraseToolRow.addView(savePhraseBtn);
+        phraseToolRow.addView(clipImportBtn);
+        phraseToolRow.addView(batchToggleBtn);
+        page.addView(phraseToolRow);
+
+        // 批量粘贴/编辑导入盒子（支持按行批量导入自己的常用聊天文字）
+        batchImportBox = new LinearLayout(this);
+        batchImportBox.setOrientation(LinearLayout.VERTICAL);
+        batchImportBox.setPadding(dp(8), dp(7), dp(8), dp(7));
+        setViewBg(batchImportBox, createRoundRect("#0F172A", 10, "#334155", 1));
+        LinearLayout.LayoutParams bibLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        bibLp.bottomMargin = dp(6);
+        batchImportBox.setLayoutParams(bibLp);
+        batchImportBox.setVisibility(View.GONE);
+
+        batchImportEditText = new EditText(this);
+        batchImportEditText.setHint("粘贴多行常用聊天文字，每行一条（或 JSON 数组）");
+        batchImportEditText.setHintTextColor(Color.parseColor("#64748B"));
+        batchImportEditText.setTextColor(Color.WHITE);
+        batchImportEditText.setTextSize(11);
+        batchImportEditText.setMinLines(2);
+        batchImportEditText.setMaxLines(4);
+        batchImportEditText.setGravity(Gravity.TOP | Gravity.START);
+        batchImportEditText.setPadding(dp(8), dp(6), dp(8), dp(6));
+        setViewBg(batchImportEditText, createRoundRect("#1E293B", 8, "#475569", 1));
+        batchImportBox.addView(batchImportEditText);
+
+        LinearLayout batchActRow = new LinearLayout(this);
+        batchActRow.setOrientation(LinearLayout.HORIZONTAL);
+        LinearLayout.LayoutParams barLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        barLp.topMargin = dp(5);
+        batchActRow.setLayoutParams(barLp);
+
+        TextView appendImpBtn = createActionBtn("追加导入", "#4D6BFE", "#FFFFFF");
+        appendImpBtn.setGravity(Gravity.CENTER);
+        appendImpBtn.setTextSize(10.5f);
+        LinearLayout.LayoutParams aiLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
+        aiLp.rightMargin = dp(4);
+        appendImpBtn.setLayoutParams(aiLp);
+        appendImpBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                String raw = batchImportEditText.getText() != null ? batchImportEditText.getText().toString() : "";
+                List<String> parsed = parsePhrasesFromRawText(raw);
+                if (parsed.isEmpty()) {
+                    Toast.makeText(FloatAgentService.this, "请先输入或粘贴至少一行常用文字", Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                addQuickPhrasesBatch(parsed, false);
+                batchImportEditText.setText("");
+                batchImportBox.setVisibility(View.GONE);
+            }
+        });
+
+        TextView replaceImpBtn = createActionBtn("覆盖导入", "#0F766E", "#FFFFFF");
+        replaceImpBtn.setGravity(Gravity.CENTER);
+        replaceImpBtn.setTextSize(10.5f);
+        LinearLayout.LayoutParams riLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
+        riLp.rightMargin = dp(4);
+        replaceImpBtn.setLayoutParams(riLp);
+        replaceImpBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                String raw = batchImportEditText.getText() != null ? batchImportEditText.getText().toString() : "";
+                List<String> parsed = parsePhrasesFromRawText(raw);
+                if (parsed.isEmpty()) {
+                    Toast.makeText(FloatAgentService.this, "请先输入或粘贴至少一行常用文字", Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                addQuickPhrasesBatch(parsed, true);
+                batchImportEditText.setText("");
+                batchImportBox.setVisibility(View.GONE);
+            }
+        });
+
+        TextView resetDefBtn = createActionBtn("恢复默认", "#334155", "#E2E8F0");
+        resetDefBtn.setGravity(Gravity.CENTER);
+        resetDefBtn.setTextSize(10.5f);
+        resetDefBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                addQuickPhrasesBatch(getDefaultQuickPhrases(), true);
+                batchImportBox.setVisibility(View.GONE);
+            }
+        });
+
+        batchActRow.addView(appendImpBtn);
+        batchActRow.addView(replaceImpBtn);
+        batchActRow.addView(resetDefBtn);
+        batchImportBox.addView(batchActRow);
+        page.addView(batchImportBox);
+
+        // 常用聊天文字横向预览栏 + 提示「长按可删除，点右上方⌨️快捷打字可悬停连发」
+        HorizontalScrollView phraseScroll = new HorizontalScrollView(this);
+        phraseScroll.setHorizontalScrollBarEnabled(false);
+        LinearLayout.LayoutParams psLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        psLp.bottomMargin = dp(5);
+        phraseScroll.setLayoutParams(psLp);
+
+        panelPhraseChipsWrap = new LinearLayout(this);
+        panelPhraseChipsWrap.setOrientation(LinearLayout.HORIZONTAL);
+        phraseScroll.addView(panelPhraseChipsWrap);
+        page.addView(phraseScroll);
+
+        TextView openQuickBarBigBtn = createActionBtn("⌨️ 开启独立悬浮快捷打字条（不抢聊天焦点 · 一键连发）", "#0284C7", "#FFFFFF");
+        openQuickBarBigBtn.setGravity(Gravity.CENTER);
+        openQuickBarBigBtn.setTextSize(11);
+        openQuickBarBigBtn.setPadding(dp(8), dp(6), dp(8), dp(6));
+        openQuickBarBigBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                collapsePanel();
+                showQuickTypingBar();
+            }
+        });
+        page.addView(openQuickBarBigBtn);
+
+        refreshPhraseViews();
         return page;
     }
 
@@ -3034,7 +3401,356 @@ public class FloatAgentService extends Service {
                     updateState("idle", "dsh-Go");
                 }
             }
-        }, 420);
+        }, 560);
+    }
+
+    private void addQuickPhrasesBatch(List<String> incoming, boolean replaceAll) {
+        if (incoming == null || incoming.isEmpty()) return;
+        if (replaceAll) {
+            quickPhrases.clear();
+        }
+        int added = 0;
+        for (String s : incoming) {
+            if (s == null) continue;
+            String clean = s.trim();
+            if (!clean.isEmpty() && !quickPhrases.contains(clean)) {
+                quickPhrases.add(0, clean);
+                added++;
+            }
+        }
+        if (replaceAll) {
+            Collections.reverse(quickPhrases);
+        }
+        while (quickPhrases.size() > 80) {
+            quickPhrases.remove(quickPhrases.size() - 1);
+        }
+        persistQuickPhrases();
+        Toast.makeText(this,
+                replaceAll ? ("已导入共 " + quickPhrases.size() + " 条常用聊天文字")
+                        : ("已新增 " + added + " 条常用聊天文字（长按可删）"),
+                Toast.LENGTH_SHORT).show();
+    }
+
+    private void importPhrasesFromClipboard() {
+        try {
+            ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+            if (cm == null || !cm.hasPrimaryClip()) {
+                Toast.makeText(this, "剪贴板为空，请先复制要导入的多行常用聊天文字", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            ClipData clip = cm.getPrimaryClip();
+            if (clip == null || clip.getItemCount() == 0) {
+                Toast.makeText(this, "未读取到剪贴板文本", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            CharSequence cs = clip.getItemAt(0).coerceToText(this);
+            String raw = cs != null ? cs.toString() : "";
+            List<String> parsed = parsePhrasesFromRawText(raw);
+            if (parsed.isEmpty()) {
+                Toast.makeText(this, "剪贴板中没有有效文字行", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            addQuickPhrasesBatch(parsed, false);
+        } catch (Exception e) {
+            Toast.makeText(this, "读取剪贴板失败，请在批量文本框直接粘贴", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void refreshPhraseViews() {
+        if (panelQuickModeBtn != null) {
+            panelQuickModeBtn.setText(quickTypingDirectSend ? "⚡点句直发" : "✏️点句仅填");
+            panelQuickModeBtn.setTextColor(Color.parseColor(quickTypingDirectSend ? "#93C5FD" : "#CBD5E1"));
+        }
+        if (quickBarModeBtn != null) {
+            quickBarModeBtn.setText(quickTypingDirectSend ? "⚡直发" : "✏️仅填");
+            setViewBg(quickBarModeBtn, createRoundRect(quickTypingDirectSend ? "#1D4ED8" : "#334155", 7, null, 0));
+        }
+
+        if (panelPhraseChipsWrap != null) {
+            panelPhraseChipsWrap.removeAllViews();
+            for (int i = 0; i < quickPhrases.size(); i++) {
+                final int idx = i;
+                final String phrase = quickPhrases.get(i);
+                TextView chip = createChip(phrase.length() > 14 ? phrase.substring(0, 14) + "…" : phrase);
+                chip.setTextColor(Color.parseColor("#E0F2FE"));
+                setViewBg(chip, createRoundRect("#172554", 12, "#0EA5E9", 1));
+                chip.setOnClickListener(new View.OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
+                        collapsePanel();
+                        mainHandler.postDelayed(new Runnable() {
+                            @Override
+                            public void run() {
+                                triggerQuickPhraseInput(phrase, quickTypingDirectSend);
+                            }
+                        }, 560);
+                    }
+                });
+                chip.setOnLongClickListener(new View.OnLongClickListener() {
+                    @Override
+                    public boolean onLongClick(View v) {
+                        vibrateGentle(25);
+                        if (idx >= 0 && idx < quickPhrases.size()) {
+                            quickPhrases.remove(idx);
+                            persistQuickPhrases();
+                            Toast.makeText(FloatAgentService.this, "已删除常用语：「" + phrase + "」", Toast.LENGTH_SHORT).show();
+                        }
+                        return true;
+                    }
+                });
+                panelPhraseChipsWrap.addView(chip);
+            }
+        }
+
+        if (quickBarChipsWrap != null) {
+            quickBarChipsWrap.removeAllViews();
+            for (int i = 0; i < quickPhrases.size(); i++) {
+                final int idx = i;
+                final String phrase = quickPhrases.get(i);
+                TextView chip = createChip(phrase.length() > 18 ? phrase.substring(0, 18) + "…" : phrase);
+                chip.setTextColor(Color.parseColor("#FFFFFF"));
+                chip.setTextSize(11.5f);
+                chip.setPadding(dp(11), dp(6), dp(11), dp(6));
+                setViewBg(chip, createRoundRect("#1E293B", 14, "#38BDF8", 1));
+                chip.setOnClickListener(new View.OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
+                        triggerQuickPhraseInput(phrase, quickTypingDirectSend);
+                    }
+                });
+                chip.setOnLongClickListener(new View.OnLongClickListener() {
+                    @Override
+                    public boolean onLongClick(View v) {
+                        vibrateGentle(25);
+                        if (idx >= 0 && idx < quickPhrases.size()) {
+                            quickPhrases.remove(idx);
+                            persistQuickPhrases();
+                            Toast.makeText(FloatAgentService.this, "已删除常用语：「" + phrase + "」", Toast.LENGTH_SHORT).show();
+                        }
+                        return true;
+                    }
+                });
+                quickBarChipsWrap.addView(chip);
+            }
+        }
+    }
+
+    private void triggerQuickPhraseInput(final String phrase, final boolean autoSubmit) {
+        AgentAccessibilityService svc = ensureA11yReady();
+        if (svc == null) return;
+        resetStopFlag();
+        boolean ok = svc.performSmartInputText(null, phrase, false, autoSubmit);
+        if (!ok) {
+            Toast.makeText(this, "请先在微信/QQ等聊天框点亮光标后再点常用语", Toast.LENGTH_SHORT).show();
+        } else {
+            wakePetOpacity();
+            setPetPoseDrawable(R.drawable.feiyu_happy);
+            playPetBounceAnim("bounce");
+            showPetSubtitle(autoSubmit ? "⌨️ 已发出：「" + phrase + "」" : "✏️ 已填入：「" + phrase + "」", 2400);
+        }
+    }
+
+    private void showQuickTypingBar() {
+        if (windowManager == null) {
+            windowManager = (WindowManager) getSystemService(Context.WINDOW_SERVICE);
+        }
+        if (windowManager == null) return;
+        if (quickTypingBarView == null) {
+            buildQuickTypingBarView();
+        }
+        if (!quickTypingBarVisible && quickTypingBarView != null) {
+            try {
+                windowManager.addView(quickTypingBarView, quickTypingBarParams);
+                quickTypingBarVisible = true;
+            } catch (Exception ignored) {}
+        }
+        refreshPhraseViews();
+        Toast.makeText(this, "⌨️ 已开启快捷打字条（不抢焦点 · 点常用语即可连发）", Toast.LENGTH_SHORT).show();
+    }
+
+    private void hideQuickTypingBar() {
+        if (quickTypingBarVisible && quickTypingBarView != null && windowManager != null) {
+            try {
+                windowManager.removeView(quickTypingBarView);
+            } catch (Exception ignored) {}
+            quickTypingBarVisible = false;
+        }
+    }
+
+    private void buildQuickTypingBarView() {
+        DisplayMetrics dm = getResources().getDisplayMetrics();
+        int width = Math.min((int) (dm.widthPixels * 0.94f), dp(370));
+
+        quickTypingBarParams = new WindowManager.LayoutParams(
+                width,
+                WindowManager.LayoutParams.WRAP_CONTENT,
+                overlayWindowType(),
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                PixelFormat.TRANSLUCENT
+        );
+        quickTypingBarParams.gravity = Gravity.TOP | Gravity.START;
+        quickTypingBarParams.x = Math.max(dp(8), (dm.widthPixels - width) / 2);
+        quickTypingBarParams.y = Math.round(dm.heightPixels * 0.16f);
+
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setPadding(dp(10), dp(7), dp(10), dp(8));
+        setViewBg(card, createRoundRect("#EB0F172A", 14, "#38BDF8", 1));
+
+        // 顶部可拖动手柄行 + 模式开关 + 剪贴板导入 + 关闭
+        LinearLayout topRow = new LinearLayout(this);
+        topRow.setOrientation(LinearLayout.HORIZONTAL);
+        topRow.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout.LayoutParams trLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        trLp.bottomMargin = dp(6);
+        topRow.setLayoutParams(trLp);
+
+        TextView dragTitle = new TextView(this);
+        dragTitle.setText("⌨️ 快捷常用语（拖这里移动）");
+        dragTitle.setTextColor(Color.parseColor("#7DD3FC"));
+        dragTitle.setTextSize(11);
+        dragTitle.setTypeface(null, android.graphics.Typeface.BOLD);
+        dragTitle.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f));
+        dragTitle.setOnTouchListener(new View.OnTouchListener() {
+            private float downX, downY;
+            private int origX, origY;
+            @Override
+            public boolean onTouch(View v, MotionEvent event) {
+                if (quickTypingBarParams == null || windowManager == null) return false;
+                switch (event.getAction()) {
+                    case MotionEvent.ACTION_DOWN:
+                        downX = event.getRawX();
+                        downY = event.getRawY();
+                        origX = quickTypingBarParams.x;
+                        origY = quickTypingBarParams.y;
+                        return true;
+                    case MotionEvent.ACTION_MOVE:
+                        quickTypingBarParams.x = origX + (int) (event.getRawX() - downX);
+                        quickTypingBarParams.y = Math.max(dp(24), origY + (int) (event.getRawY() - downY));
+                        try {
+                            windowManager.updateViewLayout(quickTypingBarView, quickTypingBarParams);
+                        } catch (Exception ignored) {}
+                        return true;
+                }
+                return false;
+            }
+        });
+
+        quickBarModeBtn = createActionBtn(quickTypingDirectSend ? "⚡直发" : "✏️仅填", quickTypingDirectSend ? "#1D4ED8" : "#334155", "#FFFFFF");
+        quickBarModeBtn.setTextSize(10.5f);
+        quickBarModeBtn.setPadding(dp(7), dp(3), dp(7), dp(3));
+        LinearLayout.LayoutParams mbLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        mbLp.rightMargin = dp(4);
+        quickBarModeBtn.setLayoutParams(mbLp);
+        quickBarModeBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                quickTypingDirectSend = !quickTypingDirectSend;
+                savePrefBool(PREF_KEY_QUICK_DIRECT, quickTypingDirectSend);
+                refreshPhraseViews();
+                Toast.makeText(FloatAgentService.this,
+                        quickTypingDirectSend ? "切换：点击常用语直接填入并发送" : "切换：点击常用语只填入输入框",
+                        Toast.LENGTH_SHORT).show();
+            }
+        });
+
+        TextView barImpBtn = createActionBtn("📋导入", "#0F766E", "#FFFFFF");
+        barImpBtn.setTextSize(10.5f);
+        barImpBtn.setPadding(dp(7), dp(3), dp(7), dp(3));
+        LinearLayout.LayoutParams biLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        biLp.rightMargin = dp(4);
+        barImpBtn.setLayoutParams(biLp);
+        barImpBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                importPhrasesFromClipboard();
+            }
+        });
+
+        TextView closeBarBtn = createActionBtn("✕", "#3F1215", "#FCA5A5");
+        closeBarBtn.setTextSize(11f);
+        closeBarBtn.setPadding(dp(8), dp(3), dp(8), dp(3));
+        closeBarBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                hideQuickTypingBar();
+            }
+        });
+
+        topRow.addView(dragTitle);
+        topRow.addView(quickBarModeBtn);
+        topRow.addView(barImpBtn);
+        topRow.addView(closeBarBtn);
+        card.addView(topRow);
+
+        // 常用聊天文字横向滑动流
+        HorizontalScrollView scroll = new HorizontalScrollView(this);
+        scroll.setHorizontalScrollBarEnabled(false);
+        quickBarChipsWrap = new LinearLayout(this);
+        quickBarChipsWrap.setOrientation(LinearLayout.HORIZONTAL);
+        scroll.addView(quickBarChipsWrap);
+        card.addView(scroll);
+
+        // 快捷底部小动作（粘贴并发送 / 清空框 / 打开完整管理）
+        LinearLayout footRow = new LinearLayout(this);
+        footRow.setOrientation(LinearLayout.HORIZONTAL);
+        LinearLayout.LayoutParams frLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        frLp.topMargin = dp(6);
+        footRow.setLayoutParams(frLp);
+
+        TextView clipSendBtn = createGridBtn("📋粘贴并发送");
+        clipSendBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                AgentAccessibilityService svc = ensureA11yReady();
+                if (svc != null) {
+                    boolean pasted = svc.pasteFromClipboard();
+                    if (pasted) {
+                        mainHandler.postDelayed(new Runnable() {
+                            @Override
+                            public void run() {
+                                AgentAccessibilityService s2 = AgentAccessibilityService.getInstance();
+                                if (s2 != null) s2.performSmartSubmitAction(null);
+                            }
+                        }, 240);
+                    } else {
+                        Toast.makeText(FloatAgentService.this, "剪贴板为空或当前屏幕未聚焦输入框", Toast.LENGTH_SHORT).show();
+                    }
+                }
+            }
+        });
+
+        TextView clrInputBtn = createGridBtn("🧹清空输入框");
+        clrInputBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                AgentAccessibilityService svc = ensureA11yReady();
+                if (svc != null) svc.performSmartInputText(null, "", false, false);
+            }
+        });
+
+        TextView manageBtn = createGridBtn("⚙️导入管理");
+        LinearLayout.LayoutParams mgLp = (LinearLayout.LayoutParams) manageBtn.getLayoutParams();
+        mgLp.rightMargin = 0;
+        manageBtn.setLayoutParams(mgLp);
+        manageBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                hideQuickTypingBar();
+                expandPanel();
+                localToolsExpanded = true;
+                if (localToolsBox != null) localToolsBox.setVisibility(View.VISIBLE);
+                if (toolsToggleBtn != null) toolsToggleBtn.setText("收起工具箱 ▴");
+                switchTab(2);
+            }
+        });
+
+        footRow.addView(clipSendBtn);
+        footRow.addView(clrInputBtn);
+        footRow.addView(manageBtn);
+        card.addView(footRow);
+
+        quickTypingBarView = card;
     }
 
     private AgentAccessibilityService ensureA11yReady() {
@@ -3437,7 +4153,7 @@ public class FloatAgentService extends Service {
                 cmd.contains("输入") || cmd.contains("打字") || cmd.contains("粘贴")
                         || cmd.contains("清空") || cmd.contains("搜索") || cmd.contains("回复") || cmd.contains("评论")
         );
-        int delayMs = shouldCollapse ? (needsFocusReturn ? 420 : 280) : 60;
+        int delayMs = shouldCollapse ? (needsFocusReturn ? 560 : 300) : 60;
 
         mainHandler.postDelayed(new Runnable() {
             @Override
@@ -3789,6 +4505,7 @@ public class FloatAgentService extends Service {
             try { windowManager.removeView(floatingLyricRootView); } catch (Exception ignored) {}
             floatingLyricRootView = null;
         }
+        hideQuickTypingBar();
         AgentAccessibilityService a11y = AgentAccessibilityService.getInstance();
         if (a11y != null) {
             a11y.stopAllBackgroundTasks("悬浮窗关闭");

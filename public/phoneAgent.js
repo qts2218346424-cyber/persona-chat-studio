@@ -1,5 +1,5 @@
 /* ==========================================================================
-   Phone Agent 手机端 AI 辅助助理与 dsh-Go 规划循环模块 (v2.4.2)
+   Phone Agent 手机端 AI 辅助助理与 dsh-Go 规划循环模块 (v2.4.3)
    1. 高度还原 dsh-Go 控屏内核：snapshotId/ref 精准控屏、ScreenVerdict 非阻塞验证、
       三档 SafetyGate 安全确认 + App 白名单、执行中途随时插话/排队、无障碍内联引导
    2. 高度还原 dsh-Go 交互 UI：运行中流光胶囊 + 完成后自动折叠单行轨迹 + 自然语言回复
@@ -7,8 +7,8 @@
    ========================================================================== */
 
 (() => {
-  const CURRENT_APK_VERSION = '2.4.2';
-  const CURRENT_APK_CODE = 143;
+  const CURRENT_APK_VERSION = '2.4.3';
+  const CURRENT_APK_CODE = 144;
   const DEEPSEEK_API_KEYS_URL = 'https://platform.deepseek.com/api_keys';
   const PUBLIC_WEB_ORIGIN = 'https://star.claudexxb.online';
   const GITHUB_RELEASES_URL = 'https://github.com/qts2218346424-cyber/persona-chat-studio/releases';
@@ -78,8 +78,24 @@
         { label: '打开评论区', cmd: '看评论', mode: 'exec', desc: '智能定位评论按钮' },
         { label: '停止刷视频', cmd: '停止刷视频', mode: 'exec', desc: '立即终止自动连刷' }
       ]
+    },
+    {
+      id: 'phrases',
+      title: '常用聊天文字',
+      items: []
     }
   ];
+
+  const DEFAULT_QUICK_PHRASES = [
+    '在吗？等我一下下~',
+    '收到收到，马上处理！',
+    '哈哈哈哈笑死我了',
+    '辛苦啦，先去忙会儿~',
+    '好的，没问题！',
+    '大肥鱼帮你回一句：马上到！'
+  ];
+  const QUICK_PHRASES_STORAGE_KEY = 'pa_quick_phrases_v1';
+  let quickPhraseBatchBoxOpen = false;
 
   const EMPTY_GUIDE_PRESETS = [
     { label: '打开微信找文件传输助手', sub: '多步自动识屏点按进入', cmd: '打开微信，进入文件传输助手', mode: 'exec' },
@@ -614,14 +630,139 @@
     });
   }
 
+  function parseQuickPhrasesFromText(raw) {
+    const clean = String(raw || '').trim();
+    if (!clean) return [];
+    if (clean.startsWith('[')) {
+      try {
+        const arr = JSON.parse(clean);
+        if (Array.isArray(arr)) {
+          const out = [];
+          for (const it of arr) {
+            const s = String(it || '').trim();
+            if (s && !out.includes(s)) out.push(s);
+            if (out.length >= 80) break;
+          }
+          return out;
+        }
+      } catch {}
+    }
+    const lines = clean.split(/\r?\n|\|\|\|/);
+    const out = [];
+    for (const ln of lines) {
+      let item = String(ln || '').trim();
+      item = item.replace(/^(?:\d+[\.\、\)]\s*|[-*•]\s+)/, '').trim();
+      if (item && !out.includes(item)) {
+        out.push(item);
+        if (out.length >= 80) break;
+      }
+    }
+    return out;
+  }
+
+  function loadQuickPhrases() {
+    try {
+      const bridge = getNativeBridge();
+      if (bridge && typeof bridge.getQuickPhrasesJson === 'function') {
+        const nativeJson = bridge.getQuickPhrasesJson();
+        const parsed = parseQuickPhrasesFromText(nativeJson);
+        if (parsed.length > 0) return parsed;
+      }
+    } catch {}
+    try {
+      const raw = localStorage.getItem(QUICK_PHRASES_STORAGE_KEY);
+      if (raw) {
+        const parsed = parseQuickPhrasesFromText(raw);
+        if (parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return [...DEFAULT_QUICK_PHRASES];
+  }
+
+  function saveQuickPhrases(list) {
+    const clean = [];
+    for (const s of (Array.isArray(list) ? list : [])) {
+      const t = String(s || '').trim();
+      if (t && !clean.includes(t)) clean.push(t);
+      if (clean.length >= 80) break;
+    }
+    const json = JSON.stringify(clean);
+    try {
+      localStorage.setItem(QUICK_PHRASES_STORAGE_KEY, json);
+    } catch {}
+    try {
+      const bridge = getNativeBridge();
+      if (bridge && typeof bridge.saveQuickPhrasesJson === 'function') {
+        bridge.saveQuickPhrasesJson(json);
+      }
+    } catch {}
+    return clean;
+  }
+
   function renderCommandLibraryDrawer() {
     const drawer = $('phone-cmd-quick-drawer');
     if (!drawer) return;
     const cat = LOCAL_COMMAND_CATALOG.find((c) => c.id === activeCmdLibCategory) || LOCAL_COMMAND_CATALOG[0];
+    const isPhrasesTab = cat.id === 'phrases';
+    const phrases = isPhrasesTab ? loadQuickPhrases() : [];
+
+    let bodyHtml = '';
+    if (isPhrasesTab) {
+      const bridge = getNativeBridge();
+      const canOpenFloatBar = !!(bridge && typeof bridge.openQuickTypingMode === 'function');
+      bodyHtml = `
+        <div class="pa-phrase-toolbar">
+          <button type="button" class="pa-phrase-btn is-primary" id="pa-phrase-add-one">➕ 新增</button>
+          <button type="button" class="pa-phrase-btn" id="pa-phrase-import-file">📥 导入TXT文件</button>
+          <button type="button" class="pa-phrase-btn" id="pa-phrase-toggle-batch">${quickPhraseBatchBoxOpen ? '收起批量框' : '✏️ 批量粘贴'}</button>
+          ${canOpenFloatBar ? '<button type="button" class="pa-phrase-btn is-accent" id="pa-phrase-open-float">⌨️ 桌面快捷条</button>' : ''}
+          <input type="file" id="pa-phrase-file-input" accept=".txt,.md,.json,.csv,text/plain,application/json" style="display:none" />
+        </div>
+        ${quickPhraseBatchBoxOpen ? `
+          <div class="pa-phrase-import-box">
+            <textarea id="pa-phrase-batch-ta" rows="3" placeholder="每行粘贴一条常用聊天文字（或 JSON 数组），导入后自动同步到桌面大肥鱼悬浮快捷打字条"></textarea>
+            <div class="pa-phrase-import-actions">
+              <button type="button" class="pa-phrase-btn is-primary" id="pa-phrase-batch-append">追加导入</button>
+              <button type="button" class="pa-phrase-btn" id="pa-phrase-batch-replace">覆盖导入</button>
+              <button type="button" class="pa-phrase-btn" id="pa-phrase-batch-reset">恢复默认</button>
+            </div>
+          </div>
+        ` : ''}
+        <div class="pa-phrase-list">
+          ${phrases.length === 0
+            ? '<div class="pa-phrase-empty">暂无常用聊天文字，点击上方「导入TXT文件」或「批量粘贴」添加</div>'
+            : phrases.map((p, idx) => `
+                <div class="pa-phrase-row" data-idx="${idx}">
+                  <button type="button" class="pa-phrase-send-btn" data-phrase="${escapeHtml(p)}" title="点击直接打字并发送">${escapeHtml(p)}</button>
+                  <button type="button" class="pa-phrase-fill-btn" data-phrase="${escapeHtml(p)}" title="仅填入输入框">填入</button>
+                  <button type="button" class="pa-phrase-del-btn" data-idx="${idx}" title="删除此条">✕</button>
+                </div>
+              `).join('')}
+        </div>
+      `;
+    } else {
+      bodyHtml = `
+        <div class="pa-cmdlib-grid">
+          ${cat.items
+            .map(
+              (item) => `
+                <button type="button" class="pa-cmd-item ${item.mode === 'fill' ? 'is-fill' : ''}" data-cmd="${escapeHtml(item.cmd)}" data-mode="${escapeHtml(item.mode)}">
+                  <div class="pa-cmd-item-top">
+                    <span>${escapeHtml(item.label)}</span>
+                    <em class="pa-cmd-mode-tag ${item.mode === 'fill' ? 'is-fill' : 'is-exec'}">${item.mode === 'fill' ? '需填词' : ''}</em>
+                  </div>
+                  <small>${escapeHtml(item.desc)}</small>
+                </button>
+              `
+            )
+            .join('')}
+        </div>
+      `;
+    }
 
     drawer.innerHTML = `
       <div class="pa-cmdlib-topbar">
-        <span class="pa-cmdlib-title">快捷指令</span>
+        <span class="pa-cmdlib-title">快捷指令与常用语</span>
         <button type="button" class="pa-cmdlib-close" id="pa-cmdlib-close-btn" title="收起指令库" aria-label="收起指令库">✕</button>
       </div>
       <div class="pa-cmdlib-head">
@@ -635,21 +776,7 @@
           ).join('')}
         </div>
       </div>
-      <div class="pa-cmdlib-grid">
-        ${cat.items
-          .map(
-            (item) => `
-              <button type="button" class="pa-cmd-item ${item.mode === 'fill' ? 'is-fill' : ''}" data-cmd="${escapeHtml(item.cmd)}" data-mode="${escapeHtml(item.mode)}">
-                <div class="pa-cmd-item-top">
-                  <span>${escapeHtml(item.label)}</span>
-                  <em class="pa-cmd-mode-tag ${item.mode === 'fill' ? 'is-fill' : 'is-exec'}">${item.mode === 'fill' ? '需填词' : ''}</em>
-                </div>
-                <small>${escapeHtml(item.desc)}</small>
-              </button>
-            `
-          )
-          .join('')}
-      </div>
+      ${bodyHtml}
     `;
 
     drawer.querySelectorAll('.pa-cmdlib-tab').forEach((tabBtn) => {
@@ -667,14 +794,145 @@
       $('mobile-tools-plus-btn')?.classList.remove('is-active');
     });
 
-    drawer.querySelectorAll('.pa-cmd-item').forEach((itemBtn) => {
-      itemBtn.addEventListener('click', (e) => {
+    if (isPhrasesTab) {
+      drawer.querySelector('#pa-phrase-add-one')?.addEventListener('click', (e) => {
         e.stopPropagation();
-        const cmd = itemBtn.getAttribute('data-cmd') || '';
-        const mode = itemBtn.getAttribute('data-mode') || 'exec';
-        handleCatalogItemTrigger(cmd, mode);
+        const paInput = $('pa-task-input');
+        const chatInput = $('chat-input');
+        const currentVal = String((paInput && paInput.offsetParent !== null ? paInput.value : chatInput?.value) || '').trim();
+        const text = currentVal || window.prompt('请输入要保存的常用聊天文字：', '');
+        if (!text || !String(text).trim()) return;
+        const cur = loadQuickPhrases();
+        const clean = String(text).trim();
+        const next = saveQuickPhrases([clean, ...cur.filter((x) => x !== clean)]);
+        showToast(`已保存常用语「${clean}」（共 ${next.length} 条，已同步悬浮窗）`);
+        renderCommandLibraryDrawer();
       });
-    });
+
+      drawer.querySelector('#pa-phrase-import-file')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        drawer.querySelector('#pa-phrase-file-input')?.click();
+      });
+
+      drawer.querySelector('#pa-phrase-file-input')?.addEventListener('change', async (e) => {
+        const file = e.target?.files?.[0];
+        if (!file) return;
+        try {
+          const text = await file.text();
+          const parsed = parseQuickPhrasesFromText(text);
+          if (!parsed.length) {
+            showToast('文件中未解析到有效聊天文字行');
+            return;
+          }
+          const cur = loadQuickPhrases();
+          const merged = saveQuickPhrases([...parsed, ...cur]);
+          showToast(`成功从文件导入 ${parsed.length} 条（现共 ${merged.length} 条，已同步大肥鱼）`);
+          renderCommandLibraryDrawer();
+        } catch {
+          showToast('读取文件失败，请确认文件为 UTF-8 文本或 JSON');
+        }
+      });
+
+      drawer.querySelector('#pa-phrase-toggle-batch')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        quickPhraseBatchBoxOpen = !quickPhraseBatchBoxOpen;
+        renderCommandLibraryDrawer();
+      });
+
+      drawer.querySelector('#pa-phrase-open-float')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const b = getNativeBridge();
+        if (b && typeof b.openQuickTypingMode === 'function') {
+          drawer.classList.add('hidden');
+          b.openQuickTypingMode();
+        }
+      });
+
+      drawer.querySelector('#pa-phrase-batch-append')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const raw = drawer.querySelector('#pa-phrase-batch-ta')?.value || '';
+        const parsed = parseQuickPhrasesFromText(raw);
+        if (!parsed.length) {
+          showToast('请先输入或粘贴至少一行常用文字');
+          return;
+        }
+        const cur = loadQuickPhrases();
+        const next = saveQuickPhrases([...parsed, ...cur]);
+        quickPhraseBatchBoxOpen = false;
+        showToast(`已追加导入 ${parsed.length} 条（共 ${next.length} 条，已同步桌面悬浮条）`);
+        renderCommandLibraryDrawer();
+      });
+
+      drawer.querySelector('#pa-phrase-batch-replace')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const raw = drawer.querySelector('#pa-phrase-batch-ta')?.value || '';
+        const parsed = parseQuickPhrasesFromText(raw);
+        if (!parsed.length) {
+          showToast('请先输入或粘贴至少一行常用文字');
+          return;
+        }
+        const next = saveQuickPhrases(parsed);
+        quickPhraseBatchBoxOpen = false;
+        showToast(`已覆盖导入 ${next.length} 条常用聊天文字`);
+        renderCommandLibraryDrawer();
+      });
+
+      drawer.querySelector('#pa-phrase-batch-reset')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        saveQuickPhrases(DEFAULT_QUICK_PHRASES);
+        quickPhraseBatchBoxOpen = false;
+        showToast('已恢复默认常用聊天文字');
+        renderCommandLibraryDrawer();
+      });
+
+      drawer.querySelectorAll('.pa-phrase-send-btn').forEach((btn) => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const phrase = btn.getAttribute('data-phrase') || '';
+          if (phrase) handleCatalogItemTrigger(`打字并发送 ${phrase}`, 'exec');
+        });
+      });
+
+      drawer.querySelectorAll('.pa-phrase-fill-btn').forEach((btn) => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const phrase = btn.getAttribute('data-phrase') || '';
+          if (!phrase) return;
+          const paInput = $('pa-task-input');
+          const chatInput = $('chat-input');
+          const targetInput = (paInput && paInput.offsetParent !== null) ? paInput : chatInput;
+          if (targetInput) {
+            targetInput.value = `打字并发送 ${phrase}`;
+            targetInput.dispatchEvent(new Event('input', { bubbles: true }));
+            targetInput.focus();
+          }
+          drawer.classList.add('hidden');
+          showToast(`已填入「${phrase}」`);
+        });
+      });
+
+      drawer.querySelectorAll('.pa-phrase-del-btn').forEach((btn) => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const idx = Number(btn.getAttribute('data-idx'));
+          const cur = loadQuickPhrases();
+          if (idx >= 0 && idx < cur.length) {
+            cur.splice(idx, 1);
+            saveQuickPhrases(cur);
+            renderCommandLibraryDrawer();
+          }
+        });
+      });
+    } else {
+      drawer.querySelectorAll('.pa-cmd-item').forEach((itemBtn) => {
+        itemBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const cmd = itemBtn.getAttribute('data-cmd') || '';
+          const mode = itemBtn.getAttribute('data-mode') || 'exec';
+          handleCatalogItemTrigger(cmd, mode);
+        });
+      });
+    }
   }
 
   function handleCatalogItemTrigger(cmd, mode) {

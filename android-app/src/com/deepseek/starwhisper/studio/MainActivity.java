@@ -30,6 +30,7 @@ import android.webkit.WebViewClient;
 import android.widget.FrameLayout;
 import android.widget.Toast;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.IOException;
@@ -1013,6 +1014,21 @@ public class MainActivity extends Activity {
         @JavascriptInterface
         public void openFloatPanel() {
             FloatAgentService.openPanelFromBridge();
+        }
+
+        @JavascriptInterface
+        public String getQuickPhrasesJson() {
+            return FloatAgentService.getQuickPhrasesJsonFromPrefs(MainActivity.this);
+        }
+
+        @JavascriptInterface
+        public boolean saveQuickPhrasesJson(String jsonArrayStr) {
+            return FloatAgentService.saveQuickPhrasesJsonFromBridge(MainActivity.this, jsonArrayStr);
+        }
+
+        @JavascriptInterface
+        public void openQuickTypingMode() {
+            FloatAgentService.openQuickTypingBarFromBridge(MainActivity.this);
         }
 
         @JavascriptInterface

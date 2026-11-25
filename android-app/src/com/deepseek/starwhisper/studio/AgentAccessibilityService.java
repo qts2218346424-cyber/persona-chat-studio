@@ -88,6 +88,7 @@ public class AgentAccessibilityService extends AccessibilityService {
     private volatile boolean macroRunning = false;
     private final List<Runnable> pendingRunnables = new ArrayList<>();
     private volatile long lastMusicScanMs = 0L;
+    private volatile int qqMusicOrderSeq = 0;
 
     public static AgentAccessibilityService getInstance() {
         return sInstance;
@@ -1032,6 +1033,7 @@ public class AgentAccessibilityService extends AccessibilityService {
     public void stopAllBackgroundTasks(String reason) {
         autoSwipeRunning = false;
         macroRunning = false;
+        qqMusicOrderSeq++;
         if (autoSwipeRunnable != null) {
             mainHandler.removeCallbacks(autoSwipeRunnable);
             autoSwipeRunnable = null;
@@ -1237,22 +1239,48 @@ public class AgentAccessibilityService extends AccessibilityService {
      * 3. 可选自动点击发送/搜索/评论/发布按钮
      */
     public boolean performSmartInputText(String viewId, String text, boolean appendMode, boolean autoSubmit) {
-        AccessibilityNodeInfo root = getRootInActiveWindow();
-        if (root == null) return false;
+        return performSmartInputTextWithRetry(viewId, text, appendMode, autoSubmit, 2);
+    }
 
-        AccessibilityNodeInfo target = findEditableTarget(root, viewId);
+    private boolean performSmartInputTextWithRetry(final String viewId, final String text, final boolean appendMode, final boolean autoSubmit, final int retriesLeft) {
+        AccessibilityNodeInfo root = getRootInActiveWindow();
+        String selfPkg = getPackageName();
+        boolean windowStillSelf = false;
+        if (root != null) {
+            CharSequence rPkg = root.getPackageName();
+            if (selfPkg != null && rPkg != null && selfPkg.equals(rPkg.toString())) {
+                windowStillSelf = true;
+            }
+        }
+
+        AccessibilityNodeInfo target = (root != null) ? findEditableTarget(root, viewId) : null;
         if (target == null) {
-            root.recycle();
+            if (root != null) root.recycle();
+            if (retriesLeft > 0) {
+                Runnable retryTask = new Runnable() {
+                    @Override
+                    public void run() {
+                        if (!FloatAgentService.sEmergencyStopRequested) {
+                            performSmartInputTextWithRetry(viewId, text, appendMode, autoSubmit, retriesLeft - 1);
+                        }
+                    }
+                };
+                pendingRunnables.add(retryTask);
+                mainHandler.postDelayed(retryTask, windowStillSelf ? 320 : 260);
+                return true;
+            }
             return false;
         }
 
+        final Rect inputBounds = new Rect();
+        target.getBoundsInScreen(inputBounds);
         if (!target.isFocused()) {
             target.performAction(AccessibilityNodeInfo.ACTION_FOCUS);
             target.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+            if (inputBounds.width() > 20 && inputBounds.height() > 12) {
+                performClickCoordinate(inputBounds.centerX(), inputBounds.centerY());
+            }
         }
-
-        Rect inputBounds = new Rect();
-        target.getBoundsInScreen(inputBounds);
 
         String rawInput = text != null ? text : "";
         String finalText = rawInput;
@@ -1266,12 +1294,10 @@ public class AgentAccessibilityService extends AccessibilityService {
             }
         }
 
-        boolean ok = false;
         Bundle arguments = new Bundle();
         arguments.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, finalText);
-        ok = target.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, arguments);
+        boolean ok = target.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, arguments);
 
-        // 部分第三方输入法或自定义控件拦截 ACTION_SET_TEXT，自动用剪贴板 + 粘贴兜底
         if (!ok && !finalText.isEmpty()) {
             ok = pasteTextViaClipboard(target, finalText, !appendMode);
         }
@@ -1280,24 +1306,25 @@ public class AgentAccessibilityService extends AccessibilityService {
         root.recycle();
 
         if (ok && autoSubmit) {
-            final Rect finalInputBounds = inputBounds;
-            final int[] retryDelays = new int[]{ 260, 580, 1000 };
+            final int[] retryDelays = new int[]{ 300, 680 };
             for (int delay : retryDelays) {
-                mainHandler.postDelayed(new Runnable() {
+                Runnable subTask = new Runnable() {
                     @Override
                     public void run() {
                         if (!FloatAgentService.sEmergencyStopRequested) {
-                            performSmartSubmitAction(finalInputBounds);
+                            performSmartSubmitAction(inputBounds);
                         }
                     }
-                }, delay);
+                };
+                pendingRunnables.add(subTask);
+                mainHandler.postDelayed(subTask, delay);
             }
         }
         return ok;
     }
 
     /**
-     * 智能发送/提交触发器：综合多轮轮询、模糊描述、同行右侧控件扫描与手势点击，确保主流聊天/搜索应用均能成功发送
+     * 智能发送/提交触发器：严禁误点输入框自身及「清空×/语音/表情/更多」按钮，综合精确文案匹配、最右侧提交按钮与 IME 动作确保发送成功
      */
     public boolean performSmartSubmitAction(final Rect inputBounds) {
         AccessibilityNodeInfo root = getRootInActiveWindow();
@@ -1305,37 +1332,42 @@ public class AgentAccessibilityService extends AccessibilityService {
 
         String[] submitKeywords = new String[]{"发送", "搜索", "发布", "评论", "确认", "完成", "前往", "Send", "Search"};
 
-        // 策略 1：模糊扫描文本、contentDescription 与控件 ID
+        // 策略 1：排除 EditText 与清空/辅助图标后，按提交优先级评分寻找最优触发按钮
         List<AccessibilityNodeInfo> candidates = new ArrayList<>();
         collectSubmitCandidates(root, candidates, submitKeywords);
         if (!candidates.isEmpty()) {
-            AccessibilityNodeInfo bestNode = candidates.get(0);
-            Rect bounds = new Rect();
-            bestNode.getBoundsInScreen(bounds);
+            AccessibilityNodeInfo bestNode = pickBestSubmitCandidate(candidates, inputBounds);
+            if (bestNode != null) {
+                Rect bounds = new Rect();
+                bestNode.getBoundsInScreen(bounds);
 
-            boolean clicked = false;
-            AccessibilityNodeInfo clickTarget = bestNode;
-            while (clickTarget != null) {
-                if (clickTarget.isClickable()) {
-                    clicked = clickTarget.performAction(AccessibilityNodeInfo.ACTION_CLICK);
-                    if (clicked) break;
+                boolean clicked = false;
+                AccessibilityNodeInfo clickTarget = bestNode;
+                while (clickTarget != null) {
+                    if (clickTarget.isClickable()) {
+                        clicked = clickTarget.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+                        if (clicked) break;
+                    }
+                    clickTarget = clickTarget.getParent();
                 }
-                clickTarget = clickTarget.getParent();
-            }
 
-            if (bounds.width() > 0 && bounds.height() > 0) {
-                performClickCoordinate(bounds.centerX(), bounds.centerY());
-                clicked = true;
-            }
+                if (bounds.width() > 0 && bounds.height() > 0) {
+                    performClickCoordinate(bounds.centerX(), bounds.centerY());
+                    clicked = true;
+                }
 
+                for (AccessibilityNodeInfo n : candidates) {
+                    if (n != null) n.recycle();
+                }
+                root.recycle();
+                return clicked;
+            }
             for (AccessibilityNodeInfo n : candidates) {
                 if (n != null) n.recycle();
             }
-            root.recycle();
-            return clicked;
         }
 
-        // 策略 2：同行右侧按钮探测（典型如微信/QQ输入框右侧发送按钮）
+        // 策略 2：同行最右侧非清除/非功能按钮探测（典型如微信/QQ输入框最右侧发送按钮）
         if (inputBounds != null && inputBounds.width() > 0) {
             AccessibilityNodeInfo rightNeighbor = findRightNeighborButton(root, inputBounds);
             if (rightNeighbor != null) {
@@ -1352,24 +1384,100 @@ public class AgentAccessibilityService extends AccessibilityService {
             }
         }
 
-        // 策略 3：派发软键盘 IME_ACTION (兼容低版本 SDK 常量 16908372)
+        // 策略 3：派发软键盘 IME_ACTION（搜索 / 发送 / 回车）
+        boolean imeOk = dispatchImeEnterOnFocused(root);
+        root.recycle();
+        return imeOk;
+    }
+
+    private boolean dispatchImeEnterOnFocused(AccessibilityNodeInfo root) {
+        if (root == null) return false;
         AccessibilityNodeInfo focused = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT);
-        if (focused != null) {
-            boolean imeOk = false;
+        if (focused == null) {
+            focused = findEditableTarget(root, null);
+        }
+        if (focused == null) return false;
+        boolean imeOk = false;
+        try {
+            if (Build.VERSION.SDK_INT >= 30) {
+                imeOk = focused.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_IME_ENTER.getId());
+            }
+        } catch (Throwable ignored) {}
+        if (!imeOk) {
             try {
                 imeOk = focused.performAction(16908372);
             } catch (Throwable ignored) {}
-            focused.recycle();
-            root.recycle();
-            if (imeOk) return true;
         }
+        focused.recycle();
+        return imeOk;
+    }
 
-        root.recycle();
+    private boolean isExcludedActionNode(AccessibilityNodeInfo node, String tStr, String dStr, String idStr) {
+        if (node == null) return true;
+        if (node.isEditable()) return true;
+        CharSequence cls = node.getClassName();
+        if (cls != null && cls.toString().contains("EditText")) return true;
+
+        String combined = (tStr + " " + dStr + " " + idStr).toLowerCase(Locale.ROOT);
+        String[] badWords = new String[]{
+                "清空", "清除", "删除", "取消", "关闭", "语音", "表情", "更多", "拍照", "相册", "大家都在搜", "热搜",
+                "clear", "delete", "close", "cancel", "voice", "mic", "emoji", "face", "plus", "more", "camera"
+        };
+        for (String bad : badWords) {
+            if (combined.contains(bad)) {
+                return true;
+            }
+        }
         return false;
     }
 
+    private AccessibilityNodeInfo pickBestSubmitCandidate(List<AccessibilityNodeInfo> candidates, Rect inputBounds) {
+        AccessibilityNodeInfo best = null;
+        int bestScore = Integer.MIN_VALUE;
+        for (AccessibilityNodeInfo cand : candidates) {
+            if (cand == null) continue;
+            Rect r = new Rect();
+            cand.getBoundsInScreen(r);
+            String tStr = cand.getText() != null ? cand.getText().toString().trim() : "";
+            String dStr = cand.getContentDescription() != null ? cand.getContentDescription().toString().trim() : "";
+            String idStr = cand.getViewIdResourceName() != null ? cand.getViewIdResourceName().toLowerCase(Locale.ROOT) : "";
+
+            int score = 0;
+            if ("发送".equals(tStr) || "搜索".equals(tStr) || "Send".equalsIgnoreCase(tStr) || "Search".equalsIgnoreCase(tStr)
+                    || "发送".equals(dStr) || "搜索".equals(dStr)) {
+                score += 500;
+            } else if ("发布".equals(tStr) || "评论".equals(tStr) || "确认".equals(tStr)) {
+                score += 420;
+            } else if (idStr.contains("send") || idStr.contains("submit") || idStr.contains("btn_send") || idStr.contains("search_btn")) {
+                score += 360;
+            } else {
+                score += 120;
+            }
+
+            if (cand.isClickable()) score += 220;
+            if (tStr.length() > 8) score -= 260;
+
+            if (inputBounds != null && inputBounds.width() > 0) {
+                if (r.centerX() >= inputBounds.right - 25 && Math.abs(r.centerY() - inputBounds.centerY()) <= Math.max(inputBounds.height(), 90)) {
+                    score += 380;
+                } else if (r.centerX() >= inputBounds.left && r.centerX() <= inputBounds.right && r.centerY() >= inputBounds.top && r.centerY() <= inputBounds.bottom) {
+                    // 处于输入框内部（很可能是左侧放大镜或内部清空图标），大幅降权
+                    score -= 600;
+                }
+            }
+            // 同等条件下，右侧提交按钮优先于左侧
+            score += Math.min(200, r.centerX() / 6);
+
+            if (score > bestScore) {
+                bestScore = score;
+                best = cand;
+            }
+        }
+        return bestScore > 0 ? best : null;
+    }
+
     private void collectSubmitCandidates(AccessibilityNodeInfo node, List<AccessibilityNodeInfo> out, String[] keywords) {
-        if (node == null || out.size() >= 5) return;
+        if (node == null || out.size() >= 12) return;
         if (node.isVisibleToUser()) {
             CharSequence text = node.getText();
             CharSequence desc = node.getContentDescription();
@@ -1378,28 +1486,30 @@ public class AgentAccessibilityService extends AccessibilityService {
             String dStr = desc != null ? desc.toString().trim() : "";
             String idStr = viewId != null ? viewId.toLowerCase(Locale.ROOT) : "";
 
-            boolean match = false;
-            for (String kw : keywords) {
-                if (tStr.equals(kw) || dStr.equals(kw) || tStr.contains(kw) || dStr.contains(kw)) {
-                    match = true;
-                    break;
+            if (!isExcludedActionNode(node, tStr, dStr, idStr)) {
+                boolean match = false;
+                for (String kw : keywords) {
+                    if (tStr.equals(kw) || dStr.equals(kw) || (tStr.length() <= 6 && tStr.contains(kw)) || (dStr.length() <= 6 && dStr.contains(kw))) {
+                        match = true;
+                        break;
+                    }
                 }
-            }
-            if (!match && (!idStr.isEmpty() && (idStr.contains("send") || idStr.contains("submit") || idStr.contains("btn_send")))) {
-                match = true;
-            }
+                if (!match && (!idStr.isEmpty() && (idStr.contains("send") || idStr.contains("submit") || idStr.contains("btn_send") || idStr.contains("search_btn") || idStr.contains("btn_search")))) {
+                    match = true;
+                }
 
-            if (match) {
-                Rect r = new Rect();
-                node.getBoundsInScreen(r);
-                if (r.width() > 10 && r.height() > 10) {
-                    out.add(AccessibilityNodeInfo.obtain(node));
+                if (match) {
+                    Rect r = new Rect();
+                    node.getBoundsInScreen(r);
+                    if (r.width() > 10 && r.height() > 10) {
+                        out.add(AccessibilityNodeInfo.obtain(node));
+                    }
                 }
             }
         }
 
         int count = node.getChildCount();
-        for (int i = 0; i < count && out.size() < 5; i++) {
+        for (int i = 0; i < count && out.size() < 12; i++) {
             AccessibilityNodeInfo child = node.getChild(i);
             if (child != null) {
                 collectSubmitCandidates(child, out, keywords);
@@ -1414,16 +1524,23 @@ public class AgentAccessibilityService extends AccessibilityService {
         if (cands.isEmpty()) return null;
 
         AccessibilityNodeInfo best = null;
-        int minDistance = Integer.MAX_VALUE;
+        int bestX = Integer.MIN_VALUE;
         for (AccessibilityNodeInfo cand : cands) {
+            String tStr = cand.getText() != null ? cand.getText().toString().trim() : "";
+            String dStr = cand.getContentDescription() != null ? cand.getContentDescription().toString().trim() : "";
+            String idStr = cand.getViewIdResourceName() != null ? cand.getViewIdResourceName().toLowerCase(Locale.ROOT) : "";
+            if (isExcludedActionNode(cand, tStr, dStr, idStr)) {
+                cand.recycle();
+                continue;
+            }
             Rect r = new Rect();
             cand.getBoundsInScreen(r);
-            boolean horizontallyRight = r.left >= (inputBounds.right - 30);
-            boolean verticallyAligned = Math.abs(r.centerY() - inputBounds.centerY()) <= Math.max(inputBounds.height(), 80);
+            boolean horizontallyRight = r.left >= (inputBounds.right - 20);
+            boolean verticallyAligned = Math.abs(r.centerY() - inputBounds.centerY()) <= Math.max(inputBounds.height(), 90);
             if (horizontallyRight && verticallyAligned && r.width() >= 20 && r.height() >= 20) {
-                int dist = Math.abs(r.left - inputBounds.right);
-                if (dist < minDistance) {
-                    minDistance = dist;
+                // 优先取输入行最右侧真正提交按钮（避开紧贴输入框右缘的功能小图标）
+                if (r.centerX() > bestX) {
+                    bestX = r.centerX();
                     if (best != null) best.recycle();
                     best = cand;
                     continue;
@@ -1435,12 +1552,14 @@ public class AgentAccessibilityService extends AccessibilityService {
     }
 
     private void collectClickableNodes(AccessibilityNodeInfo node, List<AccessibilityNodeInfo> out) {
-        if (node == null || out.size() >= 40) return;
-        if (node.isVisibleToUser() && (node.isClickable() || String.valueOf(node.getClassName()).contains("Button") || String.valueOf(node.getClassName()).contains("ImageView"))) {
+        if (node == null || out.size() >= 48) return;
+        String cls = String.valueOf(node.getClassName());
+        if (node.isVisibleToUser() && !node.isEditable() && !cls.contains("EditText")
+                && (node.isClickable() || cls.contains("Button") || cls.contains("TextView") || cls.contains("ImageView"))) {
             out.add(AccessibilityNodeInfo.obtain(node));
         }
         int count = node.getChildCount();
-        for (int i = 0; i < count && out.size() < 40; i++) {
+        for (int i = 0; i < count && out.size() < 48; i++) {
             AccessibilityNodeInfo child = node.getChild(i);
             if (child != null) {
                 collectClickableNodes(child, out);
@@ -1635,7 +1754,7 @@ public class AgentAccessibilityService extends AccessibilityService {
     }
 
     /**
-     * 在 QQ 音乐中自动拉起、搜索并尝试点播指定歌曲
+     * 在 QQ 音乐中自动拉起、进入搜索页、输入歌名、精准点击「搜索」并轮询点击结果单曲播放
      */
     public String playSongInQqMusic(final String rawQuery) {
         final String songQuery = rawQuery == null ? "" : rawQuery.trim();
@@ -1653,60 +1772,417 @@ public class AgentAccessibilityService extends AccessibilityService {
             return "UNMATCHED:手机上未检测到 QQ 音乐";
         }
 
+        final int seq = ++qqMusicOrderSeq;
         FloatAgentService.onExpectedMusicTrack(songQuery);
         boolean launched = launchAppByName("qq音乐");
         if (!launched) {
             return "UNMATCHED:未在手机上找到 QQ 音乐，请确认已安装";
         }
 
-        Runnable step1ClickSearch = new Runnable() {
+        // Phase 1：轮询等待 QQ 音乐打开并进入包含搜索输入框的界面
+        scheduleQqMusicPhase1EnterSearch(seq, songQuery, 0);
+        return "正在 QQ 音乐为你点播《" + songQuery + "》并自动搜歌播放…";
+    }
+
+    private void scheduleQqMusicPhase1EnterSearch(final int seq, final String songQuery, final int attempt) {
+        Runnable task = new Runnable() {
             @Override
             public void run() {
-                if (FloatAgentService.sEmergencyStopRequested) return;
-                boolean openedSearch = false;
+                if (FloatAgentService.sEmergencyStopRequested || seq != qqMusicOrderSeq) return;
+                DisplayMetrics dm = getResources().getDisplayMetrics();
+                AccessibilityNodeInfo root = getRootInActiveWindow();
+                AccessibilityNodeInfo topEdit = findTopSearchEditText(root, dm.heightPixels);
+                if (topEdit != null) {
+                    Rect edBounds = new Rect();
+                    topEdit.getBoundsInScreen(edBounds);
+                    topEdit.recycle();
+                    if (root != null) root.recycle();
+                    performQqMusicPhase2InputAndSearch(seq, songQuery, edBounds);
+                    return;
+                }
+                if (root != null) root.recycle();
+
+                // 尝试点击顶部搜索入口（排除底部导航及不可见区域）
+                boolean clickedEntry = clickQqMusicTopSearchEntry(dm.widthPixels, dm.heightPixels);
+                if (!clickedEntry && attempt >= 2) {
+                    // 兜底点击顶部搜索栏中心位置
+                    performClickCoordinate(Math.round(dm.widthPixels * 0.45f), Math.round(dm.heightPixels * 0.10f));
+                }
+
+                if (attempt < 6) {
+                    scheduleQqMusicPhase1EnterSearch(seq, songQuery, attempt + 1);
+                }
+            }
+        };
+        pendingRunnables.add(task);
+        mainHandler.postDelayed(task, attempt == 0 ? 1150 : 480);
+    }
+
+    private void performQqMusicPhase2InputAndSearch(final int seq, final String songQuery, final Rect edBounds) {
+        if (FloatAgentService.sEmergencyStopRequested || seq != qqMusicOrderSeq) return;
+        AccessibilityNodeInfo root = getRootInActiveWindow();
+        if (root == null) return;
+        DisplayMetrics dm = getResources().getDisplayMetrics();
+        AccessibilityNodeInfo editNode = findTopSearchEditText(root, dm.heightPixels);
+        if (editNode == null) {
+            root.recycle();
+            return;
+        }
+        editNode.getBoundsInScreen(edBounds);
+
+        // 先聚焦并点击搜索框确保可激活输入态
+        editNode.performAction(AccessibilityNodeInfo.ACTION_FOCUS);
+        editNode.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+        if (edBounds.width() > 20 && edBounds.height() > 12) {
+            performClickCoordinate(edBounds.centerX(), edBounds.centerY());
+        }
+
+        Bundle args = new Bundle();
+        args.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, songQuery);
+        boolean setOk = editNode.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args);
+        if (!setOk) {
+            pasteTextViaClipboard(editNode, songQuery, true);
+        }
+        editNode.recycle();
+        root.recycle();
+
+        // 等待 280ms 让 QQ 音乐右上角「取消」按钮刷新成「搜索」按钮并弹出联想列表，再触发搜索提交
+        Runnable triggerSearchTask = new Runnable() {
+            @Override
+            public void run() {
+                if (FloatAgentService.sEmergencyStopRequested || seq != qqMusicOrderSeq) return;
+                triggerQqMusicSearchSubmit(edBounds, songQuery);
+                scheduleQqMusicPhase3WaitResultsAndPlay(seq, songQuery, edBounds, 0);
+            }
+        };
+        pendingRunnables.add(triggerSearchTask);
+        mainHandler.postDelayed(triggerSearchTask, 300);
+    }
+
+    private void triggerQqMusicSearchSubmit(Rect inputBounds, String songQuery) {
+        AccessibilityNodeInfo root = getRootInActiveWindow();
+        if (root == null) return;
+        DisplayMetrics dm = getResources().getDisplayMetrics();
+
+        // 1. 精准查找顶部栏右侧的「搜索」提交按钮（严格跳过 EditText 与清空×/取消按钮）
+        Rect searchBtnBounds = findQqMusicRightSearchButton(root, inputBounds, dm.widthPixels, dm.heightPixels);
+        boolean clickedSearchBtn = false;
+        if (searchBtnBounds != null) {
+            clickedSearchBtn = performClickCoordinate(searchBtnBounds.centerX(), searchBtnBounds.centerY());
+        }
+
+        // 2. 同步派发软键盘搜索动作（IME_ENTER / IME_ACTION），双保险防止单独按钮被拦截
+        dispatchImeEnterOnFocused(root);
+
+        // 3. 若未找到顶部「搜索」文字按钮，尝试点击搜索框正下方第一条「搜索“xxx”」联想条
+        if (!clickedSearchBtn) {
+            Rect suggestBounds = findNodeBoundsInVerticalRange(root, "搜索",
+                    inputBounds.bottom + 4, Math.round(dm.heightPixels * 0.42f), false);
+            if (suggestBounds != null) {
+                performClickCoordinate(suggestBounds.centerX(), suggestBounds.centerY());
+            } else {
+                // 常见 QQ 音乐右上角「搜索」纯文本区域兜底坐标（避开输入框内清空×）
+                performClickCoordinate(Math.round(dm.widthPixels * 0.90f), Math.max(inputBounds.centerY(), Math.round(dm.heightPixels * 0.09f)));
+            }
+        }
+        root.recycle();
+    }
+
+    private void scheduleQqMusicPhase3WaitResultsAndPlay(final int seq, final String songQuery, final Rect inputBounds, final int attempt) {
+        Runnable task = new Runnable() {
+            @Override
+            public void run() {
+                if (FloatAgentService.sEmergencyStopRequested || seq != qqMusicOrderSeq) return;
+                AccessibilityNodeInfo root = getRootInActiveWindow();
+                if (root == null) return;
+                DisplayMetrics dm = getResources().getDisplayMetrics();
+
+                boolean hasResultsTab = hasAnyVisibleTextInRegion(root,
+                        new String[]{"单曲", "播放全部", "综合", "专辑", "歌手"},
+                        Math.round(dm.heightPixels * 0.12f), Math.round(dm.heightPixels * 0.48f));
+                int minResultY = Math.max(inputBounds.bottom + 80, Math.round(dm.heightPixels * 0.23f));
+
+                if (hasResultsTab) {
+                    // 已进入结果页！优先找单曲区里的目标歌名结果或「播放全部」按钮
+                    Rect songRowBounds = findQqMusicSongResultRow(root, songQuery, minResultY, Math.round(dm.heightPixels * 0.80f));
+                    Rect playAllBounds = findNodeBoundsInVerticalRange(root, "播放全部", minResultY, Math.round(dm.heightPixels * 0.72f), false);
+
+                    if (songRowBounds != null) {
+                        performClickCoordinate(songRowBounds.centerX(), songRowBounds.centerY());
+                        root.recycle();
+                        scheduleQqMusicPhase4VerifyPlay(seq, songQuery, minResultY, 0);
+                        return;
+                    } else if (playAllBounds != null) {
+                        performClickCoordinate(playAllBounds.centerX(), playAllBounds.centerY());
+                        root.recycle();
+                        scheduleQqMusicPhase4VerifyPlay(seq, songQuery, minResultY, 0);
+                        return;
+                    } else {
+                        // 如果处于「综合」页且下方首屏不是可点击曲目，先切到「单曲」Tab
+                        Rect singleTab = findNodeBoundsInVerticalRange(root, "单曲",
+                                Math.round(dm.heightPixels * 0.13f), Math.round(dm.heightPixels * 0.28f), true);
+                        if (singleTab != null && attempt <= 2) {
+                            performClickCoordinate(singleTab.centerX(), singleTab.centerY());
+                            root.recycle();
+                            scheduleQqMusicPhase3WaitResultsAndPlay(seq, songQuery, inputBounds, attempt + 1);
+                            return;
+                        }
+                    }
+                } else if (attempt == 1 || attempt == 3) {
+                    // 停留在联想输入页未跳转时补点一次搜索
+                    root.recycle();
+                    triggerQqMusicSearchSubmit(inputBounds, songQuery);
+                    scheduleQqMusicPhase3WaitResultsAndPlay(seq, songQuery, inputBounds, attempt + 1);
+                    return;
+                }
+
+                root.recycle();
+                if (attempt < 7) {
+                    scheduleQqMusicPhase3WaitResultsAndPlay(seq, songQuery, inputBounds, attempt + 1);
+                } else {
+                    // 最后兜底点击结果列表首条歌曲区域
+                    performClickCoordinate(Math.round(dm.widthPixels * 0.40f), Math.round(dm.heightPixels * 0.34f));
+                    scheduleQqMusicPhase4VerifyPlay(seq, songQuery, minResultY, 1);
+                }
+            }
+        };
+        pendingRunnables.add(task);
+        mainHandler.postDelayed(task, attempt == 0 ? 750 : 620);
+    }
+
+    private void scheduleQqMusicPhase4VerifyPlay(final int seq, final String songQuery, final int minResultY, final int retry) {
+        Runnable verifyTask = new Runnable() {
+            @Override
+            public void run() {
+                if (FloatAgentService.sEmergencyStopRequested || seq != qqMusicOrderSeq) return;
+                QqMusicListenerService.pollActiveMusicSession(AgentAccessibilityService.this);
+                boolean playing = false;
+                try {
+                    AudioManager am = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
+                    playing = (am != null && am.isMusicActive());
+                } catch (Exception ignored) {}
+
+                if (playing) {
+                    return;
+                }
+
                 AccessibilityNodeInfo root = getRootInActiveWindow();
                 if (root != null) {
-                    AccessibilityNodeInfo ed = findEditableTarget(root, null);
-                    if (ed != null) {
-                        openedSearch = true;
-                        ed.recycle();
+                    DisplayMetrics dm = getResources().getDisplayMetrics();
+                    // 若刚刚点进的是专辑/单曲聚合卡页面，通常会出现「播放全部」或「播放」按钮，再点一次即开始播
+                    Rect playBtn = findNodeBoundsInVerticalRange(root, "播放全部", minResultY, Math.round(dm.heightPixels * 0.78f), false);
+                    if (playBtn == null) {
+                        playBtn = findNodeBoundsInVerticalRange(root, "播放", minResultY, Math.round(dm.heightPixels * 0.78f), true);
+                    }
+                    if (playBtn != null) {
+                        performClickCoordinate(playBtn.centerX(), playBtn.centerY());
+                    } else if (retry == 0) {
+                        // 再尝试点一次「单曲」或第一行歌名
+                        Rect songRow = findQqMusicSongResultRow(root, songQuery, minResultY, Math.round(dm.heightPixels * 0.80f));
+                        if (songRow != null) {
+                            performClickCoordinate(songRow.centerX(), songRow.centerY());
+                        } else {
+                            performClickCoordinate(Math.round(dm.widthPixels * 0.40f), Math.round(dm.heightPixels * 0.35f));
+                        }
                     }
                     root.recycle();
                 }
-                if (!openedSearch) {
-                    openedSearch = clickAnyMatchingButton(new String[]{"搜索", "大家都在搜", "搜一搜", "查找", "Search"});
+
+                if (retry < 1) {
+                    scheduleQqMusicPhase4VerifyPlay(seq, songQuery, minResultY, retry + 1);
                 }
-                Runnable step2Input = new Runnable() {
-                    @Override
-                    public void run() {
-                        if (FloatAgentService.sEmergencyStopRequested) return;
-                        performSmartInputText(null, songQuery, false, true);
-                        Runnable step3TapFirst = new Runnable() {
-                            @Override
-                            public void run() {
-                                if (FloatAgentService.sEmergencyStopRequested) return;
-                                boolean tapped = clickNodeByText(songQuery);
-                                if (!tapped) {
-                                    tapped = clickAnyMatchingButton(new String[]{"播放", "播放全部", "单曲"});
-                                }
-                                if (!tapped) {
-                                    DisplayMetrics dm = getResources().getDisplayMetrics();
-                                    performClickCoordinate(Math.round(dm.widthPixels * 0.42f), Math.round(dm.heightPixels * 0.27f));
-                                }
-                                QqMusicListenerService.pollActiveMusicSession(AgentAccessibilityService.this);
-                            }
-                        };
-                        pendingRunnables.add(step3TapFirst);
-                        mainHandler.postDelayed(step3TapFirst, 1250);
-                    }
-                };
-                pendingRunnables.add(step2Input);
-                mainHandler.postDelayed(step2Input, openedSearch ? 680 : 900);
             }
         };
-        pendingRunnables.add(step1ClickSearch);
-        mainHandler.postDelayed(step1ClickSearch, 1350);
-        return "正在 QQ 音乐为你点播《" + songQuery + "》并同步歌词…";
+        pendingRunnables.add(verifyTask);
+        mainHandler.postDelayed(verifyTask, 1100);
+    }
+
+    private AccessibilityNodeInfo findTopSearchEditText(AccessibilityNodeInfo root, int screenHeight) {
+        if (root == null) return null;
+        List<AccessibilityNodeInfo> edits = new ArrayList<>();
+        collectEditableNodes(root, edits);
+        AccessibilityNodeInfo best = null;
+        int bestY = Integer.MAX_VALUE;
+        String selfPkg = getPackageName();
+        for (AccessibilityNodeInfo ed : edits) {
+            CharSequence pkg = ed.getPackageName();
+            if (selfPkg != null && pkg != null && selfPkg.equals(pkg.toString())) continue;
+            Rect r = new Rect();
+            ed.getBoundsInScreen(r);
+            if (r.top >= 0 && r.centerY() < Math.round(screenHeight * 0.28f) && r.centerY() < bestY) {
+                bestY = r.centerY();
+                best = ed;
+            }
+        }
+        for (AccessibilityNodeInfo ed : edits) {
+            if (ed != best) ed.recycle();
+        }
+        return best;
+    }
+
+    private boolean clickQqMusicTopSearchEntry(int screenWidth, int screenHeight) {
+        AccessibilityNodeInfo root = getRootInActiveWindow();
+        if (root == null) return false;
+        int maxTopY = Math.round(screenHeight * 0.24f);
+        Rect entry = findNodeBoundsInVerticalRange(root, "大家都在搜", 0, maxTopY, false);
+        if (entry == null) entry = findNodeBoundsInVerticalRange(root, "搜索", 0, maxTopY, false);
+        if (entry == null) entry = findNodeBoundsInVerticalRange(root, "搜一搜", 0, maxTopY, false);
+        if (entry == null) entry = findNodeBoundsInVerticalRange(root, "Search", 0, maxTopY, false);
+        root.recycle();
+        if (entry != null && entry.centerX() <= Math.round(screenWidth * 0.96f)) {
+            return performClickCoordinate(entry.centerX(), entry.centerY());
+        }
+        return false;
+    }
+
+    private Rect findQqMusicRightSearchButton(AccessibilityNodeInfo node, Rect inputBounds, int screenWidth, int screenHeight) {
+        if (node == null) return null;
+        List<AccessibilityNodeInfo> hits = new ArrayList<>();
+        collectQqSearchBtnNodes(node, hits, inputBounds, screenWidth, screenHeight);
+        Rect bestBounds = null;
+        int bestScore = Integer.MIN_VALUE;
+        for (AccessibilityNodeInfo cand : hits) {
+            Rect r = new Rect();
+            cand.getBoundsInScreen(r);
+            String t = cand.getText() != null ? cand.getText().toString().trim() : "";
+            String d = cand.getContentDescription() != null ? cand.getContentDescription().toString().trim() : "";
+            String id = cand.getViewIdResourceName() != null ? cand.getViewIdResourceName().toLowerCase(Locale.ROOT) : "";
+            int score = 0;
+            if ("搜索".equals(t) || "Search".equalsIgnoreCase(t) || "搜索".equals(d)) score += 600;
+            else if (id.contains("search")) score += 350;
+            if (r.centerX() > Math.round(screenWidth * 0.72f)) score += 350;
+            if (r.left >= inputBounds.right - 20) score += 300;
+            if (cand.isClickable()) score += 150;
+            if (score > bestScore) {
+                bestScore = score;
+                bestBounds = r;
+            }
+            cand.recycle();
+        }
+        return bestBounds;
+    }
+
+    private void collectQqSearchBtnNodes(AccessibilityNodeInfo node, List<AccessibilityNodeInfo> out, Rect inputBounds, int screenWidth, int screenHeight) {
+        if (node == null || out.size() >= 10) return;
+        if (node.isVisibleToUser()) {
+            String t = node.getText() != null ? node.getText().toString().trim() : "";
+            String d = node.getContentDescription() != null ? node.getContentDescription().toString().trim() : "";
+            String id = node.getViewIdResourceName() != null ? node.getViewIdResourceName().toLowerCase(Locale.ROOT) : "";
+            if (!isExcludedActionNode(node, t, d, id)) {
+                Rect r = new Rect();
+                node.getBoundsInScreen(r);
+                int maxTopY = Math.max(inputBounds.bottom + 70, Math.round(screenHeight * 0.24f));
+                boolean inTopRightBar = r.centerY() >= 0 && r.centerY() <= maxTopY && r.centerX() >= Math.round(screenWidth * 0.62f);
+                boolean looksLikeSearch = "搜索".equals(t) || "Search".equalsIgnoreCase(t)
+                        || "搜索".equals(d) || "Search".equalsIgnoreCase(d)
+                        || (id.contains("search") && !id.contains("edit") && !id.contains("input") && !id.contains("bar"));
+                if (inTopRightBar && looksLikeSearch && r.width() > 16 && r.height() > 16) {
+                    out.add(AccessibilityNodeInfo.obtain(node));
+                }
+            }
+        }
+        int c = node.getChildCount();
+        for (int i = 0; i < c && out.size() < 10; i++) {
+            AccessibilityNodeInfo ch = node.getChild(i);
+            if (ch != null) {
+                collectQqSearchBtnNodes(ch, out, inputBounds, screenWidth, screenHeight);
+                ch.recycle();
+            }
+        }
+    }
+
+    private boolean hasAnyVisibleTextInRegion(AccessibilityNodeInfo node, String[] targets, int minY, int maxY) {
+        if (node == null) return false;
+        if (node.isVisibleToUser() && !node.isEditable()) {
+            String t = node.getText() != null ? node.getText().toString().trim() : "";
+            String d = node.getContentDescription() != null ? node.getContentDescription().toString().trim() : "";
+            Rect r = new Rect();
+            node.getBoundsInScreen(r);
+            if (r.centerY() >= minY && r.centerY() <= maxY) {
+                for (String kw : targets) {
+                    if (t.equals(kw) || d.equals(kw) || t.contains(kw)) {
+                        return true;
+                    }
+                }
+            }
+        }
+        int c = node.getChildCount();
+        for (int i = 0; i < c; i++) {
+            AccessibilityNodeInfo ch = node.getChild(i);
+            if (ch != null) {
+                boolean hit = hasAnyVisibleTextInRegion(ch, targets, minY, maxY);
+                ch.recycle();
+                if (hit) return true;
+            }
+        }
+        return false;
+    }
+
+    private Rect findNodeBoundsInVerticalRange(AccessibilityNodeInfo node, String query, int minY, int maxY, boolean exactFirst) {
+        if (node == null || query == null || query.isEmpty()) return null;
+        if (node.isVisibleToUser() && !node.isEditable()) {
+            String t = node.getText() != null ? node.getText().toString().trim() : "";
+            String d = node.getContentDescription() != null ? node.getContentDescription().toString().trim() : "";
+            String id = node.getViewIdResourceName() != null ? node.getViewIdResourceName().toLowerCase(Locale.ROOT) : "";
+            if (!isExcludedActionNode(node, t, d, id)) {
+                boolean match = exactFirst ? (t.equals(query) || d.equals(query))
+                        : (t.toLowerCase(Locale.ROOT).contains(query.toLowerCase(Locale.ROOT))
+                        || d.toLowerCase(Locale.ROOT).contains(query.toLowerCase(Locale.ROOT)));
+                if (match) {
+                    Rect r = new Rect();
+                    node.getBoundsInScreen(r);
+                    if (r.width() > 14 && r.height() > 14 && r.centerY() >= minY && r.centerY() <= maxY) {
+                        return r;
+                    }
+                }
+            }
+        }
+        int c = node.getChildCount();
+        for (int i = 0; i < c; i++) {
+            AccessibilityNodeInfo ch = node.getChild(i);
+            if (ch != null) {
+                Rect r = findNodeBoundsInVerticalRange(ch, query, minY, maxY, exactFirst);
+                ch.recycle();
+                if (r != null) return r;
+            }
+        }
+        return null;
+    }
+
+    private Rect findQqMusicSongResultRow(AccessibilityNodeInfo root, String songQuery, int minY, int maxY) {
+        String[] parts = songQuery.trim().split("\\s+");
+        String coreTitle = parts.length > 1 ? parts[parts.length - 1] : songQuery.trim();
+        Rect hit = findSongCardBoundsRec(root, songQuery.trim().toLowerCase(Locale.ROOT), coreTitle.toLowerCase(Locale.ROOT), minY, maxY);
+        return hit;
+    }
+
+    private Rect findSongCardBoundsRec(AccessibilityNodeInfo node, String fullLower, String coreLower, int minY, int maxY) {
+        if (node == null) return null;
+        if (node.isVisibleToUser() && !node.isEditable()) {
+            String t = node.getText() != null ? node.getText().toString().trim() : "";
+            String d = node.getContentDescription() != null ? node.getContentDescription().toString().trim() : "";
+            String tl = t.toLowerCase(Locale.ROOT);
+            String dl = d.toLowerCase(Locale.ROOT);
+            boolean matched = (!tl.isEmpty() && (tl.contains(fullLower) || tl.contains(coreLower)))
+                    || (!dl.isEmpty() && (dl.contains(fullLower) || dl.contains(coreLower)));
+            if (matched && !t.startsWith("搜索")) {
+                Rect r = new Rect();
+                node.getBoundsInScreen(r);
+                if (r.width() > 24 && r.height() > 16 && r.centerY() >= minY && r.centerY() <= maxY) {
+                    return r;
+                }
+            }
+        }
+        int c = node.getChildCount();
+        for (int i = 0; i < c; i++) {
+            AccessibilityNodeInfo ch = node.getChild(i);
+            if (ch != null) {
+                Rect r = findSongCardBoundsRec(ch, fullLower, coreLower, minY, maxY);
+                ch.recycle();
+                if (r != null) return r;
+            }
+        }
+        return null;
     }
 
     /**

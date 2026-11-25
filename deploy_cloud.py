@@ -194,10 +194,10 @@ const {{ db, getRawPlatformConfigInternal, updateAdminPlatformConfig, saveAdminA
 db.prepare("DELETE FROM personas WHERE id = \\x27persona_linqi\\x27").run();
 db.prepare("UPDATE site_announcements SET enabled = 0").run();
 saveAdminAnnouncement("admin", {{
-  title: "星语恋庭 v2.4.2 更新：大肥鱼音乐模式免打扰陪伴，绝不打断听歌播放/暂停",
-  content: "1. 【音乐播放默认免打扰静音】：检测到正在听歌（含 QQ 音乐或系统音乐活跃）时，大肥鱼默认保持安静不主动开口也不抢占音频焦点，仅以动作与轻提示气泡伴舞，绝不打断你的音乐播放/暂停状态。\\n2. 【音频属性重构与焦点零冲突】：全面切至非媒体提示音通道与 AudioTrack 提示音频流，点击展开面板改为静音动作，避免误触发声中断播放器。\\n3. 【无通知权限音乐状态精准联动】：即使未授予通知读取权限，也能通过系统音频状态感知音乐暂停/恢复并同步隐现桌面透明歌词，随身版升级至 v2.4.2 (Build 143)！",
+  title: "星语恋庭 v2.4.3 更新：QQ 音乐自动搜歌连播、悬浮快捷打字条与常用聊天文字导入上线",
+  content: "1. 【QQ 音乐点歌自动搜索连播】：重构点歌多步状态机，输入歌名后自动跳过清空×精确点按「搜索」并派发软键盘搜索，轮询结果列表/单曲 Tab 自动点击第一首起播。\\n2. 【不抢焦点悬浮快捷打字条】：新增可拖动「⌨️ 快捷打字模式」，开启后直接悬停点击常用语连发或仅填入，再也不收起打断连续聊天。\\n3. 【常用聊天文字多端批量导入】：支持从系统剪贴板、多行文本或手机 .txt/.json 文件导入常用话术并双端实时同步，随身版升级至 v2.4.3 (Build 144)！",
   enabled: true,
-  version: 143
+  version: 144
 }});
 db.prepare("UPDATE sessions SET companion_config = NULL").run();
 db.prepare("UPDATE user_settings SET value = \\x27demo\\x27 WHERE key = \\x27provider\\x27").run();

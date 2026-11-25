@@ -452,6 +452,35 @@
   .msg-row.assistant .thought-details,.msg-row.assistant .thought-summary{background:rgba(30,30,44,.4)!important;}
 }
 
+/* 电脑网页端（>768px）：放宽主对话区至 1280px 并彻底去除角色扮演外层大白方框 */
+@media (min-width: 769px){
+  #app-shell .messages-viewport{padding:20px 24px 12px!important;}
+  #app-shell .messages-container,
+  #app-shell[data-ui-mode="deepseek"] .messages-container,
+  #app-shell[data-ui-mode="phone-agent"] .messages-container,
+  #app-shell[data-ui-mode="roleplay"] .messages-container,
+  #app-shell .composer-card,
+  #app-shell[data-ui-mode="deepseek"] .composer-card,
+  #app-shell[data-ui-mode="phone-agent"] .composer-card,
+  #app-shell[data-ui-mode="roleplay"] .composer-card,
+  #app-shell .magic-quick-bar{max-width:min(1280px,calc(100% - 40px))!important;width:100%!important;}
+
+  html body #app-shell[data-ui-mode="roleplay"] #messages-viewport #messages-container .msg-row.assistant .msg-body{background:transparent!important;background-color:transparent!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important;border:none!important;border-left:none!important;border-radius:0!important;box-shadow:none!important;padding:0!important;max-width:calc(100% - 52px)!important;min-width:0!important;}
+  html body #app-shell[data-ui-mode="roleplay"] #messages-viewport #messages-container .msg-row.assistant .assistant-prose{display:flex!important;flex-direction:column!important;align-items:flex-start!important;gap:8px!important;background:transparent!important;background-color:transparent!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important;border:none!important;box-shadow:none!important;padding:0!important;}
+  html body #app-shell[data-ui-mode="roleplay"] #messages-viewport #messages-container .msg-row.assistant .assistant-prose p,
+  html body #app-shell[data-ui-mode="roleplay"] #messages-viewport #messages-container .msg-row.assistant .assistant-prose p.qq-bubble-item,
+  html body #app-shell[data-ui-mode="roleplay"] #messages-viewport #messages-container .msg-row.assistant .assistant-prose blockquote{display:block!important;margin:0!important;padding:10px 15px!important;width:fit-content!important;max-width:min(92%,980px)!important;border-radius:14px!important;background:rgba(255,255,255,.72)!important;-webkit-backdrop-filter:blur(14px) saturate(140%)!important;backdrop-filter:blur(14px) saturate(140%)!important;border:1px solid rgba(255,255,255,.5)!important;box-shadow:0 2px 12px rgba(15,23,42,.05)!important;color:#191c24!important;}
+  html body #app-shell[data-ui-mode="roleplay"] #messages-viewport #messages-container .msg-row.assistant .thought-details{width:fit-content!important;max-width:100%!important;margin:0 0 6px 0!important;background:rgba(255,255,255,.52)!important;-webkit-backdrop-filter:blur(10px)!important;backdrop-filter:blur(10px)!important;border:1px solid rgba(255,255,255,.42)!important;border-radius:10px!important;box-shadow:none!important;}
+  html body #app-shell[data-ui-mode="roleplay"] #messages-viewport #messages-container .msg-row.assistant .thought-summary{background:transparent!important;padding:5px 12px!important;font-size:12.5px!important;}
+  html body #app-shell[data-ui-mode="roleplay"] #messages-viewport #messages-container .msg-row.assistant .msg-footer-bar{margin-top:4px!important;padding:0!important;min-height:0!important;gap:6px!important;}
+}
+@media (min-width: 769px) and (prefers-color-scheme: dark){
+  html body #app-shell[data-ui-mode="roleplay"] #messages-viewport #messages-container .msg-row.assistant .assistant-prose p,
+  html body #app-shell[data-ui-mode="roleplay"] #messages-viewport #messages-container .msg-row.assistant .assistant-prose p.qq-bubble-item,
+  html body #app-shell[data-ui-mode="roleplay"] #messages-viewport #messages-container .msg-row.assistant .assistant-prose blockquote{background:rgba(28,30,44,.72)!important;color:#f1f5f9!important;border-color:rgba(255,255,255,.12)!important;}
+  html body #app-shell[data-ui-mode="roleplay"] #messages-viewport #messages-container .msg-row.assistant .thought-details{background:rgba(28,30,44,.55)!important;border-color:rgba(255,255,255,.1)!important;}
+}
+
 /* 站长管理控制台升级样式 (遵循 8px 栅格 / tabular-nums / 微质感边框) */
 .adm-console-shell{display:flex;flex-direction:column;gap:16px;}
 .adm-kpi-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;}

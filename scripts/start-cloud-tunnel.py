@@ -202,6 +202,19 @@ def run_tunnel_forever():
             ssh = paramiko.SSHClient()
             ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
             ssh.connect(host, username=user, password=pwd, timeout=20, banner_timeout=20, auth_timeout=20)
+
+            # 自动清理因异常断网遗留的云端僵尸 sshd 端口占用，防止 TCP forwarding request denied 死循环
+            try:
+                cleanup_cmd = (
+                    f"pids=$(ss -tlnp 2>/dev/null | grep '127.0.0.1:{port} ' | grep -oE 'pid=[0-9]+' | cut -d= -f2 | sort -u); "
+                    f"for p in $pids; do [ \"$p\" != \"$$\" ] && [ \"$p\" != \"$PPID\" ] && kill -9 \"$p\" 2>/dev/null; done"
+                )
+                _, c_out, _ = ssh.exec_command(cleanup_cmd, timeout=6)
+                c_out.channel.recv_exit_status()
+                time.sleep(0.3)
+            except Exception:
+                pass
+
             transport = ssh.get_transport()
             transport.set_keepalive(15)
             transport.request_port_forward('127.0.0.1', port)

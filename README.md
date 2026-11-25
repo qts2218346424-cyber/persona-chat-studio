@@ -22,7 +22,7 @@
 </p>
 
 <p>
-  <img src="https://img.shields.io/badge/Release-v2.1.0_Build_137-7C3AED?style=flat-square&logo=rocket&logoColor=white" alt="Version v2.1.0" />
+  <img src="https://img.shields.io/badge/Release-v2.2.0_Build_138-7C3AED?style=flat-square&logo=rocket&logoColor=white" alt="Version v2.2.0" />
   <img src="https://img.shields.io/badge/Node.js-%3E%3D22.5.0-339933?style=flat-square&logo=node.js&logoColor=white" alt="Node.js >= 22.5.0" />
   <img src="https://img.shields.io/badge/Dependencies-0_npm_Packages-FF6B6B?style=flat-square&logo=npm&logoColor=white" alt="Zero npm Dependencies" />
   <img src="https://img.shields.io/badge/Storage-node%3Asqlite-003B57?style=flat-square&logo=sqlite&logoColor=white" alt="Native SQLite" />
@@ -30,7 +30,7 @@
 </p>
 
 <p>
-  <a href="#-v210-最新版本核心特性">🚀 最新特性</a> •
+  <a href="#-v220-最新版本核心特性">🚀 最新特性</a> •
   <a href="#-三大工作台">🌐 三大工作台</a> •
   <a href="#-外观皮肤与头像工坊">🎨 外观工坊</a> •
   <a href="#-五大内置剧本与-20-位角色">🎬 剧本角色</a> •
@@ -47,13 +47,13 @@
 
 ---
 
-## 🚀 v2.1.0 最新版本核心特性
+## 🚀 v2.2.0 最新版本核心特性
 
-1. **全新「角色演绎模式（真人模拟对话）」**：在星语剧场内新增「📖 剧本扮演 | 💬 角色演绎」双子模式秒切！内置 4 位真人感日常角色卡（林知夏、陈默、诗语、周晏）并支持自由创建与编辑角色卡，**彻底禁用星号动作与旁白**，以真人口语和微信聊天节奏自然对话。
-2. **24 款二次元人设头像与素材库**：告别单调文字与 Emoji 头像！为全部 20 位内置剧本角色与 4 位角色卡配备专属二次元形象头像；头像工坊开放「二次元素材库」分类浏览、Canvas 本地裁剪上传持久收藏与一键给任意角色换头像。
-3. **纯净轻盈与全场景语音降级**：彻底移除冗余旧立绘资源，强化神经语音朗读（TTS）与语音转写（ASR）在游客及独立模式下的静默降级通道。
-4. **移动端外观工坊全面打通**：手机端与随身版全屏设置抽屉直接集成「🎨 免费皮肤与外观工坊」与「🎭 捏脸与头像工坊」，7 套精选主题皮肤、壁纸取色、背景暗角与毛玻璃调节在移动端一键生效。
-5. **Android 原生随身版同步升级**：随身版 APK 同步升级至 `v2.1.0 (Build 137)`，内置最新离线静态资产与性能提升，支持应用内 SHA-256 校验与一键覆盖更新。
+1. **手机辅助控屏内核深度重构**：参考 `dsh-go` 架构重构移动端辅助控屏核心与交互 UI，支持更稳定的动作执行链路与即时可视化状态反馈。
+2. **云端直连本机 Antigravity 隧道**：新增 [localBridgeDaemon.js](server/localBridgeDaemon.js) 与加密 SSH 反向隧道（支持 Windows 开机静默自启），允许云端线上服务直接复用个人电脑本机 `Antigravity` 配额；电脑关机或断开隧道时自动毫秒级无缝回退云端 DeepSeek 官方 API。
+3. **移动端与剧场 UI 精细打磨**：修复侧边栏背景透明遮挡可读性问题，解决剧情模式与角色扮演气泡溢出；优化手机端单行操作栏与半透明毛玻璃气泡视觉质感。
+4. **「角色演绎模式（真人模拟对话）」与 24 款二次元头像**：内置「剧本扮演 | 角色演绎」双子模式秒切与分类二次元头像素材库，支持本地裁剪上传与一键换头像。
+5. **Android 原生随身版同步升级**：随身版 APK 同步升级至 `v2.2.0 (Build 138)`，内置最新离线静态资产与性能提升，支持应用内 SHA-256 校验与一键覆盖更新。
 6. **三通道独立隔离连接中心**：本地直连 / DeepSeek 官方 API / 自定义云端 API 独立保存与无缝切换。
 7. **极速预压缩管线**：`scripts/build-static-assets.mjs` 合并构建前端 Bundle，全面提供 `.gz` 与 `.br` 极速加载。
 

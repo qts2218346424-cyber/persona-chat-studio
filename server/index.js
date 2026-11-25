@@ -862,7 +862,7 @@ async function handleApi(req, res, pathname, parsedUrl) {
       latestVersion: APP_LATEST_VERSION,
       versionCode: APP_LATEST_VERSION_CODE,
       minSupportedVersion: '1.0.0',
-      releaseDate: '2026-11-22',
+      releaseDate: '2026-11-25',
       fileSize: (apkSizeBytes / (1024 * 1024)).toFixed(2) + ' MB',
       fileSizeBytes: apkSizeBytes,
       sha256: apkMeta.sha256 || '',
@@ -874,9 +874,9 @@ async function handleApi(req, res, pathname, parsedUrl) {
       forceUpdate,
       diffGenerations,
       changelog: [
-        '【新增角色演绎模式】星语剧场全新融入「剧本扮演 | 角色演绎」双子模式，内置 4 位真人感角色卡并支持自定义创建，无旁白、无舞台腔，模拟真实人类日常对话',
-        '【24 款二次元头像与素材库】全面告别纯文字头像！为全部 20 位剧本角色与 4 位角色卡配备专属二次元形象头像，开放分类素材库与本地裁剪上传收藏，支持为任意角色一键换头像',
-        '【纯净轻盈与双端同步】彻底清理旧版冗余立绘模块，强化神经语音朗读（TTS）与语音转写（ASR）静默降级通道，网页端与随身版同步升级至 v2.1.0 (Build 137)'
+        '【手机控屏内核深度重构】参考 dsh-go 重构手机辅助控屏内核与交互体验，指令执行更稳、反馈更直观',
+        '【云端直连本机 Antigravity 隧道】新增本机 Antigravity 桥接网关与加密 SSH 反向隧道（支持开机静默自启），电脑离线时自动平滑回退云端 DeepSeek 官方 API',
+        '【移动端与剧场 UI 精细修复】修复侧边栏背景透明看不清及剧情模式角色扮演 UI 溢出问题，网页端与随身版同步升级至 v2.2.0 (Build 138)'
       ]
     };
 

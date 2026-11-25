@@ -73,7 +73,7 @@
     hasMoreMessages: false,
     totalMessages: 0,
     oldestMessageId: 0,
-    appVersion: '2.1.0',
+    appVersion: '2.2.0',
     tourIndex: 0,
     tourActive: false,
     llmMode: localStorage.getItem('user_llm_mode') || 'local_antigravity',
@@ -277,7 +277,7 @@
   }
 
   function syncWebVersionBadges(verStr) {
-    const raw = String(verStr || state.appVersion || '2.1.0').trim().replace(/^v/i, '');
+    const raw = String(verStr || state.appVersion || '2.2.0').trim().replace(/^v/i, '');
     if (!raw) return;
     const vLabel = `v${raw}`;
     const isNativeApk = Boolean(

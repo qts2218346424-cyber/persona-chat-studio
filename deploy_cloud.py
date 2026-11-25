@@ -194,10 +194,10 @@ const {{ db, getRawPlatformConfigInternal, updateAdminPlatformConfig, saveAdminA
 db.prepare("DELETE FROM personas WHERE id = \\x27persona_linqi\\x27").run();
 db.prepare("UPDATE site_announcements SET enabled = 0").run();
 saveAdminAnnouncement("admin", {{
-  title: "星语恋庭 v2.1.0 重磅更新：二次元头像素材库 & 真人「角色演绎模式」上线",
-  content: "1. 新增【角色演绎模式】：在星语剧场内支持「剧本扮演 | 角色演绎」双模式秒切！内置 4 位真人感角色卡并支持自由创建，无旁白、无舞台腔，模拟真实人类日常对话。\\n2. 【24 款二次元人设头像 & 素材库】：全面告别纯文字头像！开放分类二次元素材库与本地裁剪上传收藏，支持为任意角色一键换头像。\\n3. 【双端同步升级】：网页版与 Android 随身版同步升级至 v2.1.0 (Build 137)，建议随身版用户点击「检查更新」体验最新版！",
+  title: "星语恋庭 v2.2.0 重磅更新：手机控屏内核重构 & 云端直连本机 Antigravity 上线",
+  content: "1. 【手机控屏内核深度重构】：参考 dsh-go 重构手机辅助控屏内核与交互体验，指令执行更稳、状态反馈更直观。\\n2. 【云端直连本机 Antigravity 隧道】：支持本机电脑运行加密反向隧道，让云端服务直接调用你的 Antigravity 配额，电脑离线时自动平滑回退 DeepSeek 官方 API。\\n3. 【界面细节与双端同步升级】：修复侧边栏透明遮挡及剧情模式角色扮演 UI 溢出，网页版与 Android 随身版同步升级至 v2.2.0 (Build 138)，建议随身版用户点击「检查更新」体验最新版！",
   enabled: true,
-  version: 137
+  version: 138
 }});
 db.prepare("UPDATE sessions SET companion_config = NULL").run();
 db.prepare("UPDATE user_settings SET value = \\x27demo\\x27 WHERE key = \\x27provider\\x27").run();

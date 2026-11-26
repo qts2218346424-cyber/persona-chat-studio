@@ -16,12 +16,14 @@
         : (sMode === "roleplay" || sMode === "deepseek" || sMode === "phone-agent") ? sMode : "deepseek";
       document.documentElement.dataset.uiMode = initMode;
       const savedSkinRaw = localStorage.getItem("xingyu_skin_v1");
+      const r = document.documentElement;
       if (savedSkinRaw) {
         const sk = JSON.parse(savedSkinRaw);
         if (sk && typeof sk === "object") {
-          const r = document.documentElement;
-          r.dataset.skin = sk.preset || "default";
-          r.dataset.bubbleStyle = sk.bubbleStyle || "soft";
+          const migrated = localStorage.getItem("xingyu_qq_default_migrated_v1");
+          const useQq = !migrated && (!sk.preset || sk.preset === "default") && (!sk.wallpaperType || sk.wallpaperType === "none");
+          r.dataset.skin = useQq ? "qq-classic" : (sk.preset || "qq-classic");
+          r.dataset.bubbleStyle = useQq ? "im-bubble" : (sk.bubbleStyle || "im-bubble");
           r.dataset.fontStyle = sk.fontStyle || "sans";
           if (sk.accentColor) {
             r.dataset.hasAccent = "1";
@@ -38,6 +40,9 @@
           if (sk.glassBlur !== undefined) r.style.setProperty("--skin-glass-blur", Number(sk.glassBlur) + "px");
           if (sk.fontScale !== undefined) r.style.setProperty("--skin-font-scale", String(Number(sk.fontScale) / 100));
         }
+      } else {
+        r.dataset.skin = "qq-classic";
+        r.dataset.bubbleStyle = "im-bubble";
       }
     } catch {}
   </script>
@@ -101,8 +106,8 @@
       pointer-events: none !important;
     }
   </style>
-  <link rel="preload" href="./dist/app.bundle.js?v=91bedffed8" as="script" />
-  <link rel="stylesheet" href="./dist/app.bundle.css?v=decd6520e6" />
+  <link rel="preload" href="./dist/app.bundle.js?v=8130762c22" as="script" />
+  <link rel="stylesheet" href="./dist/app.bundle.css?v=4628cd76aa" />
 </head>
 <body data-ui-mode="deepseek">
   <div id="skin-wallpaper-layer" class="skin-wallpaper-layer" aria-hidden="true"></div>
@@ -2233,6 +2238,27 @@
           <div role="tabpanel" id="spanel-ui" aria-labelledby="stab-ui" hidden>
             <div class="settings-panel-inner">
               <fieldset class="spacious-fieldset">
+                <legend>默认界面主题风格</legend>
+                <div class="spacious-theme-grid">
+                  <label class="spacious-theme-card">
+                    <input type="radio" name="default-ui-theme" value="qq-classic" checked />
+                    <span class="theme-card-icon">💬</span>
+                    <span>经典 QQ 聊天（默认）</span>
+                  </label>
+                  <label class="spacious-theme-card">
+                    <input type="radio" name="default-ui-theme" value="default" />
+                    <span class="theme-card-icon">✨</span>
+                    <span>原生极客风格</span>
+                  </label>
+                  <label class="spacious-theme-card">
+                    <input type="radio" name="default-ui-theme" value="obsidian-gold" />
+                    <span class="theme-card-icon">🌙</span>
+                    <span>曜石流金剧场</span>
+                  </label>
+                </div>
+              </fieldset>
+
+              <fieldset class="spacious-fieldset">
                 <legend>画面主题颜色</legend>
                 <div class="spacious-theme-grid">
                   <label class="spacious-theme-card">
@@ -3089,7 +3115,7 @@
         <div class="apk-hero-card" id="apk-web-download-card">
           <div class="apk-hero-top">
             <div class="apk-meta-pills">
-              <span class="apk-meta-pill" id="apk-modal-version-pill">版本 v2.5.6 (删除歌词尾巴、肥鱼脚底接触阴影踩实地板、4关键帧步态与微尘特效)</span>
+              <span class="apk-meta-pill" id="apk-modal-version-pill">版本 v2.5.7 (默认经典QQ主题设置、抽屉白底对比度深度修复、肥鱼接触阴影)</span>
               <span class="apk-meta-pill">极速包体 10.3 MB</span>
               <span class="apk-meta-pill">官方纯净 · 签名校验</span>
               <span class="apk-meta-pill" id="pa-device-info-pill">支持 Android 7.0 ~ 15+</span>
@@ -3133,7 +3159,7 @@
           <div class="anv-head">
             <div class="anv-title-row">
               <span class="anv-badge">已安装原生随身版</span>
-              <span class="anv-version" id="anv-current-version">v2.5.6 (已就绪)</span>
+              <span class="anv-version" id="anv-current-version">v2.5.7 (已就绪)</span>
             </div>
             <p class="anv-desc">您已在 Android 原生 APK 中运行。可在「手机辅助」工作台或桌面悬浮窗中使用 DeepSeek API 智能识屏操控或本地免 API 直控。</p>
           </div>
@@ -3345,6 +3371,23 @@
             </div>
           </div>
 
+          <!-- 移动端专属：默认界面主题快捷切换（支持设为经典 QQ 聊天默认风） -->
+          <div class="mfs-item" id="mfs-item-default-theme" style="cursor: pointer;">
+            <div class="mfs-item-left">
+              <div class="mfs-icon-wrap">
+                <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+              </div>
+              <div style="display:flex;align-items:center;gap:6px;min-width:0;overflow:hidden;">
+                <span class="mfs-label" style="font-weight:600;">默认界面主题</span>
+                <span class="skin-free-tag">QQ风</span>
+              </div>
+            </div>
+            <div class="mfs-item-right">
+              <span class="mfs-value" id="mfs-default-theme-value">经典 QQ 聊天</span>
+              <span class="mfs-arrow">›</span>
+            </div>
+          </div>
+
           <!-- 移动端专属：皮肤与外观工坊（全部免费） -->
           <div class="mfs-item" id="mfs-item-skin-studio" style="cursor: pointer;">
             <div class="mfs-item-left">
@@ -3507,7 +3550,7 @@
             </div>
             <div class="mfs-item-right">
               <span class="mfs-update-dot hidden" id="mfs-update-dot" aria-label="发现新版本"></span>
-              <span class="mfs-value" id="mfs-version-value">v2.5.6</span>
+              <span class="mfs-value" id="mfs-version-value">v2.5.7</span>
               <span class="mfs-arrow">›</span>
             </div>
           </div>
@@ -3591,7 +3634,7 @@
         <div class="upd-ver-compare">
           <div class="upd-ver-box">
             <span class="upd-ver-label">当前已安装</span>
-            <strong class="upd-ver-num" id="upd-local-ver">v2.5.6</strong>
+            <strong class="upd-ver-num" id="upd-local-ver">v2.5.7</strong>
           </div>
           <div class="upd-ver-arrow" aria-hidden="true">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
@@ -3820,7 +3863,7 @@
   <!-- 全局 Top-Layer 顶层轻提示胶囊（popover="manual" 确保在任何模态 <dialog> 打开时依然 100% 可见，遵循 persistent-toast-notifications 规范） -->
   <div id="global-top-toast" popover="manual" class="global-top-toast" role="status" aria-live="polite"></div>
 
-  <script defer src="./dist/app.bundle.js?v=91bedffed8"></script>
+  <script defer src="./dist/app.bundle.js?v=8130762c22"></script>
   <script>
     if ('serviceWorker' in navigator && window.location.protocol.startsWith('http')) {
       window.addEventListener('load', () => {

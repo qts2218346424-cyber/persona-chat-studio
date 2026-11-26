@@ -4646,7 +4646,8 @@ renderDialog();
 if (!dialog.open) dialog.showModal();
 }
 const SKIN_PRESETS = [
-{ id: 'default', name: '系统默认', desc: '跟随当前模式原色', bg: 'linear-gradient(135deg,#f8e4f1,#231d3a)', dot: '#e2559d' },
+{ id: 'qq-classic', name: '经典 QQ 聊天', desc: '默认推荐 · 洁净灰底 · 蓝白气泡', bg: 'linear-gradient(135deg,#f2f3f5 52%,#1677ff 52%)', dot: '#1677ff' },
+{ id: 'default', name: '原生极客经典', desc: '跟随模式原生配色与排版', bg: 'linear-gradient(135deg,#f8e4f1,#231d3a)', dot: '#e2559d' },
 { id: 'obsidian-gold', name: '曜石流金', desc: '深邃暗夜 · 暖金星轨', bg: '#0d0f14', dot: '#e5c185' },
 { id: 'mist-silk', name: '晨雾丝绸', desc: '柔光浅色 · 莫兰迪棕', bg: '#f6f4f8', dot: '#b88b72' },
 { id: 'sakura-dawn', name: '朝雾樱白', desc: '二次元粉樱 · 轻盈甜暖', bg: '#fff5fa', dot: '#e2559d' },
@@ -4674,13 +4675,13 @@ const BUILTIN_WALLPAPERS = [
 { id: 'mist', name: '雪霁青灰', type: 'gradient', val: 'linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 50%, #ede9fe 100%)' }
 ];
 const DEFAULT_SKIN_CONFIG = {
-preset: 'default',
+preset: 'qq-classic',
 accentColor: '',
 wallpaperType: 'none',
 wallpaperValue: '',
 scrimOpacity: 35,
-glassBlur: 16,
-bubbleStyle: 'soft',
+glassBlur: 12,
+bubbleStyle: 'im-bubble',
 fontStyle: 'sans',
 fontScale: 100
 };
@@ -4690,18 +4691,39 @@ let mountedStudioRoot = null;
 function loadSkinFromStorage() {
 try {
 const raw = localStorage.getItem(SKIN_STORAGE_KEY);
-if (!raw) return { ...DEFAULT_SKIN_CONFIG };
-return Object.assign({}, DEFAULT_SKIN_CONFIG, JSON.parse(raw));
+const qqMigKey = 'xingyu_qq_default_migrated_v1';
+if (!raw) {
+localStorage.setItem(qqMigKey, '1');
+return { ...DEFAULT_SKIN_CONFIG };
+}
+const parsed = JSON.parse(raw);
+if (!localStorage.getItem(qqMigKey)) {
+localStorage.setItem(qqMigKey, '1');
+if (parsed && (!parsed.preset || parsed.preset === 'default') && (!parsed.wallpaperType || parsed.wallpaperType === 'none')) {
+const upgraded = Object.assign({}, DEFAULT_SKIN_CONFIG, parsed, {
+preset: 'qq-classic',
+bubbleStyle: 'im-bubble'
+});
+localStorage.setItem(SKIN_STORAGE_KEY, JSON.stringify(upgraded));
+return upgraded;
+}
+}
+return Object.assign({}, DEFAULT_SKIN_CONFIG, parsed);
 } catch {
 return { ...DEFAULT_SKIN_CONFIG };
 }
 }
 function applySkin(configPatch, options = {}) {
 const { persist = true, syncServer = true } = options;
-currentSkin = Object.assign({}, DEFAULT_SKIN_CONFIG, currentSkin, configPatch || {});
+const prevPreset = currentSkin ? currentSkin.preset : 'qq-classic';
+const nextPatch = configPatch && typeof configPatch === 'object' ? { ...configPatch } : {};
+if (nextPatch.preset === 'qq-classic' && prevPreset !== 'qq-classic' && !nextPatch.bubbleStyle) {
+nextPatch.bubbleStyle = 'im-bubble';
+}
+currentSkin = Object.assign({}, DEFAULT_SKIN_CONFIG, currentSkin, nextPatch);
 const root = document.documentElement;
-root.dataset.skin = currentSkin.preset || 'default';
-root.dataset.bubbleStyle = currentSkin.bubbleStyle || 'soft';
+root.dataset.skin = currentSkin.preset || 'qq-classic';
+root.dataset.bubbleStyle = currentSkin.bubbleStyle || 'im-bubble';
 root.dataset.fontStyle = currentSkin.fontStyle || 'sans';
 if (currentSkin.accentColor) {
 root.dataset.hasAccent = '1';
@@ -4723,7 +4745,7 @@ root.style.setProperty('--skin-wallpaper-bg', 'none');
 root.style.setProperty('--skin-scrim-opacity', String((Number(currentSkin.scrimOpacity) || 0) / 100));
 root.style.setProperty('--skin-glass-blur', `${Number(currentSkin.glassBlur) || 0}px`);
 root.style.setProperty('--skin-font-scale', String((Number(currentSkin.fontScale) || 100) / 100));
-if (currentSkin.preset === 'default') {
+if (currentSkin.preset === 'default' || currentSkin.preset === 'qq-classic') {
 try {
 const savedScheme = localStorage.getItem('color-scheme') ?? 'light dark';
 root.style.colorScheme = savedScheme;
@@ -4752,10 +4774,13 @@ try {
 const skinVal = document.getElementById('mfs-skin-value');
 if (skinVal) {
 const p = SKIN_PRESETS.find((x) => x.id === currentSkin.preset);
-const pName = p ? p.name : '系统默认';
+const pName = p ? p.name : '经典 QQ 聊天';
 const bubbleNames = { soft: '柔光圆润', 'im-bubble': '逐句分段', glass: '玻璃拟态', outline: '极简细框', letter: '复古信纸' };
-const bName = bubbleNames[currentSkin.bubbleStyle] || '柔光圆润';
+const bName = bubbleNames[currentSkin.bubbleStyle] || '逐句分段';
 skinVal.textContent = `${pName} · ${bName}`;
+}
+if (typeof window.__syncDefaultThemeRadios === 'function') {
+window.__syncDefaultThemeRadios(currentSkin.preset);
 }
 } catch {}
 }
@@ -5044,6 +5069,14 @@ updateStudioPreviewAndStates(container);
 }
 function syncFromServer(serverSkinConfig) {
 if (serverSkinConfig && typeof serverSkinConfig === 'object') {
+if (
+serverSkinConfig.preset === 'default' &&
+(!serverSkinConfig.wallpaperType || serverSkinConfig.wallpaperType === 'none') &&
+currentSkin.preset === 'qq-classic' &&
+localStorage.getItem('xingyu_qq_default_migrated_v1') === '1'
+) {
+return;
+}
 applySkin(serverSkinConfig, { persist: true, syncServer: false });
 }
 }
@@ -5165,7 +5198,7 @@ lastInteractionAt: Date.now(),
 hasMoreMessages: false,
 totalMessages: 0,
 oldestMessageId: 0,
-appVersion: '2.5.6',
+appVersion: '2.5.7',
 tourIndex: 0,
 tourActive: false,
 llmMode: localStorage.getItem('user_llm_mode') || 'local_antigravity',
@@ -5546,7 +5579,7 @@ return null;
 }
 }
 function syncWebVersionBadges(verStr) {
-const raw = String(verStr || state.appVersion || '2.5.6').trim().replace(/^v/i, '');
+const raw = String(verStr || state.appVersion || '2.5.7').trim().replace(/^v/i, '');
 if (!raw) return;
 const vLabel = `v${raw}`;
 const isNativeApk = Boolean(
@@ -7271,6 +7304,45 @@ radio.addEventListener('change', (e) => {
 applyColorSchemeValue(e.target.value);
 });
 });
+window.__syncDefaultThemeRadios = (presetVal) => {
+const curPreset = presetVal || (window.AppearanceSystem?.getCurrentSkin?.().preset) || 'qq-classic';
+document.querySelectorAll('input[name="default-ui-theme"]').forEach((radio) => {
+radio.checked = radio.value === curPreset;
+});
+const defValEl = document.getElementById('mfs-default-theme-value');
+if (defValEl) {
+const defMap = {
+'qq-classic': '经典 QQ 聊天',
+default: '原生极客风格',
+'obsidian-gold': '曜石流金剧场',
+'mist-silk': '晨雾丝绸',
+'sakura-dawn': '朝雾樱白',
+'crimson-scroll': '绯红古卷',
+'cyber-neon': '赛博霓虹',
+'eink-paper': '极简墨水屏'
+};
+defValEl.textContent = defMap[curPreset] || '经典 QQ 聊天';
+}
+};
+document.querySelectorAll('input[name="default-ui-theme"]').forEach((radio) => {
+radio.addEventListener('change', (e) => {
+const nextPreset = e.target.value || 'qq-classic';
+if (window.AppearanceSystem?.applySkin) {
+const patch = nextPreset === 'qq-classic'
+? { preset: 'qq-classic', bubbleStyle: 'im-bubble', accentColor: '' }
+: { preset: nextPreset };
+window.AppearanceSystem.applySkin(patch);
+}
+window.__syncDefaultThemeRadios(nextPreset);
+const tips = {
+'qq-classic': '已设为「经典 QQ 聊天」默认风格（洁净灰底 · 纯白对话 · QQ 蓝气泡）',
+default: '已切换回「原生极客风格」默认主题',
+'obsidian-gold': '已切换为「曜石流金」暗夜剧场风格'
+};
+showToast(tips[nextPreset] || '已更新默认界面主题');
+});
+});
+window.__syncDefaultThemeRadios();
 darkMediaQuery.addEventListener('change', () => syncThemeControls());
 window.addEventListener('storage', (e) => {
 if (e.key === 'color-scheme') syncThemeControls();
@@ -8521,7 +8593,7 @@ setTxt(
 'adm-kpi-channel-sub',
 tunnelProbe?.online ? '本机电脑 Antigravity 直连' : report.channels?.localCli?.transport === 'local_cli' ? '本机 CLI 就绪' : '电脑离线时自动回退'
 );
-setTxt('adm-sys-meta', `v${sys.appVersion || '2.5.6'} · ${sys.platform || ''} · Node ${sys.nodeVersion || ''} · ${sys.cpuCores || 1} 核 (负载 ${sys.load1m ?? 0})`);
+setTxt('adm-sys-meta', `v${sys.appVersion || '2.5.7'} · ${sys.platform || ''} · Node ${sys.nodeVersion || ''} · ${sys.cpuCores || 1} 核 (负载 ${sys.load1m ?? 0})`);
 setTxt('adm-stat-mem', `${sys.memUsedPct ?? 0}% (进程 ${sys.rssMb ?? 0} MB)`);
 setTxt('adm-stat-db', `${formatBytesCompact(dbInfo.dbSizeBytes)} / ${formatBytesCompact(dbInfo.walSizeBytes)}`);
 setTxt('adm-stat-uptime', formatUptimeCompact(sys.uptimeSec));
@@ -13735,16 +13807,18 @@ if (ttsVal) {
 ttsVal.textContent = localStorage.getItem('auto_tts_reply') !== '0' ? '已开启' : '已关闭';
 }
 const skinVal = document.getElementById('mfs-skin-value');
-if (skinVal && window.AppearanceSystem?.getCurrentSkin) {
+const defThemeVal = document.getElementById('mfs-default-theme-value');
+if (window.AppearanceSystem?.getCurrentSkin) {
 const curSkin = window.AppearanceSystem.getCurrentSkin();
 const presetNames = {
-default: '系统默认',
-obsidian_gold: '曜石流金',
-morning_mist: '晨雾丝绸',
-cherry_blossom: '朝雾樱白',
-crimson_scroll: '绯红古卷',
-cyber_neon: '赛博霓虹',
-e_ink: '极简墨水屏'
+'qq-classic': '经典 QQ 聊天',
+default: '原生极客经典',
+'obsidian-gold': '曜石流金',
+'mist-silk': '晨雾丝绸',
+'sakura-dawn': '朝雾樱白',
+'crimson-scroll': '绯红古卷',
+'cyber-neon': '赛博霓虹',
+'eink-paper': '极简墨水屏'
 };
 const bubbleNames = {
 soft: '柔光圆润',
@@ -13753,9 +13827,10 @@ glass: '玻璃拟态',
 outline: '极简细框',
 letter: '复古信纸'
 };
-const pName = presetNames[curSkin.preset] || '精选皮肤';
-const bName = bubbleNames[curSkin.bubbleStyle] || '气泡';
-skinVal.textContent = pName;
+const pName = presetNames[curSkin.preset] || '经典 QQ 聊天';
+const bName = bubbleNames[curSkin.bubbleStyle] || '逐句分段';
+if (skinVal) skinVal.textContent = `${pName} · ${bName}`;
+if (defThemeVal) defThemeVal.textContent = pName;
 }
 const verVal = document.getElementById('mfs-version-value');
 if (verVal) {
@@ -13785,7 +13860,7 @@ window.open(url, '_blank', 'noopener,noreferrer');
 function openMobileSkinStudio() {
 openMfsSubSheet({
 title: '🎨 免费皮肤与外观工坊',
-subtitle: '7套精选主题 · 壁纸取色 · 气泡风格 · 全部免费',
+subtitle: '8套精选主题 · 壁纸取色 · 气泡风格 · 全部免费',
 bodyHtml: `
         <div class="mfs-skin-scroll-box" style="padding: 4px 0 24px 0;">
           <div id="mfs-skin-mount-root"></div>
@@ -14004,6 +14079,52 @@ btn.addEventListener('click', () => {
 close();
 showToast('当前系统已使用 中文 (简体中文)');
 });
+});
+}
+});
+});
+document.getElementById('mfs-item-default-theme')?.addEventListener('click', () => {
+const curPreset = (window.AppearanceSystem?.getCurrentSkin?.().preset) || 'qq-classic';
+openMfsSubSheet({
+title: '💬 默认界面主题设置',
+subtitle: '设置默认聊天界面显示风格与气泡效果，随时可一键切换',
+bodyHtml:
+renderMfsOptionListHtml(
+[
+{ id: 'qq-classic', title: '经典 QQ 聊天（默认推荐）', desc: '洁净浅灰画布 · 纯白逐句分段气泡 · QQ 标志天蓝己方气泡' },
+{ id: 'default', title: '原生极客风格', desc: '跟随当前模式默认配色与圆润卡面布局' },
+{ id: 'obsidian-gold', title: '曜石流金剧场', desc: '深邃暗夜质感 · 暖金镶边与沉浸叙事光晕' },
+{ id: 'mist-silk', title: '晨雾丝绸（柔光浅色）', desc: '温和莫兰迪浅暖调 · 高对比明快可读体验' }
+],
+curPreset
+) +
+`
+          <div class="mfs-skin-promo-card" id="mfs-default-open-studio" style="margin-top: 14px; padding: 12px 14px; border-radius: 12px; background: linear-gradient(135deg, rgba(22, 119, 255, 0.12), rgba(59, 130, 246, 0.08)); border: 1px solid rgba(22, 119, 255, 0.28); display: flex; align-items: center; justify-content: space-between; cursor: pointer;">
+            <div>
+              <strong style="color: var(--text-primary); font-size: 13.5px; display: block; margin-bottom: 2px;">🎨 进入完整外观工坊（8套免费皮肤）</strong>
+              <span style="font-size: 11.5px; color: var(--text-secondary);">支持壁纸上传、背景取色、毛玻璃与字体字号精细调节</span>
+            </div>
+            <span style="color: #1677ff; font-weight: 700; font-size: 18px; margin-left: 8px;">›</span>
+          </div>
+        `,
+onMount: ({ bodyEl, close }) => {
+bodyEl.querySelectorAll('.mfs-opt-item').forEach((btn) => {
+btn.addEventListener('click', () => {
+const nextPreset = btn.dataset.optId || 'qq-classic';
+if (window.AppearanceSystem?.applySkin) {
+const patch = nextPreset === 'qq-classic'
+? { preset: 'qq-classic', bubbleStyle: 'im-bubble', accentColor: '' }
+: { preset: nextPreset };
+window.AppearanceSystem.applySkin(patch);
+}
+window.__syncDefaultThemeRadios?.(nextPreset);
+close();
+showToast('已更新默认界面主题');
+});
+});
+bodyEl.querySelector('#mfs-default-open-studio')?.addEventListener('click', () => {
+close();
+openMobileSkinStudio();
 });
 }
 });
@@ -19272,8 +19393,8 @@ runCloneBtn.innerHTML = origHtml;
 })();
 ;
 (() => {
-const CURRENT_APK_VERSION = '2.5.6';
-const CURRENT_APK_CODE = 153;
+const CURRENT_APK_VERSION = '2.5.7';
+const CURRENT_APK_CODE = 154;
 const DEEPSEEK_API_KEYS_URL = 'https://platform.deepseek.com/api_keys';
 const PUBLIC_WEB_ORIGIN = 'https://star.claudexxb.online';
 const GITHUB_RELEASES_URL = 'https://github.com/qts2218346424-cyber/persona-chat-studio/releases';

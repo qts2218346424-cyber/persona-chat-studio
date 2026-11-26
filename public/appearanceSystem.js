@@ -1020,7 +1020,8 @@
      ======================================================================== */
 
   const SKIN_PRESETS = [
-    { id: 'default', name: '系统默认', desc: '跟随当前模式原色', bg: 'linear-gradient(135deg,#f8e4f1,#231d3a)', dot: '#e2559d' },
+    { id: 'qq-classic', name: '经典 QQ 聊天', desc: '默认推荐 · 洁净灰底 · 蓝白气泡', bg: 'linear-gradient(135deg,#f2f3f5 52%,#1677ff 52%)', dot: '#1677ff' },
+    { id: 'default', name: '原生极客经典', desc: '跟随模式原生配色与排版', bg: 'linear-gradient(135deg,#f8e4f1,#231d3a)', dot: '#e2559d' },
     { id: 'obsidian-gold', name: '曜石流金', desc: '深邃暗夜 · 暖金星轨', bg: '#0d0f14', dot: '#e5c185' },
     { id: 'mist-silk', name: '晨雾丝绸', desc: '柔光浅色 · 莫兰迪棕', bg: '#f6f4f8', dot: '#b88b72' },
     { id: 'sakura-dawn', name: '朝雾樱白', desc: '二次元粉樱 · 轻盈甜暖', bg: '#fff5fa', dot: '#e2559d' },
@@ -1051,13 +1052,13 @@
   ];
 
   const DEFAULT_SKIN_CONFIG = {
-    preset: 'default',
+    preset: 'qq-classic',
     accentColor: '',
     wallpaperType: 'none',
     wallpaperValue: '',
     scrimOpacity: 35,
-    glassBlur: 16,
-    bubbleStyle: 'soft',
+    glassBlur: 12,
+    bubbleStyle: 'im-bubble',
     fontStyle: 'sans',
     fontScale: 100
   };
@@ -1069,8 +1070,25 @@
   function loadSkinFromStorage() {
     try {
       const raw = localStorage.getItem(SKIN_STORAGE_KEY);
-      if (!raw) return { ...DEFAULT_SKIN_CONFIG };
-      return Object.assign({}, DEFAULT_SKIN_CONFIG, JSON.parse(raw));
+      const qqMigKey = 'xingyu_qq_default_migrated_v1';
+      if (!raw) {
+        localStorage.setItem(qqMigKey, '1');
+        return { ...DEFAULT_SKIN_CONFIG };
+      }
+      const parsed = JSON.parse(raw);
+      // 首次升级迁移：若用户此前一直停留在旧默认且未自选其他主题，默认切换为经典 QQ 聊天风格；此后尊重用户一切切换选择
+      if (!localStorage.getItem(qqMigKey)) {
+        localStorage.setItem(qqMigKey, '1');
+        if (parsed && (!parsed.preset || parsed.preset === 'default') && (!parsed.wallpaperType || parsed.wallpaperType === 'none')) {
+          const upgraded = Object.assign({}, DEFAULT_SKIN_CONFIG, parsed, {
+            preset: 'qq-classic',
+            bubbleStyle: 'im-bubble'
+          });
+          localStorage.setItem(SKIN_STORAGE_KEY, JSON.stringify(upgraded));
+          return upgraded;
+        }
+      }
+      return Object.assign({}, DEFAULT_SKIN_CONFIG, parsed);
     } catch {
       return { ...DEFAULT_SKIN_CONFIG };
     }
@@ -1078,11 +1096,16 @@
 
   function applySkin(configPatch, options = {}) {
     const { persist = true, syncServer = true } = options;
-    currentSkin = Object.assign({}, DEFAULT_SKIN_CONFIG, currentSkin, configPatch || {});
+    const prevPreset = currentSkin ? currentSkin.preset : 'qq-classic';
+    const nextPatch = configPatch && typeof configPatch === 'object' ? { ...configPatch } : {};
+    if (nextPatch.preset === 'qq-classic' && prevPreset !== 'qq-classic' && !nextPatch.bubbleStyle) {
+      nextPatch.bubbleStyle = 'im-bubble';
+    }
+    currentSkin = Object.assign({}, DEFAULT_SKIN_CONFIG, currentSkin, nextPatch);
     const root = document.documentElement;
 
-    root.dataset.skin = currentSkin.preset || 'default';
-    root.dataset.bubbleStyle = currentSkin.bubbleStyle || 'soft';
+    root.dataset.skin = currentSkin.preset || 'qq-classic';
+    root.dataset.bubbleStyle = currentSkin.bubbleStyle || 'im-bubble';
     root.dataset.fontStyle = currentSkin.fontStyle || 'sans';
 
     if (currentSkin.accentColor) {
@@ -1108,8 +1131,8 @@
     root.style.setProperty('--skin-glass-blur', `${Number(currentSkin.glassBlur) || 0}px`);
     root.style.setProperty('--skin-font-scale', String((Number(currentSkin.fontScale) || 100) / 100));
 
-    // 若切回 default，恢复原本的明暗 scheme
-    if (currentSkin.preset === 'default') {
+    // 若切回 default 或 qq-classic（支持明暗自适应），恢复原本的明暗 scheme
+    if (currentSkin.preset === 'default' || currentSkin.preset === 'qq-classic') {
       try {
         const savedScheme = localStorage.getItem('color-scheme') ?? 'light dark';
         root.style.colorScheme = savedScheme;
@@ -1142,10 +1165,13 @@
       const skinVal = document.getElementById('mfs-skin-value');
       if (skinVal) {
         const p = SKIN_PRESETS.find((x) => x.id === currentSkin.preset);
-        const pName = p ? p.name : '系统默认';
+        const pName = p ? p.name : '经典 QQ 聊天';
         const bubbleNames = { soft: '柔光圆润', 'im-bubble': '逐句分段', glass: '玻璃拟态', outline: '极简细框', letter: '复古信纸' };
-        const bName = bubbleNames[currentSkin.bubbleStyle] || '柔光圆润';
+        const bName = bubbleNames[currentSkin.bubbleStyle] || '逐句分段';
         skinVal.textContent = `${pName} · ${bName}`;
+      }
+      if (typeof window.__syncDefaultThemeRadios === 'function') {
+        window.__syncDefaultThemeRadios(currentSkin.preset);
       }
     } catch {}
   }
@@ -1459,6 +1485,15 @@
 
   function syncFromServer(serverSkinConfig) {
     if (serverSkinConfig && typeof serverSkinConfig === 'object') {
+      // 保护本地新版 QQ 默认迁移不被服务端残留的旧 default 配置反覆写回旧版
+      if (
+        serverSkinConfig.preset === 'default' &&
+        (!serverSkinConfig.wallpaperType || serverSkinConfig.wallpaperType === 'none') &&
+        currentSkin.preset === 'qq-classic' &&
+        localStorage.getItem('xingyu_qq_default_migrated_v1') === '1'
+      ) {
+        return;
+      }
       applySkin(serverSkinConfig, { persist: true, syncServer: false });
     }
   }

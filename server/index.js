@@ -648,8 +648,8 @@ function extractAuthToken(req, parsedUrl = null) {
   return '';
 }
 
-const APP_LATEST_VERSION = '2.5.6';
-const APP_LATEST_VERSION_CODE = 153;
+const APP_LATEST_VERSION = '2.5.7';
+const APP_LATEST_VERSION_CODE = 154;
 const APP_OFFICIAL_CERT_SHA256 = '6fd05e32a3cabf327140129d866e55a342fe30daa3384c67aad4b3cbdd98a17b';
 const APP_UPDATE_TICKET_SECRET = crypto
   .createHash('sha256')
@@ -947,9 +947,9 @@ async function handleApi(req, res, pathname, parsedUrl) {
       forceUpdate,
       diffGenerations,
       changelog: [
-        '【彻底删除歌词尾巴 & 清净桌面歌词】移除大肥鱼折叠态右侧黑底歌词胶囊尾巴；无歌词或匹配期间不再在屏幕上挂出“暂无时间轴歌词”尾巴提示，桌面始终极简清爽',
-        '【脚底地面接触阴影 + 2D 动画物理引擎（消除浮空感）】依据真实鞋底像素位置精确锚定底部重心，新增双层软羽化接触 AO 投影（离地缩淡、踩实扩浓）与脚底微尘/星光/泡泡粒子；重构 4 关键帧步态周期（起步预备、踩地压沉、跨步抬脚 3D 侧身、刹车过冲回弹）、体积守恒挤压拉伸与左右张望/踮脚/抖毛细腻微动作',
-        '【集成状态栏歌词拆解、搞怪捣蛋动作与外卖同步】双端同步升级至 v2.5.6 (Build 153)'
+        '【新增默认「经典 QQ 聊天」主题设置 & 8 套全端适配皮肤】支持在电脑端「外观与风格」、手机端「默认界面主题」与皮肤工坊一键切换经典 QQ 聊天默认风（#F2F3F5 洁净灰底 + 纯白逐句气泡 + #1677FF QQ 标志蓝气泡），跨 PC/手机端及剧场/DeepSeek 模式统一生效',
+        '【彻底修复右侧系统指令/养成/记忆抽屉白底白字对比度失效】重塑 ui-polish-v2.css 与 light-dark 自适应高对比令牌体系，解决浅色白卡背景下「本对话专属剧情设定」「平行世界重逢」「清空专属设定」「选择文件」及表单标签惨白看不清问题（WCAG AA ≥ 4.5:1，按钮文字 > 12:1）',
+        '【集成歌词尾巴清理与脚底接触阴影 4 关键帧动作】双端同步升级至 v2.5.7 (Build 154)'
       ]
     };
 

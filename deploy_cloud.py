@@ -194,10 +194,10 @@ const {{ db, getRawPlatformConfigInternal, updateAdminPlatformConfig, saveAdminA
 db.prepare("DELETE FROM personas WHERE id = \\x27persona_linqi\\x27").run();
 db.prepare("UPDATE site_announcements SET enabled = 0").run();
 saveAdminAnnouncement("admin", {{
-  title: "星语恋庭 v2.5.6 更新：删去歌词尾巴，肥鱼脚底接触阴影踩实地板、4关键帧自然步态与搞怪微尘特效！",
-  content: "1. 【删去多余歌词尾巴】：彻底取消折叠态肥鱼旁拖着的黑底歌词尾巴，且无歌词时桌面透明条自动隐身，画面更干净。\\n2. 【消除浮空感 · 双层地面接触阴影】：按鞋底真实像素锚定脚掌重心，新增跟随起跳/落地缩放浓淡的双层 AO 接触投影，拖拽放下更有“咚”地砸实回弹手感！\\n3. 【动作细节大升级】：引入 4 关键帧步态循环（蓄力、重踩落尘、3D微侧迈步、过冲刹车）、体积守恒挤压拉伸与左右偷瞄/踮脚/抖呆毛微动作，随身版升级至 v2.5.6 (Build 153)！",
+  title: "星语恋庭 v2.5.7 更新：新增经典 QQ 聊天默认主题 & 修复系统指令抽屉文字白底看不清问题！",
+  content: "1. 【新增经典 QQ 聊天默认主题设置】：无论电脑还是手机、剧场还是问答模式，均默认呈现经典 QQ 洁净灰底 + 纯白逐句分段气泡 + QQ 标志天蓝气泡；并在电脑设置、手机设置及外观工坊支持随时一键切换默认风格。\\n2. 【彻底修复白色卡片上文字与按钮看不清问题】：修复右侧「系统指令 / 养成 / 记忆档案」抽屉在浅色与默认系统模式下出现白底浅字、按钮隐身的对比度 Bug，全面对齐 WCAG AA 清晰可读标准。\\n3. 【整合删除歌词尾巴与肥鱼脚底接触阴影】：随身版同步升级至 v2.5.7 (Build 154)！",
   enabled: true,
-  version: 153
+  version: 154
 }});
 db.prepare("UPDATE sessions SET companion_config = NULL").run();
 db.prepare("UPDATE user_settings SET value = \\x27demo\\x27 WHERE key = \\x27provider\\x27").run();

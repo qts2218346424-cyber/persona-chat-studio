@@ -56,6 +56,209 @@ html[data-has-wallpaper="1"] .app-shell .ds-composer-box {
   -webkit-backdrop-filter: blur(var(--skin-glass-blur, 16px)) saturate(135%);
 }
 
+/* 2.0 经典 QQ 聊天风（默认推荐主题：PC + 手机 + 全部模式 1:1 复刻手机 QQ 洁净灰底 + 白气泡 + QQ 标志蓝） */
+html[data-skin="qq-classic"],
+html[data-skin="qq-classic"] body,
+html[data-skin="qq-classic"] .app-shell {
+  --bg-app: light-dark(#F2F3F5, #111318);
+  --bg-stage: light-dark(#F2F3F5, #111318);
+  --bg-sidebar: light-dark(#F7F8FA, #16181E);
+  --bg-inspector: light-dark(#F7F8FA, #181B22);
+  --bg-surface: light-dark(#F1F5F9, rgba(255, 255, 255, 0.08));
+  --bg-surface-hover: light-dark(#E5EAF2, rgba(255, 255, 255, 0.13));
+  --bg-composer: light-dark(#FFFFFF, #1F232B);
+  --bg-user-bubble: linear-gradient(135deg, #1E88FF 0%, #1677FF 100%);
+  --bg-thought: light-dark(#EEF2F6, rgba(255, 255, 255, 0.07));
+  --glass-surface: light-dark(rgba(255, 255, 255, 0.96), rgba(30, 34, 43, 0.94));
+  --glass-panel-solid: light-dark(#F7F8FA, #181B22);
+  --glass-elevated: light-dark(#FFFFFF, #222630);
+  --border-subtle: light-dark(rgba(15, 23, 42, 0.08), rgba(255, 255, 255, 0.10));
+  --border-strong: light-dark(#CBD5E1, rgba(255, 255, 255, 0.22));
+  --border-specular: 1px solid light-dark(rgba(15, 23, 42, 0.09), rgba(255, 255, 255, 0.12));
+  --text-primary: light-dark(#111827, #F1F5F9);
+  --text-secondary: light-dark(#334155, #CBD5E1);
+  --text-narrative: light-dark(#334155, #E2E8F0);
+  --text-muted: light-dark(#64748B, #94A3B8);
+  --text-action: light-dark(#0E7BF5, #60A5FA);
+  --brand-primary: #1677FF;
+  --brand-accent-solid: #0E7BF5;
+  --brand-gradient: linear-gradient(135deg, #1E88FF 0%, #1677FF 100%);
+  --brand-gradient-hover: linear-gradient(135deg, #3395FF 0%, #2480FF 100%);
+  --brand-soft: light-dark(rgba(22, 119, 255, 0.11), rgba(59, 130, 246, 0.2));
+  --accent-gold: #1677FF;
+  --accent-gold-text: light-dark(#1D4ED8, #60A5FA);
+  --accent-violet: light-dark(#0284C7, #38BDF8);
+}
+
+/* 去除杂光斑，呈现 QQ 纯净清爽聊天底图 */
+html[data-skin="qq-classic"] .ambient-aurora {
+  display: none !important;
+  opacity: 0 !important;
+}
+
+html[data-skin="qq-classic"]:not([data-has-wallpaper="1"]) body,
+html[data-skin="qq-classic"]:not([data-has-wallpaper="1"]) #app-shell,
+html[data-skin="qq-classic"]:not([data-has-wallpaper="1"]) .chat-stage,
+html[data-skin="qq-classic"]:not([data-has-wallpaper="1"]) .ds-chat-main,
+html[data-skin="qq-classic"]:not([data-has-wallpaper="1"]) #messages-viewport {
+  background: var(--bg-stage) !important;
+}
+
+html[data-skin="qq-classic"]:not([data-has-wallpaper="1"]) .stage-topbar {
+  background: light-dark(rgba(242, 243, 245, 0.94), rgba(17, 19, 24, 0.94)) !important;
+  border-bottom: 1px solid light-dark(rgba(15, 23, 42, 0.06), rgba(255, 255, 255, 0.08)) !important;
+  backdrop-filter: blur(12px) !important;
+  -webkit-backdrop-filter: blur(12px) !important;
+}
+
+html[data-skin="qq-classic"] .stage-topbar .persona-chip-name,
+html[data-skin="qq-classic"] .stage-topbar .icon-btn,
+html[data-skin="qq-classic"] .stage-topbar .sidebar-expand-btn {
+  color: light-dark(#111827, #F1F5F9) !important;
+  font-family: "PingFang SC", "Microsoft YaHei", system-ui, sans-serif !important;
+}
+
+/* QQ 经典侧栏与抽屉选项卡 */
+html[data-skin="qq-classic"] .sidebar,
+html[data-skin="qq-classic"] .ds-sidebar {
+  background: var(--bg-sidebar) !important;
+  border-right: 1px solid light-dark(rgba(15, 23, 42, 0.07), rgba(255, 255, 255, 0.08)) !important;
+}
+
+html[data-skin="qq-classic"] .composer-dock,
+html[data-skin="qq-classic"] .ds-composer-dock {
+  background: light-dark(#F5F6F8, #16181E) !important;
+  border-top: 1px solid light-dark(rgba(15, 23, 42, 0.06), rgba(255, 255, 255, 0.08)) !important;
+}
+
+html[data-skin="qq-classic"] .composer-card,
+html[data-skin="qq-classic"] .ds-composer-box {
+  background: light-dark(#FFFFFF, #1F232B) !important;
+  border: 1px solid light-dark(rgba(15, 23, 42, 0.08), rgba(255, 255, 255, 0.12)) !important;
+  border-radius: 14px !important;
+  box-shadow: 0 1px 3px light-dark(rgba(15, 23, 42, 0.04), rgba(0, 0, 0, 0.25)) !important;
+}
+
+html[data-skin="qq-classic"] .composer-card textarea,
+html[data-skin="qq-classic"] .ds-composer-box textarea,
+html[data-skin="qq-classic"] #msg-input,
+html[data-skin="qq-classic"] #chat-input {
+  color: light-dark(#111827, #F8FAFC) !important;
+}
+
+html[data-skin="qq-classic"] .composer-card textarea::placeholder,
+html[data-skin="qq-classic"] .ds-composer-box textarea::placeholder {
+  color: light-dark(#64748B, #94A3B8) !important;
+}
+
+html[data-skin="qq-classic"] .send-btn,
+html[data-skin="qq-classic"] .ds-send-btn,
+html[data-skin="qq-classic"] .primary-btn,
+html[data-skin="qq-classic"] .mini-primary-btn {
+  background: linear-gradient(135deg, #1E88FF 0%, #1677FF 100%) !important;
+  color: #FFFFFF !important;
+  border: none !important;
+  box-shadow: 0 4px 12px rgba(22, 119, 255, 0.24) !important;
+}
+
+/* QQ 我方发送气泡（经典 QQ 天蓝纯色圆角气泡，高对比白字） */
+html[data-skin="qq-classic"] #messages-viewport #messages-container .msg-row.user .msg-body,
+html[data-skin="qq-classic"] #messages-viewport #messages-container .msg-row.user .msg-body.user-bubble {
+  background: linear-gradient(135deg, #1E88FF 0%, #1677FF 100%) !important;
+  color: #FFFFFF !important;
+  border: none !important;
+  border-radius: 12px !important;
+  padding: 10px 14px !important;
+  box-shadow: 0 1px 2px rgba(22, 119, 255, 0.16) !important;
+}
+
+html[data-skin="qq-classic"] #messages-viewport #messages-container .msg-row.user .user-bubble em.rp-action {
+  color: rgba(255, 255, 255, 0.9) !important;
+}
+
+/* QQ 对方回复消息（消除多余重边框，分段呈现纯白/深灰洁净气泡，列表/代码块保留整洁白卡保护） */
+html[data-skin="qq-classic"] #messages-viewport #messages-container .msg-row.assistant .msg-body {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+
+html[data-skin="qq-classic"] #messages-viewport #messages-container .msg-row.assistant .assistant-prose {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: flex-start !important;
+  gap: 8px !important;
+}
+
+html[data-skin="qq-classic"] #messages-viewport #messages-container .msg-row.assistant .assistant-prose > p,
+html[data-skin="qq-classic"] #messages-viewport #messages-container .msg-row.assistant .assistant-prose > blockquote,
+html[data-skin="qq-classic"] #messages-viewport #messages-container .msg-row.assistant .assistant-prose > ul,
+html[data-skin="qq-classic"] #messages-viewport #messages-container .msg-row.assistant .assistant-prose > ol,
+html[data-skin="qq-classic"] #messages-viewport #messages-container .msg-row.assistant .assistant-prose > table,
+html[data-skin="qq-classic"] #messages-viewport #messages-container .msg-row.assistant .assistant-prose > pre,
+html[data-skin="qq-classic"] #messages-viewport #messages-container .msg-row.assistant .assistant-prose > h1,
+html[data-skin="qq-classic"] #messages-viewport #messages-container .msg-row.assistant .assistant-prose > h2,
+html[data-skin="qq-classic"] #messages-viewport #messages-container .msg-row.assistant .assistant-prose > h3,
+html[data-skin="qq-classic"] #messages-viewport #messages-container .msg-row.assistant .assistant-prose > h4 {
+  margin: 0 !important;
+  padding: 10px 14px !important;
+  border-radius: 12px !important;
+  max-width: 100% !important;
+  background: light-dark(#FFFFFF, #22252D) !important;
+  color: light-dark(#111827, #F1F5F9) !important;
+  border: 1px solid light-dark(rgba(15, 23, 42, 0.05), rgba(255, 255, 255, 0.08)) !important;
+  box-shadow: 0 1px 2px light-dark(rgba(15, 23, 42, 0.04), rgba(0, 0, 0, 0.22)) !important;
+}
+
+html[data-skin="qq-classic"] #messages-viewport #messages-container .msg-row.assistant .assistant-prose > ul,
+html[data-skin="qq-classic"] #messages-viewport #messages-container .msg-row.assistant .assistant-prose > ol {
+  padding-left: 28px !important;
+}
+
+html[data-skin="qq-classic"] #messages-viewport #messages-container .msg-row.assistant .assistant-prose em.rp-action {
+  color: light-dark(#4B5563, #9CA3AF) !important;
+}
+
+html[data-skin="qq-classic"] #messages-viewport #messages-container .msg-row.assistant .assistant-prose .rp-speech {
+  color: light-dark(#111827, #F9FAFB) !important;
+  font-weight: 500 !important;
+}
+
+html[data-skin="qq-classic"] #messages-viewport #messages-container .msg-row.assistant .thought-details {
+  border-radius: 10px !important;
+  background: light-dark(rgba(15, 23, 42, 0.045), rgba(255, 255, 255, 0.07)) !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+html[data-skin="qq-classic"] #messages-viewport #messages-container .msg-row.assistant .msg-footer-bar .msg-tool-btn {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  color: light-dark(#64748B, #94A3B8) !important;
+}
+
+html[data-skin="qq-classic"] .persona-story-banner {
+  background: light-dark(#FFFFFF, #22252D) !important;
+  color: light-dark(#334155, #CBD5E1) !important;
+  border: 1px solid light-dark(rgba(15, 23, 42, 0.06), rgba(255, 255, 255, 0.08)) !important;
+}
+
+html[data-skin="qq-classic"] .pill-toggle,
+html[data-skin="qq-classic"] .mode-pill {
+  background: light-dark(#F1F5F9, rgba(255, 255, 255, 0.08)) !important;
+  color: light-dark(#334155, #CBD5E1) !important;
+  border: 1px solid light-dark(#CBD5E1, rgba(255, 255, 255, 0.14)) !important;
+}
+
+html[data-skin="qq-classic"] .pill-toggle.active,
+html[data-skin="qq-classic"] .mode-pill.active {
+  background: light-dark(rgba(22, 119, 255, 0.12), rgba(59, 130, 246, 0.22)) !important;
+  color: light-dark(#1D4ED8, #93C5FD) !important;
+  border-color: light-dark(#93C5FD, rgba(96, 165, 250, 0.45)) !important;
+}
+
 /* 2. 6 套免费精选皮肤预设（覆盖默认模式、DeepSeek 模式与剧场模式） */
 
 /* 2.1 曜石流金 */

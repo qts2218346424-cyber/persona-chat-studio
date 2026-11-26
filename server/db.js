@@ -3727,6 +3727,7 @@ function sanitizeSkinConfigInput(raw) {
     return null;
   }
   const ALLOWED_PRESETS = new Set([
+    'qq-classic',
     'default',
     'obsidian-gold',
     'mist-silk',
@@ -3736,10 +3737,10 @@ function sanitizeSkinConfigInput(raw) {
     'eink-paper'
   ]);
   const ALLOWED_WALLPAPER_TYPES = new Set(['none', 'gradient', 'image']);
-  const ALLOWED_BUBBLES = new Set(['soft', 'glass', 'outline', 'letter']);
+  const ALLOWED_BUBBLES = new Set(['im-bubble', 'soft', 'glass', 'outline', 'letter']);
   const ALLOWED_FONTS = new Set(['sans', 'serif', 'rounded']);
 
-  const preset = ALLOWED_PRESETS.has(raw.preset) ? raw.preset : 'default';
+  const preset = ALLOWED_PRESETS.has(raw.preset) ? raw.preset : 'qq-classic';
   const accentColor =
     typeof raw.accentColor === 'string' && /^#[0-9a-fA-F]{6}$/.test(raw.accentColor.trim())
       ? raw.accentColor.trim()
@@ -3760,7 +3761,7 @@ function sanitizeSkinConfigInput(raw) {
   const scrimOpacity = Number.isFinite(scrimNum) ? Math.min(85, Math.max(0, Math.round(scrimNum))) : 35;
   const blurNum = Number(raw.glassBlur);
   const glassBlur = Number.isFinite(blurNum) ? Math.min(28, Math.max(0, Math.round(blurNum))) : 16;
-  const bubbleStyle = ALLOWED_BUBBLES.has(raw.bubbleStyle) ? raw.bubbleStyle : 'soft';
+  const bubbleStyle = ALLOWED_BUBBLES.has(raw.bubbleStyle) ? raw.bubbleStyle : 'im-bubble';
   const fontStyle = ALLOWED_FONTS.has(raw.fontStyle) ? raw.fontStyle : 'sans';
   const scaleNum = Number(raw.fontScale);
   const fontScale = Number.isFinite(scaleNum) ? Math.min(115, Math.max(90, Math.round(scaleNum))) : 100;

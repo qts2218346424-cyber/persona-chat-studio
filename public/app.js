@@ -73,13 +73,116 @@
     hasMoreMessages: false,
     totalMessages: 0,
     oldestMessageId: 0,
-    appVersion: '2.6.5',
+    appVersion: '2.7.0',
     tourIndex: 0,
     tourActive: false,
-    llmMode: localStorage.getItem('user_llm_mode') || 'local_antigravity',
+    llmMode: 'local_antigravity',
     localModel: localStorage.getItem('user_local_model') || 'DeepSeek-V4.1-Flash',
     antigravityStatus: { available: true, models: [], default_model: 'DeepSeek-V4.1-Flash', checked: false }
   };
+
+  // ================= 三模式独立 API 通道配置（100% 物理隔离 + 默认本地直连） =================
+  const MODE_API_STORAGE_KEYS = {
+    deepseek: 'xingyu_api_cfg_deepseek_v1',
+    roleplay: 'xingyu_api_cfg_roleplay_v1'
+  };
+  const DEFAULT_MODE_API_CFG = {
+    channel: 'local_antigravity', // 'local_antigravity' | 'own_deepseek' | 'custom_cloud'
+    lastApiChannel: 'own_deepseek',
+    ownKey: '',
+    cloudKey: '',
+    cloudUrl: 'https://api.siliconflow.cn/v1/chat/completions',
+    cloudModel: 'deepseek-ai/DeepSeek-V4.1-Flash'
+  };
+
+  function getActiveChatScope(overrideScope) {
+    if (overrideScope === 'deepseek' || overrideScope === 'roleplay') return overrideScope;
+    if (state.uiMode === 'deepseek') return 'deepseek';
+    if (state.uiMode === 'roleplay') return 'roleplay';
+    return state.activeSession?.session_mode === 'deepseek_native' ? 'deepseek' : 'roleplay';
+  }
+
+  function getModeApiConfig(scopeInput) {
+    const scope = getActiveChatScope(scopeInput);
+    const key = MODE_API_STORAGE_KEYS[scope] || MODE_API_STORAGE_KEYS.deepseek;
+    try {
+      const raw = localStorage.getItem(key);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object') {
+          const ch = parsed.channel === 'own_deepseek' || parsed.channel === 'custom_cloud'
+            ? parsed.channel
+            : 'local_antigravity';
+          return {
+            ...DEFAULT_MODE_API_CFG,
+            ...parsed,
+            channel: ch,
+            lastApiChannel: parsed.lastApiChannel === 'custom_cloud' ? 'custom_cloud' : 'own_deepseek',
+            ownKey: String(parsed.ownKey || '').trim(),
+            cloudKey: String(parsed.cloudKey || '').trim(),
+            cloudUrl: String(parsed.cloudUrl || DEFAULT_MODE_API_CFG.cloudUrl).trim(),
+            cloudModel: String(parsed.cloudModel || DEFAULT_MODE_API_CFG.cloudModel).trim()
+          };
+        }
+      }
+    } catch {}
+    return { ...DEFAULT_MODE_API_CFG };
+  }
+
+  function saveModeApiConfig(scopeInput, patch) {
+    const scope = getActiveChatScope(scopeInput);
+    const key = MODE_API_STORAGE_KEYS[scope] || MODE_API_STORAGE_KEYS.deepseek;
+    const prev = getModeApiConfig(scope);
+    const next = { ...prev, ...(patch || {}) };
+    if (next.channel === 'own_deepseek' || next.channel === 'custom_cloud') {
+      next.lastApiChannel = next.channel;
+    } else {
+      next.channel = 'local_antigravity';
+    }
+    next.ownKey = String(next.ownKey || '').trim();
+    next.cloudKey = String(next.cloudKey || '').trim();
+    next.cloudUrl = String(next.cloudUrl || DEFAULT_MODE_API_CFG.cloudUrl).trim();
+    next.cloudModel = String(next.cloudModel || DEFAULT_MODE_API_CFG.cloudModel).trim();
+    try {
+      localStorage.setItem(key, JSON.stringify(next));
+    } catch {}
+    return next;
+  }
+
+  function buildModeApiOverride(scopeInput) {
+    const scope = getActiveChatScope(scopeInput);
+    const cfg = getModeApiConfig(scope);
+    if (cfg.channel === 'local_antigravity') return null;
+    if (cfg.channel === 'custom_cloud') {
+      return {
+        scope,
+        provider: 'custom_cloud',
+        api_key: cfg.cloudKey,
+        base_url: cfg.cloudUrl || DEFAULT_MODE_API_CFG.cloudUrl,
+        model: cfg.cloudModel || DEFAULT_MODE_API_CFG.cloudModel
+      };
+    }
+    return {
+      scope,
+      provider: 'own_deepseek',
+      api_key: cfg.ownKey,
+      base_url: 'https://api.deepseek.com/v1/chat/completions',
+      model: 'deepseek-flash'
+    };
+  }
+
+  function syncStateLlmModeFromScope(scopeInput) {
+    const cfg = getModeApiConfig(scopeInput);
+    const mode = cfg.channel === 'local_antigravity' ? 'local_antigravity' : 'api';
+    state.llmMode = mode;
+    if (state.activeSession) {
+      state.activeSession.llm_mode = mode;
+    }
+    syncLlmModeUi();
+    return cfg;
+  }
+
+  state.llmMode = getModeApiConfig('deepseek').channel === 'local_antigravity' ? 'local_antigravity' : 'api';
 
   // ================= 会话三级缓存（L1 内存 LRU + L2 IndexedDB + 智能预取）与 0ms 首屏 SWR 快照引擎 =================
   const SESSION_CACHE_MAX = 24;
@@ -2859,17 +2962,18 @@
 
   // ================= DeepSeek 本地直连 与 云端/官方 API 调度引擎 =================
   function syncLlmModeUi() {
-    const activeLlmMode = state.llmMode || state.activeSession?.llm_mode || 'local_antigravity';
-    const isLocal = activeLlmMode === 'local_antigravity';
+    const scope = getActiveChatScope();
+    const scopeCfg = getModeApiConfig(scope);
+    const scopeLabel = scope === 'deepseek' ? 'DeepSeek 聊天' : '星语剧场';
+    const isLocal = scopeCfg.channel === 'local_antigravity';
+    const isDsOwn = scopeCfg.channel === 'own_deepseek';
+    const isCustomCloud = scopeCfg.channel === 'custom_cloud';
+
     const btnLlmMode = document.getElementById('ds-toggle-llm-mode');
     const labelLlmMode = document.getElementById('ds-llm-mode-label');
     const modeIconSlot = document.getElementById('ds-mode-icon-slot');
     const dsModelPill = document.getElementById('ds-model-pill');
     const dsThinkOn = state.activeSession ? state.activeSession.ds_thinking !== 0 : true;
-
-    const p = state.settings?.provider || 'online';
-    const isDsOwn = p === 'own_deepseek';
-    const isCustomCloud = p === 'custom_cloud';
 
     if (btnLlmMode) {
       btnLlmMode.classList.toggle('active', isLocal);
@@ -2885,38 +2989,40 @@
           labelLlmMode.textContent = '本地直连';
         } else if (isCustomCloud) {
           labelLlmMode.textContent = '云端 API';
-        } else if (isDsOwn) {
-          labelLlmMode.textContent = 'DeepSeek API';
         } else {
-          labelLlmMode.textContent = '云端 API';
+          labelLlmMode.textContent = 'DeepSeek API';
         }
       }
       btnLlmMode.title = isLocal
-        ? '当前为【本地极速直连模式（DeepSeek · 深度思考）】\n点击切换为【API 模式】'
-        : `当前为【${isDsOwn ? 'DeepSeek 官方 API' : isCustomCloud ? '云端自定义 API' : '云端 API'}】\n点击切换为【本地直连模式】`;
+        ? `当前【${scopeLabel}】使用：本地直连（独立配置）\n点击切换为 API 模式`
+        : `当前【${scopeLabel}】使用：${isDsOwn ? 'DeepSeek 官方 API' : '云端自定义 API'}（独立配置）\n点击切回本地直连`;
     }
 
     if (dsModelPill) {
       if (isLocal) {
         dsModelPill.innerHTML = `<span class="ds-badge-dot"></span><span id="ds-model-pill-text">DeepSeek-V4.1-Flash${dsThinkOn ? ' · 深度思考' : ''}</span>`;
-        dsModelPill.title = '当前为【本地极速直连模式（DeepSeek · 深度思考）】点击可切换至【API 模式】';
+        dsModelPill.title = `当前【${scopeLabel}】为本地极速直连模式，点击切换至 API 模式`;
       } else {
         let basePillName = 'DeepSeek-V4.1-Flash';
         if (isCustomCloud) {
-          const rawCloudModel = state.settings?.custom_cloud_model || '';
+          const rawCloudModel = scopeCfg.cloudModel || '';
           basePillName = rawCloudModel.replace(/^.*\//, '') || '云端定制模型';
-        } else if (isDsOwn) {
-          basePillName = 'DeepSeek-V4.1-Flash';
         }
         dsModelPill.innerHTML = `<span class="ds-badge-dot mode-api"></span><span id="ds-model-pill-text">${dsThinkOn ? `${basePillName} · 深度思考` : basePillName}</span>`;
-        dsModelPill.title = `当前为【${isDsOwn ? 'DeepSeek 官方直连' : isCustomCloud ? '自定义云端 API' : '云端模式'}】点击可切换至【本地直连】`;
+        dsModelPill.title = `当前【${scopeLabel}】为${isDsOwn ? 'DeepSeek 官方 API' : '云端自定义 API'}，点击切回本地直连`;
       }
     }
   }
 
   async function toggleLlmMode() {
-    const currentMode = state.llmMode || state.activeSession?.llm_mode || 'local_antigravity';
-    const nextMode = currentMode === 'local_antigravity' ? 'api' : 'local_antigravity';
+    const scope = getActiveChatScope();
+    const scopeLabel = scope === 'deepseek' ? 'DeepSeek 聊天' : '星语剧场';
+    const curCfg = getModeApiConfig(scope);
+    const isCurrentlyLocal = curCfg.channel === 'local_antigravity';
+    const nextChannel = isCurrentlyLocal ? (curCfg.lastApiChannel || 'own_deepseek') : 'local_antigravity';
+    const nextMode = nextChannel === 'local_antigravity' ? 'local_antigravity' : 'api';
+
+    const updatedCfg = saveModeApiConfig(scope, { channel: nextChannel });
     state.llmMode = nextMode;
     if (state.activeSession) {
       state.activeSession.llm_mode = nextMode;
@@ -2927,36 +3033,28 @@
         cached.session.llm_mode = nextMode;
       }
     }
-    try {
-      localStorage.setItem('user_llm_mode', nextMode);
-    } catch {}
 
-    // 立即刷新前端状态指示与按钮外观，杜绝回弹
     syncLlmModeUi();
 
-    const isNextLocal = nextMode === 'local_antigravity';
-
+    const isNextLocal = nextChannel === 'local_antigravity';
     let switchNotice = '';
     if (isNextLocal) {
-      if (state.antigravityStatus?.checked && state.antigravityStatus.available === false) {
-        switchNotice = '已切换至【本地直连模式】。未检测到本地引擎环境，建议切换为「云端 API 模式」';
-      } else {
-        switchNotice = '已切换至：本地极速直连模式 (DeepSeek-V4.1-Flash)';
-      }
+      switchNotice = `【${scopeLabel}】已切回本地直连模式（不影响其他模式）`;
     } else {
-      const hasApiKey = Boolean(state.settings?.own_deepseek_api_key_masked || state.settings?.has_own_deepseek_key);
-      const isOwnProvider = state.settings?.provider === 'own_deepseek';
-      if (isOwnProvider && !hasApiKey) {
-        switchNotice = '已切换至【云端 API 模式】。您尚未配置 API 密钥，请在「设置」中填入密钥，或随时切回「本地直连模式」开箱即用';
+      const hasKey = updatedCfg.channel === 'custom_cloud'
+        ? Boolean(updatedCfg.cloudKey)
+        : Boolean(updatedCfg.ownKey);
+      if (!hasKey) {
+        switchNotice = `【${scopeLabel}】已切至 API 模式，请点击「设置」填入当前模式的 API 密钥`;
       } else {
-        switchNotice = '已切换至：云端 API 模式';
+        switchNotice = `【${scopeLabel}】已切至${updatedCfg.channel === 'custom_cloud' ? '云端自定义 API' : 'DeepSeek 官方 API'}模式`;
       }
     }
 
     if (state.activeSessionId) {
       await patchActiveSessionFlag({ llm_mode: nextMode }, switchNotice);
     } else {
-      showToast(switchNotice, 3600);
+      showToast(switchNotice, 3200);
     }
     syncLlmModeUi();
   }
@@ -6988,12 +7086,17 @@
 
     if (!regenerate && !trimmed && stagedFiles.length === 0) return;
 
-    const activeLlmMode = state.llmMode || state.activeSession?.llm_mode || 'local_antigravity';
+    const activeScope = getActiveChatScope();
+    const activeScopeCfg = getModeApiConfig(activeScope);
+    const activeLlmMode = activeScopeCfg.channel === 'local_antigravity' ? 'local_antigravity' : 'api';
+    const activeApiOverride = buildModeApiOverride(activeScope);
     if (activeLlmMode === 'api') {
-      const isOwnProvider = state.settings?.provider === 'own_deepseek';
-      const hasKey = Boolean(state.settings?.own_deepseek_api_key_masked || state.settings?.has_own_deepseek_key);
-      if (isOwnProvider && !hasKey) {
-        showToast('⚠️ 您当前处于【云端 API 模式】，但尚未配置 API 密钥。已为您打开「设置」，填入密钥或切回「本地直连」即可开始对话', 5000);
+      const hasScopeKey = activeScopeCfg.channel === 'custom_cloud'
+        ? Boolean(activeScopeCfg.cloudKey)
+        : Boolean(activeScopeCfg.ownKey);
+      if (!hasScopeKey) {
+        const scopeName = activeScope === 'deepseek' ? 'DeepSeek 聊天' : '星语剧场';
+        showToast(`⚠️ 【${scopeName}】当前处于 API 模式，但尚未配置独立 API 密钥。已打开独立配置或可切回「本地直连」`, 4500);
         window.__dsOpenSettings();
         return;
       }
@@ -7169,6 +7272,7 @@
           assistant_prefix: assistantPrefix,
           include_follow_ups: isShowFollowUpsEnabled(),
           llm_mode: activeLlmMode,
+          mode_api_override: activeApiOverride,
           local_model: state.localModel || state.activeSession?.local_model || 'DeepSeek-V4.1-Flash'
         }),
         signal: abortController.signal
@@ -8006,13 +8110,11 @@
     state.activeSessionId = sessionId;
     state.activeSession = data.session;
     state.activePersona = data.persona;
-    const userPrefLlmMode = localStorage.getItem('user_llm_mode');
-    if (userPrefLlmMode) {
-      state.llmMode = userPrefLlmMode;
-      if (data.session) data.session.llm_mode = userPrefLlmMode;
-    } else if (data.session?.llm_mode) {
-      state.llmMode = data.session.llm_mode;
-    }
+    const sessScope = data.session?.session_mode === 'deepseek_native' ? 'deepseek' : 'roleplay';
+    const sessScopeCfg = getModeApiConfig(sessScope);
+    const resolvedSessLlmMode = sessScopeCfg.channel === 'local_antigravity' ? 'local_antigravity' : 'api';
+    state.llmMode = resolvedSessLlmMode;
+    if (data.session) data.session.llm_mode = resolvedSessLlmMode;
     if (data.session?.local_model) {
       state.localModel = data.session.local_model;
     }
@@ -8338,12 +8440,13 @@
       }
       const targetSessionMode =
         forceSessionMode || (state.theaterSubMode === 'character' ? 'character_chat' : 'roleplay');
+      const rpDefaultMode = getModeApiConfig('roleplay').channel === 'local_antigravity' ? 'local_antigravity' : 'api';
       const res = await apiJson('/api/sessions', {
         method: 'POST',
         body: JSON.stringify({
           persona_id: personaId,
           session_mode: targetSessionMode,
-          llm_mode: state.llmMode || 'local_antigravity',
+          llm_mode: rpDefaultMode,
           local_model: state.localModel || 'DeepSeek-V4.1-Flash',
           ...(customTitle ? { title: customTitle } : {})
         })
@@ -8376,6 +8479,7 @@
       if (state.uiMode !== 'deepseek' && state.uiMode !== 'phone-agent') {
         applyUiModeVisuals('deepseek');
       }
+      const dsDefaultMode = getModeApiConfig('deepseek').channel === 'local_antigravity' ? 'local_antigravity' : 'api';
       const res = await apiJson('/api/sessions', {
         method: 'POST',
         body: JSON.stringify({
@@ -8383,7 +8487,7 @@
           session_mode: 'deepseek_native',
           ds_thinking: true,
           ds_search: false,
-          llm_mode: state.llmMode || 'local_antigravity',
+          llm_mode: dsDefaultMode,
           local_model: state.localModel || 'DeepSeek-V4.1-Flash'
         })
       });
@@ -9297,7 +9401,72 @@
     settingsInitialSnapshot = null;
   });
 
+  function maskLocalKey(k) {
+    const s = String(k || '').trim();
+    if (!s) return '';
+    if (s.length <= 6) return `••••${s.slice(-2)}`;
+    return `••••${s.slice(-4)}`;
+  }
+
+  function syncScopedApiModalFields(scopeInput) {
+    const scope = getActiveChatScope(scopeInput);
+    const scopeCfg = getModeApiConfig(scope);
+    const scopeName = scope === 'deepseek' ? 'DeepSeek 聊天模式' : '星语剧场 · 剧情模式';
+    const bannerEl = document.getElementById('settings-mode-scope-banner');
+    if (bannerEl) {
+      bannerEl.textContent = `当前配置作用域：${scopeName}（默认本地直连 · 与其他模式 100% 独立隔离）`;
+    }
+
+    const hasSavedDsKey = Boolean(scopeCfg.ownKey);
+    const hasSavedCloudKey = Boolean(scopeCfg.cloudKey);
+    const dsMaskBadge = document.getElementById('own-api-mask-badge');
+    if (dsMaskBadge) {
+      dsMaskBadge.textContent = hasSavedDsKey ? '已配置' : 'V4.1 Flash';
+    }
+    const clearDsWrap = document.getElementById('clear-own-ds-key-wrap');
+    const clearDsChk = document.getElementById('st-clear-own-ds-key');
+    if (clearDsWrap) clearDsWrap.classList.toggle('hidden', !hasSavedDsKey);
+    if (clearDsChk) clearDsChk.checked = false;
+
+    const dsKeyInp = document.getElementById('st-own-ds-key');
+    if (dsKeyInp) {
+      dsKeyInp.value = '';
+      dsKeyInp.type = 'password';
+      dsKeyInp.placeholder = hasSavedDsKey
+        ? `已保存【${scopeName}】密钥 ${maskLocalKey(scopeCfg.ownKey)}（留空保持不变）`
+        : `粘贴【${scopeName}】专属 DeepSeek 密钥`;
+    }
+
+    const cloudMaskBadge = document.getElementById('custom-cloud-mask-badge');
+    if (cloudMaskBadge) {
+      cloudMaskBadge.textContent = hasSavedCloudKey ? '已配置' : '自由定制';
+    }
+    const clearCloudWrap = document.getElementById('clear-custom-cloud-key-wrap');
+    const clearCloudChk = document.getElementById('st-clear-custom-cloud-key');
+    if (clearCloudWrap) clearCloudWrap.classList.toggle('hidden', !hasSavedCloudKey);
+    if (clearCloudChk) clearCloudChk.checked = false;
+
+    const cloudKeyInp = document.getElementById('st-custom-cloud-key');
+    if (cloudKeyInp) {
+      cloudKeyInp.value = '';
+      cloudKeyInp.type = 'password';
+      cloudKeyInp.placeholder = hasSavedCloudKey
+        ? `已保存【${scopeName}】云端密钥 ${maskLocalKey(scopeCfg.cloudKey)}（留空保持不变）`
+        : `粘贴【${scopeName}】专属云端 API 密钥`;
+    }
+    const cloudUrlInp = document.getElementById('st-custom-cloud-url');
+    if (cloudUrlInp) cloudUrlInp.value = scopeCfg.cloudUrl || DEFAULT_MODE_API_CFG.cloudUrl;
+    const cloudModelInp = document.getElementById('st-custom-cloud-model');
+    if (cloudModelInp) cloudModelInp.value = scopeCfg.cloudModel || DEFAULT_MODE_API_CFG.cloudModel;
+
+    return scopeCfg;
+  }
+
   function openSettingsModal(focusOwnApi = false) {
+    if (state.uiMode === 'phone-agent' && !focusOwnApi && window.PhoneAgent?.openControlSheet) {
+      window.PhoneAgent.openControlSheet(false);
+      return;
+    }
     settingsSavedFlag = false;
     settingsInitialSnapshot = captureSettingsSnapshot();
     const s = state.settings || {};
@@ -9306,15 +9475,15 @@
     if (settingsFormEl) settingsFormEl.noValidate = true;
     testResultBox?.classList.add('hidden');
     syncOwnApiPrivilegeUi();
+    const activeScope = getActiveChatScope();
+    const scopeCfg = syncScopedApiModalFields(activeScope);
 
-    if (s.provider === 'own_deepseek' && unlocked) {
+    if (scopeCfg.channel === 'own_deepseek' && unlocked) {
       providerSelect.value = 'own_deepseek';
-    } else if (s.provider === 'custom_cloud' && unlocked) {
+    } else if (scopeCfg.channel === 'custom_cloud' && unlocked) {
       providerSelect.value = 'custom_cloud';
-    } else if (s.provider === 'online' || s.provider === 'own_deepseek' || s.provider === 'custom_cloud') {
-      providerSelect.value = 'online';
     } else {
-      providerSelect.value = 'demo';
+      providerSelect.value = 'online';
     }
 
     const winEl = document.getElementById('st-window');
@@ -9401,20 +9570,28 @@
       fontVal.textContent = curFont === 'large' ? '大' : (curFont === 'small' ? '小' : '标准');
     }
 
-    // 4. 同步个人 API 密钥
+    // 4. 同步当前模式独立 API 通道状态（完全隔离，默认本地直连）
     const keyVal = document.getElementById('mfs-apikey-value');
-    const keyInput = document.getElementById('mfs-apikey-input');
-    const savedKey = localStorage.getItem('deepseek_user_api_key') || localStorage.getItem('own_deepseek_api_key') || '';
+    const mfsScope = state.uiMode === 'phone-agent' ? 'phone-agent' : getActiveChatScope();
     if (keyVal) {
-      keyVal.textContent = savedKey ? '已配置 (sk-...)' : '点击直连';
-    }
-    if (keyInput) {
-      keyInput.value = savedKey;
+      if (mfsScope === 'phone-agent') {
+        const paCfg = window.PhoneAgent?.getConfig ? window.PhoneAgent.getConfig() : {};
+        keyVal.textContent = paCfg.execMode === 'local' ? '本地免 API' : (paCfg.apiKey ? '已配专属 Key' : '手机辅助控制台');
+      } else {
+        const scCfg = getModeApiConfig(mfsScope);
+        keyVal.textContent = scCfg.channel === 'own_deepseek'
+          ? (scCfg.ownKey ? 'DeepSeek API' : 'DeepSeek API (未填)')
+          : scCfg.channel === 'custom_cloud'
+          ? (scCfg.cloudKey ? '云端 API' : '云端 API (未填)')
+          : '本地直连 (默认)';
+      }
     }
     document.getElementById('mfs-apikey-drawer')?.classList.add('hidden');
     if (focusOwnApi) {
       setTimeout(() => {
-        if (typeof window.__openMfsApiKeySheet === 'function') {
+        if (mfsScope === 'phone-agent') {
+          window.PhoneAgent?.openControlSheet?.(true);
+        } else if (typeof window.__openMfsApiKeySheet === 'function') {
           window.__openMfsApiKeySheet();
         }
       }, 40);
@@ -9617,35 +9794,81 @@
     document.getElementById('mfs-sub-close')?.addEventListener('click', closeMfsSubSheet);
 
     const openMfsApiKeySheet = () => {
-      const savedKey = localStorage.getItem('deepseek_user_api_key') || localStorage.getItem('own_deepseek_api_key') || '';
+      if (state.uiMode === 'phone-agent' && window.PhoneAgent?.openControlSheet) {
+        document.getElementById('mobile-fullscreen-settings')?.classList.add('hidden');
+        window.PhoneAgent.openControlSheet(true);
+        return;
+      }
+      const scope = getActiveChatScope();
+      const scopeTitle = scope === 'deepseek' ? 'DeepSeek 聊天模式' : '星语剧场 · 剧情模式';
+      const curCfg = getModeApiConfig(scope);
+      let chosenChannel = curCfg.channel || 'local_antigravity';
       const eyeOpenSvg = `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>`;
       const eyeOffSvg = `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>`;
       openMfsSubSheet({
-        title: '个人 API 密钥',
-        subtitle: '使用你自己的 DeepSeek 官网密钥直连推理，密钥仅存本地沙盒',
+        title: `${scopeTitle} · 模型通道`,
+        subtitle: '仅作用于当前模式，默认本地直连，与其它模式完全隔离',
         bodyHtml: `
-          <div class="mfs-official-guide-box">
-            <ol class="mfs-official-steps">
-              <li>打开 DeepSeek 官方控制台，在左侧「API keys」创建并复制 <code>sk-...</code> 密钥；</li>
-              <li>粘贴到下方输入框并保存，即可解锁直连对话与手机辅助规划。</li>
-            </ol>
-            <button type="button" class="mfs-official-link-btn" id="mfs-sheet-official-btn">
-              <span>前往 DeepSeek 官网获取密钥 (platform.deepseek.com) ↗</span>
-            </button>
+          <div class="mfs-seg-row" id="mfs-scope-channel-tabs" style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:12px;">
+            <button type="button" class="mfs-sheet-btn-secondary ${chosenChannel === 'local_antigravity' ? 'is-active' : ''}" data-mfs-ch="local_antigravity" style="padding:8px 6px;font-size:12px;">本地直连</button>
+            <button type="button" class="mfs-sheet-btn-secondary ${chosenChannel === 'own_deepseek' ? 'is-active' : ''}" data-mfs-ch="own_deepseek" style="padding:8px 6px;font-size:12px;">DeepSeek API</button>
+            <button type="button" class="mfs-sheet-btn-secondary ${chosenChannel === 'custom_cloud' ? 'is-active' : ''}" data-mfs-ch="custom_cloud" style="padding:8px 6px;font-size:12px;">云端自定义</button>
           </div>
-          <div class="mfs-field-block">
-            <label class="mfs-field-label" for="mfs-sheet-apikey-input">DeepSeek API Key</label>
-            <div class="mfs-sheet-input-wrap">
-              <input type="password" class="mfs-sheet-input" id="mfs-sheet-apikey-input" value="${escapeHtml(savedKey)}" placeholder="粘贴 sk-... 开头的官网密钥" autocomplete="off" />
-              <button type="button" class="mfs-sheet-eye-btn" id="mfs-sheet-eye-btn" aria-label="显示或隐藏密钥">${eyeOpenSvg}</button>
+          <div id="mfs-ch-pane-local" class="${chosenChannel === 'local_antigravity' ? '' : 'hidden'}" style="padding:12px;border-radius:12px;background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.22);font-size:12.5px;line-height:1.55;">
+            <strong>当前已就绪 · 本地直连（默认）</strong><br/>无需填写任何 API Key，直接返回聊天即可开箱即用。
+          </div>
+          <div id="mfs-ch-pane-own" class="${chosenChannel === 'own_deepseek' ? '' : 'hidden'}">
+            <div class="mfs-field-block">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+                <label class="mfs-field-label" for="mfs-sheet-apikey-input" style="margin:0;">DeepSeek 官网密钥</label>
+                <button type="button" class="mfs-official-link-btn" id="mfs-sheet-official-btn" style="padding:3px 8px;font-size:11.5px;">获取密钥 ↗</button>
+              </div>
+              <div class="mfs-sheet-input-wrap">
+                <input type="password" class="mfs-sheet-input" id="mfs-sheet-apikey-input" value="${escapeHtml(curCfg.ownKey)}" placeholder="粘贴 sk-... 官网密钥（仅存本模式）" autocomplete="off" />
+                <button type="button" class="mfs-sheet-eye-btn" id="mfs-sheet-eye-btn" aria-label="显示或隐藏密钥">${eyeOpenSvg}</button>
+              </div>
+            </div>
+          </div>
+          <div id="mfs-ch-pane-cloud" class="${chosenChannel === 'custom_cloud' ? '' : 'hidden'}">
+            <div class="mfs-field-block" style="margin-bottom:8px;">
+              <label class="mfs-field-label" for="mfs-sheet-cloud-url">接口地址 (Base URL)</label>
+              <input type="url" class="mfs-sheet-input" id="mfs-sheet-cloud-url" value="${escapeHtml(curCfg.cloudUrl)}" placeholder="https://api.siliconflow.cn/v1/chat/completions" />
+            </div>
+            <div class="mfs-field-block" style="margin-bottom:8px;">
+              <label class="mfs-field-label" for="mfs-sheet-cloud-model">模型名称</label>
+              <input type="text" class="mfs-sheet-input" id="mfs-sheet-cloud-model" value="${escapeHtml(curCfg.cloudModel)}" placeholder="deepseek-ai/DeepSeek-V4.1-Flash" />
+            </div>
+            <div class="mfs-field-block">
+              <label class="mfs-field-label" for="mfs-sheet-cloud-key">云端 API Key</label>
+              <input type="password" class="mfs-sheet-input" id="mfs-sheet-cloud-key" value="${escapeHtml(curCfg.cloudKey)}" placeholder="粘贴第三方云端密钥" autocomplete="off" />
             </div>
           </div>`,
         footerHtml: `
-          <button type="button" class="mfs-sheet-btn-secondary" id="mfs-sheet-key-clear">清除密钥</button>
-          <button type="button" class="mfs-sheet-btn-primary" id="mfs-sheet-key-save">保存直连密钥</button>`,
+          <button type="button" class="mfs-sheet-btn-secondary" id="mfs-sheet-key-clear">恢复本地直连</button>
+          <button type="button" class="mfs-sheet-btn-primary" id="mfs-sheet-key-save">保存本模式配置</button>`,
         onMount: ({ bodyEl, footerEl, close }) => {
           const inp = bodyEl.querySelector('#mfs-sheet-apikey-input');
           const eyeBtn = bodyEl.querySelector('#mfs-sheet-eye-btn');
+          const cloudUrlInp = bodyEl.querySelector('#mfs-sheet-cloud-url');
+          const cloudModelInp = bodyEl.querySelector('#mfs-sheet-cloud-model');
+          const cloudKeyInp = bodyEl.querySelector('#mfs-sheet-cloud-key');
+          const syncSheetChannel = (nextCh) => {
+            chosenChannel = nextCh;
+            bodyEl.querySelectorAll('[data-mfs-ch]').forEach((btn) => {
+              const active = btn.getAttribute('data-mfs-ch') === nextCh;
+              btn.classList.toggle('is-active', active);
+              btn.style.borderColor = active ? '#4d6bfe' : '';
+              btn.style.color = active ? '#4d6bfe' : '';
+              btn.style.fontWeight = active ? '700' : '500';
+            });
+            bodyEl.querySelector('#mfs-ch-pane-local')?.classList.toggle('hidden', nextCh !== 'local_antigravity');
+            bodyEl.querySelector('#mfs-ch-pane-own')?.classList.toggle('hidden', nextCh !== 'own_deepseek');
+            bodyEl.querySelector('#mfs-ch-pane-cloud')?.classList.toggle('hidden', nextCh !== 'custom_cloud');
+          };
+          syncSheetChannel(chosenChannel);
+          bodyEl.querySelectorAll('[data-mfs-ch]').forEach((btn) => {
+            btn.addEventListener('click', () => syncSheetChannel(btn.getAttribute('data-mfs-ch') || 'local_antigravity'));
+          });
           bodyEl.querySelector('#mfs-sheet-official-btn')?.addEventListener('click', openDeepSeekOfficialKeyPage);
           eyeBtn?.addEventListener('click', () => {
             if (!inp) return;
@@ -9653,30 +9876,31 @@
             inp.type = show ? 'text' : 'password';
             eyeBtn.innerHTML = show ? eyeOffSvg : eyeOpenSvg;
           });
-          const applyKey = (val) => {
-            const clean = String(val || '').trim();
-            if (clean) {
-              localStorage.setItem('deepseek_user_api_key', clean);
-              localStorage.setItem('own_deepseek_api_key', clean);
-            } else {
-              localStorage.removeItem('deepseek_user_api_key');
-              localStorage.removeItem('own_deepseek_api_key');
-            }
-            const desktopInput = document.getElementById('st-own-ds-key');
-            if (desktopInput) desktopInput.value = clean;
-            const oldInput = document.getElementById('mfs-apikey-input');
-            if (oldInput) oldInput.value = clean;
+          const commitScope = (resetToLocal = false) => {
+            const patch = resetToLocal
+              ? { channel: 'local_antigravity' }
+              : {
+                  channel: chosenChannel,
+                  ownKey: (inp?.value || '').trim(),
+                  cloudUrl: (cloudUrlInp?.value || DEFAULT_MODE_API_CFG.cloudUrl).trim(),
+                  cloudModel: (cloudModelInp?.value || DEFAULT_MODE_API_CFG.cloudModel).trim(),
+                  cloudKey: (cloudKeyInp?.value || '').trim()
+                };
+            const saved = saveModeApiConfig(scope, patch);
+            syncStateLlmModeFromScope(scope);
             const keyVal = document.getElementById('mfs-apikey-value');
-            if (keyVal) keyVal.textContent = clean ? '已配置 (sk-...)' : '点击直连';
-            if (window.PhoneAgent && typeof window.PhoneAgent.setDirectApiKey === 'function') {
-              window.PhoneAgent.setDirectApiKey(clean);
+            if (keyVal) {
+              keyVal.textContent = saved.channel === 'own_deepseek'
+                ? 'DeepSeek API'
+                : saved.channel === 'custom_cloud'
+                ? '云端 API'
+                : '本地直连 (默认)';
             }
             close();
-            showToast(clean ? 'DeepSeek 官方 API 密钥已保存至本地沙盒' : '已清除个人 API 密钥');
+            showToast(`已更新【${scopeTitle}】独立通道（不影响其他模式）`);
           };
-          footerEl.querySelector('#mfs-sheet-key-clear')?.addEventListener('click', () => applyKey(''));
-          footerEl.querySelector('#mfs-sheet-key-save')?.addEventListener('click', () => applyKey(inp?.value || ''));
-          setTimeout(() => inp?.focus(), 60);
+          footerEl.querySelector('#mfs-sheet-key-clear')?.addEventListener('click', () => commitScope(true));
+          footerEl.querySelector('#mfs-sheet-key-save')?.addEventListener('click', () => commitScope(false));
         }
       });
     };
@@ -10534,7 +10758,8 @@
     btn.textContent = '正在帮您测试连接…';
     testResultBox?.classList.add('hidden');
     try {
-      const draftKey = document.getElementById('st-own-ds-key')?.value.trim() || '';
+      const scopeCfg = getModeApiConfig(getActiveChatScope());
+      const draftKey = document.getElementById('st-own-ds-key')?.value.trim() || scopeCfg.ownKey || '';
       const res = await apiJson('/api/settings/verify-own-key', {
         method: 'POST',
         body: JSON.stringify({
@@ -10571,9 +10796,10 @@
     btn.textContent = '正在测试云端连接…';
     testResultBox?.classList.add('hidden');
     try {
-      const draftKey = document.getElementById('st-custom-cloud-key')?.value.trim() || '';
-      const draftUrl = document.getElementById('st-custom-cloud-url')?.value.trim() || 'https://api.siliconflow.cn/v1/chat/completions';
-      const draftModel = document.getElementById('st-custom-cloud-model')?.value.trim() || 'deepseek-ai/DeepSeek-V4.1-Flash';
+      const scopeCfg = getModeApiConfig(getActiveChatScope());
+      const draftKey = document.getElementById('st-custom-cloud-key')?.value.trim() || scopeCfg.cloudKey || '';
+      const draftUrl = document.getElementById('st-custom-cloud-url')?.value.trim() || scopeCfg.cloudUrl || 'https://api.siliconflow.cn/v1/chat/completions';
+      const draftModel = document.getElementById('st-custom-cloud-model')?.value.trim() || scopeCfg.cloudModel || 'deepseek-ai/DeepSeek-V4.1-Flash';
       const res = await apiJson('/api/settings/verify-own-key', {
         method: 'POST',
         body: JSON.stringify({
@@ -10652,7 +10878,41 @@
       testResultBox?.classList.add('hidden');
 
       try {
+        const activeScope = getActiveChatScope();
+        const scopeTitle = activeScope === 'deepseek' ? 'DeepSeek 聊天模式' : '星语剧场 · 剧情模式';
+        const chosenProv = providerSelect?.value || 'online';
+        const clearDs = Boolean(document.getElementById('st-clear-own-ds-key')?.checked);
+        const clearCloud = Boolean(document.getElementById('st-clear-custom-cloud-key')?.checked);
+        const prevScopeCfg = getModeApiConfig(activeScope);
+
+        let nextChannel = 'local_antigravity';
+        if (chosenProv === 'own_deepseek' && !clearDs) nextChannel = 'own_deepseek';
+        else if (chosenProv === 'custom_cloud' && !clearCloud) nextChannel = 'custom_cloud';
+
+        const typedOwnKey = (document.getElementById('st-own-ds-key')?.value || '').trim();
+        const typedCloudKey = (document.getElementById('st-custom-cloud-key')?.value || '').trim();
+        const typedCloudUrl = normalizeSettingsUrlInput(document.getElementById('st-custom-cloud-url')?.value) || prevScopeCfg.cloudUrl;
+        const typedCloudModel = (document.getElementById('st-custom-cloud-model')?.value || '').trim() || prevScopeCfg.cloudModel;
+
+        saveModeApiConfig(activeScope, {
+          channel: nextChannel,
+          ownKey: clearDs ? '' : (typedOwnKey || prevScopeCfg.ownKey),
+          cloudKey: clearCloud ? '' : (typedCloudKey || prevScopeCfg.cloudKey),
+          cloudUrl: typedCloudUrl,
+          cloudModel: typedCloudModel
+        });
+        syncStateLlmModeFromScope(activeScope);
+
         const draftPayload = collectSettingsPayload();
+        // 不向全局设置写入单个模式的 provider/API Key，保持服务端通用记忆与采样设置干净
+        delete draftPayload.provider;
+        delete draftPayload.own_deepseek_api_key;
+        delete draftPayload.clear_own_deepseek_key;
+        delete draftPayload.custom_cloud_api_key;
+        delete draftPayload.clear_custom_cloud_key;
+        delete draftPayload.custom_cloud_api_url;
+        delete draftPayload.custom_cloud_model;
+
         const abortCtrl = new AbortController();
         const timeoutId = setTimeout(() => abortCtrl.abort(), 12000);
         let res;
@@ -10694,6 +10954,7 @@
           }
         }
         renderUserAndMembership();
+        syncStateLlmModeFromScope(activeScope);
         window.DeepSeekMonitorPlugin?.sync({
           settings: state.settings,
           messages: state.messages,
@@ -10701,11 +10962,7 @@
         });
         settingsDialog.close();
 
-        if (res.settings.provider === 'own_deepseek') {
-          showToast('您的个人 API 直连已保存生效！DeepSeek 原生对话与角色扮演剧场均可直连畅聊！');
-        } else {
-          showToast('游戏画面与语音偏好设置已保存');
-        }
+        showToast(`已保存【${scopeTitle}】独立通道配置（不影响其他模式）`);
 
         if (state.activeSessionId) {
           loadSession(state.activeSessionId).catch(() => {});
@@ -12372,6 +12629,8 @@
       const firstRp = state.personas.find((p) => p.id !== 'persona_deepseek_official');
       if (firstRp) await startSessionWithPersona(firstRp.id);
     }
+
+    syncStateLlmModeFromScope(isDs ? 'deepseek' : 'roleplay');
 
     if (isDs) {
       showToast('已切换至 DeepSeek 问答模式（独立记忆、深度思考与联网搜索已就绪）');

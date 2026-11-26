@@ -2977,3 +2977,384 @@
   font-size: 12px;
   color: light-dark(#64748b, #94a3b8);
 }
+
+/* ==========================================================================
+   v2.7.0 手机辅助主页美化与本地技能固化样式（严守 myui 规范，仅作用于 .pa-*）
+   ========================================================================== */
+.app-shell[data-ui-mode="phone-agent"] .pa-compact-bar {
+  background: light-dark(rgba(255, 255, 255, 0.88), rgba(24, 27, 37, 0.86));
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid light-dark(rgba(15, 23, 42, 0.08), rgba(255, 255, 255, 0.1));
+  box-shadow: 0 4px 16px -4px rgba(15, 23, 42, 0.06);
+  border-radius: 14px;
+  padding: 5px 8px 5px 12px;
+}
+
+.app-shell[data-ui-mode="phone-agent"] .pa-empty-guide {
+  margin: 16px auto 12px;
+  padding: 20px 18px 18px;
+  border-radius: 20px;
+  background: light-dark(
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 250, 252, 0.92)),
+    linear-gradient(180deg, rgba(28, 32, 44, 0.88), rgba(20, 23, 33, 0.88))
+  );
+  border: 1px solid light-dark(rgba(15, 23, 42, 0.07), rgba(255, 255, 255, 0.09));
+  box-shadow: 0 12px 32px -10px rgba(15, 23, 42, 0.08);
+}
+
+.app-shell[data-ui-mode="phone-agent"] .pa-empty-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 6px;
+  padding: 4px 8px 14px;
+}
+
+.app-shell[data-ui-mode="phone-agent"] .pa-empty-badge-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 15px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: light-dark(rgba(77, 107, 254, 0.1), rgba(77, 107, 254, 0.2));
+  color: #4d6bfe;
+  border: 1px solid light-dark(rgba(77, 107, 254, 0.18), rgba(147, 197, 253, 0.22));
+  box-shadow: 0 6px 18px -6px rgba(77, 107, 254, 0.28);
+  margin-bottom: 2px;
+}
+
+.app-shell[data-ui-mode="phone-agent"] .pa-empty-hero-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  color: light-dark(#0f172a, #f8fafc);
+}
+
+.app-shell[data-ui-mode="phone-agent"] .pa-empty-hero-sub {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  max-width: 440px;
+  color: light-dark(#64748b, #94a3b8);
+}
+
+.pa-learned-box {
+  margin: 4px 0 16px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: light-dark(#f8fafc, rgba(255, 255, 255, 0.04));
+  border: 1px solid light-dark(rgba(15, 23, 42, 0.07), rgba(255, 255, 255, 0.08));
+}
+
+.pa-learned-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.pa-learned-title {
+  font-size: 12.5px;
+  font-weight: 650;
+  color: light-dark(#1e293b, #e2e8f0);
+}
+
+.pa-learned-manage-btn {
+  border: 1px solid light-dark(rgba(77, 107, 254, 0.25), rgba(147, 197, 253, 0.25));
+  background: light-dark(#ffffff, rgba(77, 107, 254, 0.14));
+  color: light-dark(#4d6bfe, #93c5fd);
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background-color 0.16s ease, border-color 0.16s ease;
+}
+
+.pa-learned-manage-btn:hover {
+  border-color: #4d6bfe;
+  background: light-dark(#eff6ff, rgba(77, 107, 254, 0.24));
+}
+
+.pa-learned-empty-tip {
+  font-size: 12px;
+  line-height: 1.55;
+  color: light-dark(#64748b, #94a3b8);
+}
+
+.pa-learned-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.pa-skill-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 5px 11px;
+  border-radius: 999px;
+  border: 1px solid light-dark(rgba(16, 185, 129, 0.26), rgba(52, 211, 153, 0.28));
+  background: light-dark(#ecfdf5, rgba(16, 185, 129, 0.12));
+  color: light-dark(#065f46, #6ee7b7);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.16s ease, box-shadow 0.16s ease, background-color 0.16s ease;
+}
+
+.pa-skill-chip:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.16);
+}
+
+.pa-skill-chip-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #10b981;
+}
+
+.pa-skill-chip-meta {
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.78;
+}
+
+.app-shell[data-ui-mode="phone-agent"] .pa-guide-tile {
+  padding: 12px 13px;
+  border-radius: 13px;
+  gap: 4px;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.03);
+  transition: transform 0.18s ease-out, border-color 0.18s ease-out, box-shadow 0.18s ease-out, background-color 0.18s ease-out;
+}
+
+.app-shell[data-ui-mode="phone-agent"] .pa-guide-tile:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 20px -6px rgba(77, 107, 254, 0.16);
+}
+
+.pa-local-peace-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  border-radius: 13px;
+  background: light-dark(#ecfdf5, rgba(16, 185, 129, 0.12));
+  border: 1px solid light-dark(rgba(16, 185, 129, 0.25), rgba(52, 211, 153, 0.28));
+  color: light-dark(#065f46, #a7f3d0);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.pa-local-peace-card.hidden {
+  display: none !important;
+}
+
+.pa-save-skill-bar {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px dashed light-dark(rgba(15, 23, 42, 0.08), rgba(255, 255, 255, 0.1));
+  display: flex;
+  align-items: center;
+}
+
+.pa-save-skill-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid light-dark(rgba(77, 107, 254, 0.28), rgba(147, 197, 253, 0.3));
+  background: light-dark(#eff6ff, rgba(77, 107, 254, 0.16));
+  color: light-dark(#3b58e8, #93c5fd);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.16s ease, border-color 0.16s ease, transform 0.16s ease;
+}
+
+.pa-save-skill-btn:hover {
+  border-color: #4d6bfe;
+  background: light-dark(#dbeafe, rgba(77, 107, 254, 0.26));
+  transform: translateY(-1px);
+}
+
+/* 固化本地技能编辑弹窗 */
+.pa-skill-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1320;
+  background: rgba(15, 23, 42, 0.48);
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.pa-skill-modal {
+  width: min(480px, 100%);
+  max-height: 84dvh;
+  border-radius: 20px;
+  background: light-dark(#ffffff, #161923);
+  border: 1px solid light-dark(rgba(15, 23, 42, 0.09), rgba(255, 255, 255, 0.12));
+  box-shadow: 0 24px 48px -12px rgba(15, 23, 42, 0.28);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  color: light-dark(#0f172a, #f1f5f9);
+}
+
+.pa-skill-modal-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 16px 18px 12px;
+  border-bottom: 1px solid light-dark(rgba(15, 23, 42, 0.06), rgba(255, 255, 255, 0.08));
+}
+
+.pa-skill-modal-head h4 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.pa-skill-modal-head p {
+  margin: 3px 0 0;
+  font-size: 11.5px;
+  color: light-dark(#64748b, #94a3b8);
+}
+
+.pa-skill-modal-body {
+  padding: 14px 18px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.pa-skill-steps-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  font-weight: 600;
+  color: light-dark(#475569, #cbd5e1);
+}
+
+.pa-skill-steps-list {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.pa-skill-step-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 11px;
+  background: light-dark(#f8fafc, #202431);
+  border: 1px solid light-dark(rgba(15, 23, 42, 0.06), rgba(255, 255, 255, 0.08));
+}
+
+.pa-skill-step-num {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: light-dark(#e2e8f0, rgba(255, 255, 255, 0.1));
+  color: light-dark(#334155, #e2e8f0);
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.pa-skill-step-info {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.pa-skill-step-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pa-skill-step-sum {
+  font-size: 12px;
+  color: light-dark(#1e293b, #f1f5f9);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pa-skill-step-input {
+  width: 100%;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 7px;
+  border: 1px solid light-dark(rgba(15, 23, 42, 0.1), rgba(255, 255, 255, 0.14));
+  background: light-dark(#ffffff, #161923);
+  color: light-dark(#0f172a, #f8fafc);
+  font-size: 12px;
+  box-sizing: border-box;
+}
+
+.pa-skill-step-del {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  color: light-dark(#94a3b8, #64748b);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.pa-skill-step-del:hover {
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.12);
+}
+
+.pa-skill-step-empty {
+  padding: 16px;
+  text-align: center;
+  font-size: 12px;
+  color: light-dark(#64748b, #94a3b8);
+}
+
+.pa-skill-modal-foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 18px 14px;
+  border-top: 1px solid light-dark(rgba(15, 23, 42, 0.06), rgba(255, 255, 255, 0.08));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pa-skill-chip,
+  .pa-guide-tile,
+  .pa-save-skill-btn {
+    transition: none !important;
+    transform: none !important;
+  }
+}

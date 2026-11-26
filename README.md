@@ -22,7 +22,7 @@
 </p>
 
 <p>
-  <img src="https://img.shields.io/badge/Release-v2.5.7_Build_154-7C3AED?style=flat-square&logo=rocket&logoColor=white" alt="Version v2.5.7" />
+  <img src="https://img.shields.io/badge/Release-v2.7.0_Build_161-7C3AED?style=flat-square&logo=rocket&logoColor=white" alt="Version v2.7.0" />
   <img src="https://img.shields.io/badge/Node.js-%3E%3D22.5.0-339933?style=flat-square&logo=node.js&logoColor=white" alt="Node.js >= 22.5.0" />
   <img src="https://img.shields.io/badge/Dependencies-0_npm_Packages-FF6B6B?style=flat-square&logo=npm&logoColor=white" alt="Zero npm Dependencies" />
   <img src="https://img.shields.io/badge/Storage-node%3Asqlite-003B57?style=flat-square&logo=sqlite&logoColor=white" alt="Native SQLite" />
@@ -30,7 +30,7 @@
 </p>
 
 <p>
-  <a href="#-v257-最新版本核心特性">🚀 最新特性</a> •
+  <a href="#-v270-最新版本核心特性">🚀 最新特性</a> •
   <a href="#-三大工作台">🌐 三大工作台</a> •
   <a href="#-外观皮肤与头像工坊">🎨 外观工坊</a> •
   <a href="#-五大内置剧本与-20-位角色">🎬 剧本角色</a> •
@@ -47,7 +47,11 @@
 
 ---
 
-## 🚀 v2.5.7 最新版本核心特性
+## 🚀 v2.7.0 最新版本核心特性
+
+1. **AI 操作学习固化与本地免 API 离线回放**：用 API 模式跑通固定流程后，可一键将操作步骤固化为本地技能（支持名称/口令编辑与步骤微调），后续在「本地免 API」模式与桌面悬浮窗中零消耗直接离线运行（文本/节点/自适应相对坐标三重抗漂移定位）。
+2. **三模式 API 配置 100% 物理隔离 + 默认本地直连**：DeepSeek 聊天模式、星语剧场（剧情模式）与手机辅助三端彻底隔离，各自拥有独立的简洁设置弹窗与存储空间；默认状态下 DeepSeek 聊天与星语剧场均保持「本地直连模式」，互不覆盖串用。
+3. **手机辅助主页与原生悬浮窗焕新**：遵循 `myui` 规范重塑手机辅助主页面与本地技能工作台；Android 原生悬浮窗重构为「控屏 / 大肥鱼 / 设置」三段式暗夜微光玻璃态面板，新增已学技能快捷胶囊区，交互更简洁克制。
 
 1. **经典 QQ 聊天默认主题 & 抽屉高对比度全面修复**：新增全端通用 **`经典 QQ 聊天 (qq-classic)`** 默认皮肤主题（`#F2F3F5` 洁净灰底 + `#FFFFFF` 纯白逐句分段气泡 + `#1677FF` QQ 标志蓝己方气泡），支持在桌面/手机设置一键切换默认主题；全面重做右侧「系统指令 / 养成 / 记忆档案」抽屉 `light-dark(...)` 高对比令牌体系，彻底解决浅色白卡上标签与按钮字看不清问题。
 2. **删去多余歌词尾巴 & QQ 音乐状态栏歌词真同步**：彻底去除折叠态肥鱼旁拖着的黑底歌词尾巴及桌面暂无歌词空提示尾巴；自动拆解开启状态栏/灵动岛歌词时 `title=歌词一句`、`artist=歌名-歌手` 的反转元数据，上方歌名下方纯歌词流畅同步。

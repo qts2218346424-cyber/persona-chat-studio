@@ -2360,7 +2360,13 @@ const msgs = dbObj.messages[sid] || (dbObj.messages[sid] = []);
 const isNative = sess.session_mode === 'deepseek_native';
 const isCharacterChat = sess.session_mode === 'character_chat';
 const isPure = p.id === 'persona_deepseek_official' && !sess.custom_persona_override;
-const apiKey = (dbObj.settings.deepseek_api_key || '').trim();
+const requestedLlmMode = bodyObj.llm_mode || sess.llm_mode || 'local_antigravity';
+const modeApiOv = (requestedLlmMode === 'api' && bodyObj.mode_api_override && typeof bodyObj.mode_api_override === 'object')
+? bodyObj.mode_api_override
+: null;
+const apiKey = requestedLlmMode === 'api' && modeApiOv
+? String(modeApiOv.api_key || '').replace(/^Bearer\s+/i, '').trim()
+: '';
 let userText = (bodyObj.content || '').trim();
 let priorVersions = [];
 const editMid = Number(bodyObj.edit_message_id || 0);
@@ -2411,9 +2417,12 @@ let usage = null;
 const enableThink = isNative ? sess.ds_thinking === 1 : sess.enable_inner_thought === 1;
 const prefix = String(bodyObj.assistant_prefix || '');
 if (apiKey) {
-const ep = resolveEndpoints(dbObj.settings.deepseek_base_url);
+const rawOvUrl = modeApiOv?.provider === 'custom_cloud'
+? (modeApiOv.base_url || 'https://api.siliconflow.cn/v1/chat/completions')
+: 'https://api.deepseek.com/v1/chat/completions';
+const ep = resolveEndpoints(rawOvUrl);
 const isOfficialDs = ep.chatUrl.includes('deepseek.com');
-const savedModel = (dbObj.settings.deepseek_model || '').trim();
+const savedModel = String(modeApiOv?.model || '').trim();
 let model = 'deepseek-chat';
 if (isOfficialDs) {
 model = enableThink ? 'deepseek-reasoner' : 'deepseek-chat';
@@ -5225,13 +5234,108 @@ lastInteractionAt: Date.now(),
 hasMoreMessages: false,
 totalMessages: 0,
 oldestMessageId: 0,
-appVersion: '2.6.5',
+appVersion: '2.7.0',
 tourIndex: 0,
 tourActive: false,
-llmMode: localStorage.getItem('user_llm_mode') || 'local_antigravity',
+llmMode: 'local_antigravity',
 localModel: localStorage.getItem('user_local_model') || 'DeepSeek-V4.1-Flash',
 antigravityStatus: { available: true, models: [], default_model: 'DeepSeek-V4.1-Flash', checked: false }
 };
+const MODE_API_STORAGE_KEYS = {
+deepseek: 'xingyu_api_cfg_deepseek_v1',
+roleplay: 'xingyu_api_cfg_roleplay_v1'
+};
+const DEFAULT_MODE_API_CFG = {
+channel: 'local_antigravity',
+lastApiChannel: 'own_deepseek',
+ownKey: '',
+cloudKey: '',
+cloudUrl: 'https://api.siliconflow.cn/v1/chat/completions',
+cloudModel: 'deepseek-ai/DeepSeek-V4.1-Flash'
+};
+function getActiveChatScope(overrideScope) {
+if (overrideScope === 'deepseek' || overrideScope === 'roleplay') return overrideScope;
+if (state.uiMode === 'deepseek') return 'deepseek';
+if (state.uiMode === 'roleplay') return 'roleplay';
+return state.activeSession?.session_mode === 'deepseek_native' ? 'deepseek' : 'roleplay';
+}
+function getModeApiConfig(scopeInput) {
+const scope = getActiveChatScope(scopeInput);
+const key = MODE_API_STORAGE_KEYS[scope] || MODE_API_STORAGE_KEYS.deepseek;
+try {
+const raw = localStorage.getItem(key);
+if (raw) {
+const parsed = JSON.parse(raw);
+if (parsed && typeof parsed === 'object') {
+const ch = parsed.channel === 'own_deepseek' || parsed.channel === 'custom_cloud'
+? parsed.channel
+: 'local_antigravity';
+return {
+...DEFAULT_MODE_API_CFG,
+...parsed,
+channel: ch,
+lastApiChannel: parsed.lastApiChannel === 'custom_cloud' ? 'custom_cloud' : 'own_deepseek',
+ownKey: String(parsed.ownKey || '').trim(),
+cloudKey: String(parsed.cloudKey || '').trim(),
+cloudUrl: String(parsed.cloudUrl || DEFAULT_MODE_API_CFG.cloudUrl).trim(),
+cloudModel: String(parsed.cloudModel || DEFAULT_MODE_API_CFG.cloudModel).trim()
+};
+}
+}
+} catch {}
+return { ...DEFAULT_MODE_API_CFG };
+}
+function saveModeApiConfig(scopeInput, patch) {
+const scope = getActiveChatScope(scopeInput);
+const key = MODE_API_STORAGE_KEYS[scope] || MODE_API_STORAGE_KEYS.deepseek;
+const prev = getModeApiConfig(scope);
+const next = { ...prev, ...(patch || {}) };
+if (next.channel === 'own_deepseek' || next.channel === 'custom_cloud') {
+next.lastApiChannel = next.channel;
+} else {
+next.channel = 'local_antigravity';
+}
+next.ownKey = String(next.ownKey || '').trim();
+next.cloudKey = String(next.cloudKey || '').trim();
+next.cloudUrl = String(next.cloudUrl || DEFAULT_MODE_API_CFG.cloudUrl).trim();
+next.cloudModel = String(next.cloudModel || DEFAULT_MODE_API_CFG.cloudModel).trim();
+try {
+localStorage.setItem(key, JSON.stringify(next));
+} catch {}
+return next;
+}
+function buildModeApiOverride(scopeInput) {
+const scope = getActiveChatScope(scopeInput);
+const cfg = getModeApiConfig(scope);
+if (cfg.channel === 'local_antigravity') return null;
+if (cfg.channel === 'custom_cloud') {
+return {
+scope,
+provider: 'custom_cloud',
+api_key: cfg.cloudKey,
+base_url: cfg.cloudUrl || DEFAULT_MODE_API_CFG.cloudUrl,
+model: cfg.cloudModel || DEFAULT_MODE_API_CFG.cloudModel
+};
+}
+return {
+scope,
+provider: 'own_deepseek',
+api_key: cfg.ownKey,
+base_url: 'https://api.deepseek.com/v1/chat/completions',
+model: 'deepseek-flash'
+};
+}
+function syncStateLlmModeFromScope(scopeInput) {
+const cfg = getModeApiConfig(scopeInput);
+const mode = cfg.channel === 'local_antigravity' ? 'local_antigravity' : 'api';
+state.llmMode = mode;
+if (state.activeSession) {
+state.activeSession.llm_mode = mode;
+}
+syncLlmModeUi();
+return cfg;
+}
+state.llmMode = getModeApiConfig('deepseek').channel === 'local_antigravity' ? 'local_antigravity' : 'api';
 const SESSION_CACHE_MAX = 24;
 const SESSION_RECONCILE_COOLDOWN_MS = 15000;
 const SESSION_PREFETCH_FRESH_MS = 30000;
@@ -7754,16 +7858,17 @@ gatewaySummaryText.textContent = '星耀在线模型';
 }
 }
 function syncLlmModeUi() {
-const activeLlmMode = state.llmMode || state.activeSession?.llm_mode || 'local_antigravity';
-const isLocal = activeLlmMode === 'local_antigravity';
+const scope = getActiveChatScope();
+const scopeCfg = getModeApiConfig(scope);
+const scopeLabel = scope === 'deepseek' ? 'DeepSeek 聊天' : '星语剧场';
+const isLocal = scopeCfg.channel === 'local_antigravity';
+const isDsOwn = scopeCfg.channel === 'own_deepseek';
+const isCustomCloud = scopeCfg.channel === 'custom_cloud';
 const btnLlmMode = document.getElementById('ds-toggle-llm-mode');
 const labelLlmMode = document.getElementById('ds-llm-mode-label');
 const modeIconSlot = document.getElementById('ds-mode-icon-slot');
 const dsModelPill = document.getElementById('ds-model-pill');
 const dsThinkOn = state.activeSession ? state.activeSession.ds_thinking !== 0 : true;
-const p = state.settings?.provider || 'online';
-const isDsOwn = p === 'own_deepseek';
-const isCustomCloud = p === 'custom_cloud';
 if (btnLlmMode) {
 btnLlmMode.classList.toggle('active', isLocal);
 btnLlmMode.classList.toggle('mode-api', !isLocal);
@@ -7778,36 +7883,37 @@ if (isLocal) {
 labelLlmMode.textContent = '本地直连';
 } else if (isCustomCloud) {
 labelLlmMode.textContent = '云端 API';
-} else if (isDsOwn) {
-labelLlmMode.textContent = 'DeepSeek API';
 } else {
-labelLlmMode.textContent = '云端 API';
+labelLlmMode.textContent = 'DeepSeek API';
 }
 }
 btnLlmMode.title = isLocal
-? '当前为【本地极速直连模式（DeepSeek · 深度思考）】\n点击切换为【API 模式】'
-: `当前为【${isDsOwn ? 'DeepSeek 官方 API' : isCustomCloud ? '云端自定义 API' : '云端 API'}】\n点击切换为【本地直连模式】`;
+? `当前【${scopeLabel}】使用：本地直连（独立配置）\n点击切换为 API 模式`
+: `当前【${scopeLabel}】使用：${isDsOwn ? 'DeepSeek 官方 API' : '云端自定义 API'}（独立配置）\n点击切回本地直连`;
 }
 if (dsModelPill) {
 if (isLocal) {
 dsModelPill.innerHTML = `<span class="ds-badge-dot"></span><span id="ds-model-pill-text">DeepSeek-V4.1-Flash${dsThinkOn ? ' · 深度思考' : ''}</span>`;
-dsModelPill.title = '当前为【本地极速直连模式（DeepSeek · 深度思考）】点击可切换至【API 模式】';
+dsModelPill.title = `当前【${scopeLabel}】为本地极速直连模式，点击切换至 API 模式`;
 } else {
 let basePillName = 'DeepSeek-V4.1-Flash';
 if (isCustomCloud) {
-const rawCloudModel = state.settings?.custom_cloud_model || '';
+const rawCloudModel = scopeCfg.cloudModel || '';
 basePillName = rawCloudModel.replace(/^.*\//, '') || '云端定制模型';
-} else if (isDsOwn) {
-basePillName = 'DeepSeek-V4.1-Flash';
 }
 dsModelPill.innerHTML = `<span class="ds-badge-dot mode-api"></span><span id="ds-model-pill-text">${dsThinkOn ? `${basePillName} · 深度思考` : basePillName}</span>`;
-dsModelPill.title = `当前为【${isDsOwn ? 'DeepSeek 官方直连' : isCustomCloud ? '自定义云端 API' : '云端模式'}】点击可切换至【本地直连】`;
+dsModelPill.title = `当前【${scopeLabel}】为${isDsOwn ? 'DeepSeek 官方 API' : '云端自定义 API'}，点击切回本地直连`;
 }
 }
 }
 async function toggleLlmMode() {
-const currentMode = state.llmMode || state.activeSession?.llm_mode || 'local_antigravity';
-const nextMode = currentMode === 'local_antigravity' ? 'api' : 'local_antigravity';
+const scope = getActiveChatScope();
+const scopeLabel = scope === 'deepseek' ? 'DeepSeek 聊天' : '星语剧场';
+const curCfg = getModeApiConfig(scope);
+const isCurrentlyLocal = curCfg.channel === 'local_antigravity';
+const nextChannel = isCurrentlyLocal ? (curCfg.lastApiChannel || 'own_deepseek') : 'local_antigravity';
+const nextMode = nextChannel === 'local_antigravity' ? 'local_antigravity' : 'api';
+const updatedCfg = saveModeApiConfig(scope, { channel: nextChannel });
 state.llmMode = nextMode;
 if (state.activeSession) {
 state.activeSession.llm_mode = nextMode;
@@ -7818,31 +7924,25 @@ if (cached && cached.session) {
 cached.session.llm_mode = nextMode;
 }
 }
-try {
-localStorage.setItem('user_llm_mode', nextMode);
-} catch {}
 syncLlmModeUi();
-const isNextLocal = nextMode === 'local_antigravity';
+const isNextLocal = nextChannel === 'local_antigravity';
 let switchNotice = '';
 if (isNextLocal) {
-if (state.antigravityStatus?.checked && state.antigravityStatus.available === false) {
-switchNotice = '已切换至【本地直连模式】。未检测到本地引擎环境，建议切换为「云端 API 模式」';
+switchNotice = `【${scopeLabel}】已切回本地直连模式（不影响其他模式）`;
 } else {
-switchNotice = '已切换至：本地极速直连模式 (DeepSeek-V4.1-Flash)';
-}
+const hasKey = updatedCfg.channel === 'custom_cloud'
+? Boolean(updatedCfg.cloudKey)
+: Boolean(updatedCfg.ownKey);
+if (!hasKey) {
+switchNotice = `【${scopeLabel}】已切至 API 模式，请点击「设置」填入当前模式的 API 密钥`;
 } else {
-const hasApiKey = Boolean(state.settings?.own_deepseek_api_key_masked || state.settings?.has_own_deepseek_key);
-const isOwnProvider = state.settings?.provider === 'own_deepseek';
-if (isOwnProvider && !hasApiKey) {
-switchNotice = '已切换至【云端 API 模式】。您尚未配置 API 密钥，请在「设置」中填入密钥，或随时切回「本地直连模式」开箱即用';
-} else {
-switchNotice = '已切换至：云端 API 模式';
+switchNotice = `【${scopeLabel}】已切至${updatedCfg.channel === 'custom_cloud' ? '云端自定义 API' : 'DeepSeek 官方 API'}模式`;
 }
 }
 if (state.activeSessionId) {
 await patchActiveSessionFlag({ llm_mode: nextMode }, switchNotice);
 } else {
-showToast(switchNotice, 3600);
+showToast(switchNotice, 3200);
 }
 syncLlmModeUi();
 }
@@ -11568,12 +11668,17 @@ chatInput.focus();
 return;
 }
 if (!regenerate && !trimmed && stagedFiles.length === 0) return;
-const activeLlmMode = state.llmMode || state.activeSession?.llm_mode || 'local_antigravity';
+const activeScope = getActiveChatScope();
+const activeScopeCfg = getModeApiConfig(activeScope);
+const activeLlmMode = activeScopeCfg.channel === 'local_antigravity' ? 'local_antigravity' : 'api';
+const activeApiOverride = buildModeApiOverride(activeScope);
 if (activeLlmMode === 'api') {
-const isOwnProvider = state.settings?.provider === 'own_deepseek';
-const hasKey = Boolean(state.settings?.own_deepseek_api_key_masked || state.settings?.has_own_deepseek_key);
-if (isOwnProvider && !hasKey) {
-showToast('⚠️ 您当前处于【云端 API 模式】，但尚未配置 API 密钥。已为您打开「设置」，填入密钥或切回「本地直连」即可开始对话', 5000);
+const hasScopeKey = activeScopeCfg.channel === 'custom_cloud'
+? Boolean(activeScopeCfg.cloudKey)
+: Boolean(activeScopeCfg.ownKey);
+if (!hasScopeKey) {
+const scopeName = activeScope === 'deepseek' ? 'DeepSeek 聊天' : '星语剧场';
+showToast(`⚠️ 【${scopeName}】当前处于 API 模式，但尚未配置独立 API 密钥。已打开独立配置或可切回「本地直连」`, 4500);
 window.__dsOpenSettings();
 return;
 }
@@ -11731,6 +11836,7 @@ attachments: stagedFiles,
 assistant_prefix: assistantPrefix,
 include_follow_ups: isShowFollowUpsEnabled(),
 llm_mode: activeLlmMode,
+mode_api_override: activeApiOverride,
 local_model: state.localModel || state.activeSession?.local_model || 'DeepSeek-V4.1-Flash'
 }),
 signal: abortController.signal
@@ -12515,13 +12621,11 @@ shouldPreserveExistingOlder = true;
 state.activeSessionId = sessionId;
 state.activeSession = data.session;
 state.activePersona = data.persona;
-const userPrefLlmMode = localStorage.getItem('user_llm_mode');
-if (userPrefLlmMode) {
-state.llmMode = userPrefLlmMode;
-if (data.session) data.session.llm_mode = userPrefLlmMode;
-} else if (data.session?.llm_mode) {
-state.llmMode = data.session.llm_mode;
-}
+const sessScope = data.session?.session_mode === 'deepseek_native' ? 'deepseek' : 'roleplay';
+const sessScopeCfg = getModeApiConfig(sessScope);
+const resolvedSessLlmMode = sessScopeCfg.channel === 'local_antigravity' ? 'local_antigravity' : 'api';
+state.llmMode = resolvedSessLlmMode;
+if (data.session) data.session.llm_mode = resolvedSessLlmMode;
 if (data.session?.local_model) {
 state.localModel = data.session.local_model;
 }
@@ -12820,12 +12924,13 @@ applyUiModeVisuals('roleplay');
 }
 const targetSessionMode =
 forceSessionMode || (state.theaterSubMode === 'character' ? 'character_chat' : 'roleplay');
+const rpDefaultMode = getModeApiConfig('roleplay').channel === 'local_antigravity' ? 'local_antigravity' : 'api';
 const res = await apiJson('/api/sessions', {
 method: 'POST',
 body: JSON.stringify({
 persona_id: personaId,
 session_mode: targetSessionMode,
-llm_mode: state.llmMode || 'local_antigravity',
+llm_mode: rpDefaultMode,
 local_model: state.localModel || 'DeepSeek-V4.1-Flash',
 ...(customTitle ? { title: customTitle } : {})
 })
@@ -12856,6 +12961,7 @@ try {
 if (state.uiMode !== 'deepseek' && state.uiMode !== 'phone-agent') {
 applyUiModeVisuals('deepseek');
 }
+const dsDefaultMode = getModeApiConfig('deepseek').channel === 'local_antigravity' ? 'local_antigravity' : 'api';
 const res = await apiJson('/api/sessions', {
 method: 'POST',
 body: JSON.stringify({
@@ -12863,7 +12969,7 @@ persona_id: personaId,
 session_mode: 'deepseek_native',
 ds_thinking: true,
 ds_search: false,
-llm_mode: state.llmMode || 'local_antigravity',
+llm_mode: dsDefaultMode,
 local_model: state.localModel || 'DeepSeek-V4.1-Flash'
 })
 });
@@ -13695,7 +13801,65 @@ restoreSettingsSnapshot(settingsInitialSnapshot);
 }
 settingsInitialSnapshot = null;
 });
+function maskLocalKey(k) {
+const s = String(k || '').trim();
+if (!s) return '';
+if (s.length <= 6) return `••••${s.slice(-2)}`;
+return `••••${s.slice(-4)}`;
+}
+function syncScopedApiModalFields(scopeInput) {
+const scope = getActiveChatScope(scopeInput);
+const scopeCfg = getModeApiConfig(scope);
+const scopeName = scope === 'deepseek' ? 'DeepSeek 聊天模式' : '星语剧场 · 剧情模式';
+const bannerEl = document.getElementById('settings-mode-scope-banner');
+if (bannerEl) {
+bannerEl.textContent = `当前配置作用域：${scopeName}（默认本地直连 · 与其他模式 100% 独立隔离）`;
+}
+const hasSavedDsKey = Boolean(scopeCfg.ownKey);
+const hasSavedCloudKey = Boolean(scopeCfg.cloudKey);
+const dsMaskBadge = document.getElementById('own-api-mask-badge');
+if (dsMaskBadge) {
+dsMaskBadge.textContent = hasSavedDsKey ? '已配置' : 'V4.1 Flash';
+}
+const clearDsWrap = document.getElementById('clear-own-ds-key-wrap');
+const clearDsChk = document.getElementById('st-clear-own-ds-key');
+if (clearDsWrap) clearDsWrap.classList.toggle('hidden', !hasSavedDsKey);
+if (clearDsChk) clearDsChk.checked = false;
+const dsKeyInp = document.getElementById('st-own-ds-key');
+if (dsKeyInp) {
+dsKeyInp.value = '';
+dsKeyInp.type = 'password';
+dsKeyInp.placeholder = hasSavedDsKey
+? `已保存【${scopeName}】密钥 ${maskLocalKey(scopeCfg.ownKey)}（留空保持不变）`
+: `粘贴【${scopeName}】专属 DeepSeek 密钥`;
+}
+const cloudMaskBadge = document.getElementById('custom-cloud-mask-badge');
+if (cloudMaskBadge) {
+cloudMaskBadge.textContent = hasSavedCloudKey ? '已配置' : '自由定制';
+}
+const clearCloudWrap = document.getElementById('clear-custom-cloud-key-wrap');
+const clearCloudChk = document.getElementById('st-clear-custom-cloud-key');
+if (clearCloudWrap) clearCloudWrap.classList.toggle('hidden', !hasSavedCloudKey);
+if (clearCloudChk) clearCloudChk.checked = false;
+const cloudKeyInp = document.getElementById('st-custom-cloud-key');
+if (cloudKeyInp) {
+cloudKeyInp.value = '';
+cloudKeyInp.type = 'password';
+cloudKeyInp.placeholder = hasSavedCloudKey
+? `已保存【${scopeName}】云端密钥 ${maskLocalKey(scopeCfg.cloudKey)}（留空保持不变）`
+: `粘贴【${scopeName}】专属云端 API 密钥`;
+}
+const cloudUrlInp = document.getElementById('st-custom-cloud-url');
+if (cloudUrlInp) cloudUrlInp.value = scopeCfg.cloudUrl || DEFAULT_MODE_API_CFG.cloudUrl;
+const cloudModelInp = document.getElementById('st-custom-cloud-model');
+if (cloudModelInp) cloudModelInp.value = scopeCfg.cloudModel || DEFAULT_MODE_API_CFG.cloudModel;
+return scopeCfg;
+}
 function openSettingsModal(focusOwnApi = false) {
+if (state.uiMode === 'phone-agent' && !focusOwnApi && window.PhoneAgent?.openControlSheet) {
+window.PhoneAgent.openControlSheet(false);
+return;
+}
 settingsSavedFlag = false;
 settingsInitialSnapshot = captureSettingsSnapshot();
 const s = state.settings || {};
@@ -13704,14 +13868,14 @@ const settingsFormEl = document.getElementById('settings-form');
 if (settingsFormEl) settingsFormEl.noValidate = true;
 testResultBox?.classList.add('hidden');
 syncOwnApiPrivilegeUi();
-if (s.provider === 'own_deepseek' && unlocked) {
+const activeScope = getActiveChatScope();
+const scopeCfg = syncScopedApiModalFields(activeScope);
+if (scopeCfg.channel === 'own_deepseek' && unlocked) {
 providerSelect.value = 'own_deepseek';
-} else if (s.provider === 'custom_cloud' && unlocked) {
+} else if (scopeCfg.channel === 'custom_cloud' && unlocked) {
 providerSelect.value = 'custom_cloud';
-} else if (s.provider === 'online' || s.provider === 'own_deepseek' || s.provider === 'custom_cloud') {
-providerSelect.value = 'online';
 } else {
-providerSelect.value = 'demo';
+providerSelect.value = 'online';
 }
 const winEl = document.getElementById('st-window');
 const recEl = document.getElementById('st-recall');
@@ -13787,18 +13951,26 @@ const curFont = localStorage.getItem('mfs_font_size') || 'normal';
 fontVal.textContent = curFont === 'large' ? '大' : (curFont === 'small' ? '小' : '标准');
 }
 const keyVal = document.getElementById('mfs-apikey-value');
-const keyInput = document.getElementById('mfs-apikey-input');
-const savedKey = localStorage.getItem('deepseek_user_api_key') || localStorage.getItem('own_deepseek_api_key') || '';
+const mfsScope = state.uiMode === 'phone-agent' ? 'phone-agent' : getActiveChatScope();
 if (keyVal) {
-keyVal.textContent = savedKey ? '已配置 (sk-...)' : '点击直连';
+if (mfsScope === 'phone-agent') {
+const paCfg = window.PhoneAgent?.getConfig ? window.PhoneAgent.getConfig() : {};
+keyVal.textContent = paCfg.execMode === 'local' ? '本地免 API' : (paCfg.apiKey ? '已配专属 Key' : '手机辅助控制台');
+} else {
+const scCfg = getModeApiConfig(mfsScope);
+keyVal.textContent = scCfg.channel === 'own_deepseek'
+? (scCfg.ownKey ? 'DeepSeek API' : 'DeepSeek API (未填)')
+: scCfg.channel === 'custom_cloud'
+? (scCfg.cloudKey ? '云端 API' : '云端 API (未填)')
+: '本地直连 (默认)';
 }
-if (keyInput) {
-keyInput.value = savedKey;
 }
 document.getElementById('mfs-apikey-drawer')?.classList.add('hidden');
 if (focusOwnApi) {
 setTimeout(() => {
-if (typeof window.__openMfsApiKeySheet === 'function') {
+if (mfsScope === 'phone-agent') {
+window.PhoneAgent?.openControlSheet?.(true);
+} else if (typeof window.__openMfsApiKeySheet === 'function') {
 window.__openMfsApiKeySheet();
 }
 }, 40);
@@ -13981,35 +14153,81 @@ mfs.classList.add('hidden');
 document.getElementById('mfs-sub-backdrop')?.addEventListener('click', closeMfsSubSheet);
 document.getElementById('mfs-sub-close')?.addEventListener('click', closeMfsSubSheet);
 const openMfsApiKeySheet = () => {
-const savedKey = localStorage.getItem('deepseek_user_api_key') || localStorage.getItem('own_deepseek_api_key') || '';
+if (state.uiMode === 'phone-agent' && window.PhoneAgent?.openControlSheet) {
+document.getElementById('mobile-fullscreen-settings')?.classList.add('hidden');
+window.PhoneAgent.openControlSheet(true);
+return;
+}
+const scope = getActiveChatScope();
+const scopeTitle = scope === 'deepseek' ? 'DeepSeek 聊天模式' : '星语剧场 · 剧情模式';
+const curCfg = getModeApiConfig(scope);
+let chosenChannel = curCfg.channel || 'local_antigravity';
 const eyeOpenSvg = `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>`;
 const eyeOffSvg = `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>`;
 openMfsSubSheet({
-title: '个人 API 密钥',
-subtitle: '使用你自己的 DeepSeek 官网密钥直连推理，密钥仅存本地沙盒',
+title: `${scopeTitle} · 模型通道`,
+subtitle: '仅作用于当前模式，默认本地直连，与其它模式完全隔离',
 bodyHtml: `
-          <div class="mfs-official-guide-box">
-            <ol class="mfs-official-steps">
-              <li>打开 DeepSeek 官方控制台，在左侧「API keys」创建并复制 <code>sk-...</code> 密钥；</li>
-              <li>粘贴到下方输入框并保存，即可解锁直连对话与手机辅助规划。</li>
-            </ol>
-            <button type="button" class="mfs-official-link-btn" id="mfs-sheet-official-btn">
-              <span>前往 DeepSeek 官网获取密钥 (platform.deepseek.com) ↗</span>
-            </button>
+          <div class="mfs-seg-row" id="mfs-scope-channel-tabs" style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:12px;">
+            <button type="button" class="mfs-sheet-btn-secondary ${chosenChannel === 'local_antigravity' ? 'is-active' : ''}" data-mfs-ch="local_antigravity" style="padding:8px 6px;font-size:12px;">本地直连</button>
+            <button type="button" class="mfs-sheet-btn-secondary ${chosenChannel === 'own_deepseek' ? 'is-active' : ''}" data-mfs-ch="own_deepseek" style="padding:8px 6px;font-size:12px;">DeepSeek API</button>
+            <button type="button" class="mfs-sheet-btn-secondary ${chosenChannel === 'custom_cloud' ? 'is-active' : ''}" data-mfs-ch="custom_cloud" style="padding:8px 6px;font-size:12px;">云端自定义</button>
           </div>
-          <div class="mfs-field-block">
-            <label class="mfs-field-label" for="mfs-sheet-apikey-input">DeepSeek API Key</label>
-            <div class="mfs-sheet-input-wrap">
-              <input type="password" class="mfs-sheet-input" id="mfs-sheet-apikey-input" value="${escapeHtml(savedKey)}" placeholder="粘贴 sk-... 开头的官网密钥" autocomplete="off" />
-              <button type="button" class="mfs-sheet-eye-btn" id="mfs-sheet-eye-btn" aria-label="显示或隐藏密钥">${eyeOpenSvg}</button>
+          <div id="mfs-ch-pane-local" class="${chosenChannel === 'local_antigravity' ? '' : 'hidden'}" style="padding:12px;border-radius:12px;background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.22);font-size:12.5px;line-height:1.55;">
+            <strong>当前已就绪 · 本地直连（默认）</strong><br/>无需填写任何 API Key，直接返回聊天即可开箱即用。
+          </div>
+          <div id="mfs-ch-pane-own" class="${chosenChannel === 'own_deepseek' ? '' : 'hidden'}">
+            <div class="mfs-field-block">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+                <label class="mfs-field-label" for="mfs-sheet-apikey-input" style="margin:0;">DeepSeek 官网密钥</label>
+                <button type="button" class="mfs-official-link-btn" id="mfs-sheet-official-btn" style="padding:3px 8px;font-size:11.5px;">获取密钥 ↗</button>
+              </div>
+              <div class="mfs-sheet-input-wrap">
+                <input type="password" class="mfs-sheet-input" id="mfs-sheet-apikey-input" value="${escapeHtml(curCfg.ownKey)}" placeholder="粘贴 sk-... 官网密钥（仅存本模式）" autocomplete="off" />
+                <button type="button" class="mfs-sheet-eye-btn" id="mfs-sheet-eye-btn" aria-label="显示或隐藏密钥">${eyeOpenSvg}</button>
+              </div>
+            </div>
+          </div>
+          <div id="mfs-ch-pane-cloud" class="${chosenChannel === 'custom_cloud' ? '' : 'hidden'}">
+            <div class="mfs-field-block" style="margin-bottom:8px;">
+              <label class="mfs-field-label" for="mfs-sheet-cloud-url">接口地址 (Base URL)</label>
+              <input type="url" class="mfs-sheet-input" id="mfs-sheet-cloud-url" value="${escapeHtml(curCfg.cloudUrl)}" placeholder="https://api.siliconflow.cn/v1/chat/completions" />
+            </div>
+            <div class="mfs-field-block" style="margin-bottom:8px;">
+              <label class="mfs-field-label" for="mfs-sheet-cloud-model">模型名称</label>
+              <input type="text" class="mfs-sheet-input" id="mfs-sheet-cloud-model" value="${escapeHtml(curCfg.cloudModel)}" placeholder="deepseek-ai/DeepSeek-V4.1-Flash" />
+            </div>
+            <div class="mfs-field-block">
+              <label class="mfs-field-label" for="mfs-sheet-cloud-key">云端 API Key</label>
+              <input type="password" class="mfs-sheet-input" id="mfs-sheet-cloud-key" value="${escapeHtml(curCfg.cloudKey)}" placeholder="粘贴第三方云端密钥" autocomplete="off" />
             </div>
           </div>`,
 footerHtml: `
-          <button type="button" class="mfs-sheet-btn-secondary" id="mfs-sheet-key-clear">清除密钥</button>
-          <button type="button" class="mfs-sheet-btn-primary" id="mfs-sheet-key-save">保存直连密钥</button>`,
+          <button type="button" class="mfs-sheet-btn-secondary" id="mfs-sheet-key-clear">恢复本地直连</button>
+          <button type="button" class="mfs-sheet-btn-primary" id="mfs-sheet-key-save">保存本模式配置</button>`,
 onMount: ({ bodyEl, footerEl, close }) => {
 const inp = bodyEl.querySelector('#mfs-sheet-apikey-input');
 const eyeBtn = bodyEl.querySelector('#mfs-sheet-eye-btn');
+const cloudUrlInp = bodyEl.querySelector('#mfs-sheet-cloud-url');
+const cloudModelInp = bodyEl.querySelector('#mfs-sheet-cloud-model');
+const cloudKeyInp = bodyEl.querySelector('#mfs-sheet-cloud-key');
+const syncSheetChannel = (nextCh) => {
+chosenChannel = nextCh;
+bodyEl.querySelectorAll('[data-mfs-ch]').forEach((btn) => {
+const active = btn.getAttribute('data-mfs-ch') === nextCh;
+btn.classList.toggle('is-active', active);
+btn.style.borderColor = active ? '#4d6bfe' : '';
+btn.style.color = active ? '#4d6bfe' : '';
+btn.style.fontWeight = active ? '700' : '500';
+});
+bodyEl.querySelector('#mfs-ch-pane-local')?.classList.toggle('hidden', nextCh !== 'local_antigravity');
+bodyEl.querySelector('#mfs-ch-pane-own')?.classList.toggle('hidden', nextCh !== 'own_deepseek');
+bodyEl.querySelector('#mfs-ch-pane-cloud')?.classList.toggle('hidden', nextCh !== 'custom_cloud');
+};
+syncSheetChannel(chosenChannel);
+bodyEl.querySelectorAll('[data-mfs-ch]').forEach((btn) => {
+btn.addEventListener('click', () => syncSheetChannel(btn.getAttribute('data-mfs-ch') || 'local_antigravity'));
+});
 bodyEl.querySelector('#mfs-sheet-official-btn')?.addEventListener('click', openDeepSeekOfficialKeyPage);
 eyeBtn?.addEventListener('click', () => {
 if (!inp) return;
@@ -14017,30 +14235,31 @@ const show = inp.type === 'password';
 inp.type = show ? 'text' : 'password';
 eyeBtn.innerHTML = show ? eyeOffSvg : eyeOpenSvg;
 });
-const applyKey = (val) => {
-const clean = String(val || '').trim();
-if (clean) {
-localStorage.setItem('deepseek_user_api_key', clean);
-localStorage.setItem('own_deepseek_api_key', clean);
-} else {
-localStorage.removeItem('deepseek_user_api_key');
-localStorage.removeItem('own_deepseek_api_key');
-}
-const desktopInput = document.getElementById('st-own-ds-key');
-if (desktopInput) desktopInput.value = clean;
-const oldInput = document.getElementById('mfs-apikey-input');
-if (oldInput) oldInput.value = clean;
+const commitScope = (resetToLocal = false) => {
+const patch = resetToLocal
+? { channel: 'local_antigravity' }
+: {
+channel: chosenChannel,
+ownKey: (inp?.value || '').trim(),
+cloudUrl: (cloudUrlInp?.value || DEFAULT_MODE_API_CFG.cloudUrl).trim(),
+cloudModel: (cloudModelInp?.value || DEFAULT_MODE_API_CFG.cloudModel).trim(),
+cloudKey: (cloudKeyInp?.value || '').trim()
+};
+const saved = saveModeApiConfig(scope, patch);
+syncStateLlmModeFromScope(scope);
 const keyVal = document.getElementById('mfs-apikey-value');
-if (keyVal) keyVal.textContent = clean ? '已配置 (sk-...)' : '点击直连';
-if (window.PhoneAgent && typeof window.PhoneAgent.setDirectApiKey === 'function') {
-window.PhoneAgent.setDirectApiKey(clean);
+if (keyVal) {
+keyVal.textContent = saved.channel === 'own_deepseek'
+? 'DeepSeek API'
+: saved.channel === 'custom_cloud'
+? '云端 API'
+: '本地直连 (默认)';
 }
 close();
-showToast(clean ? 'DeepSeek 官方 API 密钥已保存至本地沙盒' : '已清除个人 API 密钥');
+showToast(`已更新【${scopeTitle}】独立通道（不影响其他模式）`);
 };
-footerEl.querySelector('#mfs-sheet-key-clear')?.addEventListener('click', () => applyKey(''));
-footerEl.querySelector('#mfs-sheet-key-save')?.addEventListener('click', () => applyKey(inp?.value || ''));
-setTimeout(() => inp?.focus(), 60);
+footerEl.querySelector('#mfs-sheet-key-clear')?.addEventListener('click', () => commitScope(true));
+footerEl.querySelector('#mfs-sheet-key-save')?.addEventListener('click', () => commitScope(false));
 }
 });
 };
@@ -14817,7 +15036,8 @@ btn.disabled = true;
 btn.textContent = '正在帮您测试连接…';
 testResultBox?.classList.add('hidden');
 try {
-const draftKey = document.getElementById('st-own-ds-key')?.value.trim() || '';
+const scopeCfg = getModeApiConfig(getActiveChatScope());
+const draftKey = document.getElementById('st-own-ds-key')?.value.trim() || scopeCfg.ownKey || '';
 const res = await apiJson('/api/settings/verify-own-key', {
 method: 'POST',
 body: JSON.stringify({
@@ -14852,9 +15072,10 @@ btn.disabled = true;
 btn.textContent = '正在测试云端连接…';
 testResultBox?.classList.add('hidden');
 try {
-const draftKey = document.getElementById('st-custom-cloud-key')?.value.trim() || '';
-const draftUrl = document.getElementById('st-custom-cloud-url')?.value.trim() || 'https://api.siliconflow.cn/v1/chat/completions';
-const draftModel = document.getElementById('st-custom-cloud-model')?.value.trim() || 'deepseek-ai/DeepSeek-V4.1-Flash';
+const scopeCfg = getModeApiConfig(getActiveChatScope());
+const draftKey = document.getElementById('st-custom-cloud-key')?.value.trim() || scopeCfg.cloudKey || '';
+const draftUrl = document.getElementById('st-custom-cloud-url')?.value.trim() || scopeCfg.cloudUrl || 'https://api.siliconflow.cn/v1/chat/completions';
+const draftModel = document.getElementById('st-custom-cloud-model')?.value.trim() || scopeCfg.cloudModel || 'deepseek-ai/DeepSeek-V4.1-Flash';
 const res = await apiJson('/api/settings/verify-own-key', {
 method: 'POST',
 body: JSON.stringify({
@@ -14929,7 +15150,35 @@ submitBtn.textContent = '正在保存…';
 }
 testResultBox?.classList.add('hidden');
 try {
+const activeScope = getActiveChatScope();
+const scopeTitle = activeScope === 'deepseek' ? 'DeepSeek 聊天模式' : '星语剧场 · 剧情模式';
+const chosenProv = providerSelect?.value || 'online';
+const clearDs = Boolean(document.getElementById('st-clear-own-ds-key')?.checked);
+const clearCloud = Boolean(document.getElementById('st-clear-custom-cloud-key')?.checked);
+const prevScopeCfg = getModeApiConfig(activeScope);
+let nextChannel = 'local_antigravity';
+if (chosenProv === 'own_deepseek' && !clearDs) nextChannel = 'own_deepseek';
+else if (chosenProv === 'custom_cloud' && !clearCloud) nextChannel = 'custom_cloud';
+const typedOwnKey = (document.getElementById('st-own-ds-key')?.value || '').trim();
+const typedCloudKey = (document.getElementById('st-custom-cloud-key')?.value || '').trim();
+const typedCloudUrl = normalizeSettingsUrlInput(document.getElementById('st-custom-cloud-url')?.value) || prevScopeCfg.cloudUrl;
+const typedCloudModel = (document.getElementById('st-custom-cloud-model')?.value || '').trim() || prevScopeCfg.cloudModel;
+saveModeApiConfig(activeScope, {
+channel: nextChannel,
+ownKey: clearDs ? '' : (typedOwnKey || prevScopeCfg.ownKey),
+cloudKey: clearCloud ? '' : (typedCloudKey || prevScopeCfg.cloudKey),
+cloudUrl: typedCloudUrl,
+cloudModel: typedCloudModel
+});
+syncStateLlmModeFromScope(activeScope);
 const draftPayload = collectSettingsPayload();
+delete draftPayload.provider;
+delete draftPayload.own_deepseek_api_key;
+delete draftPayload.clear_own_deepseek_key;
+delete draftPayload.custom_cloud_api_key;
+delete draftPayload.clear_custom_cloud_key;
+delete draftPayload.custom_cloud_api_url;
+delete draftPayload.custom_cloud_model;
 const abortCtrl = new AbortController();
 const timeoutId = setTimeout(() => abortCtrl.abort(), 12000);
 let res;
@@ -14970,17 +15219,14 @@ console.warn('[Settings] 活跃会话状态同步跳过（不阻断全局设置�
 }
 }
 renderUserAndMembership();
+syncStateLlmModeFromScope(activeScope);
 window.DeepSeekMonitorPlugin?.sync({
 settings: state.settings,
 messages: state.messages,
 forceBalanceRefresh: true
 });
 settingsDialog.close();
-if (res.settings.provider === 'own_deepseek') {
-showToast('您的个人 API 直连已保存生效！DeepSeek 原生对话与角色扮演剧场均可直连畅聊！');
-} else {
-showToast('游戏画面与语音偏好设置已保存');
-}
+showToast(`已保存【${scopeTitle}】独立通道配置（不影响其他模式）`);
 if (state.activeSessionId) {
 loadSession(state.activeSessionId).catch(() => {});
 }
@@ -16501,6 +16747,7 @@ await startNativeDeepSeekSession('persona_deepseek_official');
 const firstRp = state.personas.find((p) => p.id !== 'persona_deepseek_official');
 if (firstRp) await startSessionWithPersona(firstRp.id);
 }
+syncStateLlmModeFromScope(isDs ? 'deepseek' : 'roleplay');
 if (isDs) {
 showToast('已切换至 DeepSeek 问答模式（独立记忆、深度思考与联网搜索已就绪）');
 } else {
@@ -19426,8 +19673,8 @@ runCloneBtn.innerHTML = origHtml;
 })();
 ;
 (() => {
-const CURRENT_APK_VERSION = '2.6.5';
-const CURRENT_APK_CODE = 160;
+const CURRENT_APK_VERSION = '2.7.0';
+const CURRENT_APK_CODE = 161;
 const DEEPSEEK_API_KEYS_URL = 'https://platform.deepseek.com/api_keys';
 const PUBLIC_WEB_ORIGIN = 'https://star.claudexxb.online';
 const GITHUB_RELEASES_URL = 'https://github.com/qts2218346424-cyber/persona-chat-studio/releases';
@@ -19440,11 +19687,15 @@ confirmPolicy: 'pa_confirm_policy_v2',
 trustedApps: 'pa_trusted_apps_v1',
 edgeGlow: 'pa_edge_glow_v1',
 exclusiveKey: 'pa_exclusive_api_key_v1',
-keyPrimary: 'deepseek_user_api_key',
-keyFallback: 'own_deepseek_api_key',
+learnedSkills: 'pa_learned_skills_v1',
 taskHistory: 'pa_task_history_v1'
 };
 const LOCAL_COMMAND_CATALOG = [
+{
+id: 'learned',
+title: '已学技能',
+items: []
+},
 {
 id: 'common',
 title: '常用操作',
@@ -19766,12 +20017,7 @@ let model = 'deepseek-chat';
 let baseUrl = '';
 let autoApprove = false;
 try {
-apiKey = (
-localStorage.getItem(STORAGE_KEYS.exclusiveKey) ||
-localStorage.getItem(STORAGE_KEYS.keyPrimary) ||
-localStorage.getItem(STORAGE_KEYS.keyFallback) ||
-''
-).trim();
+apiKey = (localStorage.getItem(STORAGE_KEYS.exclusiveKey) || '').trim();
 model = (localStorage.getItem(STORAGE_KEYS.directModel) || 'deepseek-chat').trim();
 baseUrl = (localStorage.getItem(STORAGE_KEYS.directBaseUrl) || '').trim();
 autoApprove = localStorage.getItem(STORAGE_KEYS.autoApprove) === '1';
@@ -19984,7 +20230,479 @@ $('pa-sheet-backdrop')?.classList.add('hidden');
 $('pa-control-sheet')?.classList.add('hidden');
 $('pa-cfg-toggle-btn')?.setAttribute('aria-expanded', 'false');
 }
+function syncLearnedSkillsToNative(list) {
+try {
+const b = getBridge();
+if (isNativeApk() && b && typeof b.saveLearnedSkillsSummary === 'function') {
+const summary = (Array.isArray(list) ? list : []).slice(0, 12).map((s) => ({
+id: String(s.id || ''),
+name: String(s.name || '').slice(0, 24),
+trigger: String(s.trigger || s.name || '').slice(0, 24),
+stepCount: Array.isArray(s.steps) ? s.steps.length : 0,
+targetApp: String(s.targetApp || '')
+}));
+b.saveLearnedSkillsSummary(JSON.stringify(summary));
+}
+} catch {}
+}
+function loadLearnedSkills() {
+try {
+const raw = localStorage.getItem(STORAGE_KEYS.learnedSkills);
+if (!raw) return [];
+const arr = JSON.parse(raw);
+return Array.isArray(arr) ? arr.filter((s) => s && s.id && s.name && Array.isArray(s.steps)) : [];
+} catch {
+return [];
+}
+}
+function saveLearnedSkills(list) {
+const clean = (Array.isArray(list) ? list : [])
+.filter((s) => s && s.id && s.name && Array.isArray(s.steps))
+.slice(0, 40);
+try {
+localStorage.setItem(STORAGE_KEYS.learnedSkills, JSON.stringify(clean));
+} catch {}
+syncLearnedSkillsToNative(clean);
+renderEmptyGuideLearnedSkills();
+return clean;
+}
+function upsertLearnedSkill(skill) {
+const list = loadLearnedSkills();
+const id = String(skill.id || `skill_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`);
+const nextSkill = {
+id,
+name: String(skill.name || '未命名本地技能').trim().slice(0, 32),
+trigger: String(skill.trigger || skill.name || '').trim().slice(0, 40),
+sourceTask: String(skill.sourceTask || '').trim().slice(0, 120),
+targetApp: String(skill.targetApp || '').trim(),
+targetPackage: String(skill.targetPackage || '').trim(),
+steps: Array.isArray(skill.steps) ? skill.steps.slice(0, 60) : [],
+runCount: Number(skill.runCount) || 0,
+createdAt: Number(skill.createdAt) || Date.now(),
+updatedAt: Date.now()
+};
+const idx = list.findIndex((x) => x.id === id);
+if (idx >= 0) list[idx] = nextSkill;
+else list.unshift(nextSkill);
+saveLearnedSkills(list);
+return nextSkill;
+}
+function deleteLearnedSkill(id) {
+const list = loadLearnedSkills().filter((x) => x.id !== id);
+saveLearnedSkills(list);
+}
+function findMatchingLearnedSkill(inputText) {
+const raw = String(inputText || '').trim();
+if (!raw) return null;
+const list = loadLearnedSkills();
+if (!list.length) return null;
+const idPrefix = raw.match(/^(?:skill:|运行技能[:：]\s*)([a-zA-Z0-9_-]+)/i);
+if (idPrefix) {
+const byId = list.find((s) => s.id === idPrefix[1]);
+if (byId) return byId;
+}
+const norm = (str) => String(str || '').trim().toLowerCase().replace(/[，。！？、\s]+/g, '');
+const targetNorm = norm(raw.replace(/^(?:运行技能|执行技能|执行|运行|重放|回放)\s*[:：]?\s*/i, ''));
+if (!targetNorm) return null;
+const exact = list.find((s) => norm(s.trigger) === targetNorm || norm(s.name) === targetNorm);
+if (exact) return exact;
+return (
+list.find((s) => {
+const t = norm(s.trigger);
+const n = norm(s.name);
+return (t.length >= 2 && targetNorm.includes(t)) || (n.length >= 2 && targetNorm.includes(n));
+}) || null
+);
+}
+function captureRecordableStep(subAct, snapshot, execRes, screenSize) {
+if (!subAct || execRes?.error) return null;
+const tool = subAct.tool || subAct.action || '';
+const args = { ...(subAct.args || subAct.params || {}) };
+if (!tool || tool === 'done' || tool === 'ask_user') return null;
+const SELF_PKG = 'com.deepseek.starwhisper.studio';
+if (snapshot?.packageName === SELF_PKG && tool !== 'phone_open' && tool !== 'launch_app') {
+return null;
+}
+const w = Math.max(360, Number(screenSize?.width) || 1080);
+const h = Math.max(640, Number(screenSize?.height) || 2400);
+const clampR = (v) => Math.max(0.01, Math.min(0.99, Number((Number(v) || 0.5).toFixed(4))));
+let targetNode = null;
+if (args.ref && Array.isArray(snapshot?.nodes)) {
+targetNode = snapshot.nodes.find((n) => n && n.ref === args.ref) || null;
+}
+let rx = null;
+let ry = null;
+if (targetNode && Array.isArray(targetNode.center) && targetNode.center.length >= 2) {
+rx = clampR(targetNode.center[0] / w);
+ry = clampR(targetNode.center[1] / h);
+} else if (Number(execRes?.x) > 0 && Number(execRes?.y) > 0) {
+rx = clampR(execRes.x / w);
+ry = clampR(execRes.y / h);
+} else if (Number(args.x) > 0 && Number(args.y) > 0) {
+rx = clampR(args.x / w);
+ry = clampR(args.y / h);
+}
+return {
+tool,
+summary: String(subAct.summary || formatActionCodeDesc(subAct) || tool).slice(0, 64),
+args: {
+appName: args.appName || '',
+text: args.text !== undefined ? String(args.text) : (targetNode?.text || ''),
+desc: targetNode?.desc || '',
+viewId: targetNode?.viewId || args.viewId || '',
+direction: args.direction || '',
+amount: args.amount !== undefined ? Number(args.amount) : undefined,
+key: args.key || '',
+clear: args.clear,
+submit: Boolean(args.submit || args.autoSubmit),
+ms: args.ms !== undefined ? Number(args.ms) : undefined,
+rx,
+ry,
+rx1: args.x1 !== undefined ? clampR(args.x1 / w) : undefined,
+ry1: args.y1 !== undefined ? clampR(args.y1 / h) : undefined,
+rx2: args.x2 !== undefined ? clampR(args.x2 / w) : undefined,
+ry2: args.y2 !== undefined ? clampR(args.y2 / h) : undefined,
+duration: args.duration !== undefined ? Number(args.duration) : undefined
+},
+targetApp: String(snapshot?.appName || ''),
+targetPackage: String(snapshot?.packageName || ''),
+delayMs: tool === 'phone_open' ? 1100 : tool === 'phone_type' ? 500 : 480
+};
+}
+function renderEmptyGuideLearnedSkills() {
+const box = $('pa-learned-skills-box');
+if (!box) return;
+const skills = loadLearnedSkills();
+if (skills.length === 0) {
+box.innerHTML = `
+        <div class="pa-learned-head">
+          <span class="pa-learned-title">本地已学技能（免 API 离线复用）</span>
+          <button type="button" class="pa-learned-manage-btn" id="pa-empty-open-learned-btn">新建 / 导入</button>
+        </div>
+        <div class="pa-learned-empty-tip">
+          使用 API 跑通任意重复任务后，点击结果卡片下方「✨ 固化为本地技能」，即可保存在本地，下次在「本地免 API」模式零消耗直连执行。
+        </div>
+      `;
+} else {
+box.innerHTML = `
+        <div class="pa-learned-head">
+          <span class="pa-learned-title">本地已学技能 · 一键零 API 运行 (${skills.length})</span>
+          <button type="button" class="pa-learned-manage-btn" id="pa-empty-open-learned-btn">管理技能库</button>
+        </div>
+        <div class="pa-learned-chips">
+          ${skills.slice(0, 6).map((s) => `
+            <button type="button" class="pa-skill-chip" data-run-skill-id="${escapeHtml(s.id)}" title="口令：${escapeHtml(s.trigger || s.name)}（${s.steps.length} 步）">
+              <span class="pa-skill-chip-dot"></span>
+              <span class="pa-skill-chip-name">${escapeHtml(s.name)}</span>
+              <span class="pa-skill-chip-meta">${s.steps.length}步</span>
+            </button>
+          `).join('')}
+        </div>
+      `;
+}
+box.querySelector('#pa-empty-open-learned-btn')?.addEventListener('click', () => {
+activeCmdLibCategory = 'learned';
+const drawer = $('phone-cmd-quick-drawer');
+if (drawer) {
+drawer.classList.remove('hidden');
+$('pa-open-cmdlib-btn')?.classList.add('is-active');
+renderCommandLibraryDrawer();
+}
+});
+box.querySelectorAll('[data-run-skill-id]').forEach((btn) => {
+btn.addEventListener('click', () => {
+const sid = btn.getAttribute('data-run-skill-id') || '';
+if (sid) executeLearnedSkillOffline(sid);
+});
+});
+}
+function openSaveSkillModal({ sourceTask = '', recordedSteps = [], existingSkill = null } = {}) {
+document.getElementById('pa-skill-save-modal')?.remove();
+let draftSteps = (existingSkill?.steps || recordedSteps || []).map((st) => ({
+...st,
+args: { ...(st.args || {}) }
+}));
+const modal = document.createElement('div');
+modal.id = 'pa-skill-save-modal';
+modal.className = 'pa-skill-modal-backdrop';
+const defaultName = existingSkill?.name || String(sourceTask || '自定义本地技能').slice(0, 20) || '自定义本地技能';
+const defaultTrigger = existingSkill?.trigger || defaultName;
+const renderStepsHtml = () => {
+if (draftSteps.length === 0) {
+return '<div class="pa-skill-step-empty">暂无动作步骤，请至少保留 1 步或点击下方「新增步」</div>';
+}
+return draftSteps.map((st, idx) => `
+        <div class="pa-skill-step-row" data-step-idx="${idx}">
+          <span class="pa-skill-step-num">${idx + 1}</span>
+          <div class="pa-skill-step-info">
+            <div class="pa-skill-step-top">
+              <span class="pa-tool-badge">${escapeHtml(st.tool)}</span>
+              <span class="pa-skill-step-sum">${escapeHtml(st.summary || st.args?.text || st.args?.appName || st.tool)}</span>
+            </div>
+            ${st.tool === 'phone_type' || st.tool === 'input' ? `
+              <input type="text" class="pa-skill-step-input" data-edit-text="${idx}" value="${escapeHtml(st.args?.text || '')}" placeholder="输入文本内容" />
+            ` : ''}
+          </div>
+          <button type="button" class="pa-skill-step-del" data-del-step="${idx}" title="移除此步">✕</button>
+        </div>
+      `).join('');
+};
+modal.innerHTML = `
+      <div class="pa-skill-modal" role="dialog" aria-modal="true" aria-label="固化为本地免 API 技能">
+        <div class="pa-skill-modal-head">
+          <div>
+            <h4>${existingSkill ? '编辑本地技能' : '固化为本地技能（免 API 离线复用）'}</h4>
+            <p>保存后可在「本地免 API」模式与悬浮窗中零消耗直接运行</p>
+          </div>
+          <button type="button" class="pa-sheet-close-btn" id="pa-skill-modal-close" aria-label="关闭">✕</button>
+        </div>
+        <div class="pa-skill-modal-body">
+          <div class="pa-cfg-row-2">
+            <div class="pa-cfg-field">
+              <label for="pa-skill-name-inp">技能名称</label>
+              <input type="text" id="pa-skill-name-inp" class="pa-cfg-input" value="${escapeHtml(defaultName)}" maxlength="32" placeholder="如：自动签到领积分" />
+            </div>
+            <div class="pa-cfg-field">
+              <label for="pa-skill-trigger-inp">语音 / 快捷触发口令</label>
+              <input type="text" id="pa-skill-trigger-inp" class="pa-cfg-input" value="${escapeHtml(defaultTrigger)}" maxlength="40" placeholder="说出此口令即可本地直达" />
+            </div>
+          </div>
+          <div class="pa-skill-steps-head">
+            <span>固化动作序列（共 <strong id="pa-skill-step-count">${draftSteps.length}</strong> 步）</span>
+            <button type="button" class="pa-learned-manage-btn" id="pa-skill-add-wait-btn">+ 等待 1 秒</button>
+          </div>
+          <div class="pa-skill-steps-list" id="pa-skill-steps-list">
+            ${renderStepsHtml()}
+          </div>
+        </div>
+        <div class="pa-skill-modal-foot">
+          <button type="button" class="pa-banner-btn subtle" id="pa-skill-modal-cancel">取消</button>
+          <button type="button" class="pa-banner-btn" id="pa-skill-modal-save">保存本地技能</button>
+        </div>
+      </div>
+    `;
+document.body.appendChild(modal);
+const rebindStepEvents = () => {
+const listEl = modal.querySelector('#pa-skill-steps-list');
+const countEl = modal.querySelector('#pa-skill-step-count');
+if (countEl) countEl.textContent = String(draftSteps.length);
+if (!listEl) return;
+listEl.innerHTML = renderStepsHtml();
+listEl.querySelectorAll('[data-del-step]').forEach((btn) => {
+btn.addEventListener('click', () => {
+const i = Number(btn.getAttribute('data-del-step'));
+if (!Number.isNaN(i)) {
+draftSteps.splice(i, 1);
+rebindStepEvents();
+}
+});
+});
+listEl.querySelectorAll('[data-edit-text]').forEach((inp) => {
+inp.addEventListener('input', () => {
+const i = Number(inp.getAttribute('data-edit-text'));
+if (draftSteps[i]) {
+draftSteps[i].args = { ...(draftSteps[i].args || {}), text: inp.value };
+}
+});
+});
+};
+rebindStepEvents();
+const closeModalBox = () => modal.remove();
+modal.querySelector('#pa-skill-modal-close')?.addEventListener('click', closeModalBox);
+modal.querySelector('#pa-skill-modal-cancel')?.addEventListener('click', closeModalBox);
+modal.addEventListener('click', (e) => {
+if (e.target === modal) closeModalBox();
+});
+modal.querySelector('#pa-skill-add-wait-btn')?.addEventListener('click', () => {
+draftSteps.push({ tool: 'phone_wait', summary: '等待 1000ms 页面加载', args: { ms: 1000 }, delayMs: 200 });
+rebindStepEvents();
+});
+modal.querySelector('#pa-skill-modal-save')?.addEventListener('click', () => {
+const name = (modal.querySelector('#pa-skill-name-inp')?.value || '').trim();
+const trigger = (modal.querySelector('#pa-skill-trigger-inp')?.value || name).trim();
+if (!name) {
+showToast('请填写技能名称');
+return;
+}
+if (draftSteps.length === 0) {
+showToast('请至少保留 1 个动作步骤');
+return;
+}
+const firstExt = draftSteps.find((s) => s.targetPackage && s.targetPackage !== 'com.deepseek.starwhisper.studio');
+const saved = upsertLearnedSkill({
+...(existingSkill || {}),
+name,
+trigger: trigger || name,
+sourceTask: existingSkill?.sourceTask || sourceTask,
+targetApp: existingSkill?.targetApp || firstExt?.targetApp || '',
+targetPackage: existingSkill?.targetPackage || firstExt?.targetPackage || '',
+steps: draftSteps
+});
+closeModalBox();
+if (activeCmdLibCategory === 'learned') renderCommandLibraryDrawer();
+showToast(`已固化本地技能「${saved.name}」，免 API 模式直接可用！`);
+});
+}
+async function replayLearnedSkill(skill, cardCtx, signal) {
+const b = getBridge();
+const native = isNativeApk();
+const steps = Array.isArray(skill?.steps) ? skill.steps : [];
+if (!steps.length) {
+addStepItem(cardCtx.stepsList, 1, '技能步骤为空', '', '失败', true, 'skill.empty');
+return { status: 'error', summaryTitle: '该本地技能没有可执行步骤', replyText: '' };
+}
+if (cardCtx.summaryTextEl) {
+cardCtx.summaryTextEl.textContent = `本地技能回放：${skill.name} (0/${steps.length})`;
+}
+if (native && b && steps[0].tool !== 'phone_open' && steps[0].tool !== 'launch_app') {
+const initSnap = readAndFormatSnapshot(false);
+if (initSnap.packageName === 'com.deepseek.starwhisper.studio' && typeof b.returnToLastExternalApp === 'function') {
+if (b.returnToLastExternalApp()) {
+addStepItem(cardCtx.stepsList, 0, '切回目标应用准备离线回放', '免 API 本地技能回放', '已切回', false, 'skill.prep');
+await sleep(550);
+}
+}
+}
+const screenSize = getScreenSizeObj();
+const scrW = Math.max(360, Number(screenSize?.width) || 1080);
+const scrH = Math.max(640, Number(screenSize?.height) || 2400);
+for (let i = 0; i < steps.length; i++) {
+if (signal?.aborted || emergencyStopRequested || (native && b && typeof b.isEmergencyStopRequested === 'function' && b.isEmergencyStopRequested())) {
+if (native && b && typeof b.resetEmergencyStop === 'function') {
+try { b.resetEmergencyStop(); } catch {}
+}
+addStepItem(cardCtx.stepsList, i + 1, '本地技能回放已停止', '', '已中止', true, 'system.stop');
+return { status: 'error', summaryTitle: `已中止技能「${skill.name}」`, replyText: '' };
+}
+const st = steps[i];
+const args = st.args || {};
+const stepLabel = st.summary || st.tool;
+cardCtx.stepCount = i + 1;
+if (cardCtx.summaryTextEl) {
+cardCtx.summaryTextEl.textContent = `离线技能 [${i + 1}/${steps.length}]：${stepLabel}`;
+}
+if (native && b && typeof b.updateFloatState === 'function') {
+try { b.updateFloatState('acting', `技能 ${i + 1}/${steps.length}`); } catch {}
+}
+const rowEl = addStepItem(cardCtx.stepsList, i + 1, stepLabel, '零 API 本地固化技能回放', native ? '执行中' : '演练中', false, `skill.${st.tool}`);
+if (!native) {
+await sleep(220);
+updateStepResult(rowEl, '演练完成', false, true);
+continue;
+}
+let ok = false;
+let detailMsg = '已完成';
+try {
+if (st.tool === 'phone_open' || st.tool === 'launch_app') {
+ok = typeof b.launchAppByName === 'function' ? b.launchAppByName(String(args.appName || '')) : false;
+detailMsg = ok ? `已打开「${args.appName}」` : `打开「${args.appName}」失败`;
+} else if (st.tool === 'phone_tap' || st.tool === 'click_node' || st.tool === 'phone_tap_xy' || st.tool === 'click') {
+const targetTxt = String(args.text || '').trim();
+const targetVid = String(args.viewId || '').trim();
+if (targetTxt && targetTxt.length <= 24 && typeof b.clickByText === 'function') {
+ok = b.clickByText(targetTxt);
+if (ok) detailMsg = `按文本点击「${targetTxt}」`;
+}
+if (!ok && (targetVid || targetTxt || args.desc)) {
+const snap = readAndFormatSnapshot(false);
+const matched = (snap.nodes || []).find((n) =>
+(targetVid && n.viewId === targetVid) ||
+(targetTxt && (n.text === targetTxt || n.desc === targetTxt)) ||
+(args.desc && n.desc === args.desc)
+);
+if (matched && Array.isArray(matched.center) && typeof b.dispatchClick === 'function') {
+ok = b.dispatchClick(matched.center[0], matched.center[1]);
+if (ok) detailMsg = `语义定位点击「${matched.text || matched.desc || targetVid}」`;
+}
+}
+if (!ok && args.rx && args.ry && typeof b.dispatchClick === 'function') {
+const px = Math.round(Number(args.rx) * scrW);
+const py = Math.round(Number(args.ry) * scrH);
+ok = b.dispatchClick(px, py);
+if (ok) detailMsg = `按记忆坐标 (${px}, ${py}) 点击`;
+}
+} else if (st.tool === 'phone_type' || st.tool === 'input') {
+const txt = String(args.text || '');
+ok = typeof b.dispatchSmartInput === 'function'
+? b.dispatchSmartInput(txt, false, Boolean(args.submit))
+: b.dispatchInputText(String(args.viewId || ''), txt);
+detailMsg = ok ? `已填入「${txt.slice(0, 20)}」` : '输入失败';
+} else if (st.tool === 'phone_scroll' || st.tool === 'scroll') {
+ok = typeof b.scrollScreen === 'function'
+? b.scrollScreen(String(args.direction || 'down'), Number(args.amount) || 0.65)
+: b.dispatchSwipe(Math.round(scrW * 0.5), Math.round(scrH * 0.72), Math.round(scrW * 0.5), Math.round(scrH * 0.28), 320);
+detailMsg = ok ? `向 ${args.direction || 'down'} 滚动` : '滚动失败';
+} else if (st.tool === 'phone_swipe' || st.tool === 'swipe') {
+const x1 = Math.round((Number(args.rx1) || 0.5) * scrW);
+const y1 = Math.round((Number(args.ry1) || 0.72) * scrH);
+const x2 = Math.round((Number(args.rx2) || 0.5) * scrW);
+const y2 = Math.round((Number(args.ry2) || 0.28) * scrH);
+ok = b.dispatchSwipe(x1, y1, x2, y2, Number(args.duration) || 340);
+detailMsg = ok ? '滑动完成' : '滑动失败';
+} else if (st.tool === 'phone_key' || st.tool === 'key' || st.tool === 'back' || st.tool === 'home') {
+ok = b.dispatchGlobalAction(String(args.key || st.tool || 'back'));
+detailMsg = ok ? `系统键 (${args.key || st.tool})` : '系统键失败';
+} else if (st.tool === 'phone_wait' || st.tool === 'wait') {
+ok = true;
+const ms = Math.min(8000, Math.max(200, Number(args.ms) || 1000));
+await sleep(ms);
+detailMsg = `等待 ${ms}ms`;
+} else {
+ok = true;
+}
+} catch (err) {
+ok = false;
+detailMsg = `异常：${err?.message || err}`;
+}
+updateStepResult(rowEl, detailMsg, !ok, ok);
+await sleep(Math.min(2500, Math.max(240, Number(st.delayMs) || 480)));
+}
+upsertLearnedSkill({ ...skill, runCount: (Number(skill.runCount) || 0) + 1 });
+return {
+status: 'done',
+summaryTitle: `离线技能「${skill.name}」执行完成 (${steps.length} 步)`,
+replyText: native
+? `已通过本地固化技能「${skill.name}」零 API 离线完成全部 ${steps.length} 步操作。`
+: `已在网页端完成本地技能「${skill.name}」的 ${steps.length} 步离线流程演练（安装随身版 APK 后可在真机免 API 自动执行）。`
+};
+}
+async function executeLearnedSkillOffline(skillId) {
+const skill = loadLearnedSkills().find((s) => s.id === skillId);
+if (!skill) {
+showToast('未找到该本地技能');
+return;
+}
+const label = `执行本地技能：${skill.name}`;
+addUserBubble(label);
+const cardCtx = createAgentCardRow(label, 'local');
+if (!cardCtx) return;
+if (activeAbortController) {
+try { activeAbortController.abort(); } catch {}
+}
+activeAbortController = new AbortController();
+const signal = activeAbortController.signal;
+emergencyStopRequested = false;
+isAgentRunning = true;
+cardCtx.isSkillReplay = true;
+try {
+const res = await replayLearnedSkill(skill, cardCtx, signal);
+finalizeAgentTurn(cardCtx, {
+status: res.status,
+summaryTitle: res.summaryTitle,
+replyText: res.replyText,
+isSkillReplay: true
+});
+} finally {
+isAgentRunning = false;
+const b = getBridge();
+if (isNativeApk() && b && typeof b.updateFloatState === 'function') {
+try { b.updateFloatState('idle', 'dsh-Go'); } catch {}
+}
+syncStatus();
+}
+}
 function renderEmptyGuideTiles() {
+renderEmptyGuideLearnedSkills();
 const grid = $('pa-empty-guide-grid');
 if (!grid) return;
 grid.innerHTML = EMPTY_GUIDE_PRESETS.map(
@@ -20090,12 +20808,33 @@ function renderCommandLibraryDrawer() {
 const drawer = $('phone-cmd-quick-drawer');
 if (!drawer) return;
 const cat = LOCAL_COMMAND_CATALOG.find((c) => c.id === activeCmdLibCategory) || LOCAL_COMMAND_CATALOG[0];
+const isLearnedTab = cat.id === 'learned';
 const isPhrasesTab = cat.id === 'phrases';
 const isSongsTab = cat.id === 'songs';
+const learnedSkills = isLearnedTab ? loadLearnedSkills() : [];
 const phrases = isPhrasesTab ? loadQuickPhrases() : [];
 const songs = isSongsTab ? loadCustomSongs() : [];
 let bodyHtml = '';
-if (isSongsTab) {
+if (isLearnedTab) {
+bodyHtml = `
+        <div class="pa-phrase-toolbar">
+          <button type="button" class="pa-phrase-btn is-primary" id="pa-learned-new-btn">➕ 手动新建本地技能</button>
+        </div>
+        <div class="pa-phrase-list">
+          ${learnedSkills.length === 0
+? '<div class="pa-phrase-empty">还没有固化的本地技能。用 API 模式让 AI 跑通一次工作流后，点击结果卡片下方「✨ 固化为本地技能」即可永久保存在本地免 API 复用！</div>'
+: learnedSkills.map((s) => `
+                <div class="pa-phrase-row pa-learned-row" data-skill-id="${escapeHtml(s.id)}">
+                  <button type="button" class="pa-phrase-send-btn pa-learned-run-btn" data-skill-id="${escapeHtml(s.id)}" title="口令：${escapeHtml(s.trigger || s.name)}">
+                    ▶ ${escapeHtml(s.name)} <small style="opacity:0.7;font-weight:500;">(${s.steps.length}步${s.targetApp ? ` · ${escapeHtml(s.targetApp)}` : ''})</small>
+                  </button>
+                  <button type="button" class="pa-phrase-fill-btn pa-learned-edit-btn" data-skill-id="${escapeHtml(s.id)}" title="编辑技能">编辑</button>
+                  <button type="button" class="pa-phrase-del-btn pa-learned-del-btn" data-skill-id="${escapeHtml(s.id)}" title="删除技能">✕</button>
+                </div>
+              `).join('')}
+        </div>
+      `;
+} else if (isSongsTab) {
 const bridge = getNativeBridge();
 const canImportSong = !!(bridge && typeof bridge.openSongImporter === 'function');
 bodyHtml = `
@@ -20200,7 +20939,43 @@ drawer.classList.add('hidden');
 $('pa-open-cmdlib-btn')?.classList.remove('is-active');
 $('mobile-tools-plus-btn')?.classList.remove('is-active');
 });
-if (isSongsTab) {
+if (isLearnedTab) {
+drawer.querySelector('#pa-learned-new-btn')?.addEventListener('click', (e) => {
+e.stopPropagation();
+openSaveSkillModal({
+sourceTask: '新建本地技能',
+recordedSteps: [{ tool: 'phone_open', summary: '打开目标应用', args: { appName: '微信' }, delayMs: 1100 }]
+});
+});
+drawer.querySelectorAll('.pa-learned-run-btn').forEach((btn) => {
+btn.addEventListener('click', (e) => {
+e.stopPropagation();
+const sid = btn.getAttribute('data-skill-id') || '';
+drawer.classList.add('hidden');
+$('pa-open-cmdlib-btn')?.classList.remove('is-active');
+if (sid) executeLearnedSkillOffline(sid);
+});
+});
+drawer.querySelectorAll('.pa-learned-edit-btn').forEach((btn) => {
+btn.addEventListener('click', (e) => {
+e.stopPropagation();
+const sid = btn.getAttribute('data-skill-id') || '';
+const sk = loadLearnedSkills().find((x) => x.id === sid);
+if (sk) openSaveSkillModal({ existingSkill: sk });
+});
+});
+drawer.querySelectorAll('.pa-learned-del-btn').forEach((btn) => {
+btn.addEventListener('click', (e) => {
+e.stopPropagation();
+const sid = btn.getAttribute('data-skill-id') || '';
+if (sid) {
+deleteLearnedSkill(sid);
+renderCommandLibraryDrawer();
+showToast('已删除该本地技能');
+}
+});
+});
+} else if (isSongsTab) {
 drawer.querySelector('#pa-song-import-btn')?.addEventListener('click', (e) => {
 e.stopPropagation();
 const b = getNativeBridge();
@@ -20491,6 +21266,12 @@ btn.setAttribute('aria-selected', String(active));
 const cfgDrawer = $('pa-inline-config-drawer');
 if (cfgDrawer) {
 cfgDrawer.classList.toggle('hidden', mode === 'local');
+}
+const localPeaceCard = $('pa-local-peace-card');
+if (localPeaceCard) {
+localPeaceCard.classList.toggle('hidden', mode !== 'local');
+const cntEl = $('pa-local-peace-skill-count');
+if (cntEl) cntEl.textContent = String(loadLearnedSkills().length);
 }
 const keyInp = $('pa-cfg-apikey');
 if (keyInp && !keyInp.matches(':focus')) keyInp.value = cfg.apiKey;
@@ -21053,7 +21834,7 @@ resEl.classList.toggle('is-error', Boolean(isError));
 }
 scrollChatToBottom();
 }
-function finalizeAgentTurn(cardCtx, { status = 'done', summaryTitle = '', replyText = '', handoverCb = null }) {
+function finalizeAgentTurn(cardCtx, { status = 'done', summaryTitle = '', replyText = '', handoverCb = null, recordedSteps = null, sourceTask = '', isSkillReplay = false }) {
 if (!cardCtx) return;
 const elapsedSec = ((Date.now() - (cardCtx.startedAt || Date.now())) / 1000).toFixed(1);
 const acc = cardCtx.accordion;
@@ -21074,13 +21855,20 @@ cardCtx.summaryMetaEl.textContent = `${cardCtx.stepCount || 0} 步 · ${elapsedS
 if (cardCtx.stopBtn && !isNativeAutoSwiping()) {
 cardCtx.stopBtn.classList.add('hidden');
 }
-if (cardCtx.finalReplyEl && (replyText || typeof handoverCb === 'function')) {
+const validSteps = Array.isArray(recordedSteps) ? recordedSteps : [];
+const canSaveSkill = !isSkillReplay && validSteps.length >= 1;
+if (cardCtx.finalReplyEl && (replyText || typeof handoverCb === 'function' || canSaveSkill)) {
 cardCtx.finalReplyEl.classList.remove('hidden');
 cardCtx.finalReplyEl.innerHTML = `
-        <div>${escapeHtml(replyText)}</div>
+        ${replyText ? `<div>${escapeHtml(replyText)}</div>` : ''}
         ${typeof handoverCb === 'function' ? `
           <div class="pa-handover-bar">
             <button type="button" class="pa-banner-btn pa-handover-resume-btn">我已完成，继续执行</button>
+          </div>
+        ` : ''}
+        ${canSaveSkill ? `
+          <div class="pa-save-skill-bar">
+            <button type="button" class="pa-save-skill-btn">✨ 固化为本地技能（免 API 离线可复用 · ${validSteps.length} 步）</button>
           </div>
         ` : ''}
       `;
@@ -21089,6 +21877,14 @@ cardCtx.finalReplyEl.querySelector('.pa-handover-resume-btn')?.addEventListener(
 e.currentTarget.disabled = true;
 e.currentTarget.textContent = '正在继续…';
 handoverCb();
+});
+}
+if (canSaveSkill) {
+cardCtx.finalReplyEl.querySelector('.pa-save-skill-btn')?.addEventListener('click', () => {
+openSaveSkillModal({
+sourceTask: sourceTask || cardCtx.sourceTask || '',
+recordedSteps: validSteps
+});
 });
 }
 }
@@ -22147,6 +22943,18 @@ let finalSummaryTitle = '';
 let finalReplyText = '';
 let handoverCb = null;
 try {
+const matchedSkill = !isResuming ? findMatchingLearnedSkill(taskText) : null;
+if (matchedSkill && (execMode === 'local' || /^skill:/i.test(String(taskText || '').trim()))) {
+const skillRes = await replayLearnedSkill(matchedSkill, cardCtx, signal);
+finalizeAgentTurn(cardCtx, {
+status: skillRes.status,
+summaryTitle: skillRes.summaryTitle,
+replyText: skillRes.replyText,
+isSkillReplay: true
+});
+syncStatus();
+return;
+}
 const matchedOffline = isSimpleBuiltInLocalCmd(taskText);
 const shouldTryFullLocal = !isResuming && execMode === 'local';
 if (shouldTryFullLocal) {
@@ -22195,6 +23003,7 @@ return;
 }
 const MAX_STEPS = 80;
 const history = isResuming ? resumeOpts.history.slice() : [];
+const recordedSteps = Array.isArray(resumeOpts?.recordedSteps) ? resumeOpts.recordedSteps.slice() : [];
 const screenSize = getScreenSizeObj();
 const installedApps = getInstalledAppsList();
 let roundAutoApproved =
@@ -22435,6 +23244,10 @@ break;
 const subAct = actionQueue[ai];
 execRes = dispatchNativePlanAction(subAct, snapshot, { forceGesture: forceGestureClick, taskText });
 execTexts.push(execRes.text);
+if (!execRes.error) {
+const cap = captureRecordableStep(subAct, snapshot, execRes, screenSize);
+if (cap) recordedSteps.push(cap);
+}
 if (execRes.error || !native) break;
 if (ai < actionQueue.length - 1) {
 await sleep(subAct.tool === 'phone_tap' ? 240 : 260);
@@ -22522,7 +23335,9 @@ finalizeAgentTurn(cardCtx, {
 status: finalStatus,
 summaryTitle: finalSummaryTitle || `已完成 ${cardCtx.stepCount || 0} 步控屏`,
 replyText: finalReplyText,
-handoverCb
+handoverCb,
+recordedSteps,
+sourceTask: taskText
 });
 } finally {
 isAgentRunning = false;
@@ -22543,6 +23358,11 @@ if (!clean) return;
 const shell = document.getElementById('app-shell');
 if (shell && shell.dataset.uiMode !== 'phone-agent') {
 document.getElementById('ws-mode-phone-agent')?.click();
+}
+const skillIdMatch = clean.match(/^skill:([a-zA-Z0-9_-]+)$/i);
+if (skillIdMatch) {
+await executeLearnedSkillOffline(skillIdMatch[1]);
+return;
 }
 if (isAgentRunning) {
 queuedInterjections.push({ text: clean, priority: false });
@@ -23507,6 +24327,7 @@ isDownloadingUpdate = false;
 });
 }
 syncStatus();
+syncLearnedSkillsToNative(loadLearnedSkills());
 if (document.getElementById('app-shell')?.dataset.uiMode === 'phone-agent') {
 renderWorkspace();
 }
@@ -23550,8 +24371,12 @@ return isNativeApk();
 getInstalledVersionInfo,
 getInstalledVersionLabel,
 getExecMode,
+getConfig: () => ({ execMode: getExecMode(), ...getDirectConfig() }),
 setExecMode,
 setDirectApiKey,
+loadLearnedSkills,
+executeLearnedSkillOffline,
+openSaveSkillModal,
 syncStatus,
 checkUpdate,
 checkUpdateOnStartup,

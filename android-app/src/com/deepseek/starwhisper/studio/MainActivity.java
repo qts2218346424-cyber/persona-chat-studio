@@ -1213,6 +1213,11 @@ public class MainActivity extends Activity {
         }
 
         @JavascriptInterface
+        public boolean saveLearnedSkillsSummary(String jsonArrayStr) {
+            return FloatAgentService.saveLearnedSkillsSummaryFromBridge(MainActivity.this, jsonArrayStr);
+        }
+
+        @JavascriptInterface
         public void openQuickTypingMode() {
             FloatAgentService.openQuickTypingBarFromBridge(MainActivity.this);
         }

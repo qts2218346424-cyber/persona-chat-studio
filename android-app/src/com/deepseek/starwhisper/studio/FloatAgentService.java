@@ -766,6 +766,78 @@ public class FloatAgentService extends Service {
         return def.toString();
     }
 
+    private static final String PREF_KEY_LEARNED_SKILLS = "learned_skills_summary_json";
+    private LinearLayout learnedSkillsStrip;
+
+    public static boolean saveLearnedSkillsSummaryFromBridge(Context ctx, String jsonArrayStr) {
+        if (ctx == null) return false;
+        try {
+            String safeJson = (jsonArrayStr == null || jsonArrayStr.trim().isEmpty()) ? "[]" : jsonArrayStr.trim();
+            ctx.getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+                    .edit()
+                    .putString(PREF_KEY_LEARNED_SKILLS, safeJson)
+                    .apply();
+            final FloatAgentService inst = sInstance;
+            if (inst != null) {
+                inst.mainHandler.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        inst.refreshLearnedSkillsStrip();
+                    }
+                });
+            }
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private void refreshLearnedSkillsStrip() {
+        if (learnedSkillsStrip == null) return;
+        learnedSkillsStrip.removeAllViews();
+        try {
+            String raw = getSharedPreferences(PREFS_NAME, MODE_PRIVATE).getString(PREF_KEY_LEARNED_SKILLS, "[]");
+            JSONArray arr = new JSONArray(raw);
+            if (arr.length() == 0) {
+                TextView emptyTv = new TextView(this);
+                emptyTv.setText("暂无已学技能 · 在主界面固化后可在此零 API 一键运行");
+                emptyTv.setTextColor(Color.parseColor("#64748B"));
+                emptyTv.setTextSize(10.5f);
+                emptyTv.setPadding(dp(2), dp(2), dp(2), dp(2));
+                learnedSkillsStrip.addView(emptyTv);
+                return;
+            }
+            int maxCount = Math.min(arr.length(), 8);
+            for (int i = 0; i < maxCount; i++) {
+                final org.json.JSONObject obj = arr.optJSONObject(i);
+                if (obj == null) continue;
+                final String sid = obj.optString("id", "");
+                final String sname = obj.optString("name", "本地技能");
+                final int scount = obj.optInt("stepCount", 0);
+                if (sid.isEmpty()) continue;
+
+                TextView chip = new TextView(this);
+                chip.setText("⚡ " + sname + (scount > 0 ? " · " + scount + "步" : ""));
+                chip.setTextColor(Color.parseColor("#6EE7B7"));
+                chip.setTextSize(11f);
+                chip.setSingleLine(true);
+                chip.setPadding(dp(10), dp(5), dp(10), dp(5));
+                setViewBg(chip, createRoundRect("#1A10B981", 999, "#4010B981", 1));
+                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                lp.rightMargin = dp(6);
+                chip.setLayoutParams(lp);
+                chip.setOnClickListener(new View.OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
+                        collapsePanel();
+                        executeCommandFromFloating("skill:" + sid, false);
+                    }
+                });
+                learnedSkillsStrip.addView(chip);
+            }
+        } catch (Exception ignored) {}
+    }
+
     public static boolean saveQuickPhrasesJsonFromBridge(Context ctx, String jsonArrayStr) {
         if (ctx == null) return false;
         try {
@@ -2379,15 +2451,16 @@ public class FloatAgentService extends Service {
 
     private LinearLayout buildExpandPanel() {
         DisplayMetrics dm = getResources().getDisplayMetrics();
-        int panelWidth = Math.min((int) (dm.widthPixels * 0.93f), dp(364));
+        int panelWidth = Math.min((int) (dm.widthPixels * 0.92f), dp(352));
+        int maxPanelHeight = (int) (dm.heightPixels * 0.78f);
 
         LinearLayout panel = new LinearLayout(this);
         panel.setOrientation(LinearLayout.VERTICAL);
         panel.setLayoutParams(new ViewGroup.LayoutParams(panelWidth, ViewGroup.LayoutParams.WRAP_CONTENT));
-        panel.setPadding(dp(13), dp(11), dp(13), dp(11));
-        setViewBg(panel, createRoundRect("#F50F172A", 18, "#3B82F6", 1));
+        panel.setPadding(dp(14), dp(12), dp(14), dp(12));
+        setViewBg(panel, createRoundRect("#F2111622", 22, "#26FFFFFF", 1));
 
-        // 1. 顶栏：鲸鱼娘头像 + 标题 + 无障碍状态微标 + 主界面 + 收起
+        // 1. 极简顶栏：头像 + 标题 + 无障碍状态微标 + 主界面 + 圆形收起
         LinearLayout headRow = new LinearLayout(this);
         headRow.setOrientation(LinearLayout.HORIZONTAL);
         headRow.setGravity(Gravity.CENTER_VERTICAL);
@@ -2395,8 +2468,8 @@ public class FloatAgentService extends Service {
         headPetIcon = new ImageView(this);
         headPetIcon.setImageResource(R.drawable.feiyu_idle);
         headPetIcon.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        LinearLayout.LayoutParams hIconLp = new LinearLayout.LayoutParams(dp(30), dp(30));
-        hIconLp.rightMargin = dp(7);
+        LinearLayout.LayoutParams hIconLp = new LinearLayout.LayoutParams(dp(28), dp(28));
+        hIconLp.rightMargin = dp(8);
         headPetIcon.setLayoutParams(hIconLp);
         headPetIcon.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -2406,9 +2479,9 @@ public class FloatAgentService extends Service {
         });
 
         TextView titleTv = new TextView(this);
-        titleTv.setText("鲸鱼娘 · 大肥鱼");
+        titleTv.setText("大肥鱼 · 随身控屏");
         titleTv.setTextColor(Color.parseColor("#F8FAFC"));
-        titleTv.setTextSize(13.5f);
+        titleTv.setTextSize(14f);
         titleTv.setTypeface(null, android.graphics.Typeface.BOLD);
         LinearLayout.LayoutParams titleLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
         titleTv.setLayoutParams(titleLp);
@@ -2426,10 +2499,12 @@ public class FloatAgentService extends Service {
         TextView homeAppTv = new TextView(this);
         homeAppTv.setText("主界面");
         homeAppTv.setTextColor(Color.parseColor("#93C5FD"));
-        homeAppTv.setTextSize(11.5f);
-        homeAppTv.setPadding(dp(7), dp(4), dp(5), dp(4));
+        homeAppTv.setTextSize(11f);
+        homeAppTv.setPadding(dp(8), dp(4), dp(8), dp(4));
+        setViewBg(homeAppTv, createRoundRect("#1A3B82F6", 999, "#333B82F6", 1));
         LinearLayout.LayoutParams homeLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        homeLp.leftMargin = dp(3);
+        homeLp.leftMargin = dp(6);
+        homeLp.rightMargin = dp(5);
         homeAppTv.setLayoutParams(homeLp);
         homeAppTv.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -2439,10 +2514,12 @@ public class FloatAgentService extends Service {
         });
 
         TextView closeTv = new TextView(this);
-        closeTv.setText("收起");
+        closeTv.setText("✕");
         closeTv.setTextColor(Color.parseColor("#94A3B8"));
-        closeTv.setTextSize(11.5f);
-        closeTv.setPadding(dp(5), dp(4), dp(2), dp(4));
+        closeTv.setTextSize(12f);
+        closeTv.setGravity(Gravity.CENTER);
+        closeTv.setPadding(dp(8), dp(3), dp(8), dp(3));
+        setViewBg(closeTv, createRoundRect("#14FFFFFF", 999, "#1FFFFFFF", 1));
         closeTv.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -2457,17 +2534,17 @@ public class FloatAgentService extends Service {
         headRow.addView(closeTv);
         panel.addView(headRow);
 
-        // 2. 鲸鱼娘灵动对话/唱歌歌词条
+        // 2. 轻透状态字幕条 + 圆润输入舱
         subtitleBannerView = new TextView(this);
-        subtitleBannerView.setText("🍚 大肥鱼待命中 · 戳我喂米饭 / 摸头 / 唱歌 / 点歌~");
-        subtitleBannerView.setTextColor(Color.parseColor("#BAE6FD"));
+        subtitleBannerView.setText("大肥鱼就绪 · 双击吃米饭，或语音说想做的操作");
+        subtitleBannerView.setTextColor(Color.parseColor("#CBD5E1"));
         subtitleBannerView.setTextSize(11.5f);
         subtitleBannerView.setPadding(dp(10), dp(6), dp(10), dp(6));
         subtitleBannerView.setMaxLines(2);
         subtitleBannerView.setEllipsize(TextUtils.TruncateAt.END);
-        setViewBg(subtitleBannerView, createRoundRect("#1E293B", 10, "#0EA5E9", 1));
+        setViewBg(subtitleBannerView, createRoundRect("#12FFFFFF", 12, "#1FFFFFFF", 1));
         LinearLayout.LayoutParams subLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        subLp.topMargin = dp(8);
+        subLp.topMargin = dp(9);
         subtitleBannerView.setLayoutParams(subLp);
         subtitleBannerView.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -2477,16 +2554,250 @@ public class FloatAgentService extends Service {
         });
         panel.addView(subtitleBannerView);
 
-        // 3. 鲸鱼娘互动动作两排（4×2，点击自动退到悬浮窗外面表演给你看！）
+        LinearLayout inputRow = new LinearLayout(this);
+        inputRow.setOrientation(LinearLayout.HORIZONTAL);
+        inputRow.setGravity(Gravity.CENTER_VERTICAL);
+        inputRow.setPadding(0, dp(8), 0, dp(6));
+
+        cmdEditText = new EditText(this);
+        cmdEditText.setHint("说「打开微信 / 放晴天 / 运行技能」");
+        cmdEditText.setHintTextColor(Color.parseColor("#64748B"));
+        cmdEditText.setTextColor(Color.WHITE);
+        cmdEditText.setTextSize(12.5f);
+        cmdEditText.setSingleLine(true);
+        cmdEditText.setImeOptions(EditorInfo.IME_ACTION_SEND);
+        cmdEditText.setPadding(dp(12), dp(8), dp(12), dp(8));
+        setViewBg(cmdEditText, createRoundRect("#161C2C", 12, "#293548", 1));
+        cmdEditText.setOnEditorActionListener(new TextView.OnEditorActionListener() {
+            @Override
+            public boolean onEditorAction(TextView v, int actionId, KeyEvent event) {
+                if (actionId == EditorInfo.IME_ACTION_SEND || actionId == EditorInfo.IME_ACTION_DONE || actionId == EditorInfo.IME_ACTION_GO) {
+                    dispatchTaskOrInterjectFromInput();
+                    return true;
+                }
+                return false;
+            }
+        });
+
+        LinearLayout.LayoutParams editLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
+        editLp.rightMargin = dp(6);
+        cmdEditText.setLayoutParams(editLp);
+
+        final TextView voiceBtn = createActionBtn("🎙", "#0EA5E9", "#FFFFFF");
+        voiceBtn.setPadding(dp(10), dp(7), dp(10), dp(7));
+        LinearLayout.LayoutParams voiceLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        voiceLp.rightMargin = dp(5);
+        voiceBtn.setLayoutParams(voiceLp);
+        voiceBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                voiceQuickDirectMode = voiceAutoSend;
+                toggleVoiceRecordFor(cmdEditText, voiceBtn);
+            }
+        });
+
+        TextView sendBtn = createActionBtn("发送", "#4D6BFE", "#FFFFFF");
+        sendBtn.setPadding(dp(12), dp(7), dp(12), dp(7));
+        sendBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                dispatchTaskOrInterjectFromInput();
+            }
+        });
+
+        inputRow.addView(cmdEditText);
+        inputRow.addView(voiceBtn);
+        inputRow.addView(sendBtn);
+        panel.addView(inputRow);
+
+        voiceGuideBanner = buildVoiceGuideBanner();
+        voiceGuideBanner.setVisibility(View.GONE);
+        panel.addView(voiceGuideBanner);
+
+        // 3. 三枚现代分段胶囊 Tab（控屏 | 大肥鱼 | 设置）
+        LinearLayout tabBar = new LinearLayout(this);
+        tabBar.setOrientation(LinearLayout.HORIZONTAL);
+        tabBar.setPadding(dp(3), dp(3), dp(3), dp(3));
+        setViewBg(tabBar, createRoundRect("#14FFFFFF", 12, "#1FFFFFFF", 1));
+        LinearLayout.LayoutParams tabBarLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        tabBarLp.bottomMargin = dp(8);
+        tabBar.setLayoutParams(tabBarLp);
+
+        final TextView tabCtrlBtn = createGridBtn("⚡ 控屏");
+        final TextView tabPetBtn = createGridBtn("🐳 大肥鱼");
+        final TextView tabPrefBtn = createGridBtn("⚙ 设置");
+        LinearLayout.LayoutParams tpLp = (LinearLayout.LayoutParams) tabPrefBtn.getLayoutParams();
+        tpLp.rightMargin = 0;
+        tabPrefBtn.setLayoutParams(tpLp);
+        tabBar.addView(tabCtrlBtn);
+        tabBar.addView(tabPetBtn);
+        tabBar.addView(tabPrefBtn);
+        panel.addView(tabBar);
+
+        // 内容滚动容器（防小屏截断）
+        ScrollView bodyScroll = new ScrollView(this);
+        bodyScroll.setVerticalScrollBarEnabled(false);
+        LinearLayout.LayoutParams scrollLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        bodyScroll.setLayoutParams(scrollLp);
+
+        LinearLayout tabPagesHost = new LinearLayout(this);
+        tabPagesHost.setOrientation(LinearLayout.VERTICAL);
+
+        // ---------- Tab 0: 控屏（高频动作 + 已学技能 + 外卖 + 工具箱） ----------
+        final LinearLayout pageCtrl = new LinearLayout(this);
+        pageCtrl.setOrientation(LinearLayout.VERTICAL);
+
+        LinearLayout quickStrip = new LinearLayout(this);
+        quickStrip.setOrientation(LinearLayout.HORIZONTAL);
+        LinearLayout.LayoutParams qsLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        qsLp.bottomMargin = dp(8);
+        quickStrip.setLayoutParams(qsLp);
+
+        TextView stopTaskBtn = createGridBtn("急停");
+        stopTaskBtn.setTextColor(Color.parseColor("#FCA5A5"));
+        setViewBg(stopTaskBtn, createRoundRect("#2AEF4444", 10, "#40EF4444", 1));
+        stopTaskBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                requestNormalStop();
+                showFeedback("已停止当前任务");
+                Toast.makeText(FloatAgentService.this, "已停止当前任务", Toast.LENGTH_SHORT).show();
+            }
+        });
+
+        TextView readScrBtn = createGridBtn("读屏");
+        setViewBg(readScrBtn, createRoundRect("#14FFFFFF", 10, "#1FFFFFFF", 1));
+        readScrBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                executeCommandFromFloating("读屏幕", false);
+            }
+        });
+
+        TextView homeKeyBtn = createGridBtn("桌面");
+        setViewBg(homeKeyBtn, createRoundRect("#14FFFFFF", 10, "#1FFFFFFF", 1));
+        homeKeyBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                executeCommandFromFloating("回桌面", true);
+            }
+        });
+
+        TextView backKeyBtn = createGridBtn("返回");
+        setViewBg(backKeyBtn, createRoundRect("#14FFFFFF", 10, "#1FFFFFFF", 1));
+        backKeyBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                executeCommandFromFloating("返回", true);
+            }
+        });
+
+        TextView quickTypingEntryBtn = createGridBtn("⌨打字");
+        quickTypingEntryBtn.setTextColor(Color.parseColor("#93C5FD"));
+        setViewBg(quickTypingEntryBtn, createRoundRect("#1A3B82F6", 10, "#333B82F6", 1));
+        LinearLayout.LayoutParams qtLp = (LinearLayout.LayoutParams) quickTypingEntryBtn.getLayoutParams();
+        qtLp.rightMargin = 0;
+        quickTypingEntryBtn.setLayoutParams(qtLp);
+        quickTypingEntryBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                collapsePanel();
+                showQuickTypingBar();
+            }
+        });
+
+        quickStrip.addView(stopTaskBtn);
+        quickStrip.addView(readScrBtn);
+        quickStrip.addView(homeKeyBtn);
+        quickStrip.addView(backKeyBtn);
+        quickStrip.addView(quickTypingEntryBtn);
+        pageCtrl.addView(quickStrip);
+
+        // 已学本地技能快捷区
+        LinearLayout skillsBox = new LinearLayout(this);
+        skillsBox.setOrientation(LinearLayout.VERTICAL);
+        skillsBox.setPadding(dp(10), dp(8), dp(10), dp(8));
+        setViewBg(skillsBox, createRoundRect("#10FFFFFF", 12, "#1CFFFFFF", 1));
+        LinearLayout.LayoutParams skLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        skLp.bottomMargin = dp(8);
+        skillsBox.setLayoutParams(skLp);
+
+        TextView skillsHeader = new TextView(this);
+        skillsHeader.setText("已学本地技能 · 免 API 直达");
+        skillsHeader.setTextColor(Color.parseColor("#94A3B8"));
+        skillsHeader.setTextSize(10.5f);
+        skillsHeader.setPadding(0, 0, 0, dp(5));
+        skillsBox.addView(skillsHeader);
+
+        HorizontalScrollView skillsScroll = new HorizontalScrollView(this);
+        skillsScroll.setHorizontalScrollBarEnabled(false);
+        learnedSkillsStrip = new LinearLayout(this);
+        learnedSkillsStrip.setOrientation(LinearLayout.HORIZONTAL);
+        learnedSkillsStrip.setGravity(Gravity.CENTER_VERTICAL);
+        skillsScroll.addView(learnedSkillsStrip);
+        skillsBox.addView(skillsScroll);
+        refreshLearnedSkillsStrip();
+        pageCtrl.addView(skillsBox);
+
+        pageCtrl.addView(buildTakeoutSyncCard());
+
+        LinearLayout toolsBarRow = new LinearLayout(this);
+        toolsBarRow.setOrientation(LinearLayout.HORIZONTAL);
+        toolsBarRow.setGravity(Gravity.CENTER_VERTICAL);
+
+        toolsToggleBtn = new TextView(this);
+        toolsToggleBtn.setText("更多工具（刷视频 / 截屏 / 应用）▾");
+        toolsToggleBtn.setTextColor(Color.parseColor("#94A3B8"));
+        toolsToggleBtn.setTextSize(11f);
+        toolsToggleBtn.setGravity(Gravity.CENTER);
+        toolsToggleBtn.setPadding(dp(8), dp(7), dp(8), dp(7));
+        setViewBg(toolsToggleBtn, createRoundRect("#12FFFFFF", 10, "#1FFFFFFF", 1));
+        LinearLayout.LayoutParams ttLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
+        ttLp.rightMargin = dp(6);
+        toolsToggleBtn.setLayoutParams(ttLp);
+        toolsToggleBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                localToolsExpanded = !localToolsExpanded;
+                if (localToolsBox != null) {
+                    localToolsBox.setVisibility(localToolsExpanded ? View.VISIBLE : View.GONE);
+                }
+                toolsToggleBtn.setText(localToolsExpanded
+                        ? "收起工具箱 ▴"
+                        : "更多工具（刷视频 / 截屏 / 应用）▾");
+            }
+        });
+
+        TextView shotKeyBtn = createActionBtn("截屏", "#1E293B", "#CBD5E1");
+        shotKeyBtn.setTextSize(11f);
+        shotKeyBtn.setPadding(dp(11), dp(7), dp(11), dp(7));
+        setViewBg(shotKeyBtn, createRoundRect("#14FFFFFF", 10, "#1FFFFFFF", 1));
+        shotKeyBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                executeCommandFromFloating("截屏", true);
+            }
+        });
+
+        toolsBarRow.addView(toolsToggleBtn);
+        toolsBarRow.addView(shotKeyBtn);
+        pageCtrl.addView(toolsBarRow);
+
+        localToolsBox = buildCollapsibleLocalTools();
+        localToolsBox.setVisibility(View.GONE);
+        pageCtrl.addView(localToolsBox);
+
+        // ---------- Tab 1: 大肥鱼互动与 QQ 音乐 ----------
+        final LinearLayout pagePet = new LinearLayout(this);
+        pagePet.setOrientation(LinearLayout.VERTICAL);
+        pagePet.setVisibility(View.GONE);
+
         LinearLayout petActionRow = new LinearLayout(this);
         petActionRow.setOrientation(LinearLayout.HORIZONTAL);
-        LinearLayout.LayoutParams actBarLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        actBarLp.topMargin = dp(7);
-        petActionRow.setLayoutParams(actBarLp);
 
-        TextView feedBtn = createGridBtn("🍚喂米饭");
+        TextView feedBtn = createGridBtn("🍚 喂米饭");
         feedBtn.setTextColor(Color.parseColor("#FDE68A"));
-        setViewBg(feedBtn, createRoundRect("#3B2506", 8, "#F59E0B", 1));
+        setViewBg(feedBtn, createRoundRect("#16FFFFFF", 10, "#22FFFFFF", 1));
         feedBtn.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -2495,7 +2806,8 @@ public class FloatAgentService extends Service {
             }
         });
 
-        TextView patBtn = createGridBtn("👋摸头");
+        TextView patBtn = createGridBtn("👋 摸头");
+        setViewBg(patBtn, createRoundRect("#16FFFFFF", 10, "#22FFFFFF", 1));
         patBtn.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -2504,7 +2816,8 @@ public class FloatAgentService extends Service {
             }
         });
 
-        TextView danceBtn = createGridBtn("💃跳舞");
+        TextView danceBtn = createGridBtn("💃 跳舞");
+        setViewBg(danceBtn, createRoundRect("#16FFFFFF", 10, "#22FFFFFF", 1));
         danceBtn.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -2513,9 +2826,9 @@ public class FloatAgentService extends Service {
             }
         });
 
-        TextView mischiefBtn = createGridBtn("😈捣蛋");
-        mischiefBtn.setTextColor(Color.parseColor("#E9D5FF"));
-        setViewBg(mischiefBtn, createRoundRect("#3B0764", 8, "#A855F7", 1));
+        TextView mischiefBtn = createGridBtn("😈 捣蛋");
+        mischiefBtn.setTextColor(Color.parseColor("#DDD6FE"));
+        setViewBg(mischiefBtn, createRoundRect("#16FFFFFF", 10, "#22FFFFFF", 1));
         LinearLayout.LayoutParams misLp = (LinearLayout.LayoutParams) mischiefBtn.getLayoutParams();
         misLp.rightMargin = 0;
         mischiefBtn.setLayoutParams(misLp);
@@ -2531,17 +2844,17 @@ public class FloatAgentService extends Service {
         petActionRow.addView(patBtn);
         petActionRow.addView(danceBtn);
         petActionRow.addView(mischiefBtn);
-        panel.addView(petActionRow);
+        pagePet.addView(petActionRow);
 
         LinearLayout petActionRow2 = new LinearLayout(this);
         petActionRow2.setOrientation(LinearLayout.HORIZONTAL);
         LinearLayout.LayoutParams actBarLp2 = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        actBarLp2.topMargin = dp(5);
+        actBarLp2.topMargin = dp(6);
         petActionRow2.setLayoutParams(actBarLp2);
 
-        TextView singBtn = createGridBtn("🎤唱歌");
+        TextView singBtn = createGridBtn("🎤 唱歌");
         singBtn.setTextColor(Color.parseColor("#F9A8D4"));
-        setViewBg(singBtn, createRoundRect("#3B102E", 8, "#EC4899", 1));
+        setViewBg(singBtn, createRoundRect("#16FFFFFF", 10, "#22FFFFFF", 1));
         singBtn.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -2550,9 +2863,9 @@ public class FloatAgentService extends Service {
             }
         });
 
-        TextView importSongBtn = createGridBtn("📥导歌");
+        TextView importSongBtn = createGridBtn("📥 导歌");
         importSongBtn.setTextColor(Color.parseColor("#A7F3D0"));
-        setViewBg(importSongBtn, createRoundRect("#064E3B", 8, "#10B981", 1));
+        setViewBg(importSongBtn, createRoundRect("#16FFFFFF", 10, "#22FFFFFF", 1));
         importSongBtn.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -2560,7 +2873,8 @@ public class FloatAgentService extends Service {
             }
         });
 
-        TextView memeBtn = createGridBtn("🫧热梗");
+        TextView memeBtn = createGridBtn("🫧 热梗");
+        setViewBg(memeBtn, createRoundRect("#16FFFFFF", 10, "#22FFFFFF", 1));
         memeBtn.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -2569,9 +2883,9 @@ public class FloatAgentService extends Service {
             }
         });
 
-        TextView takeoutCheckBtn = createGridBtn("🛵查外卖");
+        TextView takeoutCheckBtn = createGridBtn("🛵 查外卖");
         takeoutCheckBtn.setTextColor(Color.parseColor("#FED7AA"));
-        setViewBg(takeoutCheckBtn, createRoundRect("#431407", 8, "#F97316", 1));
+        setViewBg(takeoutCheckBtn, createRoundRect("#16FFFFFF", 10, "#22FFFFFF", 1));
         LinearLayout.LayoutParams tkBtnLp = (LinearLayout.LayoutParams) takeoutCheckBtn.getLayoutParams();
         tkBtnLp.rightMargin = 0;
         takeoutCheckBtn.setLayoutParams(tkBtnLp);
@@ -2586,17 +2900,19 @@ public class FloatAgentService extends Service {
         petActionRow2.addView(importSongBtn);
         petActionRow2.addView(memeBtn);
         petActionRow2.addView(takeoutCheckBtn);
-        panel.addView(petActionRow2);
+        pagePet.addView(petActionRow2);
+        pagePet.addView(buildQqMusicCard());
 
-        // 3b. 个性开关两行（3x2）：防误触 / 语音尾巴 / 外置互动 / 自由漫步 / 头顶气泡 / 透明歌词
+        // ---------- Tab 2: 悬浮窗与语音偏好设置 ----------
+        final LinearLayout pagePref = new LinearLayout(this);
+        pagePref.setOrientation(LinearLayout.VERTICAL);
+        pagePref.setVisibility(View.GONE);
+
         LinearLayout prefSwitchRow1 = new LinearLayout(this);
         prefSwitchRow1.setOrientation(LinearLayout.HORIZONTAL);
-        LinearLayout.LayoutParams psLp1 = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        psLp1.topMargin = dp(6);
-        prefSwitchRow1.setLayoutParams(psLp1);
 
         antiMistouchToggleBtn = createGridBtn("🛡️防误触:关");
-        antiMistouchToggleBtn.setTextSize(10f);
+        antiMistouchToggleBtn.setTextSize(10.5f);
         antiMistouchToggleBtn.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -2612,7 +2928,7 @@ public class FloatAgentService extends Service {
         });
 
         voiceTailToggleBtn = createGridBtn("🎙语音尾巴:开");
-        voiceTailToggleBtn.setTextSize(10f);
+        voiceTailToggleBtn.setTextSize(10.5f);
         voiceTailToggleBtn.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -2627,7 +2943,7 @@ public class FloatAgentService extends Service {
         });
 
         extPetBarToggleBtn = createGridBtn("🐾外置互动:开");
-        extPetBarToggleBtn.setTextSize(10f);
+        extPetBarToggleBtn.setTextSize(10.5f);
         LinearLayout.LayoutParams epbLp = (LinearLayout.LayoutParams) extPetBarToggleBtn.getLayoutParams();
         epbLp.rightMargin = 0;
         extPetBarToggleBtn.setLayoutParams(epbLp);
@@ -2639,7 +2955,7 @@ public class FloatAgentService extends Service {
                 applyExternalPetBarVisibility();
                 refreshPrefSwitchButtons();
                 Toast.makeText(FloatAgentService.this,
-                        showExternalPetBar ? "已显示大肥鱼外置互动条（就在外面直接点！）" : "已隐藏外置互动条",
+                        showExternalPetBar ? "已显示大肥鱼外置互动条" : "已隐藏外置互动条",
                         Toast.LENGTH_SHORT).show();
             }
         });
@@ -2647,16 +2963,16 @@ public class FloatAgentService extends Service {
         prefSwitchRow1.addView(antiMistouchToggleBtn);
         prefSwitchRow1.addView(voiceTailToggleBtn);
         prefSwitchRow1.addView(extPetBarToggleBtn);
-        panel.addView(prefSwitchRow1);
+        pagePref.addView(prefSwitchRow1);
 
         LinearLayout prefSwitchRow2 = new LinearLayout(this);
         prefSwitchRow2.setOrientation(LinearLayout.HORIZONTAL);
         LinearLayout.LayoutParams psLp2 = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        psLp2.topMargin = dp(5);
+        psLp2.topMargin = dp(6);
         prefSwitchRow2.setLayoutParams(psLp2);
 
         freeRoamToggleBtn = createGridBtn("🚶自由漫步:开");
-        freeRoamToggleBtn.setTextSize(10f);
+        freeRoamToggleBtn.setTextSize(10.5f);
         freeRoamToggleBtn.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -2671,7 +2987,7 @@ public class FloatAgentService extends Service {
         });
 
         headBubbleToggleBtn = createGridBtn("💬头顶气泡:开");
-        headBubbleToggleBtn.setTextSize(10f);
+        headBubbleToggleBtn.setTextSize(10.5f);
         headBubbleToggleBtn.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -2685,13 +3001,13 @@ public class FloatAgentService extends Service {
                 }
                 refreshPrefSwitchButtons();
                 Toast.makeText(FloatAgentService.this,
-                        headBubbleEnabled ? "已开启透明头顶气泡（约5~10分钟自动弹一条）" : "已关闭大肥鱼头顶气泡",
+                        headBubbleEnabled ? "已开启透明头顶气泡" : "已关闭大肥鱼头顶气泡",
                         Toast.LENGTH_SHORT).show();
             }
         });
 
         floatingLyricsToggleBtn = createGridBtn("🪟透明歌词:开");
-        floatingLyricsToggleBtn.setTextSize(10f);
+        floatingLyricsToggleBtn.setTextSize(10.5f);
         LinearLayout.LayoutParams fltLp = (LinearLayout.LayoutParams) floatingLyricsToggleBtn.getLayoutParams();
         fltLp.rightMargin = 0;
         floatingLyricsToggleBtn.setLayoutParams(fltLp);
@@ -2712,88 +3028,26 @@ public class FloatAgentService extends Service {
         prefSwitchRow2.addView(freeRoamToggleBtn);
         prefSwitchRow2.addView(headBubbleToggleBtn);
         prefSwitchRow2.addView(floatingLyricsToggleBtn);
-        panel.addView(prefSwitchRow2);
+        pagePref.addView(prefSwitchRow2);
         refreshPrefSwitchButtons();
 
-        // 4. QQ 音乐联动迷你卡片 + 外卖订单实时同步卡片
-        panel.addView(buildQqMusicCard());
-        panel.addView(buildTakeoutSyncCard());
+        LinearLayout autoSendRow = new LinearLayout(this);
+        autoSendRow.setOrientation(LinearLayout.HORIZONTAL);
+        autoSendRow.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout.LayoutParams asrLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        asrLp.topMargin = dp(8);
+        autoSendRow.setLayoutParams(asrLp);
 
-        // 5. 主任务 / 语音输入舱 + 动态语音提示向导条
-        LinearLayout inputRow = new LinearLayout(this);
-        inputRow.setOrientation(LinearLayout.HORIZONTAL);
-        inputRow.setGravity(Gravity.CENTER_VERTICAL);
-        inputRow.setPadding(0, dp(8), 0, dp(4));
-
-        cmdEditText = new EditText(this);
-        cmdEditText.setHint("说「放晴天 / 下一首 / 喂米饭 / 打开微信」");
-        cmdEditText.setHintTextColor(Color.parseColor("#64748B"));
-        cmdEditText.setTextColor(Color.WHITE);
-        cmdEditText.setTextSize(12);
-        cmdEditText.setSingleLine(true);
-        cmdEditText.setImeOptions(EditorInfo.IME_ACTION_SEND);
-        cmdEditText.setPadding(dp(10), dp(7), dp(10), dp(7));
-        setViewBg(cmdEditText, createRoundRect("#1E293B", 10, "#334155", 1));
-        cmdEditText.setOnEditorActionListener(new TextView.OnEditorActionListener() {
-            @Override
-            public boolean onEditorAction(TextView v, int actionId, KeyEvent event) {
-                if (actionId == EditorInfo.IME_ACTION_SEND || actionId == EditorInfo.IME_ACTION_DONE || actionId == EditorInfo.IME_ACTION_GO) {
-                    dispatchTaskOrInterjectFromInput();
-                    return true;
-                }
-                return false;
-            }
-        });
-
-        LinearLayout.LayoutParams editLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
-        editLp.rightMargin = dp(5);
-        cmdEditText.setLayoutParams(editLp);
-
-        final TextView voiceBtn = createActionBtn("🎙 语音", "#0EA5E9", "#FFFFFF");
-        LinearLayout.LayoutParams voiceLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        voiceLp.rightMargin = dp(5);
-        voiceBtn.setLayoutParams(voiceLp);
-        voiceBtn.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                voiceQuickDirectMode = voiceAutoSend;
-                toggleVoiceRecordFor(cmdEditText, voiceBtn);
-            }
-        });
-
-        TextView sendBtn = createActionBtn("发送", "#4D6BFE", "#FFFFFF");
-        sendBtn.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                dispatchTaskOrInterjectFromInput();
-            }
-        });
-
-        inputRow.addView(cmdEditText);
-        inputRow.addView(voiceBtn);
-        inputRow.addView(sendBtn);
-        panel.addView(inputRow);
-
-        // 5b. 语音贴心多提示条 + 自动执行切换开关
-        LinearLayout voiceTipBar = new LinearLayout(this);
-        voiceTipBar.setOrientation(LinearLayout.HORIZONTAL);
-        voiceTipBar.setGravity(Gravity.CENTER_VERTICAL);
-        LinearLayout.LayoutParams vtbLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        vtbLp.bottomMargin = dp(6);
-        voiceTipBar.setLayoutParams(vtbLp);
-
-        TextView hintLine = new TextView(this);
-        hintLine.setText("💡 点语音可直接说：放首歌 · 下一首 · 喂米饭 · 打开微信");
-        hintLine.setTextColor(Color.parseColor("#94A3B8"));
-        hintLine.setTextSize(10f);
-        hintLine.setSingleLine(true);
-        hintLine.setEllipsize(TextUtils.TruncateAt.END);
-        hintLine.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f));
+        TextView autoSendDesc = new TextView(this);
+        autoSendDesc.setText("语音识别完成后自动执行指令");
+        autoSendDesc.setTextColor(Color.parseColor("#94A3B8"));
+        autoSendDesc.setTextSize(11f);
+        autoSendDesc.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f));
 
         autoSendToggleBtn = new TextView(this);
         refreshAutoSendChip();
-        autoSendToggleBtn.setTextSize(10f);
-        autoSendToggleBtn.setPadding(dp(7), dp(3), dp(7), dp(3));
+        autoSendToggleBtn.setTextSize(10.5f);
+        autoSendToggleBtn.setPadding(dp(10), dp(4), dp(10), dp(4));
         autoSendToggleBtn.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -2804,131 +3058,82 @@ public class FloatAgentService extends Service {
                         Toast.LENGTH_SHORT).show();
             }
         });
+        autoSendRow.addView(autoSendDesc);
+        autoSendRow.addView(autoSendToggleBtn);
+        pagePref.addView(autoSendRow);
 
-        voiceTipBar.addView(hintLine);
-        voiceTipBar.addView(autoSendToggleBtn);
-        panel.addView(voiceTipBar);
+        tabPagesHost.addView(pageCtrl);
+        tabPagesHost.addView(pagePet);
+        tabPagesHost.addView(pagePref);
+        bodyScroll.addView(tabPagesHost);
 
-        // 5c. 录音中实时可视化指导条（平时隐藏，录音时亮起）
-        voiceGuideBanner = buildVoiceGuideBanner();
-        voiceGuideBanner.setVisibility(View.GONE);
-        panel.addView(voiceGuideBanner);
+        final Runnable[] switchFloatTab = new Runnable[3];
+        final android.view.View.OnClickListener selectTab0 = new View.OnClickListener() {
+            @Override public void onClick(View v) { switchFloatTab[0].run(); }
+        };
+        final android.view.View.OnClickListener selectTab1 = new View.OnClickListener() {
+            @Override public void onClick(View v) { switchFloatTab[1].run(); }
+        };
+        final android.view.View.OnClickListener selectTab2 = new View.OnClickListener() {
+            @Override public void onClick(View v) { switchFloatTab[2].run(); }
+        };
 
-        // 6. 高频单行快控条
-        LinearLayout quickStrip = new LinearLayout(this);
-        quickStrip.setOrientation(LinearLayout.HORIZONTAL);
-        LinearLayout.LayoutParams qsLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        qsLp.bottomMargin = dp(7);
-        quickStrip.setLayoutParams(qsLp);
-
-        TextView stopTaskBtn = createGridBtn("停止任务");
-        stopTaskBtn.setTextColor(Color.parseColor("#FCA5A5"));
-        setViewBg(stopTaskBtn, createRoundRect("#3F1215", 8, "#7F1D1D", 1));
-        stopTaskBtn.setOnClickListener(new View.OnClickListener() {
+        switchFloatTab[0] = new Runnable() {
             @Override
-            public void onClick(View v) {
-                requestNormalStop();
-                showFeedback("已停止当前任务");
-                Toast.makeText(FloatAgentService.this, "已停止当前任务", Toast.LENGTH_SHORT).show();
+            public void run() {
+                pageCtrl.setVisibility(View.VISIBLE);
+                pagePet.setVisibility(View.GONE);
+                pagePref.setVisibility(View.GONE);
+                setViewBg(tabCtrlBtn, createRoundRect("#4D6BFE", 9, null, 0));
+                tabCtrlBtn.setTextColor(Color.WHITE);
+                setViewBg(tabPetBtn, createRoundRect("#00000000", 9, null, 0));
+                tabPetBtn.setTextColor(Color.parseColor("#94A3B8"));
+                setViewBg(tabPrefBtn, createRoundRect("#00000000", 9, null, 0));
+                tabPrefBtn.setTextColor(Color.parseColor("#94A3B8"));
             }
-        });
-
-        TextView readScrBtn = createGridBtn("读屏幕");
-        readScrBtn.setOnClickListener(new View.OnClickListener() {
+        };
+        switchFloatTab[1] = new Runnable() {
             @Override
-            public void onClick(View v) {
-                executeCommandFromFloating("读屏幕", false);
+            public void run() {
+                pageCtrl.setVisibility(View.GONE);
+                pagePet.setVisibility(View.VISIBLE);
+                pagePref.setVisibility(View.GONE);
+                setViewBg(tabCtrlBtn, createRoundRect("#00000000", 9, null, 0));
+                tabCtrlBtn.setTextColor(Color.parseColor("#94A3B8"));
+                setViewBg(tabPetBtn, createRoundRect("#4D6BFE", 9, null, 0));
+                tabPetBtn.setTextColor(Color.WHITE);
+                setViewBg(tabPrefBtn, createRoundRect("#00000000", 9, null, 0));
+                tabPrefBtn.setTextColor(Color.parseColor("#94A3B8"));
             }
-        });
-
-        TextView homeKeyBtn = createGridBtn("回桌面");
-        homeKeyBtn.setOnClickListener(new View.OnClickListener() {
+        };
+        switchFloatTab[2] = new Runnable() {
             @Override
-            public void onClick(View v) {
-                executeCommandFromFloating("回桌面", true);
+            public void run() {
+                pageCtrl.setVisibility(View.GONE);
+                pagePet.setVisibility(View.GONE);
+                pagePref.setVisibility(View.VISIBLE);
+                setViewBg(tabCtrlBtn, createRoundRect("#00000000", 9, null, 0));
+                tabCtrlBtn.setTextColor(Color.parseColor("#94A3B8"));
+                setViewBg(tabPetBtn, createRoundRect("#00000000", 9, null, 0));
+                tabPetBtn.setTextColor(Color.parseColor("#94A3B8"));
+                setViewBg(tabPrefBtn, createRoundRect("#4D6BFE", 9, null, 0));
+                tabPrefBtn.setTextColor(Color.WHITE);
             }
-        });
+        };
+        tabCtrlBtn.setOnClickListener(selectTab0);
+        tabPetBtn.setOnClickListener(selectTab1);
+        tabPrefBtn.setOnClickListener(selectTab2);
+        switchFloatTab[0].run();
 
-        TextView backKeyBtn = createGridBtn("返回");
-        backKeyBtn.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                executeCommandFromFloating("返回", true);
-            }
-        });
+        panel.addView(bodyScroll);
 
-        TextView shotKeyBtn = createGridBtn("截屏");
-        LinearLayout.LayoutParams shotLp = (LinearLayout.LayoutParams) shotKeyBtn.getLayoutParams();
-        shotLp.rightMargin = 0;
-        shotKeyBtn.setLayoutParams(shotLp);
-        shotKeyBtn.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                executeCommandFromFloating("截屏", true);
-            }
-        });
-
-        quickStrip.addView(stopTaskBtn);
-        quickStrip.addView(readScrBtn);
-        quickStrip.addView(homeKeyBtn);
-        quickStrip.addView(backKeyBtn);
-        quickStrip.addView(shotKeyBtn);
-        panel.addView(quickStrip);
-
-        // 7. 快捷工具折叠切换 + 一键进入悬浮「快捷打字模式」
-        LinearLayout toolsBarRow = new LinearLayout(this);
-        toolsBarRow.setOrientation(LinearLayout.HORIZONTAL);
-        toolsBarRow.setGravity(Gravity.CENTER_VERTICAL);
-
-        toolsToggleBtn = new TextView(this);
-        toolsToggleBtn.setText("工具箱（刷视频 / 打字 / 应用）▾");
-        toolsToggleBtn.setTextColor(Color.parseColor("#94A3B8"));
-        toolsToggleBtn.setTextSize(11);
-        toolsToggleBtn.setGravity(Gravity.CENTER);
-        toolsToggleBtn.setPadding(dp(8), dp(6), dp(8), dp(6));
-        setViewBg(toolsToggleBtn, createRoundRect("#1E293B", 8, "#334155", 1));
-        LinearLayout.LayoutParams ttLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
-        ttLp.rightMargin = dp(5);
-        toolsToggleBtn.setLayoutParams(ttLp);
-        toolsToggleBtn.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                localToolsExpanded = !localToolsExpanded;
-                if (localToolsBox != null) {
-                    localToolsBox.setVisibility(localToolsExpanded ? View.VISIBLE : View.GONE);
-                }
-                toolsToggleBtn.setText(localToolsExpanded
-                        ? "收起工具箱 ▴"
-                        : "工具箱（刷视频 / 打字 / 应用）▾");
-            }
-        });
-
-        TextView quickTypingEntryBtn = createActionBtn("⌨️ 快捷打字", "#0EA5E9", "#FFFFFF");
-        quickTypingEntryBtn.setTextSize(11);
-        quickTypingEntryBtn.setPadding(dp(9), dp(6), dp(9), dp(6));
-        quickTypingEntryBtn.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                collapsePanel();
-                showQuickTypingBar();
-            }
-        });
-
-        toolsBarRow.addView(toolsToggleBtn);
-        toolsBarRow.addView(quickTypingEntryBtn);
-        panel.addView(toolsBarRow);
-
-        localToolsBox = buildCollapsibleLocalTools();
-        localToolsBox.setVisibility(View.GONE);
-        panel.addView(localToolsBox);
-
-        // 8. 底部状态回执条
+        // 4. 底部轻柔单行回执条
         feedbackTextView = new TextView(this);
-        feedbackTextView.setText("大肥鱼就绪：双击我吃米饭，长按直接语音~");
-        feedbackTextView.setTextColor(Color.parseColor("#94A3B8"));
+        feedbackTextView.setText("大肥鱼待命：双击吃米饭，长按语音直达~");
+        feedbackTextView.setTextColor(Color.parseColor("#64748B"));
         feedbackTextView.setTextSize(10.5f);
-        feedbackTextView.setPadding(dp(2), dp(6), dp(2), dp(0));
-        feedbackTextView.setMaxLines(2);
+        feedbackTextView.setPadding(dp(2), dp(8), dp(2), dp(0));
+        feedbackTextView.setMaxLines(1);
         feedbackTextView.setEllipsize(TextUtils.TruncateAt.END);
         panel.addView(feedbackTextView);
 
@@ -2941,10 +3146,10 @@ public class FloatAgentService extends Service {
     private LinearLayout buildQqMusicCard() {
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
-        card.setPadding(dp(10), dp(7), dp(10), dp(7));
-        setViewBg(card, createRoundRect("#172033", 12, "#10B981", 1));
+        card.setPadding(dp(11), dp(8), dp(11), dp(8));
+        setViewBg(card, createRoundRect("#12FFFFFF", 14, "#24FFFFFF", 1));
         LinearLayout.LayoutParams cardLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        cardLp.topMargin = dp(7);
+        cardLp.topMargin = dp(8);
         card.setLayoutParams(cardLp);
 
         LinearLayout topRow = new LinearLayout(this);
@@ -3192,79 +3397,48 @@ public class FloatAgentService extends Service {
         return box;
     }
 
+    private void applySoftToggleStyle(TextView btn, boolean enabled) {
+        if (btn == null) return;
+        btn.setTextColor(Color.parseColor(enabled ? "#6EE7B7" : "#94A3B8"));
+        setViewBg(btn, createRoundRect(
+                enabled ? "#1E10B981" : "#12FFFFFF",
+                10,
+                enabled ? "#4010B981" : "#1FFFFFFF",
+                1
+        ));
+    }
+
     private void refreshPrefSwitchButtons() {
         if (antiMistouchToggleBtn != null) {
-            antiMistouchToggleBtn.setText(antiMistouchEnabled ? "🛡️防误触:开" : "🛡️防误触:关");
-            antiMistouchToggleBtn.setTextColor(Color.parseColor(antiMistouchEnabled ? "#A7F3D0" : "#CBD5E1"));
-            setViewBg(antiMistouchToggleBtn, createRoundRect(
-                    antiMistouchEnabled ? "#064E3B" : "#1E293B",
-                    8,
-                    antiMistouchEnabled ? "#10B981" : "#334155",
-                    1
-            ));
+            antiMistouchToggleBtn.setText(antiMistouchEnabled ? "🛡防误触:开" : "🛡防误触:关");
+            applySoftToggleStyle(antiMistouchToggleBtn, antiMistouchEnabled);
         }
         if (voiceTailToggleBtn != null) {
             voiceTailToggleBtn.setText(showVoiceTail ? "🎙语音尾巴:开" : "🎙语音尾巴:关");
-            voiceTailToggleBtn.setTextColor(Color.parseColor(showVoiceTail ? "#BAE6FD" : "#94A3B8"));
-            setViewBg(voiceTailToggleBtn, createRoundRect(
-                    showVoiceTail ? "#0C4A6E" : "#1E293B",
-                    8,
-                    showVoiceTail ? "#0EA5E9" : "#334155",
-                    1
-            ));
+            applySoftToggleStyle(voiceTailToggleBtn, showVoiceTail);
         }
         if (extPetBarToggleBtn != null) {
             extPetBarToggleBtn.setText(showExternalPetBar ? "🐾外置互动:开" : "🐾外置互动:关");
-            extPetBarToggleBtn.setTextColor(Color.parseColor(showExternalPetBar ? "#C4B5FD" : "#94A3B8"));
-            setViewBg(extPetBarToggleBtn, createRoundRect(
-                    showExternalPetBar ? "#2E1065" : "#1E293B",
-                    8,
-                    showExternalPetBar ? "#8B5CF6" : "#334155",
-                    1
-            ));
+            applySoftToggleStyle(extPetBarToggleBtn, showExternalPetBar);
         }
         if (freeRoamToggleBtn != null) {
             freeRoamToggleBtn.setText(freeRoamEnabled ? "🚶自由漫步:开" : "🚶自由漫步:关");
-            freeRoamToggleBtn.setTextColor(Color.parseColor(freeRoamEnabled ? "#67E8F9" : "#94A3B8"));
-            setViewBg(freeRoamToggleBtn, createRoundRect(
-                    freeRoamEnabled ? "#164E63" : "#1E293B",
-                    8,
-                    freeRoamEnabled ? "#06B6D4" : "#334155",
-                    1
-            ));
+            applySoftToggleStyle(freeRoamToggleBtn, freeRoamEnabled);
         }
         if (headBubbleToggleBtn != null) {
             headBubbleToggleBtn.setText(headBubbleEnabled ? "💬头顶气泡:开" : "💬头顶气泡:关");
-            headBubbleToggleBtn.setTextColor(Color.parseColor(headBubbleEnabled ? "#F9A8D4" : "#94A3B8"));
-            setViewBg(headBubbleToggleBtn, createRoundRect(
-                    headBubbleEnabled ? "#500724" : "#1E293B",
-                    8,
-                    headBubbleEnabled ? "#EC4899" : "#334155",
-                    1
-            ));
+            applySoftToggleStyle(headBubbleToggleBtn, headBubbleEnabled);
         }
         if (floatingLyricsToggleBtn != null) {
             floatingLyricsToggleBtn.setText(floatingLyricsEnabled ? "🪟透明歌词:开" : "🪟透明歌词:关");
-            floatingLyricsToggleBtn.setTextColor(Color.parseColor(floatingLyricsEnabled ? "#FDE68A" : "#94A3B8"));
-            setViewBg(floatingLyricsToggleBtn, createRoundRect(
-                    floatingLyricsEnabled ? "#451A03" : "#1E293B",
-                    8,
-                    floatingLyricsEnabled ? "#F59E0B" : "#334155",
-                    1
-            ));
+            applySoftToggleStyle(floatingLyricsToggleBtn, floatingLyricsEnabled);
         }
     }
 
     private void refreshAutoSendChip() {
         if (autoSendToggleBtn == null) return;
-        autoSendToggleBtn.setText(voiceAutoSend ? "⚡说完直发:开" : "⚡说完直发:关");
-        autoSendToggleBtn.setTextColor(Color.parseColor(voiceAutoSend ? "#A7F3D0" : "#94A3B8"));
-        setViewBg(autoSendToggleBtn, createRoundRect(
-                voiceAutoSend ? "#064E3B" : "#1E293B",
-                8,
-                voiceAutoSend ? "#10B981" : "#334155",
-                1
-        ));
+        autoSendToggleBtn.setText(voiceAutoSend ? "⚡自动执行:开" : "⚡自动执行:关");
+        applySoftToggleStyle(autoSendToggleBtn, voiceAutoSend);
     }
 
     // ========= 音乐播放态判断 & 防打断声效控制 =========

@@ -2465,7 +2465,13 @@
       const isNative = sess.session_mode === 'deepseek_native';
       const isCharacterChat = sess.session_mode === 'character_chat';
       const isPure = p.id === 'persona_deepseek_official' && !sess.custom_persona_override;
-      const apiKey = (dbObj.settings.deepseek_api_key || '').trim();
+      const requestedLlmMode = bodyObj.llm_mode || sess.llm_mode || 'local_antigravity';
+      const modeApiOv = (requestedLlmMode === 'api' && bodyObj.mode_api_override && typeof bodyObj.mode_api_override === 'object')
+        ? bodyObj.mode_api_override
+        : null;
+      const apiKey = requestedLlmMode === 'api' && modeApiOv
+        ? String(modeApiOv.api_key || '').replace(/^Bearer\s+/i, '').trim()
+        : '';
 
       let userText = (bodyObj.content || '').trim();
       let priorVersions = [];
@@ -2519,9 +2525,12 @@
         const prefix = String(bodyObj.assistant_prefix || '');
 
         if (apiKey) {
-          const ep = resolveEndpoints(dbObj.settings.deepseek_base_url);
+          const rawOvUrl = modeApiOv?.provider === 'custom_cloud'
+            ? (modeApiOv.base_url || 'https://api.siliconflow.cn/v1/chat/completions')
+            : 'https://api.deepseek.com/v1/chat/completions';
+          const ep = resolveEndpoints(rawOvUrl);
           const isOfficialDs = ep.chatUrl.includes('deepseek.com');
-          const savedModel = (dbObj.settings.deepseek_model || '').trim();
+          const savedModel = String(modeApiOv?.model || '').trim();
           let model = 'deepseek-chat';
           if (isOfficialDs) {
             model = enableThink ? 'deepseek-reasoner' : 'deepseek-chat';

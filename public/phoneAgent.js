@@ -7,8 +7,8 @@
    ========================================================================== */
 
 (() => {
-  const CURRENT_APK_VERSION = '2.6.5';
-  const CURRENT_APK_CODE = 160;
+  const CURRENT_APK_VERSION = '2.7.0';
+  const CURRENT_APK_CODE = 161;
   const DEEPSEEK_API_KEYS_URL = 'https://platform.deepseek.com/api_keys';
   const PUBLIC_WEB_ORIGIN = 'https://star.claudexxb.online';
   const GITHUB_RELEASES_URL = 'https://github.com/qts2218346424-cyber/persona-chat-studio/releases';
@@ -22,13 +22,17 @@
     trustedApps: 'pa_trusted_apps_v1',
     edgeGlow: 'pa_edge_glow_v1',
     exclusiveKey: 'pa_exclusive_api_key_v1',
-    keyPrimary: 'deepseek_user_api_key',
-    keyFallback: 'own_deepseek_api_key',
+    learnedSkills: 'pa_learned_skills_v1',
     taskHistory: 'pa_task_history_v1'
   };
 
-  // 4 大精炼高频快捷指令库（mode: 'exec' 点击即执行 | 'fill' 填入输入框补全参数）
+  // 精炼高频快捷指令库（含 AI 固化本地技能、常用操作、输入搜索、手势系统、短视频、常用语、歌单）
   const LOCAL_COMMAND_CATALOG = [
+    {
+      id: 'learned',
+      title: '已学技能',
+      items: []
+    },
     {
       id: 'common',
       title: '常用操作',
@@ -378,12 +382,7 @@
     let baseUrl = '';
     let autoApprove = false;
     try {
-      apiKey = (
-        localStorage.getItem(STORAGE_KEYS.exclusiveKey) ||
-        localStorage.getItem(STORAGE_KEYS.keyPrimary) ||
-        localStorage.getItem(STORAGE_KEYS.keyFallback) ||
-        ''
-      ).trim();
+      apiKey = (localStorage.getItem(STORAGE_KEYS.exclusiveKey) || '').trim();
       model = (localStorage.getItem(STORAGE_KEYS.directModel) || 'deepseek-chat').trim();
       baseUrl = (localStorage.getItem(STORAGE_KEYS.directBaseUrl) || '').trim();
       autoApprove = localStorage.getItem(STORAGE_KEYS.autoApprove) === '1';
@@ -614,7 +613,521 @@
     $('pa-cfg-toggle-btn')?.setAttribute('aria-expanded', 'false');
   }
 
+  function syncLearnedSkillsToNative(list) {
+    try {
+      const b = getBridge();
+      if (isNativeApk() && b && typeof b.saveLearnedSkillsSummary === 'function') {
+        const summary = (Array.isArray(list) ? list : []).slice(0, 12).map((s) => ({
+          id: String(s.id || ''),
+          name: String(s.name || '').slice(0, 24),
+          trigger: String(s.trigger || s.name || '').slice(0, 24),
+          stepCount: Array.isArray(s.steps) ? s.steps.length : 0,
+          targetApp: String(s.targetApp || '')
+        }));
+        b.saveLearnedSkillsSummary(JSON.stringify(summary));
+      }
+    } catch {}
+  }
+
+  function loadLearnedSkills() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEYS.learnedSkills);
+      if (!raw) return [];
+      const arr = JSON.parse(raw);
+      return Array.isArray(arr) ? arr.filter((s) => s && s.id && s.name && Array.isArray(s.steps)) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  function saveLearnedSkills(list) {
+    const clean = (Array.isArray(list) ? list : [])
+      .filter((s) => s && s.id && s.name && Array.isArray(s.steps))
+      .slice(0, 40);
+    try {
+      localStorage.setItem(STORAGE_KEYS.learnedSkills, JSON.stringify(clean));
+    } catch {}
+    syncLearnedSkillsToNative(clean);
+    renderEmptyGuideLearnedSkills();
+    return clean;
+  }
+
+  function upsertLearnedSkill(skill) {
+    const list = loadLearnedSkills();
+    const id = String(skill.id || `skill_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`);
+    const nextSkill = {
+      id,
+      name: String(skill.name || '未命名本地技能').trim().slice(0, 32),
+      trigger: String(skill.trigger || skill.name || '').trim().slice(0, 40),
+      sourceTask: String(skill.sourceTask || '').trim().slice(0, 120),
+      targetApp: String(skill.targetApp || '').trim(),
+      targetPackage: String(skill.targetPackage || '').trim(),
+      steps: Array.isArray(skill.steps) ? skill.steps.slice(0, 60) : [],
+      runCount: Number(skill.runCount) || 0,
+      createdAt: Number(skill.createdAt) || Date.now(),
+      updatedAt: Date.now()
+    };
+    const idx = list.findIndex((x) => x.id === id);
+    if (idx >= 0) list[idx] = nextSkill;
+    else list.unshift(nextSkill);
+    saveLearnedSkills(list);
+    return nextSkill;
+  }
+
+  function deleteLearnedSkill(id) {
+    const list = loadLearnedSkills().filter((x) => x.id !== id);
+    saveLearnedSkills(list);
+  }
+
+  function findMatchingLearnedSkill(inputText) {
+    const raw = String(inputText || '').trim();
+    if (!raw) return null;
+    const list = loadLearnedSkills();
+    if (!list.length) return null;
+
+    const idPrefix = raw.match(/^(?:skill:|运行技能[:：]\s*)([a-zA-Z0-9_-]+)/i);
+    if (idPrefix) {
+      const byId = list.find((s) => s.id === idPrefix[1]);
+      if (byId) return byId;
+    }
+
+    const norm = (str) => String(str || '').trim().toLowerCase().replace(/[，。！？、\s]+/g, '');
+    const targetNorm = norm(raw.replace(/^(?:运行技能|执行技能|执行|运行|重放|回放)\s*[:：]?\s*/i, ''));
+    if (!targetNorm) return null;
+
+    // 1. 精确匹配触发口令或技能名
+    const exact = list.find((s) => norm(s.trigger) === targetNorm || norm(s.name) === targetNorm);
+    if (exact) return exact;
+
+    // 2. 包含匹配（口令长度 >= 2）
+    return (
+      list.find((s) => {
+        const t = norm(s.trigger);
+        const n = norm(s.name);
+        return (t.length >= 2 && targetNorm.includes(t)) || (n.length >= 2 && targetNorm.includes(n));
+      }) || null
+    );
+  }
+
+  function captureRecordableStep(subAct, snapshot, execRes, screenSize) {
+    if (!subAct || execRes?.error) return null;
+    const tool = subAct.tool || subAct.action || '';
+    const args = { ...(subAct.args || subAct.params || {}) };
+    if (!tool || tool === 'done' || tool === 'ask_user') return null;
+
+    const SELF_PKG = 'com.deepseek.starwhisper.studio';
+    if (snapshot?.packageName === SELF_PKG && tool !== 'phone_open' && tool !== 'launch_app') {
+      return null;
+    }
+
+    const w = Math.max(360, Number(screenSize?.width) || 1080);
+    const h = Math.max(640, Number(screenSize?.height) || 2400);
+    const clampR = (v) => Math.max(0.01, Math.min(0.99, Number((Number(v) || 0.5).toFixed(4))));
+
+    let targetNode = null;
+    if (args.ref && Array.isArray(snapshot?.nodes)) {
+      targetNode = snapshot.nodes.find((n) => n && n.ref === args.ref) || null;
+    }
+
+    let rx = null;
+    let ry = null;
+    if (targetNode && Array.isArray(targetNode.center) && targetNode.center.length >= 2) {
+      rx = clampR(targetNode.center[0] / w);
+      ry = clampR(targetNode.center[1] / h);
+    } else if (Number(execRes?.x) > 0 && Number(execRes?.y) > 0) {
+      rx = clampR(execRes.x / w);
+      ry = clampR(execRes.y / h);
+    } else if (Number(args.x) > 0 && Number(args.y) > 0) {
+      rx = clampR(args.x / w);
+      ry = clampR(args.y / h);
+    }
+
+    return {
+      tool,
+      summary: String(subAct.summary || formatActionCodeDesc(subAct) || tool).slice(0, 64),
+      args: {
+        appName: args.appName || '',
+        text: args.text !== undefined ? String(args.text) : (targetNode?.text || ''),
+        desc: targetNode?.desc || '',
+        viewId: targetNode?.viewId || args.viewId || '',
+        direction: args.direction || '',
+        amount: args.amount !== undefined ? Number(args.amount) : undefined,
+        key: args.key || '',
+        clear: args.clear,
+        submit: Boolean(args.submit || args.autoSubmit),
+        ms: args.ms !== undefined ? Number(args.ms) : undefined,
+        rx,
+        ry,
+        rx1: args.x1 !== undefined ? clampR(args.x1 / w) : undefined,
+        ry1: args.y1 !== undefined ? clampR(args.y1 / h) : undefined,
+        rx2: args.x2 !== undefined ? clampR(args.x2 / w) : undefined,
+        ry2: args.y2 !== undefined ? clampR(args.y2 / h) : undefined,
+        duration: args.duration !== undefined ? Number(args.duration) : undefined
+      },
+      targetApp: String(snapshot?.appName || ''),
+      targetPackage: String(snapshot?.packageName || ''),
+      delayMs: tool === 'phone_open' ? 1100 : tool === 'phone_type' ? 500 : 480
+    };
+  }
+
+  function renderEmptyGuideLearnedSkills() {
+    const box = $('pa-learned-skills-box');
+    if (!box) return;
+    const skills = loadLearnedSkills();
+    if (skills.length === 0) {
+      box.innerHTML = `
+        <div class="pa-learned-head">
+          <span class="pa-learned-title">本地已学技能（免 API 离线复用）</span>
+          <button type="button" class="pa-learned-manage-btn" id="pa-empty-open-learned-btn">新建 / 导入</button>
+        </div>
+        <div class="pa-learned-empty-tip">
+          使用 API 跑通任意重复任务后，点击结果卡片下方「✨ 固化为本地技能」，即可保存在本地，下次在「本地免 API」模式零消耗直连执行。
+        </div>
+      `;
+    } else {
+      box.innerHTML = `
+        <div class="pa-learned-head">
+          <span class="pa-learned-title">本地已学技能 · 一键零 API 运行 (${skills.length})</span>
+          <button type="button" class="pa-learned-manage-btn" id="pa-empty-open-learned-btn">管理技能库</button>
+        </div>
+        <div class="pa-learned-chips">
+          ${skills.slice(0, 6).map((s) => `
+            <button type="button" class="pa-skill-chip" data-run-skill-id="${escapeHtml(s.id)}" title="口令：${escapeHtml(s.trigger || s.name)}（${s.steps.length} 步）">
+              <span class="pa-skill-chip-dot"></span>
+              <span class="pa-skill-chip-name">${escapeHtml(s.name)}</span>
+              <span class="pa-skill-chip-meta">${s.steps.length}步</span>
+            </button>
+          `).join('')}
+        </div>
+      `;
+    }
+
+    box.querySelector('#pa-empty-open-learned-btn')?.addEventListener('click', () => {
+      activeCmdLibCategory = 'learned';
+      const drawer = $('phone-cmd-quick-drawer');
+      if (drawer) {
+        drawer.classList.remove('hidden');
+        $('pa-open-cmdlib-btn')?.classList.add('is-active');
+        renderCommandLibraryDrawer();
+      }
+    });
+
+    box.querySelectorAll('[data-run-skill-id]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const sid = btn.getAttribute('data-run-skill-id') || '';
+        if (sid) executeLearnedSkillOffline(sid);
+      });
+    });
+  }
+
+  function openSaveSkillModal({ sourceTask = '', recordedSteps = [], existingSkill = null } = {}) {
+    document.getElementById('pa-skill-save-modal')?.remove();
+    let draftSteps = (existingSkill?.steps || recordedSteps || []).map((st) => ({
+      ...st,
+      args: { ...(st.args || {}) }
+    }));
+
+    const modal = document.createElement('div');
+    modal.id = 'pa-skill-save-modal';
+    modal.className = 'pa-skill-modal-backdrop';
+    const defaultName = existingSkill?.name || String(sourceTask || '自定义本地技能').slice(0, 20) || '自定义本地技能';
+    const defaultTrigger = existingSkill?.trigger || defaultName;
+
+    const renderStepsHtml = () => {
+      if (draftSteps.length === 0) {
+        return '<div class="pa-skill-step-empty">暂无动作步骤，请至少保留 1 步或点击下方「新增步」</div>';
+      }
+      return draftSteps.map((st, idx) => `
+        <div class="pa-skill-step-row" data-step-idx="${idx}">
+          <span class="pa-skill-step-num">${idx + 1}</span>
+          <div class="pa-skill-step-info">
+            <div class="pa-skill-step-top">
+              <span class="pa-tool-badge">${escapeHtml(st.tool)}</span>
+              <span class="pa-skill-step-sum">${escapeHtml(st.summary || st.args?.text || st.args?.appName || st.tool)}</span>
+            </div>
+            ${st.tool === 'phone_type' || st.tool === 'input' ? `
+              <input type="text" class="pa-skill-step-input" data-edit-text="${idx}" value="${escapeHtml(st.args?.text || '')}" placeholder="输入文本内容" />
+            ` : ''}
+          </div>
+          <button type="button" class="pa-skill-step-del" data-del-step="${idx}" title="移除此步">✕</button>
+        </div>
+      `).join('');
+    };
+
+    modal.innerHTML = `
+      <div class="pa-skill-modal" role="dialog" aria-modal="true" aria-label="固化为本地免 API 技能">
+        <div class="pa-skill-modal-head">
+          <div>
+            <h4>${existingSkill ? '编辑本地技能' : '固化为本地技能（免 API 离线复用）'}</h4>
+            <p>保存后可在「本地免 API」模式与悬浮窗中零消耗直接运行</p>
+          </div>
+          <button type="button" class="pa-sheet-close-btn" id="pa-skill-modal-close" aria-label="关闭">✕</button>
+        </div>
+        <div class="pa-skill-modal-body">
+          <div class="pa-cfg-row-2">
+            <div class="pa-cfg-field">
+              <label for="pa-skill-name-inp">技能名称</label>
+              <input type="text" id="pa-skill-name-inp" class="pa-cfg-input" value="${escapeHtml(defaultName)}" maxlength="32" placeholder="如：自动签到领积分" />
+            </div>
+            <div class="pa-cfg-field">
+              <label for="pa-skill-trigger-inp">语音 / 快捷触发口令</label>
+              <input type="text" id="pa-skill-trigger-inp" class="pa-cfg-input" value="${escapeHtml(defaultTrigger)}" maxlength="40" placeholder="说出此口令即可本地直达" />
+            </div>
+          </div>
+          <div class="pa-skill-steps-head">
+            <span>固化动作序列（共 <strong id="pa-skill-step-count">${draftSteps.length}</strong> 步）</span>
+            <button type="button" class="pa-learned-manage-btn" id="pa-skill-add-wait-btn">+ 等待 1 秒</button>
+          </div>
+          <div class="pa-skill-steps-list" id="pa-skill-steps-list">
+            ${renderStepsHtml()}
+          </div>
+        </div>
+        <div class="pa-skill-modal-foot">
+          <button type="button" class="pa-banner-btn subtle" id="pa-skill-modal-cancel">取消</button>
+          <button type="button" class="pa-banner-btn" id="pa-skill-modal-save">保存本地技能</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    const rebindStepEvents = () => {
+      const listEl = modal.querySelector('#pa-skill-steps-list');
+      const countEl = modal.querySelector('#pa-skill-step-count');
+      if (countEl) countEl.textContent = String(draftSteps.length);
+      if (!listEl) return;
+      listEl.innerHTML = renderStepsHtml();
+      listEl.querySelectorAll('[data-del-step]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const i = Number(btn.getAttribute('data-del-step'));
+          if (!Number.isNaN(i)) {
+            draftSteps.splice(i, 1);
+            rebindStepEvents();
+          }
+        });
+      });
+      listEl.querySelectorAll('[data-edit-text]').forEach((inp) => {
+        inp.addEventListener('input', () => {
+          const i = Number(inp.getAttribute('data-edit-text'));
+          if (draftSteps[i]) {
+            draftSteps[i].args = { ...(draftSteps[i].args || {}), text: inp.value };
+          }
+        });
+      });
+    };
+    rebindStepEvents();
+
+    const closeModalBox = () => modal.remove();
+    modal.querySelector('#pa-skill-modal-close')?.addEventListener('click', closeModalBox);
+    modal.querySelector('#pa-skill-modal-cancel')?.addEventListener('click', closeModalBox);
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) closeModalBox();
+    });
+    modal.querySelector('#pa-skill-add-wait-btn')?.addEventListener('click', () => {
+      draftSteps.push({ tool: 'phone_wait', summary: '等待 1000ms 页面加载', args: { ms: 1000 }, delayMs: 200 });
+      rebindStepEvents();
+    });
+    modal.querySelector('#pa-skill-modal-save')?.addEventListener('click', () => {
+      const name = (modal.querySelector('#pa-skill-name-inp')?.value || '').trim();
+      const trigger = (modal.querySelector('#pa-skill-trigger-inp')?.value || name).trim();
+      if (!name) {
+        showToast('请填写技能名称');
+        return;
+      }
+      if (draftSteps.length === 0) {
+        showToast('请至少保留 1 个动作步骤');
+        return;
+      }
+      const firstExt = draftSteps.find((s) => s.targetPackage && s.targetPackage !== 'com.deepseek.starwhisper.studio');
+      const saved = upsertLearnedSkill({
+        ...(existingSkill || {}),
+        name,
+        trigger: trigger || name,
+        sourceTask: existingSkill?.sourceTask || sourceTask,
+        targetApp: existingSkill?.targetApp || firstExt?.targetApp || '',
+        targetPackage: existingSkill?.targetPackage || firstExt?.targetPackage || '',
+        steps: draftSteps
+      });
+      closeModalBox();
+      if (activeCmdLibCategory === 'learned') renderCommandLibraryDrawer();
+      showToast(`已固化本地技能「${saved.name}」，免 API 模式直接可用！`);
+    });
+  }
+
+  async function replayLearnedSkill(skill, cardCtx, signal) {
+    const b = getBridge();
+    const native = isNativeApk();
+    const steps = Array.isArray(skill?.steps) ? skill.steps : [];
+    if (!steps.length) {
+      addStepItem(cardCtx.stepsList, 1, '技能步骤为空', '', '失败', true, 'skill.empty');
+      return { status: 'error', summaryTitle: '该本地技能没有可执行步骤', replyText: '' };
+    }
+
+    if (cardCtx.summaryTextEl) {
+      cardCtx.summaryTextEl.textContent = `本地技能回放：${skill.name} (0/${steps.length})`;
+    }
+
+    if (native && b && steps[0].tool !== 'phone_open' && steps[0].tool !== 'launch_app') {
+      const initSnap = readAndFormatSnapshot(false);
+      if (initSnap.packageName === 'com.deepseek.starwhisper.studio' && typeof b.returnToLastExternalApp === 'function') {
+        if (b.returnToLastExternalApp()) {
+          addStepItem(cardCtx.stepsList, 0, '切回目标应用准备离线回放', '免 API 本地技能回放', '已切回', false, 'skill.prep');
+          await sleep(550);
+        }
+      }
+    }
+
+    const screenSize = getScreenSizeObj();
+    const scrW = Math.max(360, Number(screenSize?.width) || 1080);
+    const scrH = Math.max(640, Number(screenSize?.height) || 2400);
+
+    for (let i = 0; i < steps.length; i++) {
+      if (signal?.aborted || emergencyStopRequested || (native && b && typeof b.isEmergencyStopRequested === 'function' && b.isEmergencyStopRequested())) {
+        if (native && b && typeof b.resetEmergencyStop === 'function') {
+          try { b.resetEmergencyStop(); } catch {}
+        }
+        addStepItem(cardCtx.stepsList, i + 1, '本地技能回放已停止', '', '已中止', true, 'system.stop');
+        return { status: 'error', summaryTitle: `已中止技能「${skill.name}」`, replyText: '' };
+      }
+
+      const st = steps[i];
+      const args = st.args || {};
+      const stepLabel = st.summary || st.tool;
+      cardCtx.stepCount = i + 1;
+      if (cardCtx.summaryTextEl) {
+        cardCtx.summaryTextEl.textContent = `离线技能 [${i + 1}/${steps.length}]：${stepLabel}`;
+      }
+      if (native && b && typeof b.updateFloatState === 'function') {
+        try { b.updateFloatState('acting', `技能 ${i + 1}/${steps.length}`); } catch {}
+      }
+
+      const rowEl = addStepItem(cardCtx.stepsList, i + 1, stepLabel, '零 API 本地固化技能回放', native ? '执行中' : '演练中', false, `skill.${st.tool}`);
+
+      if (!native) {
+        await sleep(220);
+        updateStepResult(rowEl, '演练完成', false, true);
+        continue;
+      }
+
+      let ok = false;
+      let detailMsg = '已完成';
+      try {
+        if (st.tool === 'phone_open' || st.tool === 'launch_app') {
+          ok = typeof b.launchAppByName === 'function' ? b.launchAppByName(String(args.appName || '')) : false;
+          detailMsg = ok ? `已打开「${args.appName}」` : `打开「${args.appName}」失败`;
+        } else if (st.tool === 'phone_tap' || st.tool === 'click_node' || st.tool === 'phone_tap_xy' || st.tool === 'click') {
+          const targetTxt = String(args.text || '').trim();
+          const targetVid = String(args.viewId || '').trim();
+          if (targetTxt && targetTxt.length <= 24 && typeof b.clickByText === 'function') {
+            ok = b.clickByText(targetTxt);
+            if (ok) detailMsg = `按文本点击「${targetTxt}」`;
+          }
+          if (!ok && (targetVid || targetTxt || args.desc)) {
+            const snap = readAndFormatSnapshot(false);
+            const matched = (snap.nodes || []).find((n) =>
+              (targetVid && n.viewId === targetVid) ||
+              (targetTxt && (n.text === targetTxt || n.desc === targetTxt)) ||
+              (args.desc && n.desc === args.desc)
+            );
+            if (matched && Array.isArray(matched.center) && typeof b.dispatchClick === 'function') {
+              ok = b.dispatchClick(matched.center[0], matched.center[1]);
+              if (ok) detailMsg = `语义定位点击「${matched.text || matched.desc || targetVid}」`;
+            }
+          }
+          if (!ok && args.rx && args.ry && typeof b.dispatchClick === 'function') {
+            const px = Math.round(Number(args.rx) * scrW);
+            const py = Math.round(Number(args.ry) * scrH);
+            ok = b.dispatchClick(px, py);
+            if (ok) detailMsg = `按记忆坐标 (${px}, ${py}) 点击`;
+          }
+        } else if (st.tool === 'phone_type' || st.tool === 'input') {
+          const txt = String(args.text || '');
+          ok = typeof b.dispatchSmartInput === 'function'
+            ? b.dispatchSmartInput(txt, false, Boolean(args.submit))
+            : b.dispatchInputText(String(args.viewId || ''), txt);
+          detailMsg = ok ? `已填入「${txt.slice(0, 20)}」` : '输入失败';
+        } else if (st.tool === 'phone_scroll' || st.tool === 'scroll') {
+          ok = typeof b.scrollScreen === 'function'
+            ? b.scrollScreen(String(args.direction || 'down'), Number(args.amount) || 0.65)
+            : b.dispatchSwipe(Math.round(scrW * 0.5), Math.round(scrH * 0.72), Math.round(scrW * 0.5), Math.round(scrH * 0.28), 320);
+          detailMsg = ok ? `向 ${args.direction || 'down'} 滚动` : '滚动失败';
+        } else if (st.tool === 'phone_swipe' || st.tool === 'swipe') {
+          const x1 = Math.round((Number(args.rx1) || 0.5) * scrW);
+          const y1 = Math.round((Number(args.ry1) || 0.72) * scrH);
+          const x2 = Math.round((Number(args.rx2) || 0.5) * scrW);
+          const y2 = Math.round((Number(args.ry2) || 0.28) * scrH);
+          ok = b.dispatchSwipe(x1, y1, x2, y2, Number(args.duration) || 340);
+          detailMsg = ok ? '滑动完成' : '滑动失败';
+        } else if (st.tool === 'phone_key' || st.tool === 'key' || st.tool === 'back' || st.tool === 'home') {
+          ok = b.dispatchGlobalAction(String(args.key || st.tool || 'back'));
+          detailMsg = ok ? `系统键 (${args.key || st.tool})` : '系统键失败';
+        } else if (st.tool === 'phone_wait' || st.tool === 'wait') {
+          ok = true;
+          const ms = Math.min(8000, Math.max(200, Number(args.ms) || 1000));
+          await sleep(ms);
+          detailMsg = `等待 ${ms}ms`;
+        } else {
+          ok = true;
+        }
+      } catch (err) {
+        ok = false;
+        detailMsg = `异常：${err?.message || err}`;
+      }
+
+      updateStepResult(rowEl, detailMsg, !ok, ok);
+      await sleep(Math.min(2500, Math.max(240, Number(st.delayMs) || 480)));
+    }
+
+    upsertLearnedSkill({ ...skill, runCount: (Number(skill.runCount) || 0) + 1 });
+    return {
+      status: 'done',
+      summaryTitle: `离线技能「${skill.name}」执行完成 (${steps.length} 步)`,
+      replyText: native
+        ? `已通过本地固化技能「${skill.name}」零 API 离线完成全部 ${steps.length} 步操作。`
+        : `已在网页端完成本地技能「${skill.name}」的 ${steps.length} 步离线流程演练（安装随身版 APK 后可在真机免 API 自动执行）。`
+    };
+  }
+
+  async function executeLearnedSkillOffline(skillId) {
+    const skill = loadLearnedSkills().find((s) => s.id === skillId);
+    if (!skill) {
+      showToast('未找到该本地技能');
+      return;
+    }
+    const label = `执行本地技能：${skill.name}`;
+    addUserBubble(label);
+    const cardCtx = createAgentCardRow(label, 'local');
+    if (!cardCtx) return;
+
+    if (activeAbortController) {
+      try { activeAbortController.abort(); } catch {}
+    }
+    activeAbortController = new AbortController();
+    const signal = activeAbortController.signal;
+    emergencyStopRequested = false;
+    isAgentRunning = true;
+    cardCtx.isSkillReplay = true;
+
+    try {
+      const res = await replayLearnedSkill(skill, cardCtx, signal);
+      finalizeAgentTurn(cardCtx, {
+        status: res.status,
+        summaryTitle: res.summaryTitle,
+        replyText: res.replyText,
+        isSkillReplay: true
+      });
+    } finally {
+      isAgentRunning = false;
+      const b = getBridge();
+      if (isNativeApk() && b && typeof b.updateFloatState === 'function') {
+        try { b.updateFloatState('idle', 'dsh-Go'); } catch {}
+      }
+      syncStatus();
+    }
+  }
+
   function renderEmptyGuideTiles() {
+    renderEmptyGuideLearnedSkills();
     const grid = $('pa-empty-guide-grid');
     if (!grid) return;
     grid.innerHTML = EMPTY_GUIDE_PRESETS.map(
@@ -727,13 +1240,34 @@
     const drawer = $('phone-cmd-quick-drawer');
     if (!drawer) return;
     const cat = LOCAL_COMMAND_CATALOG.find((c) => c.id === activeCmdLibCategory) || LOCAL_COMMAND_CATALOG[0];
+    const isLearnedTab = cat.id === 'learned';
     const isPhrasesTab = cat.id === 'phrases';
     const isSongsTab = cat.id === 'songs';
+    const learnedSkills = isLearnedTab ? loadLearnedSkills() : [];
     const phrases = isPhrasesTab ? loadQuickPhrases() : [];
     const songs = isSongsTab ? loadCustomSongs() : [];
 
     let bodyHtml = '';
-    if (isSongsTab) {
+    if (isLearnedTab) {
+      bodyHtml = `
+        <div class="pa-phrase-toolbar">
+          <button type="button" class="pa-phrase-btn is-primary" id="pa-learned-new-btn">➕ 手动新建本地技能</button>
+        </div>
+        <div class="pa-phrase-list">
+          ${learnedSkills.length === 0
+            ? '<div class="pa-phrase-empty">还没有固化的本地技能。用 API 模式让 AI 跑通一次工作流后，点击结果卡片下方「✨ 固化为本地技能」即可永久保存在本地免 API 复用！</div>'
+            : learnedSkills.map((s) => `
+                <div class="pa-phrase-row pa-learned-row" data-skill-id="${escapeHtml(s.id)}">
+                  <button type="button" class="pa-phrase-send-btn pa-learned-run-btn" data-skill-id="${escapeHtml(s.id)}" title="口令：${escapeHtml(s.trigger || s.name)}">
+                    ▶ ${escapeHtml(s.name)} <small style="opacity:0.7;font-weight:500;">(${s.steps.length}步${s.targetApp ? ` · ${escapeHtml(s.targetApp)}` : ''})</small>
+                  </button>
+                  <button type="button" class="pa-phrase-fill-btn pa-learned-edit-btn" data-skill-id="${escapeHtml(s.id)}" title="编辑技能">编辑</button>
+                  <button type="button" class="pa-phrase-del-btn pa-learned-del-btn" data-skill-id="${escapeHtml(s.id)}" title="删除技能">✕</button>
+                </div>
+              `).join('')}
+        </div>
+      `;
+    } else if (isSongsTab) {
       const bridge = getNativeBridge();
       const canImportSong = !!(bridge && typeof bridge.openSongImporter === 'function');
       bodyHtml = `
@@ -842,7 +1376,43 @@
       $('mobile-tools-plus-btn')?.classList.remove('is-active');
     });
 
-    if (isSongsTab) {
+    if (isLearnedTab) {
+      drawer.querySelector('#pa-learned-new-btn')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openSaveSkillModal({
+          sourceTask: '新建本地技能',
+          recordedSteps: [{ tool: 'phone_open', summary: '打开目标应用', args: { appName: '微信' }, delayMs: 1100 }]
+        });
+      });
+      drawer.querySelectorAll('.pa-learned-run-btn').forEach((btn) => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const sid = btn.getAttribute('data-skill-id') || '';
+          drawer.classList.add('hidden');
+          $('pa-open-cmdlib-btn')?.classList.remove('is-active');
+          if (sid) executeLearnedSkillOffline(sid);
+        });
+      });
+      drawer.querySelectorAll('.pa-learned-edit-btn').forEach((btn) => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const sid = btn.getAttribute('data-skill-id') || '';
+          const sk = loadLearnedSkills().find((x) => x.id === sid);
+          if (sk) openSaveSkillModal({ existingSkill: sk });
+        });
+      });
+      drawer.querySelectorAll('.pa-learned-del-btn').forEach((btn) => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const sid = btn.getAttribute('data-skill-id') || '';
+          if (sid) {
+            deleteLearnedSkill(sid);
+            renderCommandLibraryDrawer();
+            showToast('已删除该本地技能');
+          }
+        });
+      });
+    } else if (isSongsTab) {
       drawer.querySelector('#pa-song-import-btn')?.addEventListener('click', (e) => {
         e.stopPropagation();
         const b = getNativeBridge();
@@ -1161,10 +1731,16 @@
       btn.setAttribute('aria-selected', String(active));
     });
 
-    // 本地免 API 模式下自动折叠 API Key 输入面板，保持抽屉清爽
+    // 本地免 API 模式下自动折叠 API Key 输入面板，展示简洁安心状态卡
     const cfgDrawer = $('pa-inline-config-drawer');
     if (cfgDrawer) {
       cfgDrawer.classList.toggle('hidden', mode === 'local');
+    }
+    const localPeaceCard = $('pa-local-peace-card');
+    if (localPeaceCard) {
+      localPeaceCard.classList.toggle('hidden', mode !== 'local');
+      const cntEl = $('pa-local-peace-skill-count');
+      if (cntEl) cntEl.textContent = String(loadLearnedSkills().length);
     }
 
     // 2. 同步配置抽屉表单默认值
@@ -1775,7 +2351,7 @@
     scrollChatToBottom();
   }
 
-  function finalizeAgentTurn(cardCtx, { status = 'done', summaryTitle = '', replyText = '', handoverCb = null }) {
+  function finalizeAgentTurn(cardCtx, { status = 'done', summaryTitle = '', replyText = '', handoverCb = null, recordedSteps = null, sourceTask = '', isSkillReplay = false }) {
     if (!cardCtx) return;
     const elapsedSec = ((Date.now() - (cardCtx.startedAt || Date.now())) / 1000).toFixed(1);
     const acc = cardCtx.accordion;
@@ -1796,13 +2372,20 @@
     if (cardCtx.stopBtn && !isNativeAutoSwiping()) {
       cardCtx.stopBtn.classList.add('hidden');
     }
-    if (cardCtx.finalReplyEl && (replyText || typeof handoverCb === 'function')) {
+    const validSteps = Array.isArray(recordedSteps) ? recordedSteps : [];
+    const canSaveSkill = !isSkillReplay && validSteps.length >= 1;
+    if (cardCtx.finalReplyEl && (replyText || typeof handoverCb === 'function' || canSaveSkill)) {
       cardCtx.finalReplyEl.classList.remove('hidden');
       cardCtx.finalReplyEl.innerHTML = `
-        <div>${escapeHtml(replyText)}</div>
+        ${replyText ? `<div>${escapeHtml(replyText)}</div>` : ''}
         ${typeof handoverCb === 'function' ? `
           <div class="pa-handover-bar">
             <button type="button" class="pa-banner-btn pa-handover-resume-btn">我已完成，继续执行</button>
+          </div>
+        ` : ''}
+        ${canSaveSkill ? `
+          <div class="pa-save-skill-bar">
+            <button type="button" class="pa-save-skill-btn">✨ 固化为本地技能（免 API 离线可复用 · ${validSteps.length} 步）</button>
           </div>
         ` : ''}
       `;
@@ -1811,6 +2394,14 @@
           e.currentTarget.disabled = true;
           e.currentTarget.textContent = '正在继续…';
           handoverCb();
+        });
+      }
+      if (canSaveSkill) {
+        cardCtx.finalReplyEl.querySelector('.pa-save-skill-btn')?.addEventListener('click', () => {
+          openSaveSkillModal({
+            sourceTask: sourceTask || cardCtx.sourceTask || '',
+            recordedSteps: validSteps
+          });
         });
       }
     }
@@ -2952,7 +3543,20 @@
     let handoverCb = null;
 
     try {
-      // 分支 A：本地免 API 模式
+      // 分支 A：本地免 API 模式（优先匹配已固化的 AI 学习技能，再匹配内置离线口令）
+      const matchedSkill = !isResuming ? findMatchingLearnedSkill(taskText) : null;
+      if (matchedSkill && (execMode === 'local' || /^skill:/i.test(String(taskText || '').trim()))) {
+        const skillRes = await replayLearnedSkill(matchedSkill, cardCtx, signal);
+        finalizeAgentTurn(cardCtx, {
+          status: skillRes.status,
+          summaryTitle: skillRes.summaryTitle,
+          replyText: skillRes.replyText,
+          isSkillReplay: true
+        });
+        syncStatus();
+        return;
+      }
+
       const matchedOffline = isSimpleBuiltInLocalCmd(taskText);
       const shouldTryFullLocal = !isResuming && execMode === 'local';
       if (shouldTryFullLocal) {
@@ -3005,6 +3609,7 @@
       // 分支 B：dsh-Go 智能多步 ReAct 循环（支持 ref 控屏、微序列动作、事件驱动 ScreenVerdict、物理补点与 80 步接力）
       const MAX_STEPS = 80;
       const history = isResuming ? resumeOpts.history.slice() : [];
+      const recordedSteps = Array.isArray(resumeOpts?.recordedSteps) ? resumeOpts.recordedSteps.slice() : [];
       const screenSize = getScreenSizeObj();
       const installedApps = getInstalledAppsList();
       let roundAutoApproved =
@@ -3264,6 +3869,10 @@
           const subAct = actionQueue[ai];
           execRes = dispatchNativePlanAction(subAct, snapshot, { forceGesture: forceGestureClick, taskText });
           execTexts.push(execRes.text);
+          if (!execRes.error) {
+            const cap = captureRecordableStep(subAct, snapshot, execRes, screenSize);
+            if (cap) recordedSteps.push(cap);
+          }
           if (execRes.error || !native) break;
           if (ai < actionQueue.length - 1) {
             await sleep(subAct.tool === 'phone_tap' ? 240 : 260);
@@ -3361,7 +3970,9 @@
         status: finalStatus,
         summaryTitle: finalSummaryTitle || `已完成 ${cardCtx.stepCount || 0} 步控屏`,
         replyText: finalReplyText,
-        handoverCb
+        handoverCb,
+        recordedSteps,
+        sourceTask: taskText
       });
     } finally {
       isAgentRunning = false;
@@ -3384,6 +3995,12 @@
     const shell = document.getElementById('app-shell');
     if (shell && shell.dataset.uiMode !== 'phone-agent') {
       document.getElementById('ws-mode-phone-agent')?.click();
+    }
+
+    const skillIdMatch = clean.match(/^skill:([a-zA-Z0-9_-]+)$/i);
+    if (skillIdMatch) {
+      await executeLearnedSkillOffline(skillIdMatch[1]);
+      return;
     }
 
     // 运行中收到新指令 -> 自动进入排队插话模式
@@ -4447,6 +5064,7 @@
       });
     }
     syncStatus();
+    syncLearnedSkillsToNative(loadLearnedSkills());
     if (document.getElementById('app-shell')?.dataset.uiMode === 'phone-agent') {
       renderWorkspace();
     }
@@ -4498,8 +5116,12 @@
     getInstalledVersionInfo,
     getInstalledVersionLabel,
     getExecMode,
+    getConfig: () => ({ execMode: getExecMode(), ...getDirectConfig() }),
     setExecMode,
     setDirectApiKey,
+    loadLearnedSkills,
+    executeLearnedSkillOffline,
+    openSaveSkillModal,
     syncStatus,
     checkUpdate,
     checkUpdateOnStartup,

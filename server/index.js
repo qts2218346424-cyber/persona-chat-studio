@@ -656,8 +656,8 @@ function extractAuthToken(req, parsedUrl = null) {
   return '';
 }
 
-const APP_LATEST_VERSION = '2.6.5';
-const APP_LATEST_VERSION_CODE = 160;
+const APP_LATEST_VERSION = '2.7.0';
+const APP_LATEST_VERSION_CODE = 161;
 const APP_OFFICIAL_CERT_SHA256 = '6fd05e32a3cabf327140129d866e55a342fe30daa3384c67aad4b3cbdd98a17b';
 const APP_UPDATE_TICKET_SECRET = crypto
   .createHash('sha256')
@@ -956,7 +956,7 @@ async function handleApi(req, res, pathname, parsedUrl) {
       diffGenerations,
       changelog: [
         '【整套作业一口气连做不中断（Anti-Early-Done）】强化连续多题规划铁律并新增代码级防早退保护：检测到屏幕仍有“下一题”或题号进度未到最后一题时自动拦截提前结束，持续作答翻页直到整套题全部做完',
-        '【自动切回目标 App + 视觉同行归组】发送“继续写作业/答题”时自动记忆并切回上一个学习软件，严格水平行归组杜绝选项张冠李戴，支持 80 步长任务与 80ms 物理手势补点，双端同步升级至 v2.6.5 (Build 160)'
+        '【AI 操作固化 + 三模式物理隔离 + 悬浮窗焕新】新增 AI 操作学习固化与本地免 API 离线回放引擎；DeepSeek 聊天、星语剧场与手机辅助三模式 API 配置 100% 物理隔离且默认保持本地直连；全新美化手机辅助主页与 Android 三段式轻量悬浮窗，双端同步升级至 v2.7.0 (Build 161)'
       ]
     };
 
@@ -4804,10 +4804,35 @@ async function handleApi(req, res, pathname, parsedUrl) {
 
     const isNativeMode = session.session_mode === 'deepseek_native';
     const includeFollowUps = body.include_follow_ups !== false;
-    const settings = getExecutionSettingsForUser(userId);
+    const baseSettings = getExecutionSettingsForUser(userId);
+    const requestedLlmMode = body.llm_mode || session.llm_mode || 'local_antigravity';
+    const settings = { ...baseSettings };
+    const modeApiOv =
+      requestedLlmMode === 'api' && body.mode_api_override && typeof body.mode_api_override === 'object'
+        ? body.mode_api_override
+        : null;
+    if (modeApiOv) {
+      const ovProvider = modeApiOv.provider === 'custom_cloud' ? 'custom_cloud' : 'own_deepseek';
+      const ovKey = String(modeApiOv.api_key || '').replace(/^Bearer\s+/i, '').trim();
+      settings.provider = ovProvider;
+      settings.own_deepseek_api_key = ovKey;
+      settings.deepseek_api_key = ovKey;
+      settings._using_member_own_key = true;
+      settings._own_key_unavailable_reason = ovKey ? '' : 'KEY_MISSING';
+      if (ovProvider === 'custom_cloud') {
+        settings.deepseek_base_url = validateSafeUserApiBaseUrl(
+          modeApiOv.base_url || baseSettings.custom_cloud_api_url || 'https://api.siliconflow.cn/v1/chat/completions'
+        );
+        settings.deepseek_model = sanitizeUserModelName(
+          modeApiOv.model || baseSettings.custom_cloud_model || 'deepseek-ai/DeepSeek-V3'
+        );
+      } else {
+        settings.deepseek_base_url = 'https://api.deepseek.com/v1/chat/completions';
+        settings.deepseek_model = 'deepseek-flash';
+      }
+    }
     const usingMemberOwnKey = Boolean(settings._using_member_own_key);
 
-    const requestedLlmMode = body.llm_mode || session.llm_mode || 'local_antigravity';
     const localStatus = detectLocalAntigravityStatus();
     const localCliPath = getLocalAntigravityCliPath();
     const isLocalAvailable = Boolean(localStatus.available);

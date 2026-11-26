@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
@@ -117,8 +117,8 @@
       pointer-events: none !important;
     }
   </style>
-  <link rel="preload" href="./dist/app.bundle.js?v=ad139458b0" as="script" />
-  <link rel="stylesheet" href="./dist/app.bundle.css?v=c6ec5a2e1b" />
+  <link rel="preload" href="./dist/app.bundle.js?v=564b4ea3be" as="script" />
+  <link rel="stylesheet" href="./dist/app.bundle.css?v=5bda24d949" />
 </head>
 <body data-ui-mode="deepseek">
   <div id="skin-wallpaper-layer" class="skin-wallpaper-layer" aria-hidden="true"></div>
@@ -914,7 +914,7 @@
             </div>
           </div>
 
-          <!-- dsh-Go 风格手机控屏居中空态引导（仅空消息时展示，发送任务后自动收起） -->
+          <!-- 手机控屏居中空态引导（仅空消息时展示，发送任务后自动收起） -->
           <div class="pa-empty-guide hidden" id="pa-empty-guide">
             <div class="pa-empty-hero">
               <div class="pa-empty-badge-icon" aria-hidden="true">
@@ -925,10 +925,11 @@
                   <line x1="12" y1="18" x2="12.01" y2="18"></line>
                 </svg>
               </div>
-              <h2 class="pa-empty-hero-title" id="pa-empty-hero-title">dsh-Go 手机控屏已就绪</h2>
-              <p class="pa-empty-hero-sub" id="pa-empty-hero-sub">支持三档安全确认，密码、支付与验证码操作始终交还给你</p>
+              <h2 class="pa-empty-hero-title" id="pa-empty-hero-title">星语手机辅助 · 智能控屏</h2>
+              <p class="pa-empty-hero-sub" id="pa-empty-hero-sub">支持 AI 识屏自动执行、操作固化为本地技能，以及三档安全把关</p>
             </div>
-            <div class="pa-empty-guide-title">试着说一句，或点选任务示例</div>
+            <div class="pa-learned-box" id="pa-learned-skills-box"></div>
+            <div class="pa-empty-guide-title">试着说一句，或点选示例任务</div>
             <div class="pa-empty-guide-grid" id="pa-empty-guide-grid"></div>
           </div>
 
@@ -1994,14 +1995,17 @@
           <!-- ==================== 标签页 1：连接与密钥 ==================== -->
           <div role="tabpanel" id="spanel-key" aria-labelledby="stab-key">
             <div class="settings-panel-inner">
-              <div class="settings-section-label">选择聊天连接方式</div>
+              <div id="settings-mode-scope-banner" class="preset-friendly-tip" style="margin-bottom:12px;">
+                当前配置作用域：DeepSeek 聊天模式（默认本地直连 · 与星语剧场、手机辅助完全隔离）
+              </div>
+              <div class="settings-section-label">选择当前模式的模型通道</div>
               <div class="conn-choice-grid" role="group" aria-label="选择聊天连接方式">
                 <button type="button" class="conn-choice-card active" id="mode-card-free" data-conn-mode="free">
                   <div class="conn-card-top">
-                    <strong id="mode-card-free-title">本地直连 / 默认引擎</strong>
+                    <strong id="mode-card-free-title">本地直连（默认）</strong>
                     <span class="conn-recommend-tag" id="mode-card-free-tag">开箱即用</span>
                   </div>
-                  <p id="mode-card-free-desc">优先直连本地极速引擎（DeepSeek 深度思考），免 Key 高速稳定</p>
+                  <p id="mode-card-free-desc">默认保持本地极速直连（DeepSeek 深度思考），免 Key 开箱即用</p>
                 </button>
 
                 <button type="button" class="conn-choice-card" id="mode-card-own" data-conn-mode="own_deepseek">
@@ -2046,24 +2050,22 @@
                 </div>
               </div>
 
-              <!-- 选「DeepSeek 官方 API」时展开的极简专属面板（仅需 Key，默认官网与 V4.1 Flash，无多余输入框） -->
+              <!-- 选「DeepSeek 官方 API」时展开的极简专属面板（仅需 Key，默认官网与 V4.1 Flash） -->
               <div class="own-key-clean-zone hidden" id="member-own-api-box">
                 <div id="own-api-unlocked-view" class="own-key-steps-stack">
-                  <div class="ds-official-guide-card">
-                    <p class="ds-guide-title">DeepSeek 官方 API 极简配置（只需 1 步填入 Key）：</p>
-                    <ol class="ds-guide-list">
-                      <li>点击下方按钮打开 DeepSeek 官方控制台，在左侧「<strong>API keys</strong>」创建并复制密钥；</li>
-                      <li>把复制来的 <code>sk-...</code> 密钥粘贴到下方输入框；</li>
-                      <li>点击右下角「<strong>保存设置</strong>」即可生效！端点已锁定官方，模型已锁定 DeepSeek V4.1 Flash。</li>
-                    </ol>
-                    <a
-                      href="https://platform.deepseek.com/api_keys"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      class="ds-official-guide-btn"
-                    >
-                      点此前往 DeepSeek 官网获取密钥 (platform.deepseek.com) ↗
-                    </a>
+                  <div class="ds-official-guide-card" style="padding:10px 12px;">
+                    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+                      <span style="font-size:12.5px;color:var(--text-secondary);">已锁定官网接口与 V4.1 Flash，仅需填入当前模式的 API Key：</span>
+                      <a
+                        href="https://platform.deepseek.com/api_keys"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        class="ds-official-guide-btn"
+                        style="margin:0;padding:5px 10px;font-size:12px;"
+                      >
+                        获取官网密钥 ↗
+                      </a>
+                    </div>
                   </div>
 
                   <div class="spacious-field">
@@ -3126,7 +3128,7 @@
         <div class="apk-hero-card" id="apk-web-download-card">
           <div class="apk-hero-top">
             <div class="apk-meta-pills">
-              <span class="apk-meta-pill" id="apk-modal-version-pill">版本 v2.6.5 (整套作业/答题一口气连做不中断 + 防早退护栏 + 80步自动切回)</span>
+              <span class="apk-meta-pill" id="apk-modal-version-pill">版本 v2.7.0 (整套作业/答题一口气连做不中断 + 防早退护栏 + 80步自动切回)</span>
               <span class="apk-meta-pill">极速包体 约 10.3 MB</span>
               <span class="apk-meta-pill">官方纯净 · 签名校验</span>
               <span class="apk-meta-pill" id="pa-device-info-pill">支持 Android 7.0 ~ 15+</span>
@@ -3170,7 +3172,7 @@
           <div class="anv-head">
             <div class="anv-title-row">
               <span class="anv-badge">已安装原生随身版</span>
-              <span class="anv-version" id="anv-current-version">v2.6.5 (已就绪)</span>
+              <span class="anv-version" id="anv-current-version">v2.7.0 (已就绪)</span>
             </div>
             <p class="anv-desc">您已在 Android 原生 APK 中运行。可在「手机辅助」工作台或桌面悬浮窗中使用 DeepSeek API 智能识屏操控或本地免 API 直控。</p>
           </div>
@@ -3561,7 +3563,7 @@
             </div>
             <div class="mfs-item-right">
               <span class="mfs-update-dot hidden" id="mfs-update-dot" aria-label="发现新版本"></span>
-              <span class="mfs-value" id="mfs-version-value">v2.6.5</span>
+              <span class="mfs-value" id="mfs-version-value">v2.7.0</span>
               <span class="mfs-arrow">›</span>
             </div>
           </div>
@@ -3645,7 +3647,7 @@
         <div class="upd-ver-compare">
           <div class="upd-ver-box">
             <span class="upd-ver-label">当前已安装</span>
-            <strong class="upd-ver-num" id="upd-local-ver">v2.6.5</strong>
+            <strong class="upd-ver-num" id="upd-local-ver">v2.7.0</strong>
           </div>
           <div class="upd-ver-arrow" aria-hidden="true">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
@@ -3718,7 +3720,7 @@
     <div class="pa-sheet-header">
       <div class="pa-sheet-title-wrap">
         <h3>手机辅助控制台</h3>
-        <p id="pa-sheet-subtitle">切换执行引擎、开启无障碍权限或管理悬浮窗</p>
+        <p id="pa-sheet-subtitle">手机辅助专属独立引擎（与 DeepSeek 聊天、剧情模式完全隔离）</p>
       </div>
       <button type="button" class="pa-sheet-close-btn" id="pa-sheet-close-btn" aria-label="关闭控制台">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -3784,6 +3786,11 @@
           <input type="checkbox" id="pa-cfg-edge-glow" checked />
           <span>屏幕边缘柔和光效提示（AI 控屏时亮起微光边框）</span>
         </label>
+      </div>
+
+      <div class="pa-local-peace-card hidden" id="pa-local-peace-card">
+        <strong>当前已就绪 · 本地免 API 离线引擎</strong>
+        <span>无需配置任何 API Key，已加载 <strong id="pa-local-peace-skill-count">0</strong> 个本地已学技能与内置离线口令，零消耗快速直控。</span>
       </div>
 
       <div class="pa-config-drawer" id="pa-inline-config-drawer">
@@ -3874,7 +3881,7 @@
   <!-- 全局 Top-Layer 顶层轻提示胶囊（popover="manual" 确保在任何模态 <dialog> 打开时依然 100% 可见，遵循 persistent-toast-notifications 规范） -->
   <div id="global-top-toast" popover="manual" class="global-top-toast" role="status" aria-live="polite"></div>
 
-  <script defer src="./dist/app.bundle.js?v=ad139458b0"></script>
+  <script defer src="./dist/app.bundle.js?v=564b4ea3be"></script>
   <script>
     (function () {
       const isNativeApkEnv = Boolean(window.AndroidAppBridge) || window.location.hostname === 'appassets.androidplatform.net' || window.location.protocol === 'file:';

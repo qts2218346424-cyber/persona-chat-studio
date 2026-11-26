@@ -117,8 +117,8 @@
       pointer-events: none !important;
     }
   </style>
-  <link rel="preload" href="./dist/app.bundle.js?v=a8c7378c0a" as="script" />
-  <link rel="stylesheet" href="./dist/app.bundle.css?v=9099220479" />
+  <link rel="preload" href="./dist/app.bundle.js?v=f15868aa84" as="script" />
+  <link rel="stylesheet" href="./dist/app.bundle.css?v=c0089a7ac7" />
 </head>
 <body data-ui-mode="deepseek">
   <div id="skin-wallpaper-layer" class="skin-wallpaper-layer" aria-hidden="true"></div>
@@ -3148,7 +3148,7 @@
         <div class="apk-hero-card" id="apk-web-download-card">
           <div class="apk-hero-top">
             <div class="apk-meta-pills">
-              <span class="apk-meta-pill" id="apk-modal-version-pill">版本 v2.7.2 (整套作业/答题一口气连做不中断 + 防早退护栏 + 80步自动切回)</span>
+              <span class="apk-meta-pill" id="apk-modal-version-pill">版本 v2.7.3 (需求确认+防卡死纠偏)</span>
               <span class="apk-meta-pill">极速包体 约 10.3 MB</span>
               <span class="apk-meta-pill">官方纯净 · 签名校验</span>
               <span class="apk-meta-pill" id="pa-device-info-pill">支持 Android 7.0 ~ 15+</span>
@@ -3192,7 +3192,7 @@
           <div class="anv-head">
             <div class="anv-title-row">
               <span class="anv-badge">已安装原生随身版</span>
-              <span class="anv-version" id="anv-current-version">v2.7.2 (已就绪)</span>
+              <span class="anv-version" id="anv-current-version">v2.7.3 (已就绪)</span>
             </div>
             <p class="anv-desc">您已在 Android 原生 APK 中运行。可在「手机辅助」工作台或桌面悬浮窗中使用 DeepSeek API 智能识屏操控或本地免 API 直控。</p>
           </div>
@@ -3583,7 +3583,7 @@
             </div>
             <div class="mfs-item-right">
               <span class="mfs-update-dot hidden" id="mfs-update-dot" aria-label="发现新版本"></span>
-              <span class="mfs-value" id="mfs-version-value">v2.7.2</span>
+              <span class="mfs-value" id="mfs-version-value">v2.7.3</span>
               <span class="mfs-arrow">›</span>
             </div>
           </div>
@@ -3667,7 +3667,7 @@
         <div class="upd-ver-compare">
           <div class="upd-ver-box">
             <span class="upd-ver-label">当前已安装</span>
-            <strong class="upd-ver-num" id="upd-local-ver">v2.7.2</strong>
+            <strong class="upd-ver-num" id="upd-local-ver">v2.7.3</strong>
           </div>
           <div class="upd-ver-arrow" aria-hidden="true">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
@@ -3780,6 +3780,24 @@
           <button type="button" class="pa-policy-card" data-pa-policy="auto_turn" role="radio" aria-checked="false">
             <strong>托管放行</strong>
             <span>自动连跑，密码/支付仍拦</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="pa-sheet-section">
+        <div class="pa-sheet-label">任务前需求确认（防止盲目跳转）</div>
+        <div class="pa-policy-segmented" id="pa-clarify-segmented" role="radiogroup" aria-label="选择任务前需求确认策略">
+          <button type="button" class="pa-policy-card pa-clarify-card active" data-pa-clarify="smart" role="radio" aria-checked="true">
+            <strong>智能确认 · 推荐</strong>
+            <span>模糊任务先问清再跳走</span>
+          </button>
+          <button type="button" class="pa-policy-card pa-clarify-card" data-pa-clarify="always" role="radio" aria-checked="false">
+            <strong>每次先确认</strong>
+            <span>执行前核对需求与计划</span>
+          </button>
+          <button type="button" class="pa-policy-card pa-clarify-card" data-pa-clarify="off" role="radio" aria-checked="false">
+            <strong>直接执行</strong>
+            <span>发指令后立即开跑</span>
           </button>
         </div>
       </div>
@@ -3909,7 +3927,7 @@
   <!-- 全局 Top-Layer 顶层轻提示胶囊（popover="manual" 确保在任何模态 <dialog> 打开时依然 100% 可见，遵循 persistent-toast-notifications 规范） -->
   <div id="global-top-toast" popover="manual" class="global-top-toast" role="status" aria-live="polite"></div>
 
-  <script defer src="./dist/app.bundle.js?v=a8c7378c0a"></script>
+  <script defer src="./dist/app.bundle.js?v=f15868aa84"></script>
   <script>
     (function () {
       const isNativeApkEnv = Boolean(window.AndroidAppBridge) || window.location.hostname === 'appassets.androidplatform.net' || window.location.protocol === 'file:';

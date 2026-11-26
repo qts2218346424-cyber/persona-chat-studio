@@ -1,17 +1,17 @@
 {
-  "generatedAt": "2026-11-26T18:38:15.883Z",
-  "bundleHash": "a04e52c548",
+  "generatedAt": "2026-11-26T19:23:45.303Z",
+  "bundleHash": "e4c7bf5e35",
   "css": {
     "file": "dist/app.bundle.css",
-    "hash": "9099220479",
-    "rawBytes": 620042,
-    "minifiedBytes": 479484
+    "hash": "c0089a7ac7",
+    "rawBytes": 620811,
+    "minifiedBytes": 480104
   },
   "js": {
     "file": "dist/app.bundle.js",
-    "hash": "a8c7378c0a",
-    "rawBytes": 1223187,
-    "minifiedBytes": 1022475,
+    "hash": "f15868aa84",
+    "rawBytes": 1256485,
+    "minifiedBytes": 1050174,
     "fellBack": false
   }
 }

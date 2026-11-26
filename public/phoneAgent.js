@@ -7,8 +7,8 @@
    ========================================================================== */
 
 (() => {
-  const CURRENT_APK_VERSION = '2.7.2';
-  const CURRENT_APK_CODE = 163;
+  const CURRENT_APK_VERSION = '2.7.3';
+  const CURRENT_APK_CODE = 164;
   const DEEPSEEK_API_KEYS_URL = 'https://platform.deepseek.com/api_keys';
   const PUBLIC_WEB_ORIGIN = 'https://star.claudexxb.online';
   const GITHUB_RELEASES_URL = 'https://github.com/qts2218346424-cyber/persona-chat-studio/releases';
@@ -19,6 +19,7 @@
     directBaseUrl: 'pa_direct_baseurl_v1',
     autoApprove: 'pa_auto_approve_v1',
     confirmPolicy: 'pa_confirm_policy_v2',
+    clarifyPolicy: 'pa_clarify_policy_v1',
     trustedApps: 'pa_trusted_apps_v1',
     edgeGlow: 'pa_edge_glow_v1',
     exclusiveKey: 'pa_exclusive_api_key_v1',
@@ -328,6 +329,29 @@
     if (policy === 'ask_every') return '每次确认';
     if (policy === 'auto_turn') return '托管放行';
     return '仅敏感确认';
+  }
+
+  function getClarifyPolicy() {
+    try {
+      const p = localStorage.getItem(STORAGE_KEYS.clarifyPolicy);
+      if (p === 'smart' || p === 'always' || p === 'off') return p;
+    } catch {}
+    return 'smart';
+  }
+
+  function setClarifyPolicy(policy) {
+    const next = policy === 'always' || policy === 'off' ? policy : 'smart';
+    try {
+      localStorage.setItem(STORAGE_KEYS.clarifyPolicy, next);
+    } catch {}
+    syncStatus();
+    return next;
+  }
+
+  function getClarifyPolicyLabel(policy) {
+    if (policy === 'always') return '每次先确认';
+    if (policy === 'off') return '直接执行';
+    return '智能确认';
   }
 
   function getTrustedApps() {
@@ -1911,8 +1935,14 @@
     const topPolicyPill = $('pa-banner-policy-pill');
     if (topPolicyPill) topPolicyPill.classList.toggle('is-active', policy === 'auto_turn');
 
-    document.querySelectorAll('.pa-policy-card').forEach((card) => {
+    document.querySelectorAll('.pa-policy-card:not(.pa-clarify-card)').forEach((card) => {
       const act = card.dataset.paPolicy === policy;
+      card.classList.toggle('active', act);
+      card.setAttribute('aria-checked', String(act));
+    });
+    const clarifyPolicy = getClarifyPolicy();
+    document.querySelectorAll('.pa-clarify-card').forEach((card) => {
+      const act = card.dataset.paClarify === clarifyPolicy;
       card.classList.toggle('active', act);
       card.setAttribute('aria-checked', String(act));
     });
@@ -2129,10 +2159,10 @@
     const maxWait = customMaxWait > 0
       ? customMaxWait
       : (toolName === 'phone_open'
-        ? 1800
+        ? 1600
         : (toolName === 'phone_type'
-          ? 750
-          : (toolName === 'phone_scroll' || toolName === 'phone_swipe' ? 650 : 850)));
+          ? 700
+          : (toolName === 'phone_scroll' || toolName === 'phone_swipe' ? 600 : 720)));
     const startAt = Date.now();
     const beforeSeq = Number(beforeMeta?.eventSeq) || 0;
     const hasEventSeqApi = typeof getBridge()?.getScreenEventSeq === 'function';
@@ -2142,15 +2172,15 @@
 
     while (Date.now() - startAt < maxWait) {
       if (signal?.aborted || emergencyStopRequested) break;
-      await sleep(110);
+      await sleep(80);
       const elapsed = Date.now() - startAt;
       if (hasEventSeqApi && beforeSeq > 0) {
         const ev = readScreenEventSeq();
-        if (Number(ev.seq) === beforeSeq && elapsed < 450) {
+        if (Number(ev.seq) === beforeSeq && elapsed < 380) {
           continue;
         }
         if (Number(ev.seq) !== beforeSeq) {
-          await sleep(150);
+          await sleep(toolName === 'phone_open' ? 220 : 90);
           latest = readScreenMeta();
           checkedMetaOnce = true;
           if (
@@ -2165,7 +2195,7 @@
           continue;
         }
       }
-      if (!checkedMetaOnce || elapsed >= maxWait - 140) {
+      if (!checkedMetaOnce || elapsed >= maxWait - 120) {
         latest = readScreenMeta();
         checkedMetaOnce = true;
         if (latest && latest.ok) {
@@ -2174,7 +2204,7 @@
             (beforeMeta?.signature && latest.signature && latest.signature !== beforeMeta.signature)
           ) {
             changed = true;
-            await sleep(140);
+            await sleep(90);
             latest = readScreenMeta();
             break;
           }
@@ -2881,6 +2911,363 @@
     });
   }
 
+  function shouldSkipPreFlightClarify(taskText, clarifyPolicy, resumeOpts) {
+    if (resumeOpts && Array.isArray(resumeOpts.history)) return true;
+    if (clarifyPolicy === 'off') return true;
+    const clean = String(taskText || '').trim();
+    if (!clean) return true;
+    if (isLikelyPureChat(clean)) return true;
+    if (/^(?:直接执行|不用问|别问了|马上执行|立刻执行)/.test(clean)) return true;
+    if (clarifyPolicy === 'smart' && isAtomicBuiltInLocalCmd(clean)) return true;
+    return false;
+  }
+
+  function buildLocalFallbackPreFlight(taskText, clarifyPolicy) {
+    const clean = String(taskText || '').trim();
+    if (isLikelyPureChat(clean)) {
+      return { intent: 'chat', ready: true, thought: '识别为自然对话，无需跳转控屏。', planPreview: '', question: '', options: [] };
+    }
+    if (/^(?:帮我|去|我要)?(?:点外卖|点个外卖|叫外卖|买吃的|点餐)[！!。.]*$/.test(clean) || (/点外卖/.test(clean) && clean.length <= 10)) {
+      return {
+        intent: 'task',
+        ready: false,
+        thought: '点外卖缺少具体想吃的品类、平台或预算偏好，先确认再跳转。',
+        planPreview: '确认想吃的品类与平台后，自动打开对应外卖软件搜索下单（支付环节交还你确认）。',
+        question: '你想吃什么、用哪个外卖平台，或者有预算/忌口要求吗？',
+        options: ['美团外卖搜附近评分高的', '饿了么搜附近优惠套餐', '帮我点一份螺蛳粉/米粉', '帮我点一杯奶茶/咖啡']
+      };
+    }
+    if (/^(?:帮我|继续|开始)?(?:写作业|做作业|答题|做题|刷题)[！!。.]*$/.test(clean)) {
+      return {
+        intent: 'task',
+        ready: false,
+        thought: '答题任务需要确认是在当前学习软件继续，还是指定科目及是否自动交卷。',
+        planPreview: '确认后切回学习软件，逐题读取选项并连续作答下一题，直到整套题完成。',
+        question: '请确认一下作业执行方式（避免切错页面或误交卷）：',
+        options: ['在刚才的学习软件继续全部做完（不自动交卷）', '只做选择题，主观题留给我', '先帮我检查当前这页题目']
+      };
+    }
+    if (/^(?:帮我)?(?:发消息|发微信|回消息|联系一下|通知一下)[^，。！？]{0,6}$/.test(clean)) {
+      return {
+        intent: 'task',
+        ready: false,
+        thought: '发送消息缺少明确的联系人与具体要发送的内容。',
+        planPreview: '确认收件人和消息内容后，自动打开聊天软件定位联系人并填入内容。',
+        question: '请告诉我你要发给谁，以及具体想发什么内容？',
+        options: ['发给文件传输助手', '打开微信让我自己选联系人']
+      };
+    }
+    if (clarifyPolicy === 'always') {
+      return {
+        intent: 'task',
+        ready: false,
+        thought: '当前已开启「每次先确认」，执行前先核对任务要求。',
+        planPreview: `将按指令「${clean.slice(0, 36)}」识别屏幕并分步执行。`,
+        question: '确认按当前理解开始执行吗？如有补充要求可直接输入：',
+        options: ['确认无误，立即开始', '先打开目标页面让我看看']
+      };
+    }
+    return { intent: 'task', ready: true, thought: '指令目标明确，可直接开始执行。', planPreview: '', question: '', options: [] };
+  }
+
+  async function requestPreFlightCheck({ execMode, task, clarifyPolicy, lastExternalApp, installedApps, signal }) {
+    if (!isNativeApk() && execMode === 'local') {
+      return { ok: true, preflight: buildLocalFallbackPreFlight(task, clarifyPolicy) };
+    }
+    if (execMode === 'local') {
+      return { ok: true, preflight: buildLocalFallbackPreFlight(task, clarifyPolicy) };
+    }
+
+    const cfg = getDirectConfig();
+    const compactApps = (installedApps || []).slice(0, 30).map((a) => (typeof a === 'string' ? a : a.name));
+
+    if (execMode === 'api_direct') {
+      const cleanKey = cleanApiKey(cfg.apiKey);
+      if (!cleanKey) {
+        return { ok: true, preflight: buildLocalFallbackPreFlight(task, clarifyPolicy) };
+      }
+      const targetUrl = normalizeChatCompletionsUrl(cfg.baseUrl);
+      const rawModel = String(cfg.model || 'deepseek-chat').trim() || 'deepseek-chat';
+      const targetModel = /reasoner|r1/i.test(rawModel) ? 'deepseek-chat' : rawModel;
+      const preSys = [
+        '你是星语手机辅助代理（Phone Agent · dsh-Go 任务前需求预检助手）。',
+        '在真正切走手机界面或开始执行任务之前，快速判断用户的指令是否清晰完整，避免“一发指令就盲目跳走”。',
+        '仅输出严格合法的 JSON 对象（不要 Markdown 代码块）：',
+        '{"intent":"chat|task","ready":true|false,"thought":"简短中文需求完整度分析(<=70字)","planPreview":"若现在执行将采取的1~2句中文拟定步骤","question":"若 ready=false，用友好简洁的中文一次性问清1~3个最关键的缺失细节","options":["快捷选项1","快捷选项2","快捷选项3"]}',
+        '规则：1. 闲聊/提问咨询设 intent="chat", ready=true。2. 目标 App/当前上下文明确且无关键参数缺口（如“打开微信给张三发在吗”、“继续把当前这套单选题做完不交卷”）在 smart 模式设 intent="task", ready=true。3. 存在明显缺失或歧义（如“点外卖/写作业/发消息/买票/购物/刷视频”缺对象/条件）或 clarifyPolicy==="always" 设 intent="task", ready=false 并给出 2~4 个快捷选项。'
+      ].join('\n');
+      const preUser = JSON.stringify({
+        task,
+        clarifyPolicy,
+        lastExternalApp: lastExternalApp || getLastExternalAppInfo(),
+        conversationMemory: paChatMemory.slice(-6),
+        installedAppsPreview: compactApps
+      });
+
+      const timeoutCtrl = new AbortController();
+      const tTimer = setTimeout(() => { try { timeoutCtrl.abort(); } catch {} }, 8000);
+      const onOuter = () => { try { timeoutCtrl.abort(); } catch {} };
+      if (signal) {
+        if (signal.aborted) timeoutCtrl.abort();
+        else signal.addEventListener('abort', onOuter, { once: true });
+      }
+
+      try {
+        const bodyObj = {
+          model: targetModel,
+          messages: [
+            { role: 'system', content: preSys },
+            { role: 'user', content: preUser }
+          ],
+          temperature: 0.2,
+          max_tokens: 512,
+          stream: false
+        };
+        if (targetUrl.includes('deepseek.com')) {
+          bodyObj.response_format = { type: 'json_object' };
+        }
+        const resp = await fetch(targetUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${cleanKey}` },
+          body: JSON.stringify(bodyObj),
+          signal: timeoutCtrl.signal
+        });
+        if (resp.ok) {
+          const j = await resp.json();
+          const content = String(j?.choices?.[0]?.message?.content || '').trim();
+          const cleaned = content.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+          const obj = JSON.parse(cleaned);
+          const intent = obj?.intent === 'chat' ? 'chat' : 'task';
+          const ready = intent === 'chat' ? true : (clarifyPolicy === 'always' ? false : Boolean(obj?.ready));
+          return {
+            ok: true,
+            preflight: {
+              intent,
+              ready,
+              thought: String(obj?.thought || '').trim(),
+              planPreview: String(obj?.planPreview || '').trim(),
+              question: String(obj?.question || '').trim(),
+              options: Array.isArray(obj?.options) ? obj.options.map((x) => String(x || '').trim()).filter(Boolean).slice(0, 4) : []
+            }
+          };
+        }
+      } catch {} finally {
+        clearTimeout(tTimer);
+        if (signal) signal.removeEventListener('abort', onOuter);
+      }
+
+      // 若直连受限，走云端 /api/phone-agent/plan preflight 兜底
+      try {
+        const pPayload = {
+          phase: 'preflight',
+          task,
+          clarifyPolicy,
+          lastExternalApp: lastExternalApp || getLastExternalAppInfo(),
+          installedApps: compactApps,
+          conversationMemory: paChatMemory.slice(-6),
+          customApiKey: cleanKey,
+          customModel: targetModel,
+          customBaseUrl: targetUrl
+        };
+        let pRes = await apiPostJson('/api/phone-agent/plan', pPayload, signal).catch(() => ({ ok: false, data: {} }));
+        if (!pRes.ok && !signal?.aborted) {
+          const cResp = await fetch(`${PUBLIC_WEB_ORIGIN}/api/phone-agent/plan`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(pPayload),
+            signal
+          }).catch(() => null);
+          if (cResp && cResp.ok) {
+            const cData = await cResp.json().catch(() => ({}));
+            if (cData?.preflight) pRes = { ok: true, data: cData };
+          }
+        }
+        if (pRes.ok && pRes.data?.preflight) {
+          return { ok: true, preflight: pRes.data.preflight };
+        }
+      } catch {}
+
+      return { ok: true, preflight: buildLocalFallbackPreFlight(task, clarifyPolicy) };
+    }
+
+    // 云端 API 模式 preflight
+    try {
+      const cRes = await apiPostJson('/api/phone-agent/plan', {
+        phase: 'preflight',
+        task,
+        clarifyPolicy,
+        lastExternalApp: lastExternalApp || getLastExternalAppInfo(),
+        installedApps: compactApps,
+        conversationMemory: paChatMemory.slice(-6),
+        customModel: cfg.model || ''
+      }, signal);
+      if (cRes.ok && cRes.data?.preflight) {
+        return { ok: true, preflight: cRes.data.preflight };
+      }
+    } catch {}
+    return { ok: true, preflight: buildLocalFallbackPreFlight(task, clarifyPolicy) };
+  }
+
+  function askPreFlightClarifyModal({ taskText = '', thought = '', planPreview = '', question = '', options = [], signal = null } = {}) {
+    const cleanOpts = Array.isArray(options) ? options.map((x) => String(x || '').trim()).filter(Boolean).slice(0, 4) : [];
+    return new Promise((resolve) => {
+      document.getElementById('pa-preflight-clarify-modal')?.remove();
+      const modal = document.createElement('div');
+      modal.id = 'pa-preflight-clarify-modal';
+      modal.className = 'pa-modal-backdrop';
+
+      const finish = (res) => {
+        modal.remove();
+        resolve(res);
+      };
+
+      modal.innerHTML = `
+        <div class="pa-modal-dialog" role="dialog" aria-modal="true" aria-label="执行前需求确认">
+          <div class="pa-modal-head">
+            <div class="pa-modal-badge is-info">执行前需求确认</div>
+            <button type="button" class="pa-sheet-close-btn" id="pa-pre-modal-close" aria-label="取消本次任务">✕</button>
+          </div>
+          <div class="pa-modal-body">
+            ${taskText ? `<div class="pa-modal-task-quote">原指令：${escapeHtml(taskText)}</div>` : ''}
+            ${thought ? `<div class="pa-modal-thought">💭 ${escapeHtml(thought)}</div>` : ''}
+            ${planPreview ? `<div class="pa-modal-plan-preview">📋 拟定思路：${escapeHtml(planPreview)}</div>` : ''}
+            <div class="pa-modal-question">${escapeHtml(question || '在跳转执行前，请先确认一下具体需求或补充关键细节：')}</div>
+            ${cleanOpts.length > 0 ? `
+              <div class="pa-modal-options">
+                ${cleanOpts.map((opt) => `<button type="button" class="pa-modal-opt-btn" data-opt="${escapeHtml(opt)}">${escapeHtml(opt)}</button>`).join('')}
+              </div>
+            ` : ''}
+            <div class="pa-modal-input-row">
+              <input type="text" id="pa-pre-modal-inp" class="pa-cfg-input" placeholder="补充具体要求（如品类、联系人、条件）…" />
+              <button type="button" class="pa-banner-btn" id="pa-pre-modal-send">确认并开始</button>
+            </div>
+          </div>
+          <div class="pa-modal-foot">
+            <button type="button" class="pa-banner-btn outline" id="pa-pre-modal-proceed">按当前理解直接执行</button>
+            <button type="button" class="pa-banner-btn subtle" id="pa-pre-modal-cancel">取消</button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(modal);
+
+      modal.querySelectorAll('.pa-modal-opt-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          finish({ mode: 'reply', text: btn.getAttribute('data-opt') || '' });
+        });
+      });
+
+      const inp = modal.querySelector('#pa-pre-modal-inp');
+      const submitTxt = () => {
+        const val = (inp?.value || '').trim();
+        if (!val) {
+          finish({ mode: 'proceed' });
+          return;
+        }
+        finish({ mode: 'reply', text: val });
+      };
+      modal.querySelector('#pa-pre-modal-send')?.addEventListener('click', submitTxt);
+      inp?.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          submitTxt();
+        }
+      });
+      modal.querySelector('#pa-pre-modal-proceed')?.addEventListener('click', () => finish({ mode: 'proceed' }));
+      modal.querySelector('#pa-pre-modal-close')?.addEventListener('click', () => finish({ mode: 'cancel' }));
+      modal.querySelector('#pa-pre-modal-cancel')?.addEventListener('click', () => finish({ mode: 'cancel' }));
+      setTimeout(() => inp?.focus(), 60);
+
+      if (signal) {
+        if (signal.aborted) finish({ mode: 'cancel' });
+        else signal.addEventListener('abort', () => finish({ mode: 'cancel' }), { once: true });
+      }
+    });
+  }
+
+  function summarizePlanArgs(plan) {
+    const tool = plan?.tool || plan?.action || '';
+    const args = plan?.args || plan?.params || {};
+    if (tool === 'phone_open' || tool === 'launch_app') return `app=${args.appName || ''}`;
+    if (tool === 'phone_tap' || tool === 'click_node') return args.ref ? `ref=${args.ref}` : `text=${args.text || ''}`;
+    if (tool === 'phone_tap_xy' || tool === 'click' || tool === 'phone_double_tap') return `xy=(${Math.round(Number(args.x) || 0)},${Math.round(Number(args.y) || 0)})`;
+    if (tool === 'phone_long_press' || tool === 'long_click') return args.ref ? `ref=${args.ref}` : `xy=(${Math.round(Number(args.x) || 0)},${Math.round(Number(args.y) || 0)})`;
+    if (tool === 'phone_type' || tool === 'input') return `text="${String(args.text || '').slice(0, 18)}"`;
+    if (tool === 'phone_scroll' || tool === 'scroll') return `dir=${args.direction || 'down'}`;
+    if (tool === 'phone_swipe' || tool === 'swipe') return `swipe(${Math.round(Number(args.x1) || 0)},${Math.round(Number(args.y1) || 0)}->${Math.round(Number(args.x2) || 0)},${Math.round(Number(args.y2) || 0)})`;
+    if (tool === 'phone_key' || tool === 'key' || tool === 'back' || tool === 'home') return `key=${args.key || tool}`;
+    if (tool === 'phone_wait' || tool === 'wait') return `ms=${Number(args.ms) || 1000}`;
+    return '';
+  }
+
+  function getActionFingerprint(plan, snapshot) {
+    const tool = plan?.tool || plan?.action || '';
+    const args = plan?.args || plan?.params || {};
+    if (tool === 'phone_tap' || tool === 'click_node') {
+      const refId = String(args.ref || '').trim();
+      let nodeLabel = String(args.text || '').trim();
+      if (!nodeLabel && refId && Array.isArray(snapshot?.nodes)) {
+        const hit = snapshot.nodes.find((n) => n.ref === refId);
+        if (hit) nodeLabel = String(hit.text || hit.desc || '').trim().slice(0, 24);
+      }
+      return `tap:${refId}:${nodeLabel}`;
+    }
+    if (tool === 'phone_tap_xy' || tool === 'click' || tool === 'phone_double_tap') {
+      const qx = Math.round((Number(args.x) || 0) / 24) * 24;
+      const qy = Math.round((Number(args.y) || 0) / 24) * 24;
+      return `${tool}:${qx},${qy}`;
+    }
+    if (tool === 'phone_scroll' || tool === 'scroll') return `scroll:${args.direction || 'down'}`;
+    if (tool === 'phone_swipe' || tool === 'swipe') {
+      const qx1 = Math.round((Number(args.x1) || 0) / 36) * 36;
+      const qy1 = Math.round((Number(args.y1) || 0) / 36) * 36;
+      const qx2 = Math.round((Number(args.x2) || 0) / 36) * 36;
+      const qy2 = Math.round((Number(args.y2) || 0) / 36) * 36;
+      return `swipe:${qx1},${qy1}->${qx2},${qy2}`;
+    }
+    if (tool === 'phone_open' || tool === 'launch_app') return `open:${String(args.appName || '').trim().toLowerCase()}`;
+    if (tool === 'phone_key' || tool === 'key' || tool === 'back' || tool === 'home') return `key:${String(args.key || tool).toLowerCase()}`;
+    if (tool === 'phone_type' || tool === 'input') return `type:${args.ref || ''}:${String(args.text || '').slice(0, 20)}`;
+    if (tool === 'phone_wait' || tool === 'wait') return 'wait';
+    return `${tool}:${summarizePlanArgs(plan)}`;
+  }
+
+  function findPopupDismissNode(nodes, taskText = '') {
+    if (!Array.isArray(nodes) || nodes.length === 0) return null;
+    const dismissRe = /^(?:跳过|跳过广告|关闭|以后再说|暂不更新|暂不|知道了|我知道了|残忍拒绝|暂不开启|不再提示|稍后再说|忽略|取消)$/;
+    const taskLower = String(taskText || '').toLowerCase();
+    for (const n of nodes) {
+      const txt = String(n.text || n.desc || '').trim();
+      if (!txt || txt.length > 8) continue;
+      if (!dismissRe.test(txt)) continue;
+      if (taskLower && taskLower.includes(txt.toLowerCase())) continue;
+      if (n.clickable || (Array.isArray(n.center) && n.center[0] > 0 && n.center[1] > 0)) {
+        return n;
+      }
+    }
+    return null;
+  }
+
+  function detectOscillation(recentPageSigs) {
+    if (!Array.isArray(recentPageSigs) || recentPageSigs.length < 4) return false;
+    const n = recentPageSigs.length;
+    if (
+      recentPageSigs[n - 1] &&
+      recentPageSigs[n - 1] === recentPageSigs[n - 3] &&
+      recentPageSigs[n - 2] === recentPageSigs[n - 4] &&
+      recentPageSigs[n - 1] !== recentPageSigs[n - 2]
+    ) {
+      return true;
+    }
+    const tail6 = recentPageSigs.slice(-6);
+    const counts = new Map();
+    for (const sig of tail6) {
+      if (!sig) continue;
+      counts.set(sig, (counts.get(sig) || 0) + 1);
+      if (counts.get(sig) >= 3 && tail6.length >= 5) return true;
+    }
+    return false;
+  }
+
   function showInlineFixBox(fixSlot, planResp, { currentMode = '', onRetryWithMode, onRetryStep } = {}) {
     const modeNow = currentMode || getExecMode();
     const errCode = String(planResp?.code || '');
@@ -2991,7 +3378,7 @@
     return { packageName: '', appName: '' };
   }
 
-  function buildPlanningPromptMessages({ task, snapshot, history, screenSize, installedApps, screenVerdict, interjections, stepIndex, lastExternalApp }) {
+  function buildPlanningPromptMessages({ task, snapshot, history, screenSize, installedApps, screenVerdict, loopDiagnostics, interjections, stepIndex, lastExternalApp }) {
     const sys = [
       '你是星语手机辅助代理（Phone Agent · dsh-Go 规划内核），既能与用户自然思考、自由对话解答问题，又能精准操控手机。',
       `屏幕分辨率: ${screenSize.width}x${screenSize.height}。`,
@@ -3003,7 +3390,8 @@
       '0. 自由对话优先识别：若用户是在打招呼、闲聊、询问原理/题目思路、讨论方案、咨询你能做什么、或仅针对屏幕内容提问而无需点击/打开手机时，直接返回 tool="chat"，用 reply 给出完整有温度的回答，严禁瞎点手机！',
       '0.5 模糊/不确定主动问清楚（关键！）：当用户指令缺少关键信息（如未指定发给谁/发什么内容/买哪款/选哪个规格、多选拿不准、当前界面有多个同名目标或即将执行重要提交/删除/付款）时，严禁瞎猜乱点！必须立即返回 tool="ask_user"，在 reply 中礼貌问清楚具体需求，并尽可能在 args.options 中提供 2~4 个简短清晰的快捷选项。',
       '1. 优先用 phone_open 打开应用；点击屏幕元素首选 phone_tap 并携带 ref 与 snapshotId。',
-      '2. 若 screenVerdict 显示连续 2 步画面未变化，禁止重复同一动作或 phone_wait，改用 phone_tap_xy / phone_scroll / phone_key(back) 或 ask_user。',
+      '2. 防卡死与防死循环铁律：严禁连续 2 步返回 phone_wait！仔细检查 screenVerdict 与 loopDiagnostics：若 blockedActions 非空，严禁再输出列表中已失效的动作、控件或坐标；若 oscillationDetected=true（页面 A↔B 往返死循环），严禁继续在两个页面间重复点击，必须更换入口、改用搜索框、执行 phone_key(back) 退出重进，或返回 ask_user 请求用户协助。',
+      '2.5 遮挡弹窗清理：若页面被开屏广告、版本更新、权限引导或好评弹窗遮挡，优先点击“跳过/取消/以后再说/暂不更新/知道了/关闭”等按钮清理遮挡后再继续主任务。',
       '3. 若同一屏幕上已同时清晰可见 2~3 个明确无歧义的连贯操作（如学习答题“选中选项 + 点击下一题/提交”），可额外附带 `"actions":[{"tool":"phone_tap","args":{"ref":"e10"}},{"tool":"phone_tap","args":{"ref":"e24"}}]`（最多 3 个同屏非敏感微动作），否则只输出单动作。',
       '4. 严禁操作控制端自身（packageName="com.deepseek.starwhisper.studio"）或在其聊天框打字；用户说“继续写作业/继续答题”且未指定打开 DeepSeek 时，绝不要去打开 DeepSeek 应用，而是切回 lastExternalApp 或在当前学习软件中继续操作。',
       '5. screenTreeText 中每一行 `R1: ... | ...` 代表屏幕同一水平行的元素。做选择题时必须严格核对同一行的选项字母与右侧文字；带有 (sel) 或 (chk) 的表示已选中，若已选对直接点“下一题”，严禁张冠李戴选错行！',
@@ -3012,7 +3400,15 @@
       '8. 若 hasSensitiveField=true 或涉及付款/转账/下单/密码/验证码/删除/卸载/发消息，risk 必须为 "sensitive"，支付密码/验证码直接 ask_user 交还人工。'
     ].join('\n');
 
-    const recentHistory = (history || []).slice(-6);
+    const recentHistory = (history || []).slice(-10).map((h) => ({
+      step: h.step,
+      tool: h.tool || h.action,
+      args: h.argsSummary || '',
+      summary: h.summary,
+      result: h.result,
+      changed: h.changed === undefined ? null : Boolean(h.changed),
+      page: h.page || ''
+    }));
     const lastHist = recentHistory.length ? recentHistory[recentHistory.length - 1] : null;
     const pkgLower = String(snapshot?.packageName || '').toLowerCase();
     const appLower = String(snapshot?.appName || '').toLowerCase();
@@ -3034,6 +3430,7 @@
       hasSensitiveField: Boolean(snapshot?.hasSensitiveField),
       sensitiveReason: snapshot?.sensitiveReason || '',
       screenVerdict: screenVerdict || null,
+      loopDiagnostics: loopDiagnostics || null,
       interjections: interjections || [],
       conversationMemory: paChatMemory.slice(-6),
       recentHistory,
@@ -3197,7 +3594,7 @@
     throw err;
   }
 
-  async function requestPlanStep({ execMode, task, snapshot, history, screenSize, installedApps, screenVerdict, interjections, stepIndex, lastExternalApp, signal }) {
+  async function requestPlanStep({ execMode, task, snapshot, history, screenSize, installedApps, screenVerdict, loopDiagnostics, interjections, extraRecoveryHint = '', stepIndex, lastExternalApp, signal }) {
     const cfg = getDirectConfig();
     const lastExt = lastExternalApp || getLastExternalAppInfo();
     const screenTreeText = String(snapshot?.screenTreeText || '');
@@ -3214,7 +3611,18 @@
     const compactInstalledApps = needApps
       ? (installedApps || []).map((a) => (typeof a === 'string' ? a : a.name))
       : [];
-    const compactHistory = (history || []).slice(-6);
+    const compactHistory = (history || []).slice(-10).map((h) => ({
+      step: h.step,
+      tool: h.tool || h.action,
+      argsSummary: h.argsSummary || '',
+      summary: h.summary,
+      result: h.result,
+      changed: h.changed === undefined ? null : Boolean(h.changed),
+      page: h.page || ''
+    }));
+    const finalInterjections = extraRecoveryHint
+      ? [...(interjections || []), extraRecoveryHint]
+      : (interjections || []);
 
     if (execMode === 'api_direct') {
       const cleanKey = cleanApiKey(cfg.apiKey);
@@ -3230,8 +3638,10 @@
         screenSize,
         installedApps,
         screenVerdict,
-        interjections,
-        stepIndex
+        loopDiagnostics,
+        interjections: finalInterjections,
+        stepIndex,
+        lastExternalApp: lastExt
       });
 
       const attemptDirectCall = async (modelToUse, extraHint = '', allowJsonFormat = true) => {
@@ -3336,7 +3746,8 @@
           screenTreeText,
           screenNodes,
           screenVerdict,
-          interjections,
+          loopDiagnostics: loopDiagnostics || null,
+          interjections: finalInterjections,
           conversationMemory: paChatMemory.slice(-6),
           history: compactHistory,
           screenSize,
@@ -3387,7 +3798,8 @@
         screenTreeText,
         screenNodes,
         screenVerdict,
-        interjections,
+        loopDiagnostics: loopDiagnostics || null,
+        interjections: finalInterjections,
         history: compactHistory,
         screenSize,
         installedApps: compactInstalledApps,
@@ -3411,7 +3823,8 @@
           screenTreeText,
           screenNodes,
           screenVerdict,
-          interjections,
+          loopDiagnostics: loopDiagnostics || null,
+          interjections: finalInterjections,
           history: compactHistory,
           screenSize,
           installedApps: compactInstalledApps,
@@ -3924,7 +4337,8 @@
         return;
       }
 
-      // 分支 B：dsh-Go 智能多步 ReAct 循环（支持 ref 控屏、微序列动作、透明思考流、chat 对话与任务屏弹窗确认）
+      // 分支 B：dsh-Go 智能多步 ReAct 循环（支持任务前需求确认、ref 控屏、死循环自愈、微序列动作与弹窗确认）
+      let activeTaskText = taskText;
       const MAX_STEPS = 80;
       const history = isResuming ? resumeOpts.history.slice() : [];
       const recordedSteps = Array.isArray(resumeOpts?.recordedSteps) ? resumeOpts.recordedSteps.slice() : [];
@@ -3941,17 +4355,90 @@
       let autoContinueHint = Array.isArray(resumeOpts?.initialInterjections)
         ? resumeOpts.initialInterjections.join('；')
         : '';
-      const isBatchContinuousTask =
-        /(?:写作业|做作业|答题|做题|刷题|练习|测试|继续|接着|全部|整套|所有)/.test(taskText) &&
-        !/(?:只做(?:这)?[一1]题|做完这[一1]题就停)/.test(taskText);
+      const loopState = {
+        noChangeStreak: 0,
+        waitStreak: 0,
+        recoveryAttempts: 0,
+        failedActionMap: new Map(),
+        failedActionLabels: new Map(),
+        recentPageSigs: [],
+        recentActionFingerprints: []
+      };
 
-      // 第 0 步自动跳回目标 App（仅限明确执行任务，纯对话绝不切走星语界面）
       const lastExtApp = native ? (resumeOpts?.lastExternalApp || getLastExternalAppInfo()) : { packageName: '', appName: '' };
-      if (native && !isLikelyPureChat(taskText) && (!isResuming || resumeOpts?.returnToExternalFirst)) {
+      let preflightSkipAutoReturn = false;
+
+      // 任务前需求澄清门控：在切走当前界面前，主动核对模糊任务并让用户确认
+      const clarifyPolicy = getClarifyPolicy();
+      if (!shouldSkipPreFlightClarify(activeTaskText, clarifyPolicy, resumeOpts)) {
+        const preStepEl = addStepItem(
+          cardCtx.stepsList,
+          0,
+          '正在核对任务需求',
+          '检查是否需要补充细节，暂不切换当前界面',
+          '需求预检中',
+          false,
+          'pre.check'
+        );
+        if (cardCtx.summaryTextEl) {
+          cardCtx.summaryTextEl.textContent = '正在核对需求细节…';
+        }
+        const preRes = await requestPreFlightCheck({
+          execMode,
+          task: activeTaskText,
+          clarifyPolicy,
+          lastExternalApp: lastExtApp,
+          installedApps,
+          signal
+        });
+        const pf = preRes?.preflight || { intent: 'task', ready: true };
+        if (pf.intent === 'chat') {
+          preflightSkipAutoReturn = true;
+          updateStepResult(preStepEl, '识别为对话', false);
+        } else if (!pf.ready || clarifyPolicy === 'always') {
+          updateStepResult(preStepEl, '等待需求确认', false);
+          const clarifyRes = await askPreFlightClarifyModal({
+            taskText: activeTaskText,
+            thought: pf.thought,
+            planPreview: pf.planPreview,
+            question: pf.question,
+            options: pf.options,
+            signal
+          });
+          if (clarifyRes.mode === 'cancel') {
+            updateStepResult(preStepEl, '已取消', true);
+            finalizeAgentTurn(cardCtx, {
+              status: 'error',
+              summaryTitle: '已取消本次任务',
+              replyText: '好的，已取消执行，你可以重新输入更具体的需求~',
+              sourceTask: taskText
+            });
+            return;
+          }
+          if (clarifyRes.mode === 'reply' && clarifyRes.text) {
+            appendUserMessageRow(clarifyRes.text);
+            recordPaChatTurn('user', clarifyRes.text);
+            activeTaskText = `${taskText}\n【用户已确认的具体需求】：${clarifyRes.text}`;
+            updateStepResult(preStepEl, `已确认：${clarifyRes.text.slice(0, 14)}`, false);
+          } else {
+            updateStepResult(preStepEl, '直接按原指令执行', false);
+          }
+        } else {
+          updateStepResult(preStepEl, '需求明确 · 立即执行', false);
+        }
+      }
+
+      const isBatchContinuousTask =
+        /(?:写作业|做作业|答题|做题|刷题|练习|测试|继续|接着|全部|整套|所有)/.test(activeTaskText) &&
+        !/(?:只做(?:这)?[一1]题|做完这[一1]题就停)/.test(activeTaskText);
+
+      // 第 0 步自动跳回目标 App（仅在需求确认后、且明确为继续上一个应用任务时才切回）
+      if (native && !preflightSkipAutoReturn && !isLikelyPureChat(activeTaskText) && (!isResuming || resumeOpts?.returnToExternalFirst)) {
         const initSnap = readAndFormatSnapshot(false);
         const SELF_PKG = 'com.deepseek.starwhisper.studio';
-        const explicitNewAppMatch = String(taskText || '').trim().match(/^(?:请|帮我)?(?:打开|启动|进入|打开一下|去|切到)\s*([^\s，。！？,!?]{2,12})/);
-        const wantsReturnToPrev = Boolean(resumeOpts?.returnToExternalFirst) || !explicitNewAppMatch || /(?:继续|接着|回到|切回|写作业|答题|做题|下一题)/.test(taskText);
+        const explicitNewAppMatch = String(activeTaskText || '').trim().match(/(?:打开|启动|进入|去|切到|用)\s*([^\s，。！？,!?]{2,12})/);
+        const explicitlyContinuePrev = Boolean(resumeOpts?.returnToExternalFirst) || /(?:继续|接着|回到|切回|上一题|下一题|这道题|当前页面|当前屏幕)/.test(activeTaskText);
+        const wantsReturnToPrev = explicitlyContinuePrev && !explicitNewAppMatch;
         if (initSnap.packageName === SELF_PKG && wantsReturnToPrev && (lastExtApp.packageName || typeof b.dispatchGlobalAction === 'function')) {
           const switchedOk = typeof b.returnToLastExternalApp === 'function'
             ? b.returnToLastExternalApp()
@@ -3959,7 +4446,7 @@
           if (switchedOk) {
             const label = lastExtApp.appName || '上一个应用';
             addStepItem(cardCtx.stepsList, 0, `自动切回「${label}」继续执行`, '防止在控制端自身界面误操作', '已切回', false, 'phone.open');
-            await sleep(550);
+            await sleep(520);
           }
         }
       }
@@ -3996,6 +4483,22 @@
         }
 
         const snapshot = readAndFormatSnapshot(false);
+        const currentPageKey = `${snapshot.packageName || ''}::${snapshot.signature || ''}`;
+        if (native && currentPageKey !== '::') {
+          loopState.recentPageSigs.push(currentPageKey);
+          if (loopState.recentPageSigs.length > 8) loopState.recentPageSigs = loopState.recentPageSigs.slice(-8);
+        }
+        const oscDetected = native ? detectOscillation(loopState.recentPageSigs) : false;
+        const blockedLabels = loopState.failedActionLabels.get(currentPageKey) || [];
+        const loopDiagnostics = {
+          noChangeStreak: loopState.noChangeStreak,
+          waitStreak: loopState.waitStreak,
+          oscillationDetected: oscDetected,
+          recoveryAttempts: loopState.recoveryAttempts,
+          blockedActions: blockedLabels.slice(-8),
+          samePageVisits: loopState.recentPageSigs.filter((x) => x === currentPageKey).length
+        };
+
         const beforeEventSeq = native ? (Number(snapshot.eventSeq) || Number(readScreenEventSeq().seq) || 0) : 0;
         const pendingStepEl = addStepItem(
           cardCtx.stepsList,
@@ -4015,12 +4518,13 @@
         try {
           planResp = await requestPlanStep({
             execMode,
-            task: taskText,
+            task: activeTaskText,
             snapshot,
             history,
             screenSize,
             installedApps,
             screenVerdict: lastScreenVerdict,
+            loopDiagnostics,
             interjections: turnInterjections,
             stepIndex: step,
             lastExternalApp: lastExtApp,
@@ -4045,13 +4549,13 @@
             currentMode: execMode,
             onRetryWithMode: (nextMode) =>
               runReActLoop(
-                taskText,
+                activeTaskText,
                 cardCtx,
                 nextMode,
                 nextMode === 'local' ? null : { history, recordedSteps, startStep: step, roundAutoApproved, lastScreenVerdict }
               ),
             onRetryStep: () =>
-              runReActLoop(taskText, cardCtx, execMode, {
+              runReActLoop(activeTaskText, cardCtx, execMode, {
                 history,
                 recordedSteps,
                 startStep: step,
@@ -4064,8 +4568,95 @@
           break;
         }
 
-        const plan = planResp.plan;
-        const toolName = plan.tool || plan.action || 'step';
+        let plan = planResp.plan;
+        let toolName = plan.tool || plan.action || 'step';
+
+        // Level 2 & Level 3 死循环/卡死硬拦截与自动纠偏引擎
+        if (native && toolName !== 'chat' && toolName !== 'done' && toolName !== 'ask_user') {
+          let fp = getActionFingerprint(plan, snapshot);
+          const pageBlockedSet = loopState.failedActionMap.get(currentPageKey);
+          const isRepeatedFail = Boolean(pageBlockedSet && pageBlockedSet.has(fp));
+          const isRepeatedRecent =
+            loopState.noChangeStreak >= 1 &&
+            loopState.recentActionFingerprints.slice(-2).includes(fp);
+          const isWaitLoop = (toolName === 'phone_wait' || toolName === 'wait') && loopState.waitStreak >= 1;
+          const needLoopIntercept = isWaitLoop || isRepeatedFail || isRepeatedRecent || (oscDetected && loopState.recoveryAttempts < 2);
+
+          if (needLoopIntercept) {
+            if (loopState.recoveryAttempts < 2 && loopState.noChangeStreak < 4) {
+              loopState.recoveryAttempts += 1;
+              const dismissNode = findPopupDismissNode(snapshot.nodes, activeTaskText);
+              const dismissFp = dismissNode ? `tap:${dismissNode.ref || ''}:${String(dismissNode.text || dismissNode.desc || '').slice(0, 24)}` : '';
+              if (dismissNode && (!pageBlockedSet || !pageBlockedSet.has(dismissFp))) {
+                const dismissLabel = String(dismissNode.text || dismissNode.desc || '弹窗按钮').slice(0, 12);
+                plan = {
+                  thought: `检测到页面可能被弹窗遮挡导致卡顿，自动点击「${dismissLabel}」清理遮挡后继续。`,
+                  tool: 'phone_tap',
+                  args: { ref: dismissNode.ref, snapshotId: snapshot.snapshotId },
+                  risk: 'write',
+                  summary: `自动清理遮挡弹窗「${dismissLabel}」`
+                };
+                toolName = 'phone_tap';
+                appendNativeConsoleLog(`第${step}步触发自动纠偏：清理遮挡弹窗「${dismissLabel}」`);
+              } else {
+                const reasonDesc = isWaitLoop
+                  ? '已连续等待但画面仍未出现预期变化，严禁再次 phone_wait'
+                  : (oscDetected
+                      ? '检测到页面在两个界面间往返死循环，必须跳出当前路径，改用搜索框/换入口或返回上一级'
+                      : `动作 ${toolName}(${summarizePlanArgs(plan)}) 在当前画面已确认无效`);
+                const recoveryHint = `【系统死循环自动纠偏】${reasonDesc}。当前页面禁用动作列表：${blockedLabels.join('；') || fp}。请立即更换完全不同的策略（如换控件、改用坐标、滚动查找、phone_key(back) 或 ask_user）！`;
+                const rePlanResp = await requestPlanStep({
+                  execMode,
+                  task: activeTaskText,
+                  snapshot,
+                  history,
+                  screenSize,
+                  installedApps,
+                  screenVerdict: lastScreenVerdict,
+                  loopDiagnostics: { ...loopDiagnostics, recoveryAttempts: loopState.recoveryAttempts },
+                  interjections: turnInterjections,
+                  extraRecoveryHint: recoveryHint,
+                  stepIndex: step,
+                  lastExternalApp: lastExtApp,
+                  signal
+                }).catch(() => null);
+                if (rePlanResp && rePlanResp.ok && rePlanResp.plan) {
+                  const candPlan = rePlanResp.plan;
+                  const candFp = getActionFingerprint(candPlan, snapshot);
+                  if (!pageBlockedSet?.has(candFp) && candFp !== fp) {
+                    plan = candPlan;
+                    toolName = plan.tool || plan.action || 'step';
+                    appendNativeConsoleLog(`第${step}步触发死循环纠偏重规划 -> ${toolName}`);
+                  } else if (snapshot.packageName !== 'com.deepseek.starwhisper.studio' && !String(snapshot.packageName || '').includes('launcher')) {
+                    plan = {
+                      thought: '连续纠偏仍命中相同无效路径，自动执行返回上一页跳出死循环。',
+                      tool: 'phone_key',
+                      args: { key: 'back' },
+                      risk: 'read',
+                      summary: '自动返回上一页跳出循环'
+                    };
+                    toolName = 'phone_key';
+                  }
+                }
+              }
+            } else {
+              // Level 3：优雅跳出循环，交还用户协作
+              plan = {
+                thought: `在当前界面已尝试 ${loopState.recoveryAttempts} 次自动纠偏仍未推进，已自动暂停防卡死，向你确认下一步。`,
+                tool: 'ask_user',
+                args: {
+                  message: `我在「${snapshot.appName || '当前界面'}」连续操作未见变化或出现循环跳转，已自动暂停。你想怎么继续？`,
+                  reason: 'confirm',
+                  options: ['我已手动处理，继续执行', '返回上一页换个方式找', '先停止本次任务']
+                },
+                risk: 'read',
+                summary: '检测到卡顿/循环 · 请求确认继续方式',
+                reply: `我在「${snapshot.appName || '当前界面'}」连续操作未见变化或出现循环跳转，已自动暂停。`
+              };
+              toolName = 'ask_user';
+            }
+          }
+        }
         appendThoughtItem(cardCtx, `第 ${step} 步`, plan.thought, plan.reasoning);
 
         const badgeEl = pendingStepEl?.querySelector('.pa-tool-badge');
@@ -4136,15 +4727,36 @@
           });
 
           if (askResult.mode === 'reply' && askResult.text) {
-            appendUserMessageRow(askResult.text);
-            recordPaChatTurn('user', askResult.text);
-            autoContinueHint = `【用户已确认/补充】${askResult.text}`;
-            updateStepResult(pendingStepEl, `已确认：${askResult.text.slice(0, 14)}`, false);
+            const replyClean = askResult.text.trim();
+            if (/先停止本次任务|停止任务|取消/.test(replyClean)) {
+              updateStepResult(pendingStepEl, '已停止', false);
+              finalStatus = 'done';
+              finalSummaryTitle = '已按你的要求停止任务';
+              finalReplyText = '已停止当前任务，随时告诉我下一步安排~';
+              break;
+            }
+            appendUserMessageRow(replyClean);
+            recordPaChatTurn('user', replyClean);
+            loopState.noChangeStreak = 0;
+            loopState.waitStreak = 0;
+            loopState.recoveryAttempts = 0;
+            loopState.recentPageSigs = [];
+            loopState.failedActionMap.delete(currentPageKey);
+            loopState.failedActionLabels.delete(currentPageKey);
+            if (/返回上一页/.test(replyClean) && native && b && typeof b.dispatchGlobalAction === 'function') {
+              try { b.dispatchGlobalAction('back'); } catch {}
+              await sleep(420);
+            }
+            autoContinueHint = `【用户已确认/补充】${replyClean}`;
+            updateStepResult(pendingStepEl, `已确认：${replyClean.slice(0, 14)}`, false);
             history.push({
               step,
               tool: 'ask_user',
+              argsSummary: '',
               summary: askMsg,
-              result: `用户回复确认：${askResult.text}`
+              result: `用户回复确认：${replyClean}`,
+              changed: true,
+              page: snapshot.appName || snapshot.packageName || ''
             });
             await sleep(180);
             continue;
@@ -4254,7 +4866,14 @@
             break;
           }
           const subAct = actionQueue[ai];
-          execRes = dispatchNativePlanAction(subAct, snapshot, { forceGesture: forceGestureClick, taskText });
+          if (ai > 0 && native) {
+            const liveMeta = readScreenMeta();
+            if (liveMeta?.ok && liveMeta.packageName && snapshot.packageName && liveMeta.packageName !== snapshot.packageName) {
+              execTexts.push('页面已切换，提前结束本批微动作');
+              break;
+            }
+          }
+          execRes = dispatchNativePlanAction(subAct, snapshot, { forceGesture: forceGestureClick, taskText: activeTaskText });
           execTexts.push(execRes.text);
           if (!execRes.error) {
             const cap = captureRecordableStep(subAct, snapshot, execRes, screenSize);
@@ -4262,7 +4881,7 @@
           }
           if (execRes.error || !native) break;
           if (ai < actionQueue.length - 1) {
-            await sleep(subAct.tool === 'phone_tap' ? 240 : 260);
+            await sleep(subAct.tool === 'phone_tap' ? 200 : 220);
           }
         }
         if (abortedByUser) {
@@ -4302,18 +4921,44 @@
         }
 
         const finalExecText = execTexts.join(' -> ') || execRes.text;
+        const stepFp = getActionFingerprint(plan, snapshot);
+        loopState.recentActionFingerprints.push(stepFp);
+        if (loopState.recentActionFingerprints.length > 8) {
+          loopState.recentActionFingerprints = loopState.recentActionFingerprints.slice(-8);
+        }
 
-        if (verdict && !verdict.changed && lastSubTool !== 'phone_wait') {
+        if (lastSubTool === 'phone_wait' || lastSubTool === 'wait') {
+          loopState.waitStreak += 1;
+        } else {
+          loopState.waitStreak = 0;
+        }
+
+        if ((verdict && !verdict.changed && lastSubTool !== 'phone_wait') || execRes.error) {
           noChangeStreak += 1;
+          loopState.noChangeStreak += 1;
+          if (native && stepFp) {
+            if (!loopState.failedActionMap.has(currentPageKey)) {
+              loopState.failedActionMap.set(currentPageKey, new Set());
+            }
+            loopState.failedActionMap.get(currentPageKey).add(stepFp);
+            const labelList = loopState.failedActionLabels.get(currentPageKey) || [];
+            const labelDesc = `${toolName}(${summarizePlanArgs(plan)})`;
+            if (!labelList.includes(labelDesc)) {
+              labelList.push(labelDesc);
+              loopState.failedActionLabels.set(currentPageKey, labelList.slice(-10));
+            }
+          }
         } else {
           noChangeStreak = 0;
-          if (verdict && verdict.changed) {
+          loopState.noChangeStreak = 0;
+          if (verdict && verdict.changed && !oscDetected) {
+            loopState.recoveryAttempts = 0;
             earlyDoneIntercepts = 0;
           }
         }
         lastScreenVerdict = {
           ...verdict,
-          noChangeStreak
+          noChangeStreak: loopState.noChangeStreak
         };
 
         updateStepResult(
@@ -4327,9 +4972,11 @@
         history.push({
           step,
           tool: toolName,
+          argsSummary: summarizePlanArgs(plan),
           summary: plan.summary,
           result: finalExecText,
-          changed: Boolean(verdict?.changed)
+          changed: Boolean(verdict?.changed),
+          page: snapshot.appName || snapshot.packageName || ''
         });
 
         if (!native) {
@@ -5188,11 +5835,19 @@
 
     $('pa-banner-policy-pill')?.addEventListener('click', () => openControlSheet(false));
 
-    document.querySelectorAll('.pa-policy-card').forEach((card) => {
+    document.querySelectorAll('.pa-policy-card:not(.pa-clarify-card)').forEach((card) => {
       card.addEventListener('click', () => {
         const p = card.dataset.paPolicy || 'sensitive_only';
         setConfirmPolicy(p);
         showToast(`安全策略已切换：${getPolicyLabel(p)}`);
+      });
+    });
+
+    document.querySelectorAll('.pa-clarify-card').forEach((card) => {
+      card.addEventListener('click', () => {
+        const cp = card.dataset.paClarify || 'smart';
+        setClarifyPolicy(cp);
+        showToast(`任务前需求确认已切换为：${getClarifyPolicyLabel(cp)}`);
       });
     });
 

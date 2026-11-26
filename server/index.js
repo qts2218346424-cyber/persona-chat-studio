@@ -656,8 +656,8 @@ function extractAuthToken(req, parsedUrl = null) {
   return '';
 }
 
-const APP_LATEST_VERSION = '2.7.2';
-const APP_LATEST_VERSION_CODE = 163;
+const APP_LATEST_VERSION = '2.7.3';
+const APP_LATEST_VERSION_CODE = 164;
 const APP_OFFICIAL_CERT_SHA256 = '6fd05e32a3cabf327140129d866e55a342fe30daa3384c67aad4b3cbdd98a17b';
 const APP_UPDATE_TICKET_SECRET = crypto
   .createHash('sha256')
@@ -955,6 +955,7 @@ async function handleApi(req, res, pathname, parsedUrl) {
       forceUpdate,
       diffGenerations,
       changelog: [
+        '【任务前主动需求确认 + 死循环自动纠偏（v2.7.3）】发模糊任务前 AI 先在当前界面主动提问确认需求（支持智能确认/每次先确认/直接执行三档），绝不盲目跳走；新增动作指纹与页面振荡死循环检测、三级自动纠偏换路与优雅跳出协作弹窗，执行更稳更丝滑',
         '【整套作业一口气连做不中断（Anti-Early-Done）】强化连续多题规划铁律并新增代码级防早退保护：检测到屏幕仍有“下一题”或题号进度未到最后一题时自动拦截提前结束，持续作答翻页直到整套题全部做完',
         '【修复启动更新弹窗 + 全面打通用户自带 API 控屏】修复启动检测到新版时自动弹出更新公告窗口；穿透 APK 离线壳与服务端 CORS 代理全面打通用户自带 DeepSeek/第三方 API Key 驱动手机辅助（支持接口地址自动补全、Bearer 自动清洗、自由输入模型与一键测试连接），双端同步升级至 v2.7.2 (Build 163)'
       ]
@@ -1687,92 +1688,17 @@ async function handleApi(req, res, pathname, parsedUrl) {
         ? { width: Number(body.screenSize.width), height: Number(body.screenSize.height) }
         : { width: 1080, height: 2400 };
     const screenNodes = Array.isArray(body.screenNodes) ? body.screenNodes.slice(0, 160) : [];
-    const historySteps = Array.isArray(body.history) ? body.history.slice(-12) : [];
+    const historySteps = Array.isArray(body.history) ? body.history.slice(-10) : [];
     const installedApps = Array.isArray(body.installedApps) ? body.installedApps.slice(0, 80) : [];
     const snapshotId = String(body.snapshotId || '').trim();
     const foregroundApp = String(body.foregroundApp || '').trim();
     const packageName = String(body.packageName || '').trim();
     const screenTreeText = String(body.screenTreeText || '').trim().slice(0, 12000);
     const screenVerdict = body.screenVerdict && typeof body.screenVerdict === 'object' ? body.screenVerdict : null;
+    const loopDiagnostics = body.loopDiagnostics && typeof body.loopDiagnostics === 'object' ? body.loopDiagnostics : null;
     const interjections = Array.isArray(body.interjections) ? body.interjections.slice(-5) : [];
     const hasSensitiveField = Boolean(body.hasSensitiveField);
     const sensitiveReason = String(body.sensitiveReason || '').trim();
-
-    const sysPrompt = [
-      '你是星语手机辅助代理（Phone Agent · dsh-Go 规划内核）。',
-      '你的职责是根据用户的目标任务、当前手机屏幕快照（含元素 ref 编号）、上一步 ScreenVerdict 验证结果、用户中途插话以及历史步骤，输出“下一步唯一且精确”的动作指令。',
-      `当前设备屏幕分辨率为 ${screenSize.width}x${screenSize.height}。`,
-      '你只能输出一个严格合法的 JSON 对象（不要用 Markdown 代码块包裹，也不要附加前后任何解释文字），格式如下：',
-      '{"thought":"清晰自然的中文思考推理(30~110字，简述看到了什么、分析判断与决策原因)","tool":"工具名","args":{},"summary":"面向用户的中文简述(<=28字)","risk":"read|write|sensitive","reply":"在 chat / done / ask_user 时填写自然友好的中文回复"}',
-      '可用 tool 及对应 args 规范（dsh-Go PhoneToolCatalog）：',
-      '- chat: {"message":"无需操作手机，直接用自然友好的中文对话回答用户问题或讨论方案"}',
-      '- phone_open: {"appName":"应用名称，优先参考已安装应用列表"}',
-      '- phone_tap: {"ref":"元素编号如e12","snapshotId":"当前快照ID"}  （点击页面控件首选！）',
-      '- phone_tap_xy: {"x":像素X,"y":像素Y}  （仅当控件树未暴露目标或自绘控件时使用）',
-      '- phone_double_tap: {"x":像素X,"y":像素Y}',
-      '- phone_long_press: {"ref":"e12","duration":700} 或 {"x":像素X,"y":像素Y,"duration":700}',
-      '- phone_type: {"ref":"可选输入框ref","text":"要输入的文本","clear":false,"submit":true}',
-      '- phone_scroll: {"direction":"down|up|left|right","amount":0.65}',
-      '- phone_swipe: {"x1":起点X,"y1":起点Y,"x2":终点X,"y2":终点Y,"duration":320}',
-      '- phone_key: {"key":"back|home|recents|notifications|quick_settings|enter|screenshot"}',
-      '- phone_wait: {"ms":1000}',
-      '- ask_user: {"message":"需要向用户追问澄清、确认选择或请求手动操作的清晰问题","reason":"clarify|confirm|sensitive|manual","options":["可选快捷选项1","可选快捷选项2"]}',
-      '- done: {"message":"清晰自然的中文完成总结，汇报查到的信息或操作结果"}',
-      '关键约束：',
-      '0. 自由对话优先识别：若用户是在打招呼、闲聊、询问原理/题目思路、讨论方案、询问你能做什么、或仅针对屏幕内容提问而无需点击/打开手机时，直接返回 tool="chat"，用 reply 给出完整有温度的回答，严禁瞎点手机！',
-      '0.5 模糊/不确定主动问清楚（关键！）：当用户指令缺少关键信息（如未指定发给谁/发什么内容/买哪款/选哪个规格、多选拿不准、当前界面有多个同名目标或即将执行重要提交/删除/付款）时，严禁瞎猜乱点！必须立即返回 tool="ask_user"，在 reply 中礼貌问清楚具体需求，并尽可能在 args.options 中提供 2~4 个简短清晰的快捷选项。',
-      '1. 优先用 phone_open 打开目标应用；点击屏幕元素时优先使用 phone_tap 并携带准确 ref 与 snapshotId，避免盲猜坐标。',
-      '2. 仔细检查 screenVerdict：若连续 2 步画面未变化（changed=false），严禁继续重复同一动作或 phone_wait，必须改用 phone_tap_xy / phone_scroll / phone_key(back) 或返回 ask_user 交还用户处理。',
-      '3. 若同一屏幕上已同时清晰可见 2~3 个明确无歧义的连贯操作（例如学习答题时“先选中答案选项 + 再点击下一题/提交”），可在标准字段外额外附带 `"actions":[{"tool":"phone_tap","args":{"ref":"e10"}},{"tool":"phone_tap","args":{"ref":"e24"}}]`（最多 3 个同屏非敏感微动作），否则只输出单动作。',
-      '4. 严禁操作控制端自身（packageName="com.deepseek.starwhisper.studio"）或在其聊天框打字；当用户说“继续写作业/继续答题”且未明确指定打开 DeepSeek 时，禁止打开 DeepSeek 应用，优先切回 lastExternalApp 或在目标学习软件内操作。',
-      '5. screenTreeText 中每一行 `R1: ... | ...` 代表屏幕同一水平行的元素。做选择题时必须严格核对同一行的字母与右侧文字，带有 (sel) 或 (chk) 表示已选中，若已选对直接点“下一题”，严禁张冠李戴改错答案！',
-      '6. 连续多题/多页任务铁律：当任务属于连续流程（如“写作业/继续写作业/答题/刷题/完成练习”）时，只要屏幕上还存在“下一题”按钮、或题号进度（如 3/5、12/20）未达最后且未出现“提交成功/练习完成/得分”页面，严禁做完一题就返回 done！必须持续作答并点击“下一题”，一口气把整套题全部做完，直到全部完成或出现最终交卷/结算页才返回 done（或在需要人工确认最终交卷时返回 ask_user）。',
-      '7. 若 interjections 非空（用户在执行中途插话或纠偏），必须最高优先级立即响应用户最新插话要求。',
-      '8. 若 hasSensitiveField=true（密码框/支付收银台/验证码）或即将执行付款、转账、下单、发红包、删除、卸载、发送对外消息/评论等高风险动作，必须将 risk 设为 "sensitive"；遇到支付密码/短信验证码/刷脸确认时，直接返回 ask_user 交还人类操作。',
-      '9. 若处于网页预览模式（无真实屏幕节点，screenNodes 为空且无 screenTreeText），可直接给出逻辑演示并在最后一步返回 done。'
-    ].join('\n');
-
-    const compactNodes = screenNodes.map((n, idx) => ({
-      ref: n.ref || `e${idx + 1}`,
-      t: n.text || '',
-      d: n.desc || '',
-      id: n.viewId || n.id || '',
-      cls: String(n.className || n.cls || '').split('.').pop(),
-      clk: Boolean(n.clickable),
-      edt: Boolean(n.editable),
-      pwd: Boolean(n.password),
-      c: n.center || undefined,
-      b: n.bounds || ''
-    }));
-
-    const userPayload = {
-      task,
-      stepIndex: Number(body.stepIndex) > 0 ? Number(body.stepIndex) : historySteps.length + 1,
-      selfPackageName: 'com.deepseek.starwhisper.studio',
-      lastExternalApp: body.lastExternalApp && typeof body.lastExternalApp === 'object' ? body.lastExternalApp : null,
-      snapshotId,
-      foregroundApp,
-      packageName,
-      hasSensitiveField,
-      sensitiveReason,
-      screenVerdict,
-      interjections,
-      conversationMemory: Array.isArray(body.conversationMemory) ? body.conversationMemory.slice(-6) : [],
-      recentHistory: historySteps.map((h) => ({
-        step: h.step,
-        tool: h.tool || h.action,
-        summary: h.summary,
-        result: h.result
-      })),
-      installedAppsPreview: installedApps.map((a) => (typeof a === 'string' ? a : a.name)).slice(0, 40)
-    };
-    if (screenTreeText) {
-      userPayload.screenTreeText = screenTreeText;
-    } else {
-      userPayload.screenNodesCount = compactNodes.length;
-      userPayload.screenNodes = compactNodes;
-    }
-    const userMsg = JSON.stringify(userPayload);
 
     const extractPlanJson = (raw) => {
       const cleaned = String(raw || '')
@@ -1815,7 +1741,7 @@ async function handleApi(req, res, pathname, parsedUrl) {
                 const slice = cleaned.slice(i, j + 1);
                 try {
                   const obj = tryParseClean(slice);
-                  if (obj && typeof obj === 'object' && (obj.tool || obj.action)) return obj;
+                  if (obj && typeof obj === 'object' && (obj.tool || obj.action || obj.intent || obj.ready !== undefined)) return obj;
                 } catch {}
                 break;
               }
@@ -1825,6 +1751,269 @@ async function handleApi(req, res, pathname, parsedUrl) {
       }
       throw new Error('模型响应未返回合法 JSON 动作指令');
     };
+
+    const resolvePlanCandidates = () => {
+      const list = [];
+      const customKeyRaw = String(body.customApiKey || '').trim();
+      if (customKeyRaw) {
+        const validKey = validateOfficialDeepSeekApiKey(customKeyRaw);
+        const safeUrl = body.customBaseUrl
+          ? validateSafeUserApiBaseUrl(body.customBaseUrl)
+          : OFFICIAL_DEEPSEEK_CHAT_URL;
+        const endpoints = resolveDeepSeekEndpoints(safeUrl);
+        const customModel = normalizeModelForEndpoint(
+          sanitizeUserModelName(body.customModel || 'deepseek-chat'),
+          endpoints.chatUrl
+        );
+        list.push({
+          protocol: 'openai',
+          url: endpoints.chatUrl,
+          apiKey: validKey,
+          headers: { Authorization: `Bearer ${validKey}` },
+          model: customModel,
+          engineName: 'api_direct_proxy'
+        });
+        return list;
+      }
+      const execSettings = getExecutionSettingsForUser(userId);
+      const suiteCred = resolveSuiteOrBridgeCredentials(execSettings);
+      if (suiteCred && suiteCred.hasKey && suiteCred.endpoints?.chatUrl) {
+        let modelName = String(body.customModel || suiteCred.preferredModel || 'deepseek-chat').trim();
+        if (/reasoner/i.test(modelName) && suiteCred.endpoints.isOfficialDeepSeek) {
+          modelName = 'deepseek-chat';
+        }
+        list.push({
+          protocol: 'openai',
+          url: suiteCred.endpoints.chatUrl,
+          apiKey: suiteCred.apiKey,
+          headers: suiteCred.headers,
+          model: modelName,
+          engineName: suiteCred.isLocalBridge ? 'cloud_bridge' : 'cloud_managed'
+        });
+      }
+      try {
+        const rt = loadBridgeRuntime();
+        if (rt?.options?.enabled && Array.isArray(rt.endpoints)) {
+          for (const ep of rt.endpoints) {
+            const preferAnth = ep.urls?.preferredProtocol === 'anthropic' && !ep.urls?.isOfficialDeepSeek && ep.urls?.anthropicMessagesUrl;
+            const epUrl = preferAnth ? ep.urls.anthropicMessagesUrl : ep.urls?.openaiChatUrl;
+            if (!epUrl || list.some((c) => c.url === epUrl)) continue;
+            list.push({
+              protocol: preferAnth ? 'anthropic' : 'openai',
+              url: epUrl,
+              apiKey: ep.apiKey,
+              headers: preferAnth
+                ? { 'x-api-key': ep.apiKey, 'anthropic-version': '2023-06-01' }
+                : { Authorization: `Bearer ${ep.apiKey}` },
+              model: ep.defaultModel || 'deepseek-flash',
+              engineName: ep.name || 'cloud_bridge'
+            });
+          }
+        }
+      } catch {}
+      return list;
+    };
+
+    let candidates = [];
+    try {
+      candidates = resolvePlanCandidates();
+    } catch (err) {
+      return sendPlanJson(res, 400, { ok: false, error: err.message || '个人 API 参数校验失败' });
+    }
+    if (candidates.length === 0) {
+      return sendPlanJson(res, 400, {
+        ok: false,
+        code: 'NO_API_KEY',
+        error: '当前账号未配置可用云端 API 密钥。请在上方切换「DeepSeek API」填写您的个人密钥，或改用「本地免 API」直接下达系统口令。'
+      });
+    }
+
+    // 2A. 任务前需求澄清门控（phase === 'preflight'）
+    const isPreflight = String(body.phase || '').trim().toLowerCase() === 'preflight';
+    if (isPreflight) {
+      const clarifyPolicy = String(body.clarifyPolicy || 'smart').trim().toLowerCase();
+      const preSysPrompt = [
+        '你是星语手机辅助代理（Phone Agent · dsh-Go 任务前需求预检助手）。',
+        '在真正切走手机界面或开始执行任务之前，你需要快速判断用户的指令是否清晰完整，避免“一发指令就盲目跳走”。',
+        '请仅输出一个严格合法的 JSON 对象（不要用 Markdown 代码块包裹），字段如下：',
+        '{"intent":"chat|task","ready":true|false,"thought":"简短中文需求完整度分析(<=70字)","planPreview":"若现在执行将采取的1~2句中文拟定步骤","question":"若 ready=false，用友好简洁的中文一次性问清1~3个最关键的缺失细节","options":["可直接点击的快捷回答1","快捷回答2","快捷回答3"]}',
+        '判断准则：',
+        '1. 若用户只是打招呼、闲聊、提问咨询或讨论方案无需操作手机：设 intent="chat", ready=true。',
+        '2. 若指令已经十分明确（目标 App/当前上下文明确，且关键对象与目标动作无歧义，如“打开微信给张三发在吗”、“打开高德地图搜附近咖啡”、“继续把当前这套单选题全部做完不要提交”）：在 smart 模式下设 intent="task", ready=true。',
+        '3. 若指令存在明显缺失或歧义（如“帮我点外卖”缺吃什么/平台/预算；“帮我写作业/做题”缺哪科/是否自动交卷/是否仅做选择题；“帮我发消息”缺收件人或内容；“帮我买票/订酒店/购物”缺时间地点规格预算；“帮我查东西/刷视频”缺主题或平台），或 clarifyPolicy==="always"：必须设 intent="task", ready=false，在 question 中一次性问清关键需求，并在 options 中给出 2~4 个高价值快捷选项。'
+      ].join('\n');
+
+      const preUserMsg = JSON.stringify({
+        task,
+        clarifyPolicy,
+        foregroundApp,
+        packageName,
+        lastExternalApp: body.lastExternalApp && typeof body.lastExternalApp === 'object' ? body.lastExternalApp : null,
+        conversationMemory: Array.isArray(body.conversationMemory) ? body.conversationMemory.slice(-6) : [],
+        installedAppsPreview: installedApps.map((a) => (typeof a === 'string' ? a : a.name)).slice(0, 35)
+      });
+
+      const normalizePreflight = (obj) => {
+        const intent = obj?.intent === 'chat' ? 'chat' : 'task';
+        const ready = intent === 'chat' ? true : (clarifyPolicy === 'always' ? false : Boolean(obj?.ready));
+        const options = Array.isArray(obj?.options)
+          ? obj.options.map((x) => String(x || '').trim()).filter(Boolean).slice(0, 4)
+          : [];
+        return {
+          intent,
+          ready,
+          thought: String(obj?.thought || '').trim().slice(0, 140),
+          planPreview: String(obj?.planPreview || '').trim().slice(0, 220),
+          question: String(obj?.question || (ready ? '' : '在开始操作手机前，请先确认一下具体需求或补充关键细节：')).trim().slice(0, 360),
+          options
+        };
+      };
+
+      let preErr = '';
+      for (const cand of candidates) {
+        try {
+          if (cand.protocol === 'anthropic') {
+            const resp = await fetch(cand.url, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', ...cand.headers },
+              body: JSON.stringify({
+                model: cand.model,
+                max_tokens: 512,
+                temperature: 0.2,
+                system: preSysPrompt,
+                messages: [{ role: 'user', content: preUserMsg }]
+              }),
+              signal: AbortSignal.timeout(12000)
+            });
+            if (!resp.ok) {
+              preErr = `上游网关 (${resp.status})`;
+              continue;
+            }
+            const data = await resp.json();
+            const blocks = Array.isArray(data.content) ? data.content : [];
+            const rawText = blocks.filter((b) => b.type === 'text').map((b) => b.text).join('\n');
+            const parsed = normalizePreflight(extractPlanJson(rawText));
+            return sendPlanJson(res, 200, { ok: true, preflight: parsed, model: cand.model, engine: cand.engineName });
+          }
+
+          const useReasoner = /reasoner|r1/i.test(String(cand.model || ''));
+          const modelToUse = useReasoner ? 'deepseek-chat' : cand.model;
+          const payload = {
+            model: modelToUse,
+            messages: [
+              { role: 'system', content: preSysPrompt },
+              { role: 'user', content: preUserMsg }
+            ],
+            temperature: 0.2,
+            max_tokens: 512,
+            stream: false
+          };
+          if (cand.url.includes('deepseek.com')) {
+            payload.response_format = { type: 'json_object' };
+          }
+          const resp = await fetch(cand.url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...cand.headers },
+            body: JSON.stringify(payload),
+            signal: AbortSignal.timeout(10000)
+          });
+          if (!resp.ok) {
+            const errTxt = await resp.text().catch(() => '');
+            throw new Error(`模型网关返回 (${resp.status}): ${errTxt.slice(0, 120)}`);
+          }
+          const data = await resp.json();
+          const msgObj = data?.choices?.[0]?.message || {};
+          const rawText = String(msgObj.content || '').trim();
+          const parsed = normalizePreflight(extractPlanJson(rawText));
+          return sendPlanJson(res, 200, { ok: true, preflight: parsed, model: modelToUse, engine: cand.engineName });
+        } catch (err) {
+          preErr = err?.message || '需求预检请求失败';
+          if (/\((?:401|403)\)|unauthorized|invalid.*key|authentication/i.test(preErr)) break;
+        }
+      }
+      return sendPlanJson(res, 422, { ok: false, code: 'PREFLIGHT_FAILED', error: preErr || '需求预检暂不可用' });
+    }
+
+    const sysPrompt = [
+      '你是星语手机辅助代理（Phone Agent · dsh-Go 规划内核）。',
+      '你的职责是根据用户的目标任务、当前手机屏幕快照（含元素 ref 编号）、上一步 ScreenVerdict 验证结果、用户中途插话以及历史步骤，输出“下一步唯一且精确”的动作指令。',
+      `当前设备屏幕分辨率为 ${screenSize.width}x${screenSize.height}。`,
+      '你只能输出一个严格合法的 JSON 对象（不要用 Markdown 代码块包裹，也不要附加前后任何解释文字），格式如下：',
+      '{"thought":"清晰自然的中文思考推理(30~110字，简述看到了什么、分析判断与决策原因)","tool":"工具名","args":{},"summary":"面向用户的中文简述(<=28字)","risk":"read|write|sensitive","reply":"在 chat / done / ask_user 时填写自然友好的中文回复"}',
+      '可用 tool 及对应 args 规范（dsh-Go PhoneToolCatalog）：',
+      '- chat: {"message":"无需操作手机，直接用自然友好的中文对话回答用户问题或讨论方案"}',
+      '- phone_open: {"appName":"应用名称，优先参考已安装应用列表"}',
+      '- phone_tap: {"ref":"元素编号如e12","snapshotId":"当前快照ID"}  （点击页面控件首选！）',
+      '- phone_tap_xy: {"x":像素X,"y":像素Y}  （仅当控件树未暴露目标或自绘控件时使用）',
+      '- phone_double_tap: {"x":像素X,"y":像素Y}',
+      '- phone_long_press: {"ref":"e12","duration":700} 或 {"x":像素X,"y":像素Y,"duration":700}',
+      '- phone_type: {"ref":"可选输入框ref","text":"要输入的文本","clear":false,"submit":true}',
+      '- phone_scroll: {"direction":"down|up|left|right","amount":0.65}',
+      '- phone_swipe: {"x1":起点X,"y1":起点Y,"x2":终点X,"y2":终点Y,"duration":320}',
+      '- phone_key: {"key":"back|home|recents|notifications|quick_settings|enter|screenshot"}',
+      '- phone_wait: {"ms":1000}',
+      '- ask_user: {"message":"需要向用户追问澄清、确认选择或请求手动操作的清晰问题","reason":"clarify|confirm|sensitive|manual","options":["可选快捷选项1","可选快捷选项2"]}',
+      '- done: {"message":"清晰自然的中文完成总结，汇报查到的信息或操作结果"}',
+      '关键约束：',
+      '0. 自由对话优先识别：若用户是在打招呼、闲聊、询问原理/题目思路、讨论方案、询问你能做什么、或仅针对屏幕内容提问而无需点击/打开手机时，直接返回 tool="chat"，用 reply 给出完整有温度的回答，严禁瞎点手机！',
+      '0.5 模糊/不确定主动问清楚（关键！）：当用户指令缺少关键信息（如未指定发给谁/发什么内容/买哪款/选哪个规格、多选拿不准、当前界面有多个同名目标或即将执行重要提交/删除/付款）时，严禁瞎猜乱点！必须立即返回 tool="ask_user"，在 reply 中礼貌问清楚具体需求，并尽可能在 args.options 中提供 2~4 个简短清晰的快捷选项。',
+      '1. 优先用 phone_open 打开目标应用；点击屏幕元素时优先使用 phone_tap 并携带准确 ref 与 snapshotId，避免盲猜坐标。',
+      '2. 防卡死与防死循环铁律：严禁连续 2 步返回 phone_wait！仔细检查 screenVerdict 与 loopDiagnostics：若 blockedActions 非空，严禁再输出列表中已失效的动作、控件或坐标；若 oscillationDetected=true（页面 A↔B 往返死循环），严禁继续在两个页面间重复点击，必须更换入口、改用搜索框、执行 phone_key(back) 退出重进，或返回 ask_user 请求用户协助。',
+      '2.5 遮挡弹窗清理：若页面被开屏广告、版本更新、权限引导或好评弹窗遮挡，优先点击“跳过/取消/以后再说/暂不更新/知道了/关闭”等按钮清理遮挡后再继续主任务。',
+      '3. 若同一屏幕上已同时清晰可见 2~3 个明确无歧义的连贯操作（例如学习答题时“先选中答案选项 + 再点击下一题/提交”），可在标准字段外额外附带 `"actions":[{"tool":"phone_tap","args":{"ref":"e10"}},{"tool":"phone_tap","args":{"ref":"e24"}}]`（最多 3 个同屏非敏感微动作），否则只输出单动作。',
+      '4. 严禁操作控制端自身（packageName="com.deepseek.starwhisper.studio"）或在其聊天框打字；当用户说“继续写作业/继续答题”且未明确指定打开 DeepSeek 时，禁止打开 DeepSeek 应用，优先切回 lastExternalApp 或在目标学习软件内操作。',
+      '5. screenTreeText 中每一行 `R1: ... | ...` 代表屏幕同一水平行的元素。做选择题时必须严格核对同一行的字母与右侧文字，带有 (sel) 或 (chk) 表示已选中，若已选对直接点“下一题”，严禁张冠李戴改错答案！',
+      '6. 连续多题/多页任务铁律：当任务属于连续流程（如“写作业/继续写作业/答题/刷题/完成练习”）时，只要屏幕上还存在“下一题”按钮、或题号进度（如 3/5、12/20）未达最后且未出现“提交成功/练习完成/得分”页面，严禁做完一题就返回 done！必须持续作答并点击“下一题”，一口气把整套题全部做完，直到全部完成或出现最终交卷/结算页才返回 done（或在需要人工确认最终交卷时返回 ask_user）。',
+      '7. 若 interjections 非空（用户在执行中途插话或纠偏），必须最高优先级立即响应用户最新插话要求。',
+      '8. 若 hasSensitiveField=true（密码框/支付收银台/验证码）或即将执行付款、转账、下单、发红包、删除、卸载、发送对外消息/评论等高风险动作，必须将 risk 设为 "sensitive"；遇到支付密码/短信验证码/刷脸确认时，直接返回 ask_user 交还人类操作。',
+      '9. 若处于网页预览模式（无真实屏幕节点，screenNodes 为空且无 screenTreeText），可直接给出逻辑演示并在最后一步返回 done。'
+    ].join('\n');
+
+    const compactNodes = screenNodes.map((n, idx) => ({
+      ref: n.ref || `e${idx + 1}`,
+      t: n.text || '',
+      d: n.desc || '',
+      id: n.viewId || n.id || '',
+      cls: String(n.className || n.cls || '').split('.').pop(),
+      clk: Boolean(n.clickable),
+      edt: Boolean(n.editable),
+      pwd: Boolean(n.password),
+      c: n.center || undefined,
+      b: n.bounds || ''
+    }));
+
+    const userPayload = {
+      task,
+      stepIndex: Number(body.stepIndex) > 0 ? Number(body.stepIndex) : historySteps.length + 1,
+      selfPackageName: 'com.deepseek.starwhisper.studio',
+      lastExternalApp: body.lastExternalApp && typeof body.lastExternalApp === 'object' ? body.lastExternalApp : null,
+      snapshotId,
+      foregroundApp,
+      packageName,
+      hasSensitiveField,
+      sensitiveReason,
+      screenVerdict,
+      loopDiagnostics,
+      interjections,
+      conversationMemory: Array.isArray(body.conversationMemory) ? body.conversationMemory.slice(-6) : [],
+      recentHistory: historySteps.map((h) => ({
+        step: h.step,
+        tool: h.tool || h.action,
+        args: h.argsSummary || '',
+        summary: h.summary,
+        result: h.result,
+        changed: h.changed === undefined ? null : Boolean(h.changed),
+        page: h.page || ''
+      })),
+      installedAppsPreview: installedApps.map((a) => (typeof a === 'string' ? a : a.name)).slice(0, 40)
+    };
+    if (screenTreeText) {
+      userPayload.screenTreeText = screenTreeText;
+    } else {
+      userPayload.screenNodesCount = compactNodes.length;
+      userPayload.screenNodes = compactNodes;
+    }
+    const userMsg = JSON.stringify(userPayload);
 
     const normalizePlan = (obj) => {
       const toolToLegacy = {
@@ -1919,79 +2108,6 @@ async function handleApi(req, res, pathname, parsedUrl) {
       };
     };
 
-    // 1. 解析凭据来源：若前端显式传递了个人直连 Key（解决 WebView CORS），严格验证并透传且绝不落盘
-    const candidates = [];
-    const customKeyRaw = String(body.customApiKey || '').trim();
-    if (customKeyRaw) {
-      try {
-        const validKey = validateOfficialDeepSeekApiKey(customKeyRaw);
-        const safeUrl = body.customBaseUrl
-          ? validateSafeUserApiBaseUrl(body.customBaseUrl)
-          : OFFICIAL_DEEPSEEK_CHAT_URL;
-        const endpoints = resolveDeepSeekEndpoints(safeUrl);
-        const customModel = normalizeModelForEndpoint(
-          sanitizeUserModelName(body.customModel || 'deepseek-chat'),
-          endpoints.chatUrl
-        );
-        candidates.push({
-          protocol: 'openai',
-          url: endpoints.chatUrl,
-          apiKey: validKey,
-          headers: { Authorization: `Bearer ${validKey}` },
-          model: customModel,
-          engineName: 'api_direct_proxy'
-        });
-      } catch (err) {
-        return sendPlanJson(res, 400, { ok: false, error: err.message || '个人 API 参数校验失败' });
-      }
-    } else {
-      const execSettings = getExecutionSettingsForUser(userId);
-      const suiteCred = resolveSuiteOrBridgeCredentials(execSettings);
-      if (suiteCred && suiteCred.hasKey && suiteCred.endpoints?.chatUrl) {
-        let modelName = String(body.customModel || suiteCred.preferredModel || 'deepseek-chat').trim();
-        if (/reasoner/i.test(modelName) && suiteCred.endpoints.isOfficialDeepSeek) {
-          modelName = 'deepseek-chat';
-        }
-        candidates.push({
-          protocol: 'openai',
-          url: suiteCred.endpoints.chatUrl,
-          apiKey: suiteCred.apiKey,
-          headers: suiteCred.headers,
-          model: modelName,
-          engineName: suiteCred.isLocalBridge ? 'cloud_bridge' : 'cloud_managed'
-        });
-      }
-      // 追加 Antigravity 多协议端点作为云端可用备选
-      try {
-        const rt = loadBridgeRuntime();
-        if (rt?.options?.enabled && Array.isArray(rt.endpoints)) {
-          for (const ep of rt.endpoints) {
-            const preferAnth = ep.urls?.preferredProtocol === 'anthropic' && !ep.urls?.isOfficialDeepSeek && ep.urls?.anthropicMessagesUrl;
-            const epUrl = preferAnth ? ep.urls.anthropicMessagesUrl : ep.urls?.openaiChatUrl;
-            if (!epUrl || candidates.some((c) => c.url === epUrl)) continue;
-            candidates.push({
-              protocol: preferAnth ? 'anthropic' : 'openai',
-              url: epUrl,
-              apiKey: ep.apiKey,
-              headers: preferAnth
-                ? { 'x-api-key': ep.apiKey, 'anthropic-version': '2023-06-01' }
-                : { Authorization: `Bearer ${ep.apiKey}` },
-              model: ep.defaultModel || 'deepseek-flash',
-              engineName: ep.name || 'cloud_bridge'
-            });
-          }
-        }
-      } catch {}
-    }
-
-    if (candidates.length === 0) {
-      return sendPlanJson(res, 400, {
-        ok: false,
-        code: 'NO_API_KEY',
-        error: '当前账号未配置可用云端 API 密钥。请在上方切换「DeepSeek API」填写您的个人密钥，或改用「本地免 API」直接下达系统口令。'
-      });
-    }
-
     let lastErr = '';
     for (const cand of candidates) {
       try {
@@ -2070,6 +2186,9 @@ async function handleApi(req, res, pathname, parsedUrl) {
         try {
           rawPlan = await runOpenAiAttempt(cand.model, '', true);
         } catch (firstErr) {
+          if (/\((?:401|403)\)|unauthorized|invalid.*key|authentication/i.test(String(firstErr?.message || ''))) {
+            throw firstErr;
+          }
           const fallbackModel = isReasonerModel ? 'deepseek-chat' : cand.model;
           usedModel = fallbackModel;
           rawPlan = await runOpenAiAttempt(

@@ -56,6 +56,14 @@ public class AgentAccessibilityService extends AccessibilityService {
     private final ConcurrentHashMap<String, SnapshotEntry> currentSnapshotNodes = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, String> appLabelCache = new ConcurrentHashMap<>();
 
+    // 事件驱动零 IPC 开销变化计数器与上一个外部目标应用记忆
+    private static final String SELF_PACKAGE = "com.deepseek.starwhisper.studio";
+    private final AtomicInteger screenEventSeq = new AtomicInteger(0);
+    private volatile String lastEventPackage = "";
+    private volatile long lastEventTimeMs = 0L;
+    private volatile String lastExternalPackage = "";
+    private volatile String lastExternalAppName = "";
+
     private static final class SnapshotEntry {
         String ref;
         String text;
@@ -75,6 +83,7 @@ public class AgentAccessibilityService extends AccessibilityService {
         boolean enabled;
         boolean password;
         int depth;
+        int rowIndex;
     }
 
     // 自动连刷视频任务状态
@@ -128,6 +137,43 @@ public class AgentAccessibilityService extends AccessibilityService {
                 || "com.mcdonalds.gma.cn".equals(pkg);
     }
 
+    private static boolean isIgnorableSystemPackage(String pkg) {
+        if (pkg == null || pkg.trim().isEmpty()) return true;
+        if (SELF_PACKAGE.equals(pkg) || "com.android.systemui".equals(pkg) || "android".equals(pkg)) {
+            return true;
+        }
+        String lower = pkg.toLowerCase(Locale.ROOT);
+        return lower.contains("launcher")
+                || lower.contains("home")
+                || lower.contains("inputmethod")
+                || lower.contains(".ime")
+                || lower.contains("keyboard")
+                || lower.contains("permissioncontroller")
+                || lower.contains("packageinstaller")
+                || lower.contains("settingsintelligence");
+    }
+
+    public String getLastExternalAppJson() {
+        return "{\"packageName\":\"" + escapeJson(lastExternalPackage)
+                + "\",\"appName\":\"" + escapeJson(lastExternalAppName) + "\"}";
+    }
+
+    public boolean returnToLastExternalApp() {
+        String targetPkg = lastExternalPackage;
+        if (targetPkg != null && !targetPkg.isEmpty() && !SELF_PACKAGE.equals(targetPkg)) {
+            try {
+                PackageManager pm = getPackageManager();
+                Intent intent = pm.getLaunchIntentForPackage(targetPkg);
+                if (intent != null) {
+                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
+                    startActivity(intent);
+                    return true;
+                }
+            } catch (Exception ignored) {}
+        }
+        return performGlobal("switch_last_app");
+    }
+
     @Override
     public void onAccessibilityEvent(AccessibilityEvent event) {
         if (event == null) return;
@@ -136,6 +182,25 @@ public class AgentAccessibilityService extends AccessibilityService {
             if (pkgCs == null) return;
             String pkg = pkgCs.toString();
             int evType = event.getEventType();
+
+            if (evType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
+                    || evType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
+                    || evType == AccessibilityEvent.TYPE_VIEW_CLICKED
+                    || evType == AccessibilityEvent.TYPE_VIEW_SCROLLED
+                    || evType == AccessibilityEvent.TYPE_VIEW_SELECTED) {
+                screenEventSeq.incrementAndGet();
+                lastEventPackage = pkg;
+                lastEventTimeMs = System.currentTimeMillis();
+            }
+
+            if ((evType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
+                    || evType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED)
+                    && !isIgnorableSystemPackage(pkg)) {
+                if (!pkg.equals(lastExternalPackage)) {
+                    lastExternalPackage = pkg;
+                    lastExternalAppName = resolveAppLabel(pkg);
+                }
+            }
 
             if (isMusicPackage(pkg)) {
                 if (evType == AccessibilityEvent.TYPE_NOTIFICATION_STATE_CHANGED) {
@@ -538,38 +603,91 @@ public class AgentAccessibilityService extends AccessibilityService {
         collectSnapshotEntries(root, 0, includeInvisible, screenW, screenH, collected, sensitiveFlag, sensitiveReason);
         root.recycle();
 
-        // 按视觉位置从上到下（24px 行容差）、从左到右稳定排序
+        // 严格可传递排序：先按 centerY 升序，再按 centerX 升序与深度排序
         Collections.sort(collected, new Comparator<SnapshotEntry>() {
             @Override
             public int compare(SnapshotEntry a, SnapshotEntry b) {
-                int rowDiff = a.centerY - b.centerY;
-                if (Math.abs(rowDiff) > 24) {
-                    return rowDiff;
-                }
-                int colDiff = a.centerX - b.centerX;
-                if (colDiff != 0) return colDiff;
-                return a.depth - b.depth;
+                if (a.centerY != b.centerY) return Integer.compare(a.centerY, b.centerY);
+                if (a.centerX != b.centerX) return Integer.compare(a.centerX, b.centerX);
+                return Integer.compare(a.depth, b.depth);
             }
         });
 
+        // 线性视觉行归组（容差 <= 38px）：同一行内严格按 centerX 从左到右重排并记录 rowIndex
+        if (!collected.isEmpty()) {
+            List<SnapshotEntry> rowSorted = new ArrayList<>(collected.size());
+            List<SnapshotEntry> curRow = new ArrayList<>();
+            int anchorY = collected.get(0).centerY;
+            int rowIdx = 1;
+            for (SnapshotEntry entry : collected) {
+                if (Math.abs(entry.centerY - anchorY) <= 38) {
+                    curRow.add(entry);
+                } else {
+                    Collections.sort(curRow, new Comparator<SnapshotEntry>() {
+                        @Override
+                        public int compare(SnapshotEntry a, SnapshotEntry b) {
+                            if (a.centerX != b.centerX) return Integer.compare(a.centerX, b.centerX);
+                            return Integer.compare(a.centerY, b.centerY);
+                        }
+                    });
+                    for (SnapshotEntry re : curRow) {
+                        re.rowIndex = rowIdx;
+                        rowSorted.add(re);
+                    }
+                    rowIdx++;
+                    curRow.clear();
+                    curRow.add(entry);
+                    anchorY = entry.centerY;
+                }
+            }
+            if (!curRow.isEmpty()) {
+                Collections.sort(curRow, new Comparator<SnapshotEntry>() {
+                    @Override
+                    public int compare(SnapshotEntry a, SnapshotEntry b) {
+                        if (a.centerX != b.centerX) return Integer.compare(a.centerX, b.centerX);
+                        return Integer.compare(a.centerY, b.centerY);
+                    }
+                });
+                for (SnapshotEntry re : curRow) {
+                    re.rowIndex = rowIdx;
+                    rowSorted.add(re);
+                }
+            }
+            collected = rowSorted;
+        }
+
         if (collected.size() > MAX_SNAPSHOT_NODES) {
-            collected = new ArrayList<>(collected.subList(0, MAX_SNAPSHOT_NODES));
+            int bottomThresholdY = Math.round(screenH * 0.78f);
+            List<SnapshotEntry> bottomEntries = new ArrayList<>();
+            List<SnapshotEntry> upperEntries = new ArrayList<>();
+            for (SnapshotEntry entry : collected) {
+                if (entry.centerY >= bottomThresholdY) {
+                    bottomEntries.add(entry);
+                } else {
+                    upperEntries.add(entry);
+                }
+            }
+            int keepBottomCount = Math.min(bottomEntries.size(), 32);
+            int keepUpperCount = MAX_SNAPSHOT_NODES - keepBottomCount;
+            List<SnapshotEntry> merged = new ArrayList<>(MAX_SNAPSHOT_NODES);
+            merged.addAll(upperEntries.subList(0, Math.min(upperEntries.size(), keepUpperCount)));
+            if (keepBottomCount > 0) {
+                int startIdx = Math.max(0, bottomEntries.size() - keepBottomCount);
+                merged.addAll(bottomEntries.subList(startIdx, bottomEntries.size()));
+            }
+            collected = merged;
         }
 
         String snapId = "snap_" + snapshotSeq.incrementAndGet();
         currentSnapshotNodes.clear();
-        StringBuilder sigSb = new StringBuilder(pkgName).append("|");
 
         for (int i = 0; i < collected.size(); i++) {
             SnapshotEntry entry = collected.get(i);
             entry.ref = "e" + (i + 1);
             currentSnapshotNodes.put(entry.ref, entry);
-            if (i < 24) {
-                sigSb.append(entry.text).append(':').append(entry.centerX).append(',').append(entry.centerY).append(';');
-            }
         }
         currentSnapshotId = snapId;
-        String signature = Integer.toHexString(sigSb.toString().hashCode());
+        String signature = buildScreenSignature(pkgName, collected);
 
         StringBuilder sb = new StringBuilder();
         sb.append("{");
@@ -580,6 +698,7 @@ public class AgentAccessibilityService extends AccessibilityService {
         sb.append("\"height\":").append(screenH).append(",");
         sb.append("\"timestamp\":").append(System.currentTimeMillis()).append(",");
         sb.append("\"signature\":\"").append(escapeJson(signature)).append("\",");
+        sb.append("\"eventSeq\":").append(screenEventSeq.get()).append(",");
         sb.append("\"hasSensitiveField\":").append(sensitiveFlag[0]).append(",");
         sb.append("\"sensitiveReason\":\"").append(escapeJson(sensitiveReason.toString())).append("\",");
         sb.append("\"nodes\":[");
@@ -589,6 +708,7 @@ public class AgentAccessibilityService extends AccessibilityService {
             if (i > 0) sb.append(",");
             sb.append("{");
             sb.append("\"ref\":\"").append(e.ref).append("\",");
+            sb.append("\"row\":").append(e.rowIndex).append(",");
             sb.append("\"text\":\"").append(escapeJson(e.text)).append("\",");
             sb.append("\"desc\":\"").append(escapeJson(e.desc)).append("\",");
             sb.append("\"viewId\":\"").append(escapeJson(e.viewId)).append("\",");
@@ -610,13 +730,40 @@ public class AgentAccessibilityService extends AccessibilityService {
         return sb.toString();
     }
 
+    public String getScreenEventSeqJson() {
+        return "{\"seq\":" + screenEventSeq.get()
+                + ",\"pkg\":\"" + escapeJson(lastEventPackage)
+                + "\",\"ts\":" + lastEventTimeMs + "}";
+    }
+
+    private String buildScreenSignature(String pkgName, List<SnapshotEntry> nodes) {
+        StringBuilder sigSb = new StringBuilder(pkgName != null ? pkgName : "").append("|n=").append(nodes != null ? nodes.size() : 0).append("|");
+        if (nodes != null && !nodes.isEmpty()) {
+            int total = nodes.size();
+            int maxSample = 48;
+            int step = Math.max(1, total / maxSample);
+            int sampled = 0;
+            for (int i = 0; i < total && sampled < maxSample; i += step) {
+                SnapshotEntry entry = nodes.get(i);
+                sigSb.append(entry.text).append('|')
+                        .append(entry.desc).append('|')
+                        .append(entry.checked ? '1' : '0')
+                        .append(entry.selected ? '1' : '0')
+                        .append(':').append(entry.centerX / 16)
+                        .append(',').append(entry.centerY / 16).append(';');
+                sampled++;
+            }
+        }
+        return Integer.toHexString(sigSb.toString().hashCode());
+    }
+
     /**
-     * 轻量屏幕元数据接口（供 ScreenVerdict 高频轮询判断页面变化与敏感态）
+     * 轻量屏幕元数据接口（供 ScreenVerdict 判断页面变化与敏感态）
      */
     public String getScreenMetaJson() {
         AccessibilityNodeInfo root = getRootInActiveWindow();
         if (root == null) {
-            return "{\"ok\":false,\"packageName\":\"\",\"appName\":\"\",\"signature\":\"\",\"hasSensitiveField\":false,\"sensitiveReason\":\"\",\"nodeCount\":0,\"timestamp\":" + System.currentTimeMillis() + "}";
+            return "{\"ok\":false,\"packageName\":\"\",\"appName\":\"\",\"signature\":\"\",\"eventSeq\":" + screenEventSeq.get() + ",\"hasSensitiveField\":false,\"sensitiveReason\":\"\",\"nodeCount\":0,\"timestamp\":" + System.currentTimeMillis() + "}";
         }
         DisplayMetrics dm = getResources().getDisplayMetrics();
         CharSequence pkgCs = root.getPackageName();
@@ -632,13 +779,7 @@ public class AgentAccessibilityService extends AccessibilityService {
         collectSnapshotEntries(root, 0, false, dm.widthPixels, dm.heightPixels, collected, sensitiveFlag, sensitiveReason);
         root.recycle();
 
-        StringBuilder sigSb = new StringBuilder(pkgName).append("|");
-        int limit = Math.min(24, collected.size());
-        for (int i = 0; i < limit; i++) {
-            SnapshotEntry entry = collected.get(i);
-            sigSb.append(entry.text).append(':').append(entry.centerX).append(',').append(entry.centerY).append(';');
-        }
-        String signature = Integer.toHexString(sigSb.toString().hashCode());
+        String signature = buildScreenSignature(pkgName, collected);
 
         StringBuilder sb = new StringBuilder();
         sb.append("{");
@@ -646,6 +787,7 @@ public class AgentAccessibilityService extends AccessibilityService {
         sb.append("\"packageName\":\"").append(escapeJson(pkgName)).append("\",");
         sb.append("\"appName\":\"").append(escapeJson(appName)).append("\",");
         sb.append("\"signature\":\"").append(escapeJson(signature)).append("\",");
+        sb.append("\"eventSeq\":").append(screenEventSeq.get()).append(",");
         sb.append("\"hasSensitiveField\":").append(sensitiveFlag[0]).append(",");
         sb.append("\"sensitiveReason\":\"").append(escapeJson(sensitiveReason.toString())).append("\",");
         sb.append("\"nodeCount\":").append(collected.size()).append(",");
@@ -734,9 +876,13 @@ public class AgentAccessibilityService extends AccessibilityService {
     }
 
     /**
-     * 通过快照 ref 点击目标控件（优先节点 ACTION_CLICK，回退坐标手势并触发光圈反馈）
+     * 通过快照 ref 点击目标控件（优先节点 ACTION_CLICK，自动识别 WebView/大容器假点击黑洞改走物理手势）
      */
     public String clickByRef(String snapshotId, String refId) {
+        return clickByRef(snapshotId, refId, false);
+    }
+
+    public String clickByRef(String snapshotId, String refId, boolean forceGesture) {
         if (snapshotId != null && !snapshotId.trim().isEmpty()
                 && !currentSnapshotId.isEmpty()
                 && !snapshotId.trim().equals(currentSnapshotId)) {
@@ -747,34 +893,76 @@ public class AgentAccessibilityService extends AccessibilityService {
             return "{\"ok\":false,\"message\":\"未在当前快照中找到控件 " + escapeJson(refId) + "\"}";
         }
 
+        if (forceGesture) {
+            boolean gestureOk = performClickCoordinate(entry.centerX, entry.centerY);
+            return "{\"ok\":" + gestureOk + ",\"method\":\"gesture\",\"x\":" + entry.centerX + ",\"y\":" + entry.centerY + ",\"message\":\"" + (gestureOk ? "已按物理手势点击 " + escapeJson(entry.ref) : "手势点击派发失败") + "\"}";
+        }
+
+        boolean preferGesture = false;
         AccessibilityNodeInfo root = getRootInActiveWindow();
         if (root != null) {
             AccessibilityNodeInfo matched = findNodeMatchingSnapshot(root, entry);
             if (matched != null) {
-                boolean nodeClicked = false;
-                AccessibilityNodeInfo cur = matched;
-                while (cur != null) {
-                    if (cur.isClickable()) {
-                        nodeClicked = cur.performAction(AccessibilityNodeInfo.ACTION_CLICK);
-                        if (nodeClicked) break;
+                Rect selfBounds = new Rect();
+                matched.getBoundsInScreen(selfBounds);
+                long selfArea = Math.max(1L, (long) Math.max(1, selfBounds.width()) * Math.max(1, selfBounds.height()));
+
+                // 识别 WebView 或纯通用容器节点（常见于学习/答题/H5 应用，ACTION_CLICK 往往返回 true 但不触发按钮事件）
+                CharSequence matchedCls = matched.getClassName();
+                String clsStr = matchedCls != null ? matchedCls.toString() : "";
+                if (clsStr.contains("WebView") || (!matched.isClickable() && !matched.isCheckable())) {
+                    AccessibilityNodeInfo p = matched.getParent();
+                    int hops = 0;
+                    while (p != null && hops < 5) {
+                        CharSequence pCls = p.getClassName();
+                        if (pCls != null && pCls.toString().contains("WebView")) {
+                            preferGesture = true;
+                            break;
+                        }
+                        if (p.isClickable()) {
+                            Rect pBounds = new Rect();
+                            p.getBoundsInScreen(pBounds);
+                            long pArea = Math.max(1L, (long) Math.max(1, pBounds.width()) * Math.max(1, pBounds.height()));
+                            if (pArea > selfArea * 3.5) {
+                                preferGesture = true;
+                            }
+                            break;
+                        }
+                        AccessibilityNodeInfo nextP = p.getParent();
+                        p.recycle();
+                        p = nextP;
+                        hops++;
                     }
-                    AccessibilityNodeInfo parent = cur.getParent();
-                    if (cur != matched) cur.recycle();
-                    cur = parent;
+                    if (p != null) p.recycle();
                 }
-                if (cur != null && cur != matched) cur.recycle();
+
+                if (!preferGesture) {
+                    boolean nodeClicked = false;
+                    AccessibilityNodeInfo cur = matched;
+                    while (cur != null) {
+                        if (cur.isClickable()) {
+                            nodeClicked = cur.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+                            if (nodeClicked) break;
+                        }
+                        AccessibilityNodeInfo parent = cur.getParent();
+                        if (cur != matched) cur.recycle();
+                        cur = parent;
+                    }
+                    if (cur != null && cur != matched) cur.recycle();
+                    if (nodeClicked) {
+                        matched.recycle();
+                        root.recycle();
+                        FloatAgentService.showTapRipple(entry.centerX, entry.centerY);
+                        return "{\"ok\":true,\"method\":\"node\",\"x\":" + entry.centerX + ",\"y\":" + entry.centerY + ",\"message\":\"已点击控件 " + escapeJson(entry.ref) + "\"}";
+                    }
+                }
                 matched.recycle();
-                if (nodeClicked) {
-                    root.recycle();
-                    FloatAgentService.showTapRipple(entry.centerX, entry.centerY);
-                    return "{\"ok\":true,\"x\":" + entry.centerX + ",\"y\":" + entry.centerY + ",\"message\":\"已点击控件 " + escapeJson(entry.ref) + "\"}";
-                }
             }
             root.recycle();
         }
 
         boolean gestureOk = performClickCoordinate(entry.centerX, entry.centerY);
-        return "{\"ok\":" + gestureOk + ",\"x\":" + entry.centerX + ",\"y\":" + entry.centerY + ",\"message\":\"" + (gestureOk ? "已按坐标点击控件 " + escapeJson(entry.ref) : "控件点击派发失败") + "\"}";
+        return "{\"ok\":" + gestureOk + ",\"method\":\"gesture\",\"x\":" + entry.centerX + ",\"y\":" + entry.centerY + ",\"message\":\"" + (gestureOk ? "已按坐标点击控件 " + escapeJson(entry.ref) : "控件点击派发失败") + "\"}";
     }
 
     /**
@@ -1053,15 +1241,16 @@ public class AgentAccessibilityService extends AccessibilityService {
     }
 
     /**
-     * 模拟单点坐标触摸点击 (通过 Android 原生手势分发)
+     * 模拟单点坐标触摸点击 (通过 Android 原生手势分发，80ms 微按压提升 WebView/ROM 识别率)
      */
     public boolean performClickCoordinate(int x, int y) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return false;
         FloatAgentService.showTapRipple(x, y);
         Path path = new Path();
         path.moveTo(x, y);
+        path.lineTo(x + 1, y);
         GestureDescription.Builder builder = new GestureDescription.Builder();
-        builder.addStroke(new GestureDescription.StrokeDescription(path, 0, 50));
+        builder.addStroke(new GestureDescription.StrokeDescription(path, 0, 80));
         return dispatchGesture(builder.build(), null, null);
     }
 

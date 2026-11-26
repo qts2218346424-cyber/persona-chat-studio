@@ -1,5 +1,5 @@
 /* ==========================================================================
-   Phone Agent 手机端 AI 辅助助理与 dsh-Go 规划循环模块 (v2.6.2)
+   Phone Agent 手机端 AI 辅助助理与 dsh-Go 规划循环模块 (v2.6.4)
    1. 高度还原 dsh-Go 控屏内核：snapshotId/ref 精准控屏、ScreenVerdict 非阻塞验证、
       三档 SafetyGate 安全确认 + App 白名单、执行中途随时插话/排队、无障碍内联引导
    2. 高度还原 dsh-Go 交互 UI：运行中流光胶囊 + 完成后自动折叠单行轨迹 + 自然语言回复
@@ -7,8 +7,8 @@
    ========================================================================== */
 
 (() => {
-  const CURRENT_APK_VERSION = '2.6.2';
-  const CURRENT_APK_CODE = 157;
+  const CURRENT_APK_VERSION = '2.6.4';
+  const CURRENT_APK_CODE = 159;
   const DEEPSEEK_API_KEYS_URL = 'https://platform.deepseek.com/api_keys';
   const PUBLIC_WEB_ORIGIN = 'https://star.claudexxb.online';
   const GITHUB_RELEASES_URL = 'https://github.com/qts2218346424-cyber/persona-chat-studio/releases';
@@ -1369,24 +1369,50 @@
         const raw = b.dumpScreenSnapshot(Boolean(includeInvisible));
         const parsed = JSON.parse(raw);
         if (parsed && Array.isArray(parsed.nodes)) {
-          const lines = parsed.nodes.slice(0, 120).map((n) => {
+          const limitedNodes = parsed.nodes.slice(0, 160);
+          const formatNodeCompact = (n) => {
             const flags = [];
             if (n.clickable) flags.push('clk');
             if (n.editable) flags.push('edt');
             if (n.scrollable) flags.push('scr');
             if (n.checked) flags.push('chk');
+            if (n.selected) flags.push('sel');
             if (n.password) flags.push('pwd');
             const label = [n.text, n.desc].filter(Boolean).join(' / ').slice(0, 48);
             const cx = Array.isArray(n.center) ? n.center[0] : 0;
             const cy = Array.isArray(n.center) ? n.center[1] : 0;
             const flagStr = flags.length ? ` (${flags.join(',')})` : '';
             return `[${n.ref || ''}] ${n.cls || 'View'}${label ? ` "${label}"` : ''}${flagStr} @${cx},${cy}`;
+          };
+
+          const rowGroups = [];
+          let curRow = null;
+          for (const n of limitedNodes) {
+            const cy = Array.isArray(n.center) ? Number(n.center[1]) : 0;
+            const rowKey = Number(n.row) > 0 ? Number(n.row) : 0;
+            if (!curRow || (rowKey > 0 ? curRow.rowKey !== rowKey : Math.abs(cy - curRow.anchorY) > 38)) {
+              curRow = { rowKey, anchorY: cy, items: [n] };
+              rowGroups.push(curRow);
+            } else {
+              curRow.items.push(n);
+            }
+          }
+
+          const lines = rowGroups.map((grp, rIdx) => {
+            const sortedItems = grp.items.slice().sort((a, b) => {
+              const ax = Array.isArray(a.center) ? Number(a.center[0]) : 0;
+              const bx = Array.isArray(b.center) ? Number(b.center[0]) : 0;
+              return ax - bx;
+            });
+            return `R${rIdx + 1}: ${sortedItems.map(formatNodeCompact).join(' | ')}`;
           });
+
           return {
             snapshotId: String(parsed.snapshotId || ''),
             packageName: String(parsed.packageName || ''),
             appName: String(parsed.appName || parsed.packageName || ''),
             signature: String(parsed.signature || ''),
+            eventSeq: Number(parsed.eventSeq) || 0,
             hasSensitiveField: Boolean(parsed.hasSensitiveField),
             sensitiveReason: String(parsed.sensitiveReason || ''),
             nodes: parsed.nodes,
@@ -1444,29 +1470,86 @@
     return { ok: false, packageName: '', appName: '', signature: '', hasSensitiveField: false, sensitiveReason: '' };
   }
 
-  async function waitForScreenVerdict(beforeMeta, toolName, signal) {
+  function readScreenEventSeq() {
+    if (!isNativeApk()) return { seq: 0, pkg: '', ts: 0 };
+    const b = getBridge();
+    try {
+      if (typeof b.getScreenEventSeq === 'function') {
+        return JSON.parse(b.getScreenEventSeq()) || { seq: 0, pkg: '', ts: 0 };
+      }
+    } catch {}
+    return { seq: 0, pkg: '', ts: 0 };
+  }
+
+  async function waitForScreenVerdict(beforeMeta, toolName, signal, customMaxWait = 0) {
     if (!isNativeApk() || toolName === 'phone_wait' || toolName === 'done' || toolName === 'ask_user') {
       return { changed: true, fromApp: beforeMeta?.appName || '', toApp: beforeMeta?.appName || '', elapsedMs: 0 };
     }
-    const maxWait = toolName === 'phone_open' ? 2400 : (toolName === 'phone_type' ? 1200 : 1500);
+    const maxWait = customMaxWait > 0
+      ? customMaxWait
+      : (toolName === 'phone_open'
+        ? 1800
+        : (toolName === 'phone_type'
+          ? 750
+          : (toolName === 'phone_scroll' || toolName === 'phone_swipe' ? 650 : 850)));
     const startAt = Date.now();
+    const beforeSeq = Number(beforeMeta?.eventSeq) || 0;
+    const hasEventSeqApi = typeof getBridge()?.getScreenEventSeq === 'function';
     let changed = false;
     let latest = beforeMeta || {};
+    let checkedMetaOnce = false;
 
     while (Date.now() - startAt < maxWait) {
       if (signal?.aborted || emergencyStopRequested) break;
-      await sleep(220);
-      latest = readScreenMeta();
-      if (latest && latest.ok) {
-        if (
-          (beforeMeta?.packageName && latest.packageName && latest.packageName !== beforeMeta.packageName) ||
-          (beforeMeta?.signature && latest.signature && latest.signature !== beforeMeta.signature)
-        ) {
-          changed = true;
-          await sleep(280);
-          latest = readScreenMeta();
-          break;
+      await sleep(110);
+      const elapsed = Date.now() - startAt;
+      if (hasEventSeqApi && beforeSeq > 0) {
+        const ev = readScreenEventSeq();
+        if (Number(ev.seq) === beforeSeq && elapsed < 450) {
+          continue;
         }
+        if (Number(ev.seq) !== beforeSeq) {
+          await sleep(150);
+          latest = readScreenMeta();
+          checkedMetaOnce = true;
+          if (
+            latest &&
+            latest.ok &&
+            ((beforeMeta?.packageName && latest.packageName && latest.packageName !== beforeMeta.packageName) ||
+              (beforeMeta?.signature && latest.signature && latest.signature !== beforeMeta.signature))
+          ) {
+            changed = true;
+            break;
+          }
+          continue;
+        }
+      }
+      if (!checkedMetaOnce || elapsed >= maxWait - 140) {
+        latest = readScreenMeta();
+        checkedMetaOnce = true;
+        if (latest && latest.ok) {
+          if (
+            (beforeMeta?.packageName && latest.packageName && latest.packageName !== beforeMeta.packageName) ||
+            (beforeMeta?.signature && latest.signature && latest.signature !== beforeMeta.signature)
+          ) {
+            changed = true;
+            await sleep(140);
+            latest = readScreenMeta();
+            break;
+          }
+        }
+      }
+    }
+
+    if (!checkedMetaOnce) {
+      latest = readScreenMeta();
+      if (
+        latest &&
+        latest.ok &&
+        ((beforeMeta?.packageName && latest.packageName && latest.packageName !== beforeMeta.packageName) ||
+          (beforeMeta?.signature && latest.signature && latest.signature !== beforeMeta.signature))
+      ) {
+        changed = true;
       }
     }
 
@@ -1655,6 +1738,12 @@
       item.classList.toggle('is-detail-open');
     });
     stepsList.appendChild(item);
+    while (stepsList.children.length > 24) {
+      const oldestVisible = Array.from(stepsList.children).find((el) => !el.classList.contains('hidden'));
+      if (!oldestVisible || oldestVisible === item) break;
+      oldestVisible.classList.add('hidden');
+      if (stepsList.querySelectorAll(':scope > :not(.hidden)').length <= 24) break;
+    }
     scrollChatToBottom();
     return item;
   }
@@ -2019,7 +2108,18 @@
     });
   }
 
-  function buildPlanningPromptMessages({ task, snapshot, history, screenSize, installedApps, screenVerdict, interjections, stepIndex }) {
+  function getLastExternalAppInfo() {
+    if (!isNativeApk()) return { packageName: '', appName: '' };
+    const b = getBridge();
+    try {
+      if (typeof b.getLastExternalApp === 'function') {
+        return JSON.parse(b.getLastExternalApp()) || { packageName: '', appName: '' };
+      }
+    } catch {}
+    return { packageName: '', appName: '' };
+  }
+
+  function buildPlanningPromptMessages({ task, snapshot, history, screenSize, installedApps, screenVerdict, interjections, stepIndex, lastExternalApp }) {
     const sys = [
       '你是星语手机辅助代理（Phone Agent · dsh-Go 规划内核）。',
       `屏幕分辨率: ${screenSize.width}x${screenSize.height}。`,
@@ -2030,13 +2130,29 @@
       '关键约束：',
       '1. 优先用 phone_open 打开应用；点击屏幕元素首选 phone_tap 并携带 ref 与 snapshotId。',
       '2. 若 screenVerdict 显示连续 2 步画面未变化，禁止重复同一动作或 phone_wait，改用 phone_tap_xy / phone_scroll / phone_key(back) 或 ask_user。',
-      '3. 若 interjections 非空，最高优先级立即响应用户中途插话指令。',
-      '4. 若 hasSensitiveField=true 或涉及付款/转账/下单/密码/验证码/删除/卸载/发消息，risk 必须为 "sensitive"，支付密码/验证码直接 ask_user 交还人工。'
+      '3. 若同一屏幕上已同时清晰可见 2~3 个明确无歧义的连贯操作（如学习答题“选中选项 + 点击下一题/提交”），可额外附带 `"actions":[{"tool":"phone_tap","args":{"ref":"e10"}},{"tool":"phone_tap","args":{"ref":"e24"}}]`（最多 3 个同屏非敏感微动作），否则只输出单动作。',
+      '4. 严禁操作控制端自身（packageName="com.deepseek.starwhisper.studio"）或在其聊天框打字；用户说“继续写作业/继续答题”且未指定打开 DeepSeek 时，绝不要去打开 DeepSeek 应用，而是切回 lastExternalApp 或在当前学习软件中继续操作。',
+      '5. screenTreeText 中每一行 `R1: ... | ...` 代表屏幕同一水平行的元素。做选择题时必须严格核对同一行的选项字母与右侧文字；带有 (sel) 或 (chk) 的表示已选中，若已选对直接点“下一题”，严禁张冠李戴选错行！',
+      '6. 若 interjections 非空，最高优先级立即响应用户中途插话指令。',
+      '7. 若 hasSensitiveField=true 或涉及付款/转账/下单/密码/验证码/删除/卸载/发消息，risk 必须为 "sensitive"，支付密码/验证码直接 ask_user 交还人工。'
     ].join('\n');
 
-    const usr = JSON.stringify({
+    const recentHistory = (history || []).slice(-6);
+    const lastHist = recentHistory.length ? recentHistory[recentHistory.length - 1] : null;
+    const pkgLower = String(snapshot?.packageName || '').toLowerCase();
+    const appLower = String(snapshot?.appName || '').toLowerCase();
+    const needAppsList =
+      (Number(stepIndex) || 1) <= 2 ||
+      !pkgLower ||
+      pkgLower.includes('launcher') ||
+      appLower.includes('桌面') ||
+      (lastHist && lastHist.tool === 'phone_open' && String(lastHist.result || '').includes('未能'));
+
+    const usrObj = {
       task,
       stepIndex: stepIndex || (history || []).length + 1,
+      selfPackageName: 'com.deepseek.starwhisper.studio',
+      lastExternalApp: lastExternalApp || getLastExternalAppInfo(),
       snapshotId: snapshot?.snapshotId || '',
       foregroundApp: snapshot?.appName || '',
       packageName: snapshot?.packageName || '',
@@ -2044,10 +2160,13 @@
       sensitiveReason: snapshot?.sensitiveReason || '',
       screenVerdict: screenVerdict || null,
       interjections: interjections || [],
-      recentHistory: (history || []).slice(-8),
-      installedApps: (installedApps || []).slice(0, 40).map((a) => (typeof a === 'string' ? a : a.name)),
+      recentHistory,
       screenTreeText: snapshot?.screenTreeText || ''
-    });
+    };
+    if (needAppsList) {
+      usrObj.installedApps = (installedApps || []).slice(0, 40).map((a) => (typeof a === 'string' ? a : a.name));
+    }
+    const usr = JSON.stringify(usrObj);
 
     return [
       { role: 'system', content: sys },
@@ -2101,10 +2220,31 @@
     if ((tool === 'done' || tool === 'ask_user') && reply && !args.message) {
       args.message = reply;
     }
+
+    const rawActions = Array.isArray(obj?.actions) ? obj.actions.slice(0, 3) : [];
+    const normalizedActions = [];
+    if (risk !== 'sensitive' && tool !== 'done' && tool !== 'ask_user' && tool !== 'phone_open') {
+      for (const sub of rawActions) {
+        if (!sub || typeof sub !== 'object') continue;
+        const stRaw = String(sub.tool || sub.action || '').trim();
+        const st = stRaw && toolToLegacy[stRaw] ? stRaw : (legacyToTool[stRaw] || '');
+        if (!st || st === 'done' || st === 'ask_user' || st === 'phone_open') continue;
+        const sArgs = (sub.args && typeof sub.args === 'object') ? { ...sub.args } : ((sub.params && typeof sub.params === 'object') ? { ...sub.params } : {});
+        normalizedActions.push({
+          tool: st,
+          args: sArgs,
+          risk: 'write',
+          summary: String(sub.summary || `执行 ${st}`).trim(),
+          needConfirm: false
+        });
+      }
+    }
+
     return {
       thought: String(obj?.thought || '').trim(),
       tool,
       args,
+      actions: normalizedActions.length >= 2 ? normalizedActions : undefined,
       risk,
       reply,
       action: toolToLegacy[tool] || 'done',
@@ -2176,9 +2316,25 @@
     throw err;
   }
 
-  async function requestPlanStep({ execMode, task, snapshot, history, screenSize, installedApps, screenVerdict, interjections, stepIndex, signal }) {
+  async function requestPlanStep({ execMode, task, snapshot, history, screenSize, installedApps, screenVerdict, interjections, stepIndex, lastExternalApp, signal }) {
     const cfg = getDirectConfig();
-    const screenNodes = snapshot?.nodes || [];
+    const lastExt = lastExternalApp || getLastExternalAppInfo();
+    const screenTreeText = String(snapshot?.screenTreeText || '');
+    const screenNodes = screenTreeText ? [] : (snapshot?.nodes || []);
+    const pkgLower = String(snapshot?.packageName || '').toLowerCase();
+    const appLower = String(snapshot?.appName || '').toLowerCase();
+    const lastHist = Array.isArray(history) && history.length ? history[history.length - 1] : null;
+    const needApps =
+      (Number(stepIndex) || 1) <= 2 ||
+      !pkgLower ||
+      pkgLower.includes('launcher') ||
+      appLower.includes('桌面') ||
+      (lastHist && lastHist.tool === 'phone_open' && String(lastHist.result || '').includes('未能'));
+    const compactInstalledApps = needApps
+      ? (installedApps || []).map((a) => (typeof a === 'string' ? a : a.name))
+      : [];
+    const compactHistory = (history || []).slice(-6);
+
     if (execMode === 'api_direct') {
       if (!cfg.apiKey) {
         return { ok: false, code: 'NO_DIRECT_KEY', error: '手机辅助 DeepSeek API 密钥尚未配置，请填入密钥或切换至云端 API。' };
@@ -2188,7 +2344,7 @@
       const baseMessages = buildPlanningPromptMessages({
         task,
         snapshot,
-        history,
+        history: compactHistory,
         screenSize,
         installedApps,
         screenVerdict,
@@ -2203,21 +2359,38 @@
           model: modelToUse,
           messages: msgs,
           temperature: isReasoner ? 0.2 : 0.15,
-          max_tokens: isReasoner ? 2048 : 1024,
+          max_tokens: isReasoner ? 2048 : 512,
           stream: false
         };
         if (!isReasoner && (targetUrl.includes('deepseek.com') || /deepseek/i.test(modelToUse))) {
           directBody.response_format = { type: 'json_object' };
         }
-        const directRes = await fetch(targetUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${cfg.apiKey}`
-          },
-          body: JSON.stringify(directBody),
-          signal
-        });
+        const timeoutCtrl = new AbortController();
+        const timeoutTimer = setTimeout(() => {
+          try { timeoutCtrl.abort(); } catch {}
+        }, 18000);
+        const onOuterAbort = () => {
+          try { timeoutCtrl.abort(); } catch {}
+        };
+        if (signal) {
+          if (signal.aborted) timeoutCtrl.abort();
+          else signal.addEventListener('abort', onOuterAbort, { once: true });
+        }
+        let directRes;
+        try {
+          directRes = await fetch(targetUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${cfg.apiKey}`
+            },
+            body: JSON.stringify(directBody),
+            signal: timeoutCtrl.signal
+          });
+        } finally {
+          clearTimeout(timeoutTimer);
+          if (signal) signal.removeEventListener('abort', onOuterAbort);
+        }
         if (!directRes.ok) {
           const txt = await directRes.text().catch(() => '');
           const httpErr = new Error(`直连 DeepSeek 返回 (${directRes.status}): ${txt.slice(0, 120)}`);
@@ -2244,7 +2417,7 @@
         try {
           result = await attemptDirectCall(targetModel);
         } catch (firstErr) {
-          if (firstErr?.name === 'AbortError' || firstErr?.code === 'DIRECT_AUTH_ERROR') {
+          if (signal?.aborted || firstErr?.code === 'DIRECT_AUTH_ERROR') {
             throw firstErr;
           }
           if (firstErr?.code === 'JSON_PARSE_ERROR' || /JSON/i.test(String(firstErr?.message || ''))) {
@@ -2253,13 +2426,16 @@
               retryModel,
               '刚才未返回合法 JSON 动作指令。请严格只输出一个合法 JSON 对象（不要任何 Markdown 或解释文字）。'
             );
+          } else if (firstErr?.name === 'AbortError' || Number(firstErr?.status) >= 500 || /fetch|network|timeout/i.test(String(firstErr?.message || ''))) {
+            await sleep(400);
+            result = await attemptDirectCall(targetModel);
           } else {
             throw firstErr;
           }
         }
         return { ok: true, plan: result.plan, model: result.model, engine: 'api_direct' };
       } catch (directErr) {
-        if (directErr?.name === 'AbortError') throw directErr;
+        if (signal?.aborted) throw directErr;
         if (directErr?.code === 'DIRECT_AUTH_ERROR') {
           return { ok: false, code: 'DIRECT_AUTH_ERROR', error: directErr.message };
         }
@@ -2268,18 +2444,19 @@
           {
             task,
             stepIndex,
+            lastExternalApp: lastExt,
             snapshotId: snapshot?.snapshotId || '',
             foregroundApp: snapshot?.appName || '',
             packageName: snapshot?.packageName || '',
             hasSensitiveField: Boolean(snapshot?.hasSensitiveField),
             sensitiveReason: snapshot?.sensitiveReason || '',
-            screenTreeText: snapshot?.screenTreeText || '',
+            screenTreeText,
             screenNodes,
             screenVerdict,
             interjections,
-            history,
+            history: compactHistory,
             screenSize,
-            installedApps: (installedApps || []).map((a) => (typeof a === 'string' ? a : a.name)),
+            installedApps: compactInstalledApps,
             customApiKey: cfg.apiKey,
             customModel: targetModel,
             customBaseUrl: cfg.baseUrl
@@ -2297,27 +2474,53 @@
       }
     }
 
-    const cloudRes = await apiPostJson(
+    let cloudRes = await apiPostJson(
       '/api/phone-agent/plan',
       {
         task,
         stepIndex,
+        lastExternalApp: lastExt,
         snapshotId: snapshot?.snapshotId || '',
         foregroundApp: snapshot?.appName || '',
         packageName: snapshot?.packageName || '',
         hasSensitiveField: Boolean(snapshot?.hasSensitiveField),
         sensitiveReason: snapshot?.sensitiveReason || '',
-        screenTreeText: snapshot?.screenTreeText || '',
+        screenTreeText,
         screenNodes,
         screenVerdict,
         interjections,
-        history,
+        history: compactHistory,
         screenSize,
-        installedApps: (installedApps || []).map((a) => (typeof a === 'string' ? a : a.name)),
+        installedApps: compactInstalledApps,
         customModel: cfg.model || ''
       },
       signal
     );
+    if (!cloudRes.ok && !signal?.aborted && (cloudRes.status >= 500 || cloudRes.status === 0)) {
+      await sleep(400);
+      cloudRes = await apiPostJson(
+        '/api/phone-agent/plan',
+        {
+          task,
+          stepIndex,
+          lastExternalApp: lastExt,
+          snapshotId: snapshot?.snapshotId || '',
+          foregroundApp: snapshot?.appName || '',
+          packageName: snapshot?.packageName || '',
+          hasSensitiveField: Boolean(snapshot?.hasSensitiveField),
+          sensitiveReason: snapshot?.sensitiveReason || '',
+          screenTreeText,
+          screenNodes,
+          screenVerdict,
+          interjections,
+          history: compactHistory,
+          screenSize,
+          installedApps: compactInstalledApps,
+          customModel: cfg.model || ''
+        },
+        signal
+      );
+    }
     if (cloudRes.ok && cloudRes.data?.plan) {
       return { ok: true, plan: cloudRes.data.plan, model: cloudRes.data.model, engine: cloudRes.data.engine || 'api_cloud' };
     }
@@ -2328,12 +2531,14 @@
     };
   }
 
-  function dispatchNativePlanAction(plan, snapshot) {
+  function dispatchNativePlanAction(plan, snapshot, opts = {}) {
     const b = getBridge();
     const tool = plan?.tool || plan?.action || 'done';
     const p = plan?.args || plan?.params || {};
     const latestNodes = snapshot?.nodes || [];
     const snapshotId = p.snapshotId || snapshot?.snapshotId || '';
+    const forceGesture = Boolean(opts?.forceGesture);
+    const taskLower = String(opts?.taskText || '').toLowerCase();
 
     if (!isNativeApk() || !b) {
       return { executed: false, simulated: true, text: '网页预览模式已推演该动作（安装随身版 APK 后可在真机自动执行）' };
@@ -2342,6 +2547,43 @@
     const a11yOk = Boolean(b.isAccessibilityEnabled && b.isAccessibilityEnabled());
     if (!a11yOk && tool !== 'phone_open' && tool !== 'launch_app' && tool !== 'phone_wait' && tool !== 'wait' && tool !== 'done' && tool !== 'ask_user') {
       return { executed: false, error: true, text: '系统无障碍权限尚未开启，请先前往开启无障碍服务' };
+    }
+
+    // 代码级防自套娃硬拦截：严禁对控制端自身界面点击/打字，也禁止任务未提 DeepSeek 时误打开 DeepSeek
+    const SELF_PKG = 'com.deepseek.starwhisper.studio';
+    const curPkg = String(snapshot?.packageName || '').trim();
+    const isSelfScreen = curPkg === SELF_PKG;
+    const isDirectUiInteract =
+      tool === 'phone_tap' ||
+      tool === 'click_node' ||
+      tool === 'phone_tap_xy' ||
+      tool === 'click' ||
+      tool === 'phone_double_tap' ||
+      tool === 'phone_long_press' ||
+      tool === 'long_click' ||
+      tool === 'phone_type' ||
+      tool === 'input';
+
+    if (isSelfScreen && isDirectUiInteract) {
+      const switched = typeof b.returnToLastExternalApp === 'function'
+        ? b.returnToLastExternalApp()
+        : b.dispatchGlobalAction('switch_last_app');
+      return {
+        executed: Boolean(switched),
+        error: !switched,
+        text: switched ? '已拦截对控制端自身的误操作，自动切回目标应用' : '当前位于控制端界面，切回目标应用失败'
+      };
+    }
+
+    if ((tool === 'phone_open' || tool === 'launch_app') && /deepseek|星语/i.test(String(p.appName || '')) && !/deepseek|星语/i.test(taskLower)) {
+      const switched = typeof b.returnToLastExternalApp === 'function'
+        ? b.returnToLastExternalApp()
+        : b.dispatchGlobalAction('switch_last_app');
+      return {
+        executed: Boolean(switched),
+        error: !switched,
+        text: switched ? '已跳过误打开 DeepSeek，自动切回上一个目标应用' : '未能切回目标应用'
+      };
     }
 
     try {
@@ -2360,11 +2602,17 @@
 
       if (tool === 'phone_tap' || tool === 'click_node') {
         const refId = String(p.ref || '').trim();
-        if (refId && typeof b.clickByRef === 'function') {
-          const resObj = JSON.parse(b.clickByRef(snapshotId, refId) || '{}');
+        if (refId && (typeof b.clickByRefGesture === 'function' || typeof b.clickByRef === 'function')) {
+          const rawRes = forceGesture && typeof b.clickByRefGesture === 'function'
+            ? b.clickByRefGesture(snapshotId, refId)
+            : b.clickByRef(snapshotId, refId);
+          const resObj = JSON.parse(rawRes || '{}');
           return {
             executed: Boolean(resObj.ok),
             error: !resObj.ok,
+            method: resObj.method || (forceGesture ? 'gesture' : 'node'),
+            x: Number(resObj.x) || 0,
+            y: Number(resObj.y) || 0,
             text: resObj.message || (resObj.ok ? `已点击控件 ${refId}` : `点击控件 ${refId} 失败`)
           };
         }
@@ -2753,8 +3001,8 @@
         return;
       }
 
-      // 分支 B：dsh-Go 智能多步 ReAct 循环（支持 ref 控屏、ScreenVerdict、SafetyGate 与中途插话）
-      const MAX_STEPS = 20;
+      // 分支 B：dsh-Go 智能多步 ReAct 循环（支持 ref 控屏、微序列动作、事件驱动 ScreenVerdict、物理补点与 80 步接力）
+      const MAX_STEPS = 80;
       const history = isResuming ? resumeOpts.history.slice() : [];
       const screenSize = getScreenSizeObj();
       const installedApps = getInstalledAppsList();
@@ -2765,6 +3013,25 @@
       let startStep = isResuming && Number(resumeOpts.startStep) > 0 ? Number(resumeOpts.startStep) : 1;
       let lastScreenVerdict = resumeOpts?.lastScreenVerdict || null;
       let noChangeStreak = 0;
+
+      // 第 0 步自动跳回目标 App：在控制端自身下达“继续写作业/答题/接着操作”时，先自动切回上一个外部应用再拍屏规划
+      const lastExtApp = native ? getLastExternalAppInfo() : { packageName: '', appName: '' };
+      if (native && !isResuming) {
+        const initSnap = readAndFormatSnapshot(false);
+        const SELF_PKG = 'com.deepseek.starwhisper.studio';
+        const explicitNewAppMatch = String(taskText || '').trim().match(/^(?:请|帮我)?(?:打开|启动|进入|打开一下|去|切到)\s*([^\s，。！？,!?]{2,12})/);
+        const wantsReturnToPrev = !explicitNewAppMatch || /(?:继续|接着|回到|切回|写作业|答题|做题|下一题)/.test(taskText);
+        if (initSnap.packageName === SELF_PKG && wantsReturnToPrev && (lastExtApp.packageName || typeof b.dispatchGlobalAction === 'function')) {
+          const switchedOk = typeof b.returnToLastExternalApp === 'function'
+            ? b.returnToLastExternalApp()
+            : b.dispatchGlobalAction('switch_last_app');
+          if (switchedOk) {
+            const label = lastExtApp.appName || '上一个应用';
+            addStepItem(cardCtx.stepsList, 0, `自动切回「${label}」继续执行`, '防止在控制端自身界面误操作', '已切回', false, 'phone.open');
+            await sleep(550);
+          }
+        }
+      }
 
       for (let step = startStep; step <= MAX_STEPS; step++) {
         if (signal.aborted || emergencyStopRequested) {
@@ -2794,6 +3061,7 @@
         }
 
         const snapshot = readAndFormatSnapshot(false);
+        const beforeEventSeq = native ? (Number(snapshot.eventSeq) || Number(readScreenEventSeq().seq) || 0) : 0;
         const pendingStepEl = addStepItem(
           cardCtx.stepsList,
           step,
@@ -2820,6 +3088,7 @@
             screenVerdict: lastScreenVerdict,
             interjections: turnInterjections,
             stepIndex: step,
+            lastExternalApp: lastExtApp,
             signal
           });
         } catch (err) {
@@ -2861,7 +3130,7 @@
         const plan = planResp.plan;
         const toolName = plan.tool || plan.action || 'step';
         const badgeEl = pendingStepEl?.querySelector('.pa-tool-badge');
-        if (badgeEl) badgeEl.textContent = toolName;
+        if (badgeEl) badgeEl.textContent = Array.isArray(plan.actions) && plan.actions.length >= 2 ? `${toolName}×${plan.actions.length}` : toolName;
         const descEl = pendingStepEl?.querySelector('.pa-step-desc');
         if (descEl) descEl.textContent = plan.summary || toolName;
         const thoughtEl = pendingStepEl?.querySelector('.pa-step-thought');
@@ -2896,48 +3165,118 @@
           break;
         }
 
-        const gateInfo = evaluateSafetyGate(plan, snapshot, roundAutoApproved);
-        if (gateInfo.needConfirm) {
-          updateStepResult(pendingStepEl, '待确认', false);
-          const decision = await askStepConfirmCard(cardCtx.confirmSlot, plan, signal, gateInfo, snapshot);
-          if (decision === 'cancel') {
-            updateStepResult(pendingStepEl, '已拒绝', true);
-            finalStatus = 'error';
-            finalSummaryTitle = '用户已取消该操作';
-            break;
-          }
-          if (decision === 'handover') {
-            updateStepResult(pendingStepEl, '交还人工', false);
-            finalStatus = 'done';
-            finalSummaryTitle = '已交还给你手动操作';
-            finalReplyText = '请直接在手机屏幕完成敏感操作，完成后点击下方按钮即可让 AI 接力继续。';
-            handoverCb = () =>
-              runReActLoop(taskText, cardCtx, execMode, {
-                history: [...history, { step, tool: 'handover', summary: plan.summary, result: '用户已手动接管完成' }],
-                startStep: step + 1,
-                roundAutoApproved,
-                lastScreenVerdict: null
-              });
-            break;
-          }
-          if (decision === 'auto_turn' || decision === 'auto') {
-            roundAutoApproved = true;
-          } else if (decision === 'trust_app') {
-            addTrustedApp(snapshot.appName, snapshot.packageName);
+        const actionQueue = Array.isArray(plan.actions) && plan.actions.length >= 2
+          ? plan.actions
+          : [{ tool: toolName, args: plan.args || plan.params || {}, risk: plan.risk, summary: plan.summary, needConfirm: plan.needConfirm }];
+
+        let abortedByUser = false;
+        let handedOver = false;
+        let gateRejected = false;
+        for (const subAction of actionQueue) {
+          const gateInfo = evaluateSafetyGate(subAction, snapshot, roundAutoApproved);
+          if (gateInfo.needConfirm) {
+            updateStepResult(pendingStepEl, '待确认', false);
+            const decision = await askStepConfirmCard(cardCtx.confirmSlot, subAction, signal, gateInfo, snapshot);
+            if (decision === 'cancel') {
+              updateStepResult(pendingStepEl, '已拒绝', true);
+              finalStatus = 'error';
+              finalSummaryTitle = '用户已取消该操作';
+              gateRejected = true;
+              break;
+            }
+            if (decision === 'handover') {
+              updateStepResult(pendingStepEl, '交还人工', false);
+              finalStatus = 'done';
+              finalSummaryTitle = '已交还给你手动操作';
+              finalReplyText = '请直接在手机屏幕完成敏感操作，完成后点击下方按钮即可让 AI 接力继续。';
+              handoverCb = () =>
+                runReActLoop(taskText, cardCtx, execMode, {
+                  history: [...history, { step, tool: 'handover', summary: subAction.summary || plan.summary, result: '用户已手动接管完成' }],
+                  startStep: step + 1,
+                  roundAutoApproved,
+                  lastScreenVerdict: null
+                });
+              handedOver = true;
+              break;
+            }
+            if (decision === 'auto_turn' || decision === 'auto') {
+              roundAutoApproved = true;
+            } else if (decision === 'trust_app') {
+              addTrustedApp(snapshot.appName, snapshot.packageName);
+            }
           }
         }
+        if (gateRejected || handedOver) break;
 
         if (native && b && typeof b.updateFloatState === 'function') {
           try { b.updateFloatState('acting', plan.summary || '执行中...'); } catch {}
         }
 
-        const beforeMeta = native ? readScreenMeta() : null;
-        const execRes = dispatchNativePlanAction(plan, snapshot);
-        const verdict = native
-          ? await waitForScreenVerdict(beforeMeta, toolName, signal)
+        const beforeMeta = native
+          ? {
+              ok: true,
+              packageName: snapshot.packageName || '',
+              appName: snapshot.appName || '',
+              signature: snapshot.signature || '',
+              eventSeq: beforeEventSeq
+            }
+          : null;
+
+        let execRes = { executed: false, text: '' };
+        const forceGestureClick = noChangeStreak >= 1;
+        const execTexts = [];
+        for (let ai = 0; ai < actionQueue.length; ai++) {
+          if (signal.aborted || emergencyStopRequested || (native && b && typeof b.isEmergencyStopRequested === 'function' && b.isEmergencyStopRequested())) {
+            abortedByUser = true;
+            break;
+          }
+          const subAct = actionQueue[ai];
+          execRes = dispatchNativePlanAction(subAct, snapshot, { forceGesture: forceGestureClick, taskText });
+          execTexts.push(execRes.text);
+          if (execRes.error || !native) break;
+          if (ai < actionQueue.length - 1) {
+            await sleep(subAct.tool === 'phone_tap' ? 240 : 260);
+          }
+        }
+        if (abortedByUser) {
+          updateStepResult(pendingStepEl, '已停止', true);
+          finalStatus = 'error';
+          finalSummaryTitle = '已停止执行';
+          break;
+        }
+
+        const lastSubTool = actionQueue[actionQueue.length - 1]?.tool || toolName;
+        let verdict = native
+          ? await waitForScreenVerdict(
+              beforeMeta,
+              lastSubTool,
+              signal,
+              actionQueue.length === 1 && execRes.method === 'node' && (lastSubTool === 'phone_tap' || lastSubTool === 'click_node') ? 380 : 0
+            )
           : { changed: true, elapsedMs: 0 };
 
-        if (verdict && !verdict.changed && toolName !== 'phone_wait') {
+        // 零往返自动物理补点：如果 node ACTION_CLICK 报成功但 380ms 内画面无反应，自动以真实坐标手势补点一次
+        if (
+          native &&
+          actionQueue.length === 1 &&
+          !execRes.error &&
+          execRes.method === 'node' &&
+          verdict &&
+          !verdict.changed &&
+          execRes.x > 0 &&
+          execRes.y > 0 &&
+          typeof b?.dispatchClick === 'function'
+        ) {
+          const fallbackTapped = b.dispatchClick(execRes.x, execRes.y);
+          if (fallbackTapped) {
+            execTexts[0] = `${execRes.text}（已物理补点）`;
+            verdict = await waitForScreenVerdict(beforeMeta, lastSubTool, signal, 420);
+          }
+        }
+
+        const finalExecText = execTexts.join(' -> ') || execRes.text;
+
+        if (verdict && !verdict.changed && lastSubTool !== 'phone_wait') {
           noChangeStreak += 1;
         } else {
           noChangeStreak = 0;
@@ -2949,17 +3288,17 @@
 
         updateStepResult(
           pendingStepEl,
-          execRes.text,
+          finalExecText,
           Boolean(execRes.error),
-          native && !execRes.error && toolName !== 'phone_wait' ? Boolean(verdict.changed) : null
+          native && !execRes.error && lastSubTool !== 'phone_wait' ? Boolean(verdict.changed) : null
         );
-        appendNativeConsoleLog(`第${step}步 [${toolName}]: ${execRes.text}`);
+        appendNativeConsoleLog(`第${step}步 [${toolName}]: ${finalExecText}`);
 
         history.push({
           step,
           tool: toolName,
           summary: plan.summary,
-          result: execRes.text,
+          result: finalExecText,
           changed: Boolean(verdict?.changed)
         });
 
@@ -2972,8 +3311,15 @@
 
         if (step === MAX_STEPS) {
           finalStatus = 'done';
-          finalSummaryTitle = `已执行 ${MAX_STEPS} 步`;
-          finalReplyText = '已达到单轮最大步数上限，你可以继续补充指令让我接着操作。';
+          finalSummaryTitle = `已连续执行 ${MAX_STEPS} 步`;
+          finalReplyText = `已连续执行 ${MAX_STEPS} 步，点击下方按钮可继续执行下一批步骤。`;
+          handoverCb = () =>
+            runReActLoop(taskText, cardCtx, execMode, {
+              history,
+              startStep: step + 1,
+              roundAutoApproved,
+              lastScreenVerdict
+            });
         }
       }
 

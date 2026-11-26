@@ -1330,10 +1330,42 @@ public class MainActivity extends Activity {
         }
 
         @JavascriptInterface
+        public String getScreenEventSeq() {
+            AgentAccessibilityService service = AgentAccessibilityService.getInstance();
+            if (service == null) {
+                return "{\"seq\":0,\"pkg\":\"\",\"ts\":0}";
+            }
+            return service.getScreenEventSeqJson();
+        }
+
+        @JavascriptInterface
+        public String getLastExternalApp() {
+            AgentAccessibilityService service = AgentAccessibilityService.getInstance();
+            if (service == null) {
+                return "{\"packageName\":\"\",\"appName\":\"\"}";
+            }
+            return service.getLastExternalAppJson();
+        }
+
+        @JavascriptInterface
+        public boolean returnToLastExternalApp() {
+            AgentAccessibilityService service = AgentAccessibilityService.getInstance();
+            if (service == null) return false;
+            return service.returnToLastExternalApp();
+        }
+
+        @JavascriptInterface
         public String clickByRef(String snapshotId, String refId) {
             AgentAccessibilityService service = AgentAccessibilityService.getInstance();
             if (service == null) return "{\"ok\":false,\"message\":\"无障碍服务未就绪\"}";
             return service.clickByRef(snapshotId, refId);
+        }
+
+        @JavascriptInterface
+        public String clickByRefGesture(String snapshotId, String refId) {
+            AgentAccessibilityService service = AgentAccessibilityService.getInstance();
+            if (service == null) return "{\"ok\":false,\"message\":\"无障碍服务未就绪\"}";
+            return service.clickByRef(snapshotId, refId, true);
         }
 
         @JavascriptInterface

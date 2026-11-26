@@ -57,7 +57,8 @@ html[data-has-wallpaper="1"] .app-shell .ds-composer-box {
 }
 
 /* 2.0 经典 QQ 聊天风（仅限角色扮演剧场模式生效，绝不破坏 DeepSeek 与手机辅助原生壳层） */
-html[data-skin="qq-classic"] #app-shell[data-ui-mode="roleplay"] {
+html[data-skin="qq-classic"] #app-shell[data-ui-mode="roleplay"],
+html[data-skin="qq-classic"] body[data-ui-mode="roleplay"] dialog.modal-dialog {
   --bg-app: light-dark(#F2F3F5, #111318);
   --bg-stage: light-dark(#F2F3F5, #111318);
   --bg-sidebar: light-dark(#F7F8FA, #16181E);
@@ -273,11 +274,13 @@ html[data-skin="obsidian-gold"] .app-shell {
   --bg-user-bubble: linear-gradient(135deg, rgba(229, 193, 133, 0.22) 0%, rgba(164, 128, 78, 0.24) 100%);
   --bg-thought: rgba(25, 29, 41, 0.82);
   --glass-surface: rgba(22, 25, 36, 0.72);
+  --glass-panel-solid: rgba(16, 19, 27, 0.96);
   --glass-elevated: rgba(30, 34, 48, 0.86);
   --border-subtle: rgba(255, 255, 255, 0.09);
   --border-strong: rgba(229, 193, 133, 0.38);
   --text-primary: #f5f2eb;
   --text-secondary: #d4cdbf;
+  --text-narrative: #d4cdbf;
   --text-muted: #989184;
   --text-action: #e5c185;
   --brand-primary: #e5c185;
@@ -304,11 +307,13 @@ html[data-skin="mist-silk"] .app-shell {
   --bg-user-bubble: linear-gradient(135deg, #f3e8e2 0%, #ebe5f2 100%);
   --bg-thought: #f3eff7;
   --glass-surface: rgba(255, 255, 255, 0.78);
+  --glass-panel-solid: rgba(248, 246, 251, 0.97);
   --glass-elevated: rgba(255, 255, 255, 0.92);
   --border-subtle: rgba(30, 27, 36, 0.08);
   --border-strong: rgba(184, 139, 114, 0.34);
   --text-primary: #211d27;
   --text-secondary: #4e4659;
+  --text-narrative: #4e4659;
   --text-muted: #7f768c;
   --text-action: #9c6a51;
   --brand-primary: #b88b72;
@@ -335,11 +340,13 @@ html[data-skin="sakura-dawn"] .app-shell {
   --bg-user-bubble: linear-gradient(135deg, #fde6f3 0%, #efe6ff 100%);
   --bg-thought: #fdf5fa;
   --glass-surface: rgba(255, 251, 254, 0.84);
+  --glass-panel-solid: rgba(255, 249, 252, 0.98);
   --glass-elevated: rgba(255, 255, 255, 0.95);
   --border-subtle: #f2daea;
   --border-strong: #e7c2dc;
   --text-primary: #2d1f36;
   --text-secondary: #684f76;
+  --text-narrative: #5b4469;
   --text-muted: #987ea8;
   --text-action: #c44383;
   --brand-primary: #e2559d;
@@ -366,11 +373,13 @@ html[data-skin="crimson-scroll"] .app-shell {
   --bg-user-bubble: linear-gradient(135deg, rgba(186, 67, 56, 0.34) 0%, rgba(122, 46, 42, 0.36) 100%);
   --bg-thought: rgba(38, 27, 25, 0.86);
   --glass-surface: rgba(31, 22, 21, 0.78);
+  --glass-panel-solid: rgba(28, 20, 19, 0.96);
   --glass-elevated: rgba(42, 30, 28, 0.9);
   --border-subtle: rgba(242, 212, 194, 0.1);
   --border-strong: rgba(217, 107, 82, 0.4);
   --text-primary: #f6ebe3;
   --text-secondary: #d7c3b7;
+  --text-narrative: #d7c3b7;
   --text-muted: #a38a7c;
   --text-action: #e58268;
   --brand-primary: #d96b52;
@@ -397,11 +406,13 @@ html[data-skin="cyber-neon"] .app-shell {
   --bg-user-bubble: linear-gradient(135deg, rgba(6, 182, 212, 0.24) 0%, rgba(139, 92, 246, 0.28) 100%);
   --bg-thought: rgba(17, 25, 48, 0.85);
   --glass-surface: rgba(14, 21, 40, 0.76);
+  --glass-panel-solid: rgba(11, 17, 32, 0.96);
   --glass-elevated: rgba(20, 30, 56, 0.9);
   --border-subtle: rgba(56, 189, 248, 0.14);
   --border-strong: rgba(34, 211, 238, 0.42);
   --text-primary: #eaf6ff;
   --text-secondary: #b7d2eb;
+  --text-narrative: #b7d2eb;
   --text-muted: #7896b8;
   --text-action: #22d3ee;
   --brand-primary: #22d3ee;
@@ -428,11 +439,13 @@ html[data-skin="eink-paper"] .app-shell {
   --bg-user-bubble: #e8e4da;
   --bg-thought: #efece3;
   --glass-surface: #fbfaf6;
+  --glass-panel-solid: #f7f5ef;
   --glass-elevated: #ffffff;
   --border-subtle: #d6d0c4;
   --border-strong: #9f988a;
   --text-primary: #1a1916;
   --text-secondary: #3f3d37;
+  --text-narrative: #3f3d37;
   --text-muted: #6f6b62;
   --text-action: #1a1916;
   --brand-primary: #3b3831;
@@ -1248,7 +1261,36 @@ html[data-font-style="rounded"] .app-shell .assistant-prose {
   border-radius: 50%;
   overflow: hidden;
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.16);
+}
+
+.cp-avatar-preview-box > .avatar-wrap,
+.snap-avatar > .avatar-wrap {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.snap-avatar {
+  overflow: hidden;
+}
+
+.script-cast-chip {
+  white-space: nowrap;
+}
+
+.script-cast-chip .script-cast-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.script-cast-chip .script-cast-avatar > .avatar-wrap {
+  width: 22px !important;
+  height: 22px !important;
 }
 
 .cp-avatar-picker-meta {

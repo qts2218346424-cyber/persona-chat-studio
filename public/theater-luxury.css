@@ -975,11 +975,19 @@ html[style*="color-scheme: light"]:not([style*="light dark"]) .app-shell[data-ui
 /* 10. 剧本与共创中心弹窗：3:4 竖版黑金塔罗海报卡 */
 body[data-ui-mode="roleplay"] #plaza-dialog,
 body[data-ui-mode="roleplay"] #theater-dialog {
-  background: var(--glass-panel-solid) !important;
+  background: var(--glass-panel-solid, var(--bg-app)) !important;
   backdrop-filter: var(--glass-blur) !important;
   -webkit-backdrop-filter: var(--glass-blur) !important;
   border: var(--border-specular) !important;
   box-shadow: var(--shadow-ambient) !important;
+  color: var(--text-primary) !important;
+}
+
+body[data-ui-mode="roleplay"] #plaza-dialog .modal-header,
+body[data-ui-mode="roleplay"] #plaza-dialog .hub-footer-actions,
+body[data-ui-mode="roleplay"] #theater-dialog .modal-header,
+body[data-ui-mode="roleplay"] #theater-dialog .modal-actions {
+  background: var(--glass-panel-solid, var(--bg-app)) !important;
   color: var(--text-primary) !important;
 }
 
@@ -1030,10 +1038,45 @@ body[data-ui-mode="roleplay"] #plaza-cards-grid .script-select-card {
   transition: transform 0.32s cubic-bezier(0.22, 1, 0.36, 1), border-color 0.28s ease, box-shadow 0.32s ease;
 }
 
-html[style*="color-scheme: light"]:not([style*="light dark"]) body[data-ui-mode="roleplay"] #plaza-cards-grid .script-select-card {
+html[style*="color-scheme: light"]:not([style*="light dark"]) body[data-ui-mode="roleplay"] #plaza-cards-grid .script-select-card,
+html[data-skin="sakura-dawn"] body[data-ui-mode="roleplay"] #plaza-cards-grid .script-select-card,
+html[data-skin="mist-silk"] body[data-ui-mode="roleplay"] #plaza-cards-grid .script-select-card,
+html[data-skin="eink-paper"] body[data-ui-mode="roleplay"] #plaza-cards-grid .script-select-card {
   background:
-    radial-gradient(circle at 85% 15%, var(--card-aura, rgba(184, 139, 114, 0.16)) 0%, transparent 55%),
-    linear-gradient(170deg, rgba(255, 255, 255, 0.95), rgba(242, 238, 246, 0.96)) !important;
+    radial-gradient(circle at 85% 15%, var(--card-aura, rgba(226, 85, 157, 0.14)) 0%, transparent 55%),
+    linear-gradient(170deg, rgba(255, 255, 255, 0.96), rgba(247, 243, 250, 0.96)) !important;
+  border: 1px solid var(--border-strong, rgba(184, 139, 114, 0.28)) !important;
+  box-shadow: 0 12px 28px -12px rgba(30, 27, 36, 0.14) !important;
+}
+
+html[data-skin="qq-classic"] body[data-ui-mode="roleplay"] #plaza-cards-grid .script-select-card {
+  background: light-dark(
+    linear-gradient(170deg, #ffffff 0%, #f5f7fb 100%),
+    linear-gradient(170deg, rgba(30, 34, 46, 0.95) 0%, rgba(20, 23, 32, 0.98) 100%)
+  ) !important;
+  border: 1px solid light-dark(rgba(15, 23, 42, 0.1), rgba(255, 255, 255, 0.14)) !important;
+  box-shadow: light-dark(0 10px 26px -12px rgba(15, 23, 42, 0.14), 0 18px 36px -14px rgba(0, 0, 0, 0.55)) !important;
+}
+
+html[style*="color-scheme: light"]:not([style*="light dark"]) body[data-ui-mode="roleplay"] #plaza-cards-grid .script-select-card:hover,
+html[data-skin="sakura-dawn"] body[data-ui-mode="roleplay"] #plaza-cards-grid .script-select-card:hover,
+html[data-skin="mist-silk"] body[data-ui-mode="roleplay"] #plaza-cards-grid .script-select-card:hover,
+html[data-skin="eink-paper"] body[data-ui-mode="roleplay"] #plaza-cards-grid .script-select-card:hover,
+html[data-skin="qq-classic"] body[data-ui-mode="roleplay"] #plaza-cards-grid .script-select-card:hover {
+  box-shadow: light-dark(0 14px 32px -12px rgba(30, 27, 36, 0.18), 0 22px 42px -12px rgba(0, 0, 0, 0.65)) !important;
+}
+
+html[style*="color-scheme: light"]:not([style*="light dark"]) body[data-ui-mode="roleplay"] #plaza-cards-grid .ssc-role-line,
+html[data-skin="sakura-dawn"] body[data-ui-mode="roleplay"] #plaza-cards-grid .ssc-role-line,
+html[data-skin="mist-silk"] body[data-ui-mode="roleplay"] #plaza-cards-grid .ssc-role-line,
+html[data-skin="eink-paper"] body[data-ui-mode="roleplay"] #plaza-cards-grid .ssc-role-line,
+html[data-skin="qq-classic"] body[data-ui-mode="roleplay"] #plaza-cards-grid .ssc-role-line {
+  background: var(--bg-surface, light-dark(#f1f5f9, rgba(255, 255, 255, 0.06))) !important;
+  color: var(--text-secondary) !important;
+}
+
+body[data-ui-mode="roleplay"] #plaza-cards-grid .ssc-cast-label {
+  color: var(--text-muted) !important;
 }
 
 body[data-ui-mode="roleplay"] #plaza-cards-grid .script-select-card:hover {

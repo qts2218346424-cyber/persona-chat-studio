@@ -1973,10 +1973,19 @@
     -webkit-overflow-scrolling: touch !important;
     overscroll-behavior: contain !important;
     padding:
-      6px
+      0
       16px
       max(20px, calc(16px + env(safe-area-inset-bottom, 0px))) !important;
     box-sizing: border-box !important;
+  }
+
+  dialog.modal-dialog[open] .modal-inner:has(.sticky-modal-actions, .settings-sticky-actions, .wallet-footer-actions, .hub-footer-actions) {
+    padding-bottom: 0 !important;
+  }
+
+  dialog.modal-dialog[open] .modal-inner > form.stack-form {
+    margin-bottom: 0 !important;
+    padding-bottom: 0 !important;
   }
 
   #apk-download-modal.apk-spacious-modal[open] .apk-modal-inner {
@@ -1989,10 +1998,10 @@
   #apk-download-modal.apk-spacious-modal[open] .apk-modal-header {
     position: sticky !important;
     top: 0 !important;
-    z-index: 15 !important;
-    background: var(--bg-app, light-dark(#ffffff, #161822)) !important;
-    padding: 8px 0 12px !important;
-    margin: 0 0 12px 0 !important;
+    z-index: 20 !important;
+    background: var(--glass-panel-solid, var(--bg-app, light-dark(#ffffff, #161822))) !important;
+    padding: 10px 16px 12px 16px !important;
+    margin: 0 -16px 12px -16px !important;
     border-bottom: 1px solid var(--border-subtle, rgba(148, 163, 184, 0.18)) !important;
   }
 
@@ -2024,11 +2033,12 @@
   dialog.modal-dialog[open] .hub-footer-actions {
     position: sticky !important;
     bottom: 0 !important;
-    margin-bottom: 0 !important;
-    padding: 12px 0 4px !important;
-    background: var(--bg-app, light-dark(#ffffff, #161822)) !important;
+    margin: 12px -16px 0 -16px !important;
+    padding: 12px 16px max(16px, calc(12px + env(safe-area-inset-bottom, 0px))) 16px !important;
+    background: var(--glass-panel-solid, var(--bg-app, light-dark(#ffffff, #161822))) !important;
     border-top: 1px solid var(--border-subtle, rgba(148, 163, 184, 0.2)) !important;
-    z-index: 15 !important;
+    box-shadow: 0 -6px 18px rgba(15, 23, 42, 0.08) !important;
+    z-index: 20 !important;
   }
 
   /* 5. 类别 B：轻量居中 Alert 弹窗（二次确认 / 全站公告 / APK 版本更新） */
@@ -2075,7 +2085,7 @@
   #confirm-action-dialog.confirm-modal[open] .modal-header {
     position: static !important;
     padding: 0 0 10px 0 !important;
-    margin-bottom: 10px !important;
+    margin: 0 0 10px 0 !important;
   }
 
   /* 6. 弹窗内输入框统一 16px 防聚焦缩放，按钮触控高度 >= 44px */

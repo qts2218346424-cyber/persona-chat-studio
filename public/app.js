@@ -73,7 +73,7 @@
     hasMoreMessages: false,
     totalMessages: 0,
     oldestMessageId: 0,
-    appVersion: '2.6.2',
+    appVersion: '2.6.4',
     tourIndex: 0,
     tourActive: false,
     llmMode: localStorage.getItem('user_llm_mode') || 'local_antigravity',
@@ -485,7 +485,7 @@
   }
 
   function syncWebVersionBadges(verStr) {
-    const raw = String(verStr || state.appVersion || '2.6.2').trim().replace(/^v/i, '');
+    const raw = String(verStr || state.appVersion || '2.6.4').trim().replace(/^v/i, '');
     if (!raw) return;
     const vLabel = `v${raw}`;
     const isNativeApk = Boolean(
@@ -3773,7 +3773,7 @@
       tunnelProbe?.online ? '本机电脑 Antigravity 直连' : report.channels?.localCli?.transport === 'local_cli' ? '本机 CLI 就绪' : '电脑离线时自动回退'
     );
 
-    setTxt('adm-sys-meta', `v${sys.appVersion || '2.6.2'} · ${sys.platform || ''} · Node ${sys.nodeVersion || ''} · ${sys.cpuCores || 1} 核 (负载 ${sys.load1m ?? 0})`);
+    setTxt('adm-sys-meta', `v${sys.appVersion || '2.6.4'} · ${sys.platform || ''} · Node ${sys.nodeVersion || ''} · ${sys.cpuCores || 1} 核 (负载 ${sys.load1m ?? 0})`);
     setTxt('adm-stat-mem', `${sys.memUsedPct ?? 0}% (进程 ${sys.rssMb ?? 0} MB)`);
     setTxt('adm-stat-db', `${formatBytesCompact(dbInfo.dbSizeBytes)} / ${formatBytesCompact(dbInfo.walSizeBytes)}`);
     setTxt('adm-stat-uptime', formatUptimeCompact(sys.uptimeSec));
@@ -11002,7 +11002,7 @@
             <button type="button" class="script-cast-chip" data-pid="${escapeHtml(p.id)}" title="直接以「${escapeHtml(
             p.name
           )}」进入本剧本">
-              <span>${escapeHtml(p.avatar)}</span>
+              <span class="script-cast-avatar">${renderSmartAvatarHtml(p.avatar, shortName, 'size-sm')}</span>
               <strong>${escapeHtml(shortName)}</strong>
               <small>${escapeHtml(p.category_tag || '')}</small>
             </button>
@@ -11512,7 +11512,13 @@
     if (kindSel.value === 'persona') {
       const list = state.personas.filter((p) => p.id !== 'persona_deepseek_official');
       targetSel.innerHTML = list
-        .map((p) => `<option value="${escapeHtml(p.id)}">${escapeHtml(p.avatar)} ${escapeHtml(p.name)}</option>`)
+        .map((p) => {
+          const av = String(p.avatar || '').trim();
+          const isImg =
+            /^(\/|https?:|data:)/i.test(av) || /\.(webp|png|jpe?g|gif|svg)(\?|$)/i.test(av);
+          const label = isImg || !av ? p.name : `${av} ${p.name}`;
+          return `<option value="${escapeHtml(p.id)}">${escapeHtml(label)}</option>`;
+        })
         .join('');
     } else {
       targetSel.innerHTML = state.scripts
@@ -12009,7 +12015,7 @@
     const preview = document.getElementById('dream-snap-preview');
     preview.innerHTML = `
       <div class="snap-header">
-        <span class="snap-avatar">${escapeHtml(p.avatar)}</span>
+        <span class="snap-avatar">${renderSmartAvatarHtml(p.avatar, p.name, 'size-lg')}</span>
         <div>
           <div class="snap-char-name">${escapeHtml(p.name)}</div>
           <div class="snap-bond-tag">${escapeHtml(badge)} · 致 ${escapeHtml(state.user?.nickname || '你')}</div>

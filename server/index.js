@@ -656,8 +656,8 @@ function extractAuthToken(req, parsedUrl = null) {
   return '';
 }
 
-const APP_LATEST_VERSION = '2.6.2';
-const APP_LATEST_VERSION_CODE = 157;
+const APP_LATEST_VERSION = '2.6.4';
+const APP_LATEST_VERSION_CODE = 159;
 const APP_OFFICIAL_CERT_SHA256 = '6fd05e32a3cabf327140129d866e55a342fe30daa3384c67aad4b3cbdd98a17b';
 const APP_UPDATE_TICKET_SECRET = crypto
   .createHash('sha256')
@@ -955,9 +955,9 @@ async function handleApi(req, res, pathname, parsedUrl) {
       forceUpdate,
       diffGenerations,
       changelog: [
-        '【彻底根治 Android App 覆盖升级缓存与 SW 残留】原生宿主新增版本号变更自动清理 WebView 缓存与 Service Worker 禁用机制，首帧同步锁定原生 App 模式，彻底消除界面错乱或退化为网页版的异常',
-        '【自动恢复原生默认主题并隔离 QQ 主题】老用户覆盖升级后自动恢复「原生极客经典」默认主题，并将可选「经典 QQ 聊天」主题精准限定于剧场模式，确保 DeepSeek / 手机辅助 / 星语剧场均保持原版顺手体验',
-        '【保留 32 张高颜值轻量 WebP 头像 & 双态抽屉对比度】完整保留 32 张高清 WebP 头像库，精准优化右侧抽屉在浅色与暗夜剧场双模式下的清晰对比度，双端同步升级至 v2.6.2 (Build 157)'
+        '【自动切回目标 App + 物理防自套娃】发送“继续写作业/继续答题”时自动记忆并切回上一个外部学习/目标应用，代码级拦截对控制端自身的误点击或聊天框乱打字',
+        '【严格视觉行归组（杜绝把 D 看成 A）】重构无障碍节点排序与水平同行归组（R1: 选项字母 | 选项文字），并同步透传选中状态 (sel)/(chk)，彻底消除选项张冠李戴',
+        '【80 步长任务 + 下一题物理补点 + 事件驱动提速】单轮步数提升至 80 步并支持一键接力，WebView/大容器直接走 80ms 物理手势与 380ms 自动补点，双端同步升级至 v2.6.4 (Build 159)'
       ]
     };
 
@@ -1705,9 +1705,12 @@ async function handleApi(req, res, pathname, parsedUrl) {
       '关键约束：',
       '1. 优先用 phone_open 打开目标应用；点击屏幕元素时优先使用 phone_tap 并携带准确 ref 与 snapshotId，避免盲猜坐标。',
       '2. 仔细检查 screenVerdict：若连续 2 步画面未变化（changed=false），严禁继续重复同一动作或 phone_wait，必须改用 phone_tap_xy / phone_scroll / phone_key(back) 或返回 ask_user 交还用户处理。',
-      '3. 若 interjections 非空（用户在执行中途插话或纠偏），必须最高优先级立即响应用户最新插话要求。',
-      '4. 若 hasSensitiveField=true（密码框/支付收银台/验证码）或即将执行付款、转账、下单、发红包、删除、卸载、发送对外消息/评论等高风险动作，必须将 risk 设为 "sensitive"；遇到支付密码/短信验证码/刷脸确认时，直接返回 ask_user 交还人类操作。',
-      '5. 若处于网页预览模式（无真实屏幕节点，screenNodes 为空且无 screenTreeText），可直接给出逻辑演示并在最后一步返回 done。'
+      '3. 若同一屏幕上已同时清晰可见 2~3 个明确无歧义的连贯操作（例如学习答题时“先选中答案选项 + 再点击下一题/提交”），可在标准字段外额外附带 `"actions":[{"tool":"phone_tap","args":{"ref":"e10"}},{"tool":"phone_tap","args":{"ref":"e24"}}]`（最多 3 个同屏非敏感微动作），否则只输出单动作。',
+      '4. 严禁操作控制端自身（packageName="com.deepseek.starwhisper.studio"）或在其聊天框打字；当用户说“继续写作业/继续答题”且未明确指定打开 DeepSeek 时，禁止打开 DeepSeek 应用，优先切回 lastExternalApp 或在目标学习软件内操作。',
+      '5. screenTreeText 中每一行 `R1: ... | ...` 代表屏幕同一水平行的元素。做选择题时必须严格核对同一行的字母与右侧文字，带有 (sel) 或 (chk) 表示已选中，若已选对直接点“下一题”，严禁张冠李戴改错答案！',
+      '6. 若 interjections 非空（用户在执行中途插话或纠偏），必须最高优先级立即响应用户最新插话要求。',
+      '7. 若 hasSensitiveField=true（密码框/支付收银台/验证码）或即将执行付款、转账、下单、发红包、删除、卸载、发送对外消息/评论等高风险动作，必须将 risk 设为 "sensitive"；遇到支付密码/短信验证码/刷脸确认时，直接返回 ask_user 交还人类操作。',
+      '8. 若处于网页预览模式（无真实屏幕节点，screenNodes 为空且无 screenTreeText），可直接给出逻辑演示并在最后一步返回 done。'
     ].join('\n');
 
     const compactNodes = screenNodes.map((n, idx) => ({
@@ -1726,6 +1729,8 @@ async function handleApi(req, res, pathname, parsedUrl) {
     const userPayload = {
       task,
       stepIndex: Number(body.stepIndex) > 0 ? Number(body.stepIndex) : historySteps.length + 1,
+      selfPackageName: 'com.deepseek.starwhisper.studio',
+      lastExternalApp: body.lastExternalApp && typeof body.lastExternalApp === 'object' ? body.lastExternalApp : null,
       snapshotId,
       foregroundApp,
       packageName,
@@ -1856,10 +1861,30 @@ async function handleApi(req, res, pathname, parsedUrl) {
         args.message = replyText;
       }
 
+      const rawActions = Array.isArray(obj?.actions) ? obj.actions.slice(0, 3) : [];
+      const normalizedActions = [];
+      if (risk !== 'sensitive' && tool !== 'done' && tool !== 'ask_user' && tool !== 'phone_open') {
+        for (const sub of rawActions) {
+          if (!sub || typeof sub !== 'object') continue;
+          const stRaw = String(sub.tool || sub.action || '').trim();
+          const st = stRaw && toolToLegacy[stRaw] ? stRaw : (legacyToTool[stRaw] || '');
+          if (!st || st === 'done' || st === 'ask_user' || st === 'phone_open') continue;
+          const sArgs = (sub.args && typeof sub.args === 'object') ? { ...sub.args } : ((sub.params && typeof sub.params === 'object') ? { ...sub.params } : {});
+          const sText = `${sub.summary || ''} ${sArgs?.text || ''}`;
+          if (highRiskKw.test(sText)) continue;
+          normalizedActions.push({
+            tool: st,
+            args: sArgs,
+            summary: String(sub.summary || `执行 ${st}`).slice(0, 80)
+          });
+        }
+      }
+
       return {
         thought: String(obj?.thought || '已结合当前界面完成分析').slice(0, 180),
         tool,
         args,
+        actions: normalizedActions.length >= 2 ? normalizedActions : undefined,
         risk,
         reply: replyText.slice(0, 500),
         action: legacyAction,
@@ -1983,7 +2008,7 @@ async function handleApi(req, res, pathname, parsedUrl) {
             model: modelToUse,
             messages: msgs,
             temperature: useReasoner ? 0.2 : 0.15,
-            max_tokens: useReasoner ? 2048 : 1024,
+            max_tokens: useReasoner ? 2048 : 512,
             stream: false
           };
           if (!useReasoner && (cand.url.includes('deepseek.com') || /deepseek/i.test(modelToUse))) {
@@ -1993,7 +2018,7 @@ async function handleApi(req, res, pathname, parsedUrl) {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', ...cand.headers },
             body: JSON.stringify(payload),
-            signal: AbortSignal.timeout(25000)
+            signal: AbortSignal.timeout(20000)
           });
           if (!resp.ok) {
             const errTxt = await resp.text().catch(() => '');

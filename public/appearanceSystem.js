@@ -1035,8 +1035,8 @@
      ======================================================================== */
 
   const SKIN_PRESETS = [
-    { id: 'qq-classic', name: '经典 QQ 聊天', desc: '默认推荐 · 洁净灰底 · 蓝白气泡', bg: 'linear-gradient(135deg,#f2f3f5 52%,#1677ff 52%)', dot: '#1677ff' },
-    { id: 'default', name: '原生极客经典', desc: '跟随模式原生配色与排版', bg: 'linear-gradient(135deg,#f8e4f1,#231d3a)', dot: '#e2559d' },
+    { id: 'default', name: '原生极客经典', desc: '默认原版 · 跟随模式原生配色与排版', bg: 'linear-gradient(135deg,#f8e4f1,#231d3a)', dot: '#e2559d' },
+    { id: 'qq-classic', name: '经典 QQ 聊天', desc: '洁净灰底 · 纯白对话 · QQ 蓝气泡', bg: 'linear-gradient(135deg,#f2f3f5 52%,#1677ff 52%)', dot: '#1677ff' },
     { id: 'obsidian-gold', name: '曜石流金', desc: '深邃暗夜 · 暖金星轨', bg: '#0d0f14', dot: '#e5c185' },
     { id: 'mist-silk', name: '晨雾丝绸', desc: '柔光浅色 · 莫兰迪棕', bg: '#f6f4f8', dot: '#b88b72' },
     { id: 'sakura-dawn', name: '朝雾樱白', desc: '二次元粉樱 · 轻盈甜暖', bg: '#fff5fa', dot: '#e2559d' },
@@ -1093,11 +1093,24 @@
     try {
       const raw = localStorage.getItem(SKIN_STORAGE_KEY);
       if (!raw) {
+        try { localStorage.setItem('xingyu_v262_restore_native_v1', '1'); } catch {}
         return { ...DEFAULT_SKIN_CONFIG };
       }
       const parsed = JSON.parse(raw);
       if (parsed && parsed.preset) {
         parsed.preset = mapFromV260Preset(parsed.preset);
+      }
+      if (localStorage.getItem('xingyu_v262_restore_native_v1') !== '1') {
+        const hadOldQqMigration = localStorage.getItem('xingyu_qq_default_migrated_v1') === '1';
+        if ((hadOldQqMigration && parsed?.preset === 'qq-classic') || parsed?.preset === 'minimal-studio') {
+          parsed.preset = 'default';
+          parsed.bubbleStyle = 'soft';
+          try {
+            localStorage.setItem(SKIN_STORAGE_KEY, JSON.stringify(Object.assign({}, DEFAULT_SKIN_CONFIG, parsed)));
+            localStorage.removeItem('xingyu_qq_default_migrated_v1');
+          } catch {}
+        }
+        try { localStorage.setItem('xingyu_v262_restore_native_v1', '1'); } catch {}
       }
       return Object.assign({}, DEFAULT_SKIN_CONFIG, parsed);
     } catch {
@@ -1180,9 +1193,9 @@
       const skinVal = document.getElementById('mfs-skin-value');
       if (skinVal) {
         const p = SKIN_PRESETS.find((x) => x.id === currentSkin.preset);
-        const pName = p ? p.name : '经典 QQ 聊天';
+        const pName = p ? p.name : '原生极客经典';
         const bubbleNames = { soft: '柔光圆润', 'im-bubble': '逐句分段', glass: '玻璃拟态', outline: '极简细框', letter: '复古信纸' };
-        const bName = bubbleNames[currentSkin.bubbleStyle] || '逐句分段';
+        const bName = bubbleNames[currentSkin.bubbleStyle] || '柔光圆润';
         skinVal.textContent = `${pName} · ${bName}`;
       }
       if (typeof window.__syncDefaultThemeRadios === 'function') {
@@ -1500,15 +1513,6 @@
 
   function syncFromServer(serverSkinConfig) {
     if (serverSkinConfig && typeof serverSkinConfig === 'object') {
-      // 保护本地新版 QQ 默认迁移不被服务端残留的旧 default 配置反覆写回旧版
-      if (
-        serverSkinConfig.preset === 'default' &&
-        (!serverSkinConfig.wallpaperType || serverSkinConfig.wallpaperType === 'none') &&
-        currentSkin.preset === 'qq-classic' &&
-        localStorage.getItem('xingyu_qq_default_migrated_v1') === '1'
-      ) {
-        return;
-      }
       applySkin(serverSkinConfig, { persist: true, syncServer: false });
     }
   }

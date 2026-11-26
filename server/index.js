@@ -656,8 +656,8 @@ function extractAuthToken(req, parsedUrl = null) {
   return '';
 }
 
-const APP_LATEST_VERSION = '2.6.1';
-const APP_LATEST_VERSION_CODE = 156;
+const APP_LATEST_VERSION = '2.6.2';
+const APP_LATEST_VERSION_CODE = 157;
 const APP_OFFICIAL_CERT_SHA256 = '6fd05e32a3cabf327140129d866e55a342fe30daa3384c67aad4b3cbdd98a17b';
 const APP_UPDATE_TICKET_SECRET = crypto
   .createHash('sha256')
@@ -955,9 +955,9 @@ async function handleApi(req, res, pathname, parsedUrl) {
       forceUpdate,
       diffGenerations,
       changelog: [
-        '【完整还原改前原版精致 UI】恢复原生 DeepSeek 居中圆润输入舱、星语剧场沉浸氛围、手机端顺手交互与全部 8 套精选皮肤（默认恢复原生极客风格，并保留「经典 QQ 聊天」等主题随时切换）',
-        '【保留 32 张大众高颜值头像库全套焕新】保留全新升级的 24 位角色清透插画肖像 + 8 张萌宠/风景/日常通用用户头像（512×512 轻量高清 WebP），老账号无感自动升级不裂图',
-        '【精准修复右侧抽屉白底对比度】保留对右侧「养成 / 记忆档案 / 系统指令」抽屉高对比度适配，解决浅色背景下按钮与标签文字看不清问题，双端同步升级至 v2.6.1 (Build 156)'
+        '【彻底根治 Android App 覆盖升级缓存与 SW 残留】原生宿主新增版本号变更自动清理 WebView 缓存与 Service Worker 禁用机制，首帧同步锁定原生 App 模式，彻底消除界面错乱或退化为网页版的异常',
+        '【自动恢复原生默认主题并隔离 QQ 主题】老用户覆盖升级后自动恢复「原生极客经典」默认主题，并将可选「经典 QQ 聊天」主题精准限定于剧场模式，确保 DeepSeek / 手机辅助 / 星语剧场均保持原版顺手体验',
+        '【保留 32 张高颜值轻量 WebP 头像 & 双态抽屉对比度】完整保留 32 张高清 WebP 头像库，精准优化右侧抽屉在浅色与暗夜剧场双模式下的清晰对比度，双端同步升级至 v2.6.2 (Build 157)'
       ]
     };
 

@@ -56,10 +56,8 @@ html[data-has-wallpaper="1"] .app-shell .ds-composer-box {
   -webkit-backdrop-filter: blur(var(--skin-glass-blur, 16px)) saturate(135%);
 }
 
-/* 2.0 经典 QQ 聊天风（默认推荐主题：PC + 手机 + 全部模式 1:1 复刻手机 QQ 洁净灰底 + 白气泡 + QQ 标志蓝） */
-html[data-skin="qq-classic"],
-html[data-skin="qq-classic"] body,
-html[data-skin="qq-classic"] .app-shell {
+/* 2.0 经典 QQ 聊天风（仅限角色扮演剧场模式生效，绝不破坏 DeepSeek 与手机辅助原生壳层） */
+html[data-skin="qq-classic"] #app-shell[data-ui-mode="roleplay"] {
   --bg-app: light-dark(#F2F3F5, #111318);
   --bg-stage: light-dark(#F2F3F5, #111318);
   --bg-sidebar: light-dark(#F7F8FA, #16181E);
@@ -90,71 +88,70 @@ html[data-skin="qq-classic"] .app-shell {
   --accent-violet: light-dark(#0284C7, #38BDF8);
 }
 
-/* 去除杂光斑，呈现 QQ 纯净清爽聊天底图 */
-html[data-skin="qq-classic"] .ambient-aurora {
+/* 去除杂光斑，呈现 QQ 纯净清爽聊天底图（仅剧场模式） */
+html[data-skin="qq-classic"] #app-shell[data-ui-mode="roleplay"] .ambient-aurora {
   display: none !important;
   opacity: 0 !important;
 }
 
-html[data-skin="qq-classic"]:not([data-has-wallpaper="1"]) body,
-html[data-skin="qq-classic"]:not([data-has-wallpaper="1"]) #app-shell,
-html[data-skin="qq-classic"]:not([data-has-wallpaper="1"]) .chat-stage,
-html[data-skin="qq-classic"]:not([data-has-wallpaper="1"]) .ds-chat-main,
-html[data-skin="qq-classic"]:not([data-has-wallpaper="1"]) #messages-viewport {
+html[data-skin="qq-classic"]:not([data-has-wallpaper="1"]) #app-shell[data-ui-mode="roleplay"],
+html[data-skin="qq-classic"]:not([data-has-wallpaper="1"]) #app-shell[data-ui-mode="roleplay"] .chat-stage,
+html[data-skin="qq-classic"]:not([data-has-wallpaper="1"]) #app-shell[data-ui-mode="roleplay"] .ds-chat-main,
+html[data-skin="qq-classic"]:not([data-has-wallpaper="1"]) #app-shell[data-ui-mode="roleplay"] #messages-viewport {
   background: var(--bg-stage) !important;
 }
 
-html[data-skin="qq-classic"]:not([data-has-wallpaper="1"]) .stage-topbar {
+html[data-skin="qq-classic"]:not([data-has-wallpaper="1"]) #app-shell[data-ui-mode="roleplay"] .stage-topbar {
   background: light-dark(rgba(242, 243, 245, 0.94), rgba(17, 19, 24, 0.94)) !important;
   border-bottom: 1px solid light-dark(rgba(15, 23, 42, 0.06), rgba(255, 255, 255, 0.08)) !important;
   backdrop-filter: blur(12px) !important;
   -webkit-backdrop-filter: blur(12px) !important;
 }
 
-html[data-skin="qq-classic"] .stage-topbar .persona-chip-name,
-html[data-skin="qq-classic"] .stage-topbar .icon-btn,
-html[data-skin="qq-classic"] .stage-topbar .sidebar-expand-btn {
+html[data-skin="qq-classic"] #app-shell[data-ui-mode="roleplay"] .stage-topbar .persona-chip-name,
+html[data-skin="qq-classic"] #app-shell[data-ui-mode="roleplay"] .stage-topbar .icon-btn,
+html[data-skin="qq-classic"] #app-shell[data-ui-mode="roleplay"] .stage-topbar .sidebar-expand-btn {
   color: light-dark(#111827, #F1F5F9) !important;
   font-family: "PingFang SC", "Microsoft YaHei", system-ui, sans-serif !important;
 }
 
 /* QQ 经典侧栏与抽屉选项卡 */
-html[data-skin="qq-classic"] .sidebar,
-html[data-skin="qq-classic"] .ds-sidebar {
+html[data-skin="qq-classic"] #app-shell[data-ui-mode="roleplay"] .sidebar,
+html[data-skin="qq-classic"] #app-shell[data-ui-mode="roleplay"] .ds-sidebar {
   background: var(--bg-sidebar) !important;
   border-right: 1px solid light-dark(rgba(15, 23, 42, 0.07), rgba(255, 255, 255, 0.08)) !important;
 }
 
-html[data-skin="qq-classic"] .composer-dock,
-html[data-skin="qq-classic"] .ds-composer-dock {
+html[data-skin="qq-classic"] #app-shell[data-ui-mode="roleplay"] .composer-dock,
+html[data-skin="qq-classic"] #app-shell[data-ui-mode="roleplay"] .ds-composer-dock {
   background: light-dark(#F5F6F8, #16181E) !important;
   border-top: 1px solid light-dark(rgba(15, 23, 42, 0.06), rgba(255, 255, 255, 0.08)) !important;
 }
 
-html[data-skin="qq-classic"] .composer-card,
-html[data-skin="qq-classic"] .ds-composer-box {
+html[data-skin="qq-classic"] #app-shell[data-ui-mode="roleplay"] .composer-card,
+html[data-skin="qq-classic"] #app-shell[data-ui-mode="roleplay"] .ds-composer-box {
   background: light-dark(#FFFFFF, #1F232B) !important;
   border: 1px solid light-dark(rgba(15, 23, 42, 0.08), rgba(255, 255, 255, 0.12)) !important;
   border-radius: 14px !important;
   box-shadow: 0 1px 3px light-dark(rgba(15, 23, 42, 0.04), rgba(0, 0, 0, 0.25)) !important;
 }
 
-html[data-skin="qq-classic"] .composer-card textarea,
-html[data-skin="qq-classic"] .ds-composer-box textarea,
-html[data-skin="qq-classic"] #msg-input,
-html[data-skin="qq-classic"] #chat-input {
+html[data-skin="qq-classic"] #app-shell[data-ui-mode="roleplay"] .composer-card textarea,
+html[data-skin="qq-classic"] #app-shell[data-ui-mode="roleplay"] .ds-composer-box textarea,
+html[data-skin="qq-classic"] #app-shell[data-ui-mode="roleplay"] #msg-input,
+html[data-skin="qq-classic"] #app-shell[data-ui-mode="roleplay"] #chat-input {
   color: light-dark(#111827, #F8FAFC) !important;
 }
 
-html[data-skin="qq-classic"] .composer-card textarea::placeholder,
-html[data-skin="qq-classic"] .ds-composer-box textarea::placeholder {
+html[data-skin="qq-classic"] #app-shell[data-ui-mode="roleplay"] .composer-card textarea::placeholder,
+html[data-skin="qq-classic"] #app-shell[data-ui-mode="roleplay"] .ds-composer-box textarea::placeholder {
   color: light-dark(#64748B, #94A3B8) !important;
 }
 
-html[data-skin="qq-classic"] .send-btn,
-html[data-skin="qq-classic"] .ds-send-btn,
-html[data-skin="qq-classic"] .primary-btn,
-html[data-skin="qq-classic"] .mini-primary-btn {
+html[data-skin="qq-classic"] #app-shell[data-ui-mode="roleplay"] .send-btn,
+html[data-skin="qq-classic"] #app-shell[data-ui-mode="roleplay"] .ds-send-btn,
+html[data-skin="qq-classic"] #app-shell[data-ui-mode="roleplay"] .primary-btn,
+html[data-skin="qq-classic"] #app-shell[data-ui-mode="roleplay"] .mini-primary-btn {
   background: linear-gradient(135deg, #1E88FF 0%, #1677FF 100%) !important;
   color: #FFFFFF !important;
   border: none !important;
@@ -162,8 +159,8 @@ html[data-skin="qq-classic"] .mini-primary-btn {
 }
 
 /* QQ 我方发送气泡（经典 QQ 天蓝纯色圆角气泡，高对比白字） */
-html[data-skin="qq-classic"] #messages-viewport #messages-container .msg-row.user .msg-body,
-html[data-skin="qq-classic"] #messages-viewport #messages-container .msg-row.user .msg-body.user-bubble {
+html[data-skin="qq-classic"] #app-shell[data-ui-mode="roleplay"] #messages-viewport #messages-container .msg-row.user .msg-body,
+html[data-skin="qq-classic"] #app-shell[data-ui-mode="roleplay"] #messages-viewport #messages-container .msg-row.user .msg-body.user-bubble {
   background: linear-gradient(135deg, #1E88FF 0%, #1677FF 100%) !important;
   color: #FFFFFF !important;
   border: none !important;
@@ -172,35 +169,35 @@ html[data-skin="qq-classic"] #messages-viewport #messages-container .msg-row.use
   box-shadow: 0 1px 2px rgba(22, 119, 255, 0.16) !important;
 }
 
-html[data-skin="qq-classic"] #messages-viewport #messages-container .msg-row.user .user-bubble em.rp-action {
+html[data-skin="qq-classic"] #app-shell[data-ui-mode="roleplay"] #messages-viewport #messages-container .msg-row.user .user-bubble em.rp-action {
   color: rgba(255, 255, 255, 0.9) !important;
 }
 
 /* QQ 对方回复消息（消除多余重边框，分段呈现纯白/深灰洁净气泡，列表/代码块保留整洁白卡保护） */
-html[data-skin="qq-classic"] #messages-viewport #messages-container .msg-row.assistant .msg-body {
+html[data-skin="qq-classic"] #app-shell[data-ui-mode="roleplay"] #messages-viewport #messages-container .msg-row.assistant .msg-body {
   background: transparent !important;
   border: none !important;
   box-shadow: none !important;
   padding: 0 !important;
 }
 
-html[data-skin="qq-classic"] #messages-viewport #messages-container .msg-row.assistant .assistant-prose {
+html[data-skin="qq-classic"] #app-shell[data-ui-mode="roleplay"] #messages-viewport #messages-container .msg-row.assistant .assistant-prose {
   display: flex !important;
   flex-direction: column !important;
   align-items: flex-start !important;
   gap: 8px !important;
 }
 
-html[data-skin="qq-classic"] #messages-viewport #messages-container .msg-row.assistant .assistant-prose > p,
-html[data-skin="qq-classic"] #messages-viewport #messages-container .msg-row.assistant .assistant-prose > blockquote,
-html[data-skin="qq-classic"] #messages-viewport #messages-container .msg-row.assistant .assistant-prose > ul,
-html[data-skin="qq-classic"] #messages-viewport #messages-container .msg-row.assistant .assistant-prose > ol,
-html[data-skin="qq-classic"] #messages-viewport #messages-container .msg-row.assistant .assistant-prose > table,
-html[data-skin="qq-classic"] #messages-viewport #messages-container .msg-row.assistant .assistant-prose > pre,
-html[data-skin="qq-classic"] #messages-viewport #messages-container .msg-row.assistant .assistant-prose > h1,
-html[data-skin="qq-classic"] #messages-viewport #messages-container .msg-row.assistant .assistant-prose > h2,
-html[data-skin="qq-classic"] #messages-viewport #messages-container .msg-row.assistant .assistant-prose > h3,
-html[data-skin="qq-classic"] #messages-viewport #messages-container .msg-row.assistant .assistant-prose > h4 {
+html[data-skin="qq-classic"] #app-shell[data-ui-mode="roleplay"] #messages-viewport #messages-container .msg-row.assistant .assistant-prose > p,
+html[data-skin="qq-classic"] #app-shell[data-ui-mode="roleplay"] #messages-viewport #messages-container .msg-row.assistant .assistant-prose > blockquote,
+html[data-skin="qq-classic"] #app-shell[data-ui-mode="roleplay"] #messages-viewport #messages-container .msg-row.assistant .assistant-prose > ul,
+html[data-skin="qq-classic"] #app-shell[data-ui-mode="roleplay"] #messages-viewport #messages-container .msg-row.assistant .assistant-prose > ol,
+html[data-skin="qq-classic"] #app-shell[data-ui-mode="roleplay"] #messages-viewport #messages-container .msg-row.assistant .assistant-prose > table,
+html[data-skin="qq-classic"] #app-shell[data-ui-mode="roleplay"] #messages-viewport #messages-container .msg-row.assistant .assistant-prose > pre,
+html[data-skin="qq-classic"] #app-shell[data-ui-mode="roleplay"] #messages-viewport #messages-container .msg-row.assistant .assistant-prose > h1,
+html[data-skin="qq-classic"] #app-shell[data-ui-mode="roleplay"] #messages-viewport #messages-container .msg-row.assistant .assistant-prose > h2,
+html[data-skin="qq-classic"] #app-shell[data-ui-mode="roleplay"] #messages-viewport #messages-container .msg-row.assistant .assistant-prose > h3,
+html[data-skin="qq-classic"] #app-shell[data-ui-mode="roleplay"] #messages-viewport #messages-container .msg-row.assistant .assistant-prose > h4 {
   margin: 0 !important;
   padding: 10px 14px !important;
   border-radius: 12px !important;
@@ -211,49 +208,49 @@ html[data-skin="qq-classic"] #messages-viewport #messages-container .msg-row.ass
   box-shadow: 0 1px 2px light-dark(rgba(15, 23, 42, 0.04), rgba(0, 0, 0, 0.22)) !important;
 }
 
-html[data-skin="qq-classic"] #messages-viewport #messages-container .msg-row.assistant .assistant-prose > ul,
-html[data-skin="qq-classic"] #messages-viewport #messages-container .msg-row.assistant .assistant-prose > ol {
+html[data-skin="qq-classic"] #app-shell[data-ui-mode="roleplay"] #messages-viewport #messages-container .msg-row.assistant .assistant-prose > ul,
+html[data-skin="qq-classic"] #app-shell[data-ui-mode="roleplay"] #messages-viewport #messages-container .msg-row.assistant .assistant-prose > ol {
   padding-left: 28px !important;
 }
 
-html[data-skin="qq-classic"] #messages-viewport #messages-container .msg-row.assistant .assistant-prose em.rp-action {
+html[data-skin="qq-classic"] #app-shell[data-ui-mode="roleplay"] #messages-viewport #messages-container .msg-row.assistant .assistant-prose em.rp-action {
   color: light-dark(#4B5563, #9CA3AF) !important;
 }
 
-html[data-skin="qq-classic"] #messages-viewport #messages-container .msg-row.assistant .assistant-prose .rp-speech {
+html[data-skin="qq-classic"] #app-shell[data-ui-mode="roleplay"] #messages-viewport #messages-container .msg-row.assistant .assistant-prose .rp-speech {
   color: light-dark(#111827, #F9FAFB) !important;
   font-weight: 500 !important;
 }
 
-html[data-skin="qq-classic"] #messages-viewport #messages-container .msg-row.assistant .thought-details {
+html[data-skin="qq-classic"] #app-shell[data-ui-mode="roleplay"] #messages-viewport #messages-container .msg-row.assistant .thought-details {
   border-radius: 10px !important;
   background: light-dark(rgba(15, 23, 42, 0.045), rgba(255, 255, 255, 0.07)) !important;
   border: none !important;
   box-shadow: none !important;
 }
 
-html[data-skin="qq-classic"] #messages-viewport #messages-container .msg-row.assistant .msg-footer-bar .msg-tool-btn {
+html[data-skin="qq-classic"] #app-shell[data-ui-mode="roleplay"] #messages-viewport #messages-container .msg-row.assistant .msg-footer-bar .msg-tool-btn {
   background: transparent !important;
   border: none !important;
   box-shadow: none !important;
   color: light-dark(#64748B, #94A3B8) !important;
 }
 
-html[data-skin="qq-classic"] .persona-story-banner {
+html[data-skin="qq-classic"] #app-shell[data-ui-mode="roleplay"] .persona-story-banner {
   background: light-dark(#FFFFFF, #22252D) !important;
   color: light-dark(#334155, #CBD5E1) !important;
   border: 1px solid light-dark(rgba(15, 23, 42, 0.06), rgba(255, 255, 255, 0.08)) !important;
 }
 
-html[data-skin="qq-classic"] .pill-toggle,
-html[data-skin="qq-classic"] .mode-pill {
+html[data-skin="qq-classic"] #app-shell[data-ui-mode="roleplay"] .pill-toggle,
+html[data-skin="qq-classic"] #app-shell[data-ui-mode="roleplay"] .mode-pill {
   background: light-dark(#F1F5F9, rgba(255, 255, 255, 0.08)) !important;
   color: light-dark(#334155, #CBD5E1) !important;
   border: 1px solid light-dark(#CBD5E1, rgba(255, 255, 255, 0.14)) !important;
 }
 
-html[data-skin="qq-classic"] .pill-toggle.active,
-html[data-skin="qq-classic"] .mode-pill.active {
+html[data-skin="qq-classic"] #app-shell[data-ui-mode="roleplay"] .pill-toggle.active,
+html[data-skin="qq-classic"] #app-shell[data-ui-mode="roleplay"] .mode-pill.active {
   background: light-dark(rgba(22, 119, 255, 0.12), rgba(59, 130, 246, 0.22)) !important;
   color: light-dark(#1D4ED8, #93C5FD) !important;
   border-color: light-dark(#93C5FD, rgba(96, 165, 250, 0.45)) !important;

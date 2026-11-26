@@ -118,7 +118,19 @@ public class MainActivity extends Activity {
         ));
         setContentView(root);
 
-        if (savedInstanceState != null) {
+        boolean versionChanged = false;
+        try {
+            long curVerCode = AppUpdateManager.getInstalledVersionCode(this);
+            SharedPreferences verSp = getSharedPreferences(PREF_AUTH, MODE_PRIVATE);
+            long lastVerCode = verSp.getLong("last_launched_version_code", -1L);
+            if (lastVerCode != curVerCode) {
+                versionChanged = true;
+                webView.clearCache(true);
+                verSp.edit().putLong("last_launched_version_code", curVerCode).apply();
+            }
+        } catch (Exception ignored) {}
+
+        if (savedInstanceState != null && !versionChanged) {
             webView.restoreState(savedInstanceState);
         } else {
             webView.loadUrl(START_URL);
@@ -399,6 +411,7 @@ public class MainActivity extends Activity {
         settings.setUseWideViewPort(true);
         settings.setLoadWithOverviewMode(true);
         settings.setTextZoom(100);
+        settings.setCacheMode(WebSettings.LOAD_NO_CACHE);
     }
 
     private void dispatchJsUpdateCheckResult(final String resultJson) {

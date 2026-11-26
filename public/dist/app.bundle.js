@@ -4662,8 +4662,8 @@ renderDialog();
 if (!dialog.open) dialog.showModal();
 }
 const SKIN_PRESETS = [
-{ id: 'qq-classic', name: '经典 QQ 聊天', desc: '默认推荐 · 洁净灰底 · 蓝白气泡', bg: 'linear-gradient(135deg,#f2f3f5 52%,#1677ff 52%)', dot: '#1677ff' },
-{ id: 'default', name: '原生极客经典', desc: '跟随模式原生配色与排版', bg: 'linear-gradient(135deg,#f8e4f1,#231d3a)', dot: '#e2559d' },
+{ id: 'default', name: '原生极客经典', desc: '默认原版 · 跟随模式原生配色与排版', bg: 'linear-gradient(135deg,#f8e4f1,#231d3a)', dot: '#e2559d' },
+{ id: 'qq-classic', name: '经典 QQ 聊天', desc: '洁净灰底 · 纯白对话 · QQ 蓝气泡', bg: 'linear-gradient(135deg,#f2f3f5 52%,#1677ff 52%)', dot: '#1677ff' },
 { id: 'obsidian-gold', name: '曜石流金', desc: '深邃暗夜 · 暖金星轨', bg: '#0d0f14', dot: '#e5c185' },
 { id: 'mist-silk', name: '晨雾丝绸', desc: '柔光浅色 · 莫兰迪棕', bg: '#f6f4f8', dot: '#b88b72' },
 { id: 'sakura-dawn', name: '朝雾樱白', desc: '二次元粉樱 · 轻盈甜暖', bg: '#fff5fa', dot: '#e2559d' },
@@ -4714,11 +4714,24 @@ function loadSkinFromStorage() {
 try {
 const raw = localStorage.getItem(SKIN_STORAGE_KEY);
 if (!raw) {
+try { localStorage.setItem('xingyu_v262_restore_native_v1', '1'); } catch {}
 return { ...DEFAULT_SKIN_CONFIG };
 }
 const parsed = JSON.parse(raw);
 if (parsed && parsed.preset) {
 parsed.preset = mapFromV260Preset(parsed.preset);
+}
+if (localStorage.getItem('xingyu_v262_restore_native_v1') !== '1') {
+const hadOldQqMigration = localStorage.getItem('xingyu_qq_default_migrated_v1') === '1';
+if ((hadOldQqMigration && parsed?.preset === 'qq-classic') || parsed?.preset === 'minimal-studio') {
+parsed.preset = 'default';
+parsed.bubbleStyle = 'soft';
+try {
+localStorage.setItem(SKIN_STORAGE_KEY, JSON.stringify(Object.assign({}, DEFAULT_SKIN_CONFIG, parsed)));
+localStorage.removeItem('xingyu_qq_default_migrated_v1');
+} catch {}
+}
+try { localStorage.setItem('xingyu_v262_restore_native_v1', '1'); } catch {}
 }
 return Object.assign({}, DEFAULT_SKIN_CONFIG, parsed);
 } catch {
@@ -4790,9 +4803,9 @@ try {
 const skinVal = document.getElementById('mfs-skin-value');
 if (skinVal) {
 const p = SKIN_PRESETS.find((x) => x.id === currentSkin.preset);
-const pName = p ? p.name : '经典 QQ 聊天';
+const pName = p ? p.name : '原生极客经典';
 const bubbleNames = { soft: '柔光圆润', 'im-bubble': '逐句分段', glass: '玻璃拟态', outline: '极简细框', letter: '复古信纸' };
-const bName = bubbleNames[currentSkin.bubbleStyle] || '逐句分段';
+const bName = bubbleNames[currentSkin.bubbleStyle] || '柔光圆润';
 skinVal.textContent = `${pName} · ${bName}`;
 }
 if (typeof window.__syncDefaultThemeRadios === 'function') {
@@ -5091,14 +5104,6 @@ updateStudioPreviewAndStates(container);
 }
 function syncFromServer(serverSkinConfig) {
 if (serverSkinConfig && typeof serverSkinConfig === 'object') {
-if (
-serverSkinConfig.preset === 'default' &&
-(!serverSkinConfig.wallpaperType || serverSkinConfig.wallpaperType === 'none') &&
-currentSkin.preset === 'qq-classic' &&
-localStorage.getItem('xingyu_qq_default_migrated_v1') === '1'
-) {
-return;
-}
 applySkin(serverSkinConfig, { persist: true, syncServer: false });
 }
 }
@@ -5220,7 +5225,7 @@ lastInteractionAt: Date.now(),
 hasMoreMessages: false,
 totalMessages: 0,
 oldestMessageId: 0,
-appVersion: '2.5.7',
+appVersion: '2.6.2',
 tourIndex: 0,
 tourActive: false,
 llmMode: localStorage.getItem('user_llm_mode') || 'local_antigravity',
@@ -5601,7 +5606,7 @@ return null;
 }
 }
 function syncWebVersionBadges(verStr) {
-const raw = String(verStr || state.appVersion || '2.5.7').trim().replace(/^v/i, '');
+const raw = String(verStr || state.appVersion || '2.6.2').trim().replace(/^v/i, '');
 if (!raw) return;
 const vLabel = `v${raw}`;
 const isNativeApk = Boolean(
@@ -8615,7 +8620,7 @@ setTxt(
 'adm-kpi-channel-sub',
 tunnelProbe?.online ? '本机电脑 Antigravity 直连' : report.channels?.localCli?.transport === 'local_cli' ? '本机 CLI 就绪' : '电脑离线时自动回退'
 );
-setTxt('adm-sys-meta', `v${sys.appVersion || '2.5.7'} · ${sys.platform || ''} · Node ${sys.nodeVersion || ''} · ${sys.cpuCores || 1} 核 (负载 ${sys.load1m ?? 0})`);
+setTxt('adm-sys-meta', `v${sys.appVersion || '2.6.2'} · ${sys.platform || ''} · Node ${sys.nodeVersion || ''} · ${sys.cpuCores || 1} 核 (负载 ${sys.load1m ?? 0})`);
 setTxt('adm-stat-mem', `${sys.memUsedPct ?? 0}% (进程 ${sys.rssMb ?? 0} MB)`);
 setTxt('adm-stat-db', `${formatBytesCompact(dbInfo.dbSizeBytes)} / ${formatBytesCompact(dbInfo.walSizeBytes)}`);
 setTxt('adm-stat-uptime', formatUptimeCompact(sys.uptimeSec));
@@ -19415,8 +19420,8 @@ runCloneBtn.innerHTML = origHtml;
 })();
 ;
 (() => {
-const CURRENT_APK_VERSION = '2.5.7';
-const CURRENT_APK_CODE = 154;
+const CURRENT_APK_VERSION = '2.6.2';
+const CURRENT_APK_CODE = 157;
 const DEEPSEEK_API_KEYS_URL = 'https://platform.deepseek.com/api_keys';
 const PUBLIC_WEB_ORIGIN = 'https://star.claudexxb.online';
 const GITHUB_RELEASES_URL = 'https://github.com/qts2218346424-cyber/persona-chat-studio/releases';

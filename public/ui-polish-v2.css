@@ -581,168 +581,38 @@ html body #app-shell[data-ui-mode="roleplay"] #messages-viewport #messages-conta
 #right-panel #inline-persona-form .avatar-field{width:68px!important;flex:0 0 68px!important;}
 #right-panel #inline-persona-form .avatar-field input{text-align:center!important;font-weight:700!important;}
 
-/* 右侧边栏 #right-panel 全模式/全皮肤 WCAG AA 自适应高对比度引擎：彻底杜绝浅色白底出现淡白文字与淡白按钮 */
-.app-shell #right-panel{
-  background:var(--bg-inspector,light-dark(#f7f8fa,rgba(18,20,30,.94)))!important;
-  color:var(--text-primary,light-dark(#0f172a,#f1f5f9))!important;
-  border-left:1px solid light-dark(rgba(15,23,42,.08),rgba(255,255,255,.10))!important;
-}
-
-.app-shell #right-panel .inspector-tabs{
-  background:light-dark(#ffffff,rgba(15,17,26,.65))!important;
-  border-bottom:1px solid light-dark(rgba(15,23,42,.08),rgba(255,255,255,.10))!important;
-}
-
-.app-shell #right-panel .inspector-tabs .tab-btn{
-  color:light-dark(#475569,#94a3b8)!important;
-  font-weight:600!important;
-  border-radius:10px!important;
-}
-
-.app-shell #right-panel .inspector-tabs .tab-btn:hover{
-  color:light-dark(#0f172a,#f8fafc)!important;
-  background:light-dark(rgba(15,23,42,.05),rgba(255,255,255,.08))!important;
-}
-
-.app-shell #right-panel .inspector-tabs .tab-btn.active{
-  background:var(--brand-soft,light-dark(rgba(22,119,255,.12),rgba(229,193,133,.16)))!important;
-  color:var(--accent-gold-text,light-dark(#1d4ed8,#f3d7a3))!important;
-  border:1px solid var(--border-strong,light-dark(rgba(22,119,255,.28),rgba(229,193,133,.36)))!important;
-}
-
-.app-shell #right-panel .inspector-header .close-btn,
-.app-shell #right-panel .inspector-tabs .icon-btn{
-  color:light-dark(#1e293b,#e2e8f0)!important;
-  background:light-dark(#f1f5f9,rgba(255,255,255,.08))!important;
-  border:1px solid light-dark(#cbd5e1,rgba(255,255,255,.14))!important;
-}
-
-.app-shell #right-panel .memory-block,
-.app-shell #right-panel .session-prompt-card,
-.app-shell #right-panel .nurturing-card,
-.app-shell #right-panel .telemetry-card,
-.app-shell #right-panel .session-iso-banner,
-.app-shell #right-panel .upload-mini-dropzone,
-.app-shell #right-panel #inline-persona-form,
-.app-shell #right-panel .lore-card,
-.app-shell #right-panel .memory-card,
-.app-shell #right-panel .ds-suite-card,
-.app-shell #right-panel .constellation-compass-card{
-  background:light-dark(#ffffff,rgba(255,255,255,.06))!important;
-  border:1px solid light-dark(rgba(15,23,42,.09),rgba(255,255,255,.12))!important;
-  color:light-dark(#0f172a,#f1f5f9)!important;
-  box-shadow:0 1px 3px light-dark(rgba(15,23,42,.04),rgba(0,0,0,.22))!important;
-}
-
-.app-shell #right-panel .upload-mini-dropzone{
-  background:light-dark(#f8fafc,rgba(255,255,255,.04))!important;
-  border:1.5px dashed light-dark(#94a3b8,rgba(255,255,255,.24))!important;
-}
-
-.app-shell #right-panel .drop-icon{
-  color:light-dark(#334155,#cbd5e1)!important;
-}
-
-.app-shell #right-panel label,
-.app-shell #right-panel strong,
-.app-shell #right-panel .block-title-row,
-.app-shell #right-panel .block-title-row span:first-child,
-.app-shell #right-panel .compact-block-label,
-.app-shell #right-panel .compact-block-label span,
-.app-shell #right-panel .field-group label,
-.app-shell #right-panel .telemetry-title,
-.app-shell #right-panel .drop-texts strong,
-.app-shell #right-panel .stat-label-line label,
-.app-shell #right-panel .constellation-title{
-  color:light-dark(#0f172a,#f1f5f9)!important;
-}
-
-.app-shell #right-panel .ds-suite-desc,
-.app-shell #right-panel .drop-texts span,
-.app-shell #right-panel .muted-count,
-.app-shell #right-panel .lore-keys,
-.app-shell #right-panel .session-scope-check,
-.app-shell #right-panel .session-scope-check span,
-.app-shell #right-panel .telemetry-fold-summary,
-.app-shell #right-panel .nurture-directive-tip,
-.app-shell #right-panel .constellation-summary,
-.app-shell #right-panel .stat-label-line span,
-.app-shell #right-panel .tier-legend,
-.app-shell #right-panel .session-iso-text span{
-  color:light-dark(#475569,#cbd5e1)!important;
-}
-
-.app-shell #right-panel .lore-body,
-.app-shell #right-panel .memory-text{
-  color:light-dark(#1e293b,#e2e8f0)!important;
-}
-
-.app-shell #right-panel .lore-title{
-  color:var(--accent-gold-text,light-dark(#1d4ed8,#c4b5fd))!important;
-}
-
-.app-shell #right-panel .lore-card.triggered{
-  background:light-dark(rgba(22,119,255,.07),rgba(139,92,246,.16))!important;
-  border-color:light-dark(rgba(22,119,255,.32),rgba(167,139,250,.40))!important;
-}
-
-/* 次级按钮与快捷预设标签胶囊：浅色使用明显冷灰衬底 + #1E293B 高对比深色字（≥ 12:1 对比度），绝不再白底配浅白字 */
-.app-shell #right-panel .mini-btn,
-.app-shell #right-panel .session-preset-chip,
-.app-shell #right-panel .secondary-btn,
-.app-shell #right-panel #clear-session-prompt-btn,
-.app-shell #right-panel #trigger-inline-doc-btn,
-.app-shell #right-panel #reset-persona-override-btn{
-  background:light-dark(#f1f5f9,rgba(255,255,255,.10))!important;
-  color:light-dark(#1e293b,#f1f5f9)!important;
-  border:1px solid light-dark(#cbd5e1,rgba(255,255,255,.20))!important;
-  font-weight:600!important;
-  transition:background .16s ease,border-color .16s ease,color .16s ease!important;
-}
-
-.app-shell #right-panel .mini-btn:hover,
-.app-shell #right-panel .session-preset-chip:hover,
-.app-shell #right-panel .secondary-btn:hover,
-.app-shell #right-panel #clear-session-prompt-btn:hover,
-.app-shell #right-panel #trigger-inline-doc-btn:hover,
-.app-shell #right-panel #reset-persona-override-btn:hover{
-  background:light-dark(#e2e8f0,rgba(255,255,255,.18))!important;
-  border-color:light-dark(#94a3b8,rgba(255,255,255,.35))!important;
-  color:light-dark(#0f172a,#ffffff)!important;
-}
-
-.app-shell #right-panel input:not([type="checkbox"]),
-.app-shell #right-panel textarea,
-.app-shell #right-panel select{
-  background:light-dark(#ffffff,rgba(12,14,22,.78))!important;
-  color:light-dark(#0f172a,#f8fafc)!important;
-  border:1px solid light-dark(#cbd5e1,rgba(255,255,255,.18))!important;
-}
-
-.app-shell #right-panel input:focus-visible,
-.app-shell #right-panel textarea:focus-visible,
-.app-shell #right-panel button:focus-visible{
-  outline:2px solid var(--brand-primary,#1677ff)!important;
-  outline-offset:1px!important;
-}
-
-.app-shell #right-panel input::placeholder,
-.app-shell #right-panel textarea::placeholder{
-  color:light-dark(#64748b,#94a3b8)!important;
-}
-
-.app-shell #right-panel .ds-cache-pill{
-  background:light-dark(#ecfdf5,rgba(16,185,129,.18))!important;
-  color:light-dark(#047857,#6ee7b7)!important;
-  border:1px solid light-dark(#a7f3d0,rgba(16,185,129,.35))!important;
-  font-weight:600!important;
-}
-
-/* 显式深色皮肤（曜石流金/绯红古卷/赛博霓虹）强制深色抽屉护航 */
+/* 默认暗夜剧场或深色皮肤下，恢复原版和谐深色玻璃抽屉 */
+.app-shell[data-ui-mode="roleplay"] #right-panel,
 html[data-skin="obsidian-gold"] #right-panel,
 html[data-skin="crimson-scroll"] #right-panel,
-html[data-skin="cyber-neon"] #right-panel{color-scheme:dark;background:rgba(18,20,30,.94)!important;color:#f1f5f9!important;}
+html[data-skin="cyber-neon"] #right-panel{color-scheme:dark;background:rgba(18,20,30,.94)!important;color:#f1f5f9!important;border-left:1px solid rgba(255,255,255,.10)!important;}
 
+.app-shell[data-ui-mode="roleplay"] #right-panel .inspector-tabs,
+html[data-skin="obsidian-gold"] #right-panel .inspector-tabs,
+html[data-skin="crimson-scroll"] #right-panel .inspector-tabs,
+html[data-skin="cyber-neon"] #right-panel .inspector-tabs{background:rgba(15,17,26,.65)!important;border-bottom:1px solid rgba(255,255,255,.10)!important;}
+
+.app-shell[data-ui-mode="roleplay"] #right-panel .inspector-tabs .tab-btn,
+html[data-skin="obsidian-gold"] #right-panel .inspector-tabs .tab-btn,
+html[data-skin="crimson-scroll"] #right-panel .inspector-tabs .tab-btn,
+html[data-skin="cyber-neon"] #right-panel .inspector-tabs .tab-btn{color:#94a3b8!important;font-weight:600!important;border-radius:10px!important;}
+
+.app-shell[data-ui-mode="roleplay"] #right-panel .inspector-tabs .tab-btn.active,
+html[data-skin="obsidian-gold"] #right-panel .inspector-tabs .tab-btn.active,
+html[data-skin="crimson-scroll"] #right-panel .inspector-tabs .tab-btn.active,
+html[data-skin="cyber-neon"] #right-panel .inspector-tabs .tab-btn.active{background:rgba(229,193,133,.16)!important;color:#f3d7a3!important;border:1px solid rgba(229,193,133,.36)!important;}
+
+.app-shell[data-ui-mode="roleplay"] #right-panel .memory-block,
+.app-shell[data-ui-mode="roleplay"] #right-panel .session-prompt-card,
+.app-shell[data-ui-mode="roleplay"] #right-panel .nurturing-card,
+.app-shell[data-ui-mode="roleplay"] #right-panel .telemetry-card,
+.app-shell[data-ui-mode="roleplay"] #right-panel .session-iso-banner,
+.app-shell[data-ui-mode="roleplay"] #right-panel .upload-mini-dropzone,
+.app-shell[data-ui-mode="roleplay"] #right-panel #inline-persona-form,
+.app-shell[data-ui-mode="roleplay"] #right-panel .lore-card,
+.app-shell[data-ui-mode="roleplay"] #right-panel .memory-card,
+.app-shell[data-ui-mode="roleplay"] #right-panel .ds-suite-card,
+.app-shell[data-ui-mode="roleplay"] #right-panel .constellation-compass-card,
 html[data-skin="obsidian-gold"] #right-panel .memory-block,
 html[data-skin="obsidian-gold"] #right-panel .session-prompt-card,
 html[data-skin="obsidian-gold"] #right-panel .nurturing-card,
@@ -760,15 +630,291 @@ html[data-skin="cyber-neon"] #right-panel .session-prompt-card,
 html[data-skin="cyber-neon"] #right-panel .nurturing-card,
 html[data-skin="cyber-neon"] #right-panel .upload-mini-dropzone,
 html[data-skin="cyber-neon"] #right-panel #inline-persona-form,
-html[data-skin="cyber-neon"] #right-panel .lore-card{color-scheme:dark;}
+html[data-skin="cyber-neon"] #right-panel .lore-card{background:rgba(255,255,255,.06)!important;border:1px solid rgba(255,255,255,.11)!important;color:#e2e8f0!important;box-shadow:none!important;}
 
-/* 显式浅色皮肤与浅色QQ主题护航：锁定 light color-scheme，绝不误染系统夜间文字颜色 */
+.app-shell[data-ui-mode="roleplay"] #right-panel .lore-card.triggered{background:rgba(139,92,246,.14)!important;border-color:rgba(167,139,250,.38)!important;}
+
+.app-shell[data-ui-mode="roleplay"] #right-panel label,
+.app-shell[data-ui-mode="roleplay"] #right-panel strong,
+.app-shell[data-ui-mode="roleplay"] #right-panel .block-title-row,
+.app-shell[data-ui-mode="roleplay"] #right-panel .block-title-row span:first-child,
+.app-shell[data-ui-mode="roleplay"] #right-panel .compact-block-label,
+.app-shell[data-ui-mode="roleplay"] #right-panel .compact-block-label span,
+.app-shell[data-ui-mode="roleplay"] #right-panel .field-group label,
+.app-shell[data-ui-mode="roleplay"] #right-panel .telemetry-title,
+.app-shell[data-ui-mode="roleplay"] #right-panel .drop-texts strong,
+.app-shell[data-ui-mode="roleplay"] #right-panel .stat-label-line label,
+.app-shell[data-ui-mode="roleplay"] #right-panel .constellation-title{color:#f1f5f9!important;}
+
+.app-shell[data-ui-mode="roleplay"] #right-panel .ds-suite-desc,
+.app-shell[data-ui-mode="roleplay"] #right-panel .drop-texts span,
+.app-shell[data-ui-mode="roleplay"] #right-panel .muted-count,
+.app-shell[data-ui-mode="roleplay"] #right-panel .lore-keys,
+.app-shell[data-ui-mode="roleplay"] #right-panel .session-scope-check,
+.app-shell[data-ui-mode="roleplay"] #right-panel .session-scope-check span,
+.app-shell[data-ui-mode="roleplay"] #right-panel .telemetry-fold-summary,
+.app-shell[data-ui-mode="roleplay"] #right-panel .nurture-directive-tip,
+.app-shell[data-ui-mode="roleplay"] #right-panel .constellation-summary,
+.app-shell[data-ui-mode="roleplay"] #right-panel .stat-label-line span,
+.app-shell[data-ui-mode="roleplay"] #right-panel .tier-legend,
+.app-shell[data-ui-mode="roleplay"] #right-panel .session-iso-text span{color:#cbd5e1!important;}
+
+.app-shell[data-ui-mode="roleplay"] #right-panel .lore-title{color:#c4b5fd!important;}
+.app-shell[data-ui-mode="roleplay"] #right-panel .lore-body,
+.app-shell[data-ui-mode="roleplay"] #right-panel .memory-text{color:#e2e8f0!important;}
+
+.app-shell[data-ui-mode="roleplay"] #right-panel input:not([type="checkbox"]),
+.app-shell[data-ui-mode="roleplay"] #right-panel textarea,
+.app-shell[data-ui-mode="roleplay"] #right-panel select{background:rgba(12,14,22,.72)!important;color:#f8fafc!important;border:1px solid rgba(255,255,255,.16)!important;}
+.app-shell[data-ui-mode="roleplay"] #right-panel input::placeholder,
+.app-shell[data-ui-mode="roleplay"] #right-panel textarea::placeholder{color:#94a3b8!important;}
+
+.app-shell[data-ui-mode="roleplay"] #right-panel .mini-btn,
+.app-shell[data-ui-mode="roleplay"] #right-panel .session-preset-chip,
+.app-shell[data-ui-mode="roleplay"] #right-panel .secondary-btn,
+.app-shell[data-ui-mode="roleplay"] #right-panel #clear-session-prompt-btn,
+.app-shell[data-ui-mode="roleplay"] #right-panel #trigger-inline-doc-btn,
+.app-shell[data-ui-mode="roleplay"] #right-panel #reset-persona-override-btn,
+.app-shell[data-ui-mode="roleplay"] #right-panel .inspector-header .close-btn,
+.app-shell[data-ui-mode="roleplay"] #right-panel .inspector-tabs .icon-btn{background:rgba(255,255,255,.09)!important;color:#e2e8f0!important;border:1px solid rgba(255,255,255,.16)!important;}
+
+/* 浅色皮肤、QQ浅色主题或显式切为浅色模式时，右侧栏锁定高对比浅色白底深字（兼容全部 Android WebView） */
 html[data-skin="mist-silk"] #right-panel,
 html[data-skin="sakura-dawn"] #right-panel,
-html[data-skin="eink-paper"] #right-panel{color-scheme:light;}
+html[data-skin="eink-paper"] #right-panel,
+html[data-skin="qq-classic"] #right-panel,
+html[style*="color-scheme: light"]:not([style*="light dark"]) #right-panel{color-scheme:light;background:#f7f8fa!important;color:#0f172a!important;border-left:1px solid rgba(15,23,42,.10)!important;}
 
-html[data-skin="qq-classic"] #right-panel .inspector-tabs .tab-btn.active{
-  background:light-dark(#eff6ff,rgba(37,99,235,.22))!important;
-  color:light-dark(#1d4ed8,#93c5fd)!important;
-  border-color:light-dark(#bfdbfe,rgba(96,165,250,.4))!important;
-}
+html[data-skin="mist-silk"] #right-panel .inspector-tabs,
+html[data-skin="sakura-dawn"] #right-panel .inspector-tabs,
+html[data-skin="eink-paper"] #right-panel .inspector-tabs,
+html[data-skin="qq-classic"] #right-panel .inspector-tabs,
+html[style*="color-scheme: light"]:not([style*="light dark"]) #right-panel .inspector-tabs{background:#ffffff!important;border-bottom:1px solid rgba(15,23,42,.08)!important;}
+
+html[data-skin="mist-silk"] #right-panel .inspector-tabs .tab-btn,
+html[data-skin="sakura-dawn"] #right-panel .inspector-tabs .tab-btn,
+html[data-skin="eink-paper"] #right-panel .inspector-tabs .tab-btn,
+html[data-skin="qq-classic"] #right-panel .inspector-tabs .tab-btn,
+html[style*="color-scheme: light"]:not([style*="light dark"]) #right-panel .inspector-tabs .tab-btn{color:#475569!important;}
+
+html[data-skin="mist-silk"] #right-panel .inspector-tabs .tab-btn.active,
+html[data-skin="sakura-dawn"] #right-panel .inspector-tabs .tab-btn.active,
+html[data-skin="eink-paper"] #right-panel .inspector-tabs .tab-btn.active,
+html[data-skin="qq-classic"] #right-panel .inspector-tabs .tab-btn.active,
+html[style*="color-scheme: light"]:not([style*="light dark"]) #right-panel .inspector-tabs .tab-btn.active{background:#eff6ff!important;color:#1d4ed8!important;border:1px solid #bfdbfe!important;}
+
+html[data-skin="mist-silk"] #right-panel .memory-block,
+html[data-skin="mist-silk"] #right-panel .session-prompt-card,
+html[data-skin="mist-silk"] #right-panel .nurturing-card,
+html[data-skin="mist-silk"] #right-panel .telemetry-card,
+html[data-skin="mist-silk"] #right-panel .session-iso-banner,
+html[data-skin="mist-silk"] #right-panel .upload-mini-dropzone,
+html[data-skin="mist-silk"] #right-panel #inline-persona-form,
+html[data-skin="mist-silk"] #right-panel .lore-card,
+html[data-skin="mist-silk"] #right-panel .memory-card,
+html[data-skin="mist-silk"] #right-panel .ds-suite-card,
+html[data-skin="mist-silk"] #right-panel .constellation-compass-card,
+html[data-skin="sakura-dawn"] #right-panel .memory-block,
+html[data-skin="sakura-dawn"] #right-panel .session-prompt-card,
+html[data-skin="sakura-dawn"] #right-panel .nurturing-card,
+html[data-skin="sakura-dawn"] #right-panel .telemetry-card,
+html[data-skin="sakura-dawn"] #right-panel .session-iso-banner,
+html[data-skin="sakura-dawn"] #right-panel .upload-mini-dropzone,
+html[data-skin="sakura-dawn"] #right-panel #inline-persona-form,
+html[data-skin="sakura-dawn"] #right-panel .lore-card,
+html[data-skin="sakura-dawn"] #right-panel .memory-card,
+html[data-skin="sakura-dawn"] #right-panel .ds-suite-card,
+html[data-skin="sakura-dawn"] #right-panel .constellation-compass-card,
+html[data-skin="eink-paper"] #right-panel .memory-block,
+html[data-skin="eink-paper"] #right-panel .session-prompt-card,
+html[data-skin="eink-paper"] #right-panel .nurturing-card,
+html[data-skin="eink-paper"] #right-panel .telemetry-card,
+html[data-skin="eink-paper"] #right-panel .session-iso-banner,
+html[data-skin="eink-paper"] #right-panel .upload-mini-dropzone,
+html[data-skin="eink-paper"] #right-panel #inline-persona-form,
+html[data-skin="eink-paper"] #right-panel .lore-card,
+html[data-skin="eink-paper"] #right-panel .memory-card,
+html[data-skin="eink-paper"] #right-panel .ds-suite-card,
+html[data-skin="eink-paper"] #right-panel .constellation-compass-card,
+html[data-skin="qq-classic"] #right-panel .memory-block,
+html[data-skin="qq-classic"] #right-panel .session-prompt-card,
+html[data-skin="qq-classic"] #right-panel .nurturing-card,
+html[data-skin="qq-classic"] #right-panel .telemetry-card,
+html[data-skin="qq-classic"] #right-panel .session-iso-banner,
+html[data-skin="qq-classic"] #right-panel .upload-mini-dropzone,
+html[data-skin="qq-classic"] #right-panel #inline-persona-form,
+html[data-skin="qq-classic"] #right-panel .lore-card,
+html[data-skin="qq-classic"] #right-panel .memory-card,
+html[data-skin="qq-classic"] #right-panel .ds-suite-card,
+html[data-skin="qq-classic"] #right-panel .constellation-compass-card,
+html[style*="color-scheme: light"]:not([style*="light dark"]) #right-panel .memory-block,
+html[style*="color-scheme: light"]:not([style*="light dark"]) #right-panel .session-prompt-card,
+html[style*="color-scheme: light"]:not([style*="light dark"]) #right-panel .nurturing-card,
+html[style*="color-scheme: light"]:not([style*="light dark"]) #right-panel .telemetry-card,
+html[style*="color-scheme: light"]:not([style*="light dark"]) #right-panel .session-iso-banner,
+html[style*="color-scheme: light"]:not([style*="light dark"]) #right-panel .upload-mini-dropzone,
+html[style*="color-scheme: light"]:not([style*="light dark"]) #right-panel #inline-persona-form,
+html[style*="color-scheme: light"]:not([style*="light dark"]) #right-panel .lore-card,
+html[style*="color-scheme: light"]:not([style*="light dark"]) #right-panel .memory-card,
+html[style*="color-scheme: light"]:not([style*="light dark"]) #right-panel .ds-suite-card,
+html[style*="color-scheme: light"]:not([style*="light dark"]) #right-panel .constellation-compass-card{background:#ffffff!important;border:1px solid rgba(15,23,42,.09)!important;color:#0f172a!important;box-shadow:0 1px 3px rgba(15,23,42,.04)!important;}
+
+html[data-skin="mist-silk"] #right-panel label,
+html[data-skin="mist-silk"] #right-panel strong,
+html[data-skin="mist-silk"] #right-panel .block-title-row,
+html[data-skin="mist-silk"] #right-panel .block-title-row span:first-child,
+html[data-skin="mist-silk"] #right-panel .compact-block-label,
+html[data-skin="mist-silk"] #right-panel .compact-block-label span,
+html[data-skin="mist-silk"] #right-panel .field-group label,
+html[data-skin="mist-silk"] #right-panel .telemetry-title,
+html[data-skin="mist-silk"] #right-panel .drop-texts strong,
+html[data-skin="mist-silk"] #right-panel .stat-label-line label,
+html[data-skin="mist-silk"] #right-panel .constellation-title,
+html[data-skin="sakura-dawn"] #right-panel label,
+html[data-skin="sakura-dawn"] #right-panel strong,
+html[data-skin="sakura-dawn"] #right-panel .block-title-row,
+html[data-skin="sakura-dawn"] #right-panel .block-title-row span:first-child,
+html[data-skin="sakura-dawn"] #right-panel .compact-block-label,
+html[data-skin="sakura-dawn"] #right-panel .compact-block-label span,
+html[data-skin="sakura-dawn"] #right-panel .field-group label,
+html[data-skin="sakura-dawn"] #right-panel .telemetry-title,
+html[data-skin="sakura-dawn"] #right-panel .drop-texts strong,
+html[data-skin="sakura-dawn"] #right-panel .stat-label-line label,
+html[data-skin="sakura-dawn"] #right-panel .constellation-title,
+html[data-skin="eink-paper"] #right-panel label,
+html[data-skin="eink-paper"] #right-panel strong,
+html[data-skin="eink-paper"] #right-panel .block-title-row,
+html[data-skin="eink-paper"] #right-panel .block-title-row span:first-child,
+html[data-skin="eink-paper"] #right-panel .compact-block-label,
+html[data-skin="eink-paper"] #right-panel .compact-block-label span,
+html[data-skin="eink-paper"] #right-panel .field-group label,
+html[data-skin="eink-paper"] #right-panel .telemetry-title,
+html[data-skin="eink-paper"] #right-panel .drop-texts strong,
+html[data-skin="eink-paper"] #right-panel .stat-label-line label,
+html[data-skin="eink-paper"] #right-panel .constellation-title,
+html[data-skin="qq-classic"] #right-panel label,
+html[data-skin="qq-classic"] #right-panel strong,
+html[data-skin="qq-classic"] #right-panel .block-title-row,
+html[data-skin="qq-classic"] #right-panel .block-title-row span:first-child,
+html[data-skin="qq-classic"] #right-panel .compact-block-label,
+html[data-skin="qq-classic"] #right-panel .compact-block-label span,
+html[data-skin="qq-classic"] #right-panel .field-group label,
+html[data-skin="qq-classic"] #right-panel .telemetry-title,
+html[data-skin="qq-classic"] #right-panel .drop-texts strong,
+html[data-skin="qq-classic"] #right-panel .stat-label-line label,
+html[data-skin="qq-classic"] #right-panel .constellation-title,
+html[style*="color-scheme: light"]:not([style*="light dark"]) #right-panel label,
+html[style*="color-scheme: light"]:not([style*="light dark"]) #right-panel strong,
+html[style*="color-scheme: light"]:not([style*="light dark"]) #right-panel .block-title-row,
+html[style*="color-scheme: light"]:not([style*="light dark"]) #right-panel .block-title-row span:first-child,
+html[style*="color-scheme: light"]:not([style*="light dark"]) #right-panel .compact-block-label,
+html[style*="color-scheme: light"]:not([style*="light dark"]) #right-panel .compact-block-label span,
+html[style*="color-scheme: light"]:not([style*="light dark"]) #right-panel .field-group label,
+html[style*="color-scheme: light"]:not([style*="light dark"]) #right-panel .telemetry-title,
+html[style*="color-scheme: light"]:not([style*="light dark"]) #right-panel .drop-texts strong,
+html[style*="color-scheme: light"]:not([style*="light dark"]) #right-panel .stat-label-line label,
+html[style*="color-scheme: light"]:not([style*="light dark"]) #right-panel .constellation-title{color:#0f172a!important;}
+
+html[data-skin="mist-silk"] #right-panel .ds-suite-desc,
+html[data-skin="mist-silk"] #right-panel .drop-texts span,
+html[data-skin="mist-silk"] #right-panel .muted-count,
+html[data-skin="mist-silk"] #right-panel .lore-keys,
+html[data-skin="mist-silk"] #right-panel .session-scope-check,
+html[data-skin="mist-silk"] #right-panel .session-scope-check span,
+html[data-skin="mist-silk"] #right-panel .telemetry-fold-summary,
+html[data-skin="sakura-dawn"] #right-panel .ds-suite-desc,
+html[data-skin="sakura-dawn"] #right-panel .drop-texts span,
+html[data-skin="sakura-dawn"] #right-panel .muted-count,
+html[data-skin="sakura-dawn"] #right-panel .lore-keys,
+html[data-skin="sakura-dawn"] #right-panel .session-scope-check,
+html[data-skin="sakura-dawn"] #right-panel .session-scope-check span,
+html[data-skin="sakura-dawn"] #right-panel .telemetry-fold-summary,
+html[data-skin="eink-paper"] #right-panel .ds-suite-desc,
+html[data-skin="eink-paper"] #right-panel .drop-texts span,
+html[data-skin="eink-paper"] #right-panel .muted-count,
+html[data-skin="eink-paper"] #right-panel .lore-keys,
+html[data-skin="eink-paper"] #right-panel .session-scope-check,
+html[data-skin="eink-paper"] #right-panel .session-scope-check span,
+html[data-skin="eink-paper"] #right-panel .telemetry-fold-summary,
+html[data-skin="qq-classic"] #right-panel .ds-suite-desc,
+html[data-skin="qq-classic"] #right-panel .drop-texts span,
+html[data-skin="qq-classic"] #right-panel .muted-count,
+html[data-skin="qq-classic"] #right-panel .lore-keys,
+html[data-skin="qq-classic"] #right-panel .session-scope-check,
+html[data-skin="qq-classic"] #right-panel .session-scope-check span,
+html[data-skin="qq-classic"] #right-panel .telemetry-fold-summary,
+html[style*="color-scheme: light"]:not([style*="light dark"]) #right-panel .ds-suite-desc,
+html[style*="color-scheme: light"]:not([style*="light dark"]) #right-panel .drop-texts span,
+html[style*="color-scheme: light"]:not([style*="light dark"]) #right-panel .muted-count,
+html[style*="color-scheme: light"]:not([style*="light dark"]) #right-panel .lore-keys,
+html[style*="color-scheme: light"]:not([style*="light dark"]) #right-panel .session-scope-check,
+html[style*="color-scheme: light"]:not([style*="light dark"]) #right-panel .session-scope-check span,
+html[style*="color-scheme: light"]:not([style*="light dark"]) #right-panel .telemetry-fold-summary{color:#475569!important;}
+
+html[data-skin="mist-silk"] #right-panel .mini-btn,
+html[data-skin="mist-silk"] #right-panel .session-preset-chip,
+html[data-skin="mist-silk"] #right-panel .secondary-btn,
+html[data-skin="mist-silk"] #right-panel #clear-session-prompt-btn,
+html[data-skin="mist-silk"] #right-panel #trigger-inline-doc-btn,
+html[data-skin="mist-silk"] #right-panel #reset-persona-override-btn,
+html[data-skin="mist-silk"] #right-panel .inspector-header .close-btn,
+html[data-skin="mist-silk"] #right-panel .inspector-tabs .icon-btn,
+html[data-skin="sakura-dawn"] #right-panel .mini-btn,
+html[data-skin="sakura-dawn"] #right-panel .session-preset-chip,
+html[data-skin="sakura-dawn"] #right-panel .secondary-btn,
+html[data-skin="sakura-dawn"] #right-panel #clear-session-prompt-btn,
+html[data-skin="sakura-dawn"] #right-panel #trigger-inline-doc-btn,
+html[data-skin="sakura-dawn"] #right-panel #reset-persona-override-btn,
+html[data-skin="sakura-dawn"] #right-panel .inspector-header .close-btn,
+html[data-skin="sakura-dawn"] #right-panel .inspector-tabs .icon-btn,
+html[data-skin="eink-paper"] #right-panel .mini-btn,
+html[data-skin="eink-paper"] #right-panel .session-preset-chip,
+html[data-skin="eink-paper"] #right-panel .secondary-btn,
+html[data-skin="eink-paper"] #right-panel #clear-session-prompt-btn,
+html[data-skin="eink-paper"] #right-panel #trigger-inline-doc-btn,
+html[data-skin="eink-paper"] #right-panel #reset-persona-override-btn,
+html[data-skin="eink-paper"] #right-panel .inspector-header .close-btn,
+html[data-skin="eink-paper"] #right-panel .inspector-tabs .icon-btn,
+html[data-skin="qq-classic"] #right-panel .mini-btn,
+html[data-skin="qq-classic"] #right-panel .session-preset-chip,
+html[data-skin="qq-classic"] #right-panel .secondary-btn,
+html[data-skin="qq-classic"] #right-panel #clear-session-prompt-btn,
+html[data-skin="qq-classic"] #right-panel #trigger-inline-doc-btn,
+html[data-skin="qq-classic"] #right-panel #reset-persona-override-btn,
+html[data-skin="qq-classic"] #right-panel .inspector-header .close-btn,
+html[data-skin="qq-classic"] #right-panel .inspector-tabs .icon-btn,
+html[style*="color-scheme: light"]:not([style*="light dark"]) #right-panel .mini-btn,
+html[style*="color-scheme: light"]:not([style*="light dark"]) #right-panel .session-preset-chip,
+html[style*="color-scheme: light"]:not([style*="light dark"]) #right-panel .secondary-btn,
+html[style*="color-scheme: light"]:not([style*="light dark"]) #right-panel #clear-session-prompt-btn,
+html[style*="color-scheme: light"]:not([style*="light dark"]) #right-panel #trigger-inline-doc-btn,
+html[style*="color-scheme: light"]:not([style*="light dark"]) #right-panel #reset-persona-override-btn,
+html[style*="color-scheme: light"]:not([style*="light dark"]) #right-panel .inspector-header .close-btn,
+html[style*="color-scheme: light"]:not([style*="light dark"]) #right-panel .inspector-tabs .icon-btn{background:#f1f5f9!important;color:#1e293b!important;border:1px solid #cbd5e1!important;font-weight:600!important;}
+
+html[data-skin="mist-silk"] #right-panel input:not([type="checkbox"]),
+html[data-skin="mist-silk"] #right-panel textarea,
+html[data-skin="mist-silk"] #right-panel select,
+html[data-skin="sakura-dawn"] #right-panel input:not([type="checkbox"]),
+html[data-skin="sakura-dawn"] #right-panel textarea,
+html[data-skin="sakura-dawn"] #right-panel select,
+html[data-skin="eink-paper"] #right-panel input:not([type="checkbox"]),
+html[data-skin="eink-paper"] #right-panel textarea,
+html[data-skin="eink-paper"] #right-panel select,
+html[data-skin="qq-classic"] #right-panel input:not([type="checkbox"]),
+html[data-skin="qq-classic"] #right-panel textarea,
+html[data-skin="qq-classic"] #right-panel select,
+html[style*="color-scheme: light"]:not([style*="light dark"]) #right-panel input:not([type="checkbox"]),
+html[style*="color-scheme: light"]:not([style*="light dark"]) #right-panel textarea,
+html[style*="color-scheme: light"]:not([style*="light dark"]) #right-panel select{background:#ffffff!important;color:#0f172a!important;border:1px solid #cbd5e1!important;}
+
+html[data-skin="mist-silk"] #right-panel input::placeholder,
+html[data-skin="mist-silk"] #right-panel textarea::placeholder,
+html[data-skin="sakura-dawn"] #right-panel input::placeholder,
+html[data-skin="sakura-dawn"] #right-panel textarea::placeholder,
+html[data-skin="eink-paper"] #right-panel input::placeholder,
+html[data-skin="eink-paper"] #right-panel textarea::placeholder,
+html[data-skin="qq-classic"] #right-panel input::placeholder,
+html[data-skin="qq-classic"] #right-panel textarea::placeholder,
+html[style*="color-scheme: light"]:not([style*="light dark"]) #right-panel input::placeholder,
+html[style*="color-scheme: light"]:not([style*="light dark"]) #right-panel textarea::placeholder{color:#64748b!important;}

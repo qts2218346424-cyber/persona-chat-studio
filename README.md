@@ -22,7 +22,7 @@
 </p>
 
 <p>
-  <img src="https://img.shields.io/badge/Release-v2.7.4_Build_165-7C3AED?style=flat-square&logo=rocket&logoColor=white" alt="Version v2.7.4" />
+  <img src="https://img.shields.io/badge/Release-v2.7.5_Build_166-7C3AED?style=flat-square&logo=rocket&logoColor=white" alt="Version v2.7.5" />
   <img src="https://img.shields.io/badge/Node.js-%3E%3D22.5.0-339933?style=flat-square&logo=node.js&logoColor=white" alt="Node.js >= 22.5.0" />
   <img src="https://img.shields.io/badge/Dependencies-0_npm_Packages-FF6B6B?style=flat-square&logo=npm&logoColor=white" alt="Zero npm Dependencies" />
   <img src="https://img.shields.io/badge/Storage-node%3Asqlite-003B57?style=flat-square&logo=sqlite&logoColor=white" alt="Native SQLite" />
@@ -47,7 +47,11 @@
 
 ---
 
-## 🚀 v2.7.4 最新版本核心特性
+## 🚀 v2.7.5 最新版本核心特性
+
+0. **手机辅助双模式默认模型严格矫正（v2.7.5）**：彻底区分 `DeepSeek API` 与 `云端 API` 双抽屉面板（严格互斥展示）；`DeepSeek API` 默认并一次性自动迁移旧配置为 `deepseek-v4.1-flash`，`云端 API` 保持自动拉取模型列表与云端智能适配，互不串扰。
+
+### 📌 v2.7.4 核心更新回顾
 
 1. **DeepSeek API 默认 V4.1 Flash + 云端自动拉取模型 + 极简聊天框计费胶囊**：DeepSeek API 模式默认使用 `deepseek-v4.1-flash`；桌面/手机/手机辅助控制台的云端 API 模式填写地址与 Key 后自动从 `/v1/models` 拉取可用模型下拉选择（无需手填）；全新升级 DeepSeek 专属计费插件（v2.0.0），仅在 DeepSeek 官方 API 模式下于聊天框紧上方极简展示实时 Token 与额度/费用，点击展开详情与每轮消耗明细。
 2. **卡顿主动问询防死循环**：执行遇连续 2 步画面无变化、连续 2 步动作报错或纠偏后再次振荡时，AI 立即主动弹窗向用户请示（提供「跳过换方法 / 返回上一页 / 我已手动操作 / 停止任务」快捷选项 + 自由输入现场指示），彻底告别死循环。

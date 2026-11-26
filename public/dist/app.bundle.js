@@ -5553,7 +5553,7 @@ lastInteractionAt: Date.now(),
 hasMoreMessages: false,
 totalMessages: 0,
 oldestMessageId: 0,
-appVersion: '2.7.4',
+appVersion: '2.7.5',
 tourIndex: 0,
 tourActive: false,
 llmMode: 'local_antigravity',
@@ -20174,15 +20174,17 @@ runCloneBtn.innerHTML = origHtml;
 })();
 ;
 (() => {
-const CURRENT_APK_VERSION = '2.7.4';
-const CURRENT_APK_CODE = 165;
+const CURRENT_APK_VERSION = '2.7.5';
+const CURRENT_APK_CODE = 166;
 const DEEPSEEK_API_KEYS_URL = 'https://platform.deepseek.com/api_keys';
 const PUBLIC_WEB_ORIGIN = 'https://star.claudexxb.online';
 const GITHUB_RELEASES_URL = 'https://github.com/qts2218346424-cyber/persona-chat-studio/releases';
 const STORAGE_KEYS = {
 execMode: 'pa_exec_mode_v1',
 directModel: 'pa_direct_model_v1',
+directModelMigratedV41: 'pa_direct_model_v41_migrated_v1',
 cloudModel: 'pa_cloud_model_v1',
+cloudModelMigratedV274: 'pa_cloud_model_migrated_v1',
 directBaseUrl: 'pa_direct_baseurl_v1',
 autoApprove: 'pa_auto_approve_v1',
 confirmPolicy: 'pa_confirm_policy_v2',
@@ -20194,6 +20196,7 @@ learnedSkills: 'pa_learned_skills_v1',
 taskHistory: 'pa_task_history_v1',
 setupGuideDone: 'pa_setup_guide_done_v1'
 };
+let triggerCloudModelsRefresh = null;
 const LOCAL_COMMAND_CATALOG = [
 {
 id: 'learned',
@@ -20803,23 +20806,50 @@ let baseUrl = '';
 let autoApprove = false;
 try {
 apiKey = cleanApiKey(localStorage.getItem(STORAGE_KEYS.exclusiveKey) || '');
-model = (localStorage.getItem(STORAGE_KEYS.directModel) || 'deepseek-v4.1-flash').trim() || 'deepseek-v4.1-flash';
 baseUrl = (localStorage.getItem(STORAGE_KEYS.directBaseUrl) || '').trim();
+const rawStored = (localStorage.getItem(STORAGE_KEYS.directModel) || '').trim();
+const migrated = localStorage.getItem(STORAGE_KEYS.directModelMigratedV41) === '1';
+if (!migrated) {
+localStorage.setItem(STORAGE_KEYS.directModelMigratedV41, '1');
+const lowerBase = baseUrl.toLowerCase();
+if (!rawStored || ((!lowerBase || lowerBase.includes('deepseek.com')) && (rawStored === 'deepseek-chat' || rawStored === 'deepseek-flash'))) {
+localStorage.setItem(STORAGE_KEYS.directModel, 'deepseek-v4.1-flash');
+model = 'deepseek-v4.1-flash';
+} else {
+model = rawStored || 'deepseek-v4.1-flash';
+}
+} else {
+model = rawStored || 'deepseek-v4.1-flash';
+}
 autoApprove = localStorage.getItem(STORAGE_KEYS.autoApprove) === '1';
 } catch {}
 return { apiKey, model, baseUrl, autoApprove };
 }
 function getCloudModel() {
 try {
-return (localStorage.getItem(STORAGE_KEYS.cloudModel) || 'deepseek-v4.1-flash').trim() || 'deepseek-v4.1-flash';
+const migrated = localStorage.getItem(STORAGE_KEYS.cloudModelMigratedV274) === '1';
+const stored = (localStorage.getItem(STORAGE_KEYS.cloudModel) || '').trim();
+if (!migrated) {
+localStorage.setItem(STORAGE_KEYS.cloudModelMigratedV274, '1');
+if (stored === 'deepseek-v4.1-flash') {
+localStorage.removeItem(STORAGE_KEYS.cloudModel);
+return '';
+}
+}
+return stored;
 } catch {
-return 'deepseek-v4.1-flash';
+return '';
 }
 }
 function setCloudModel(model) {
-const clean = String(model || 'deepseek-v4.1-flash').trim() || 'deepseek-v4.1-flash';
+const clean = String(model || '').trim();
 try {
+if (clean) {
 localStorage.setItem(STORAGE_KEYS.cloudModel, clean);
+} else {
+localStorage.removeItem(STORAGE_KEYS.cloudModel);
+}
+localStorage.setItem(STORAGE_KEYS.cloudModelMigratedV274, '1');
 } catch {}
 return clean;
 }
@@ -21031,7 +21061,11 @@ syncStatus();
 $('pa-sheet-backdrop')?.classList.remove('hidden');
 $('pa-control-sheet')?.classList.remove('hidden');
 $('pa-cfg-toggle-btn')?.setAttribute('aria-expanded', 'true');
-if (focusApiKey) {
+const curMode = getExecMode();
+if (curMode === 'api_cloud' && typeof triggerCloudModelsRefresh === 'function') {
+setTimeout(() => triggerCloudModelsRefresh(false), 120);
+}
+if (focusApiKey && curMode === 'api_direct') {
 $('pa-inline-config-drawer')?.classList.remove('hidden');
 setTimeout(() => $('pa-cfg-apikey')?.focus(), 80);
 }
@@ -22076,7 +22110,7 @@ btn.setAttribute('aria-selected', String(active));
 });
 const cfgDrawer = $('pa-inline-config-drawer');
 if (cfgDrawer) {
-cfgDrawer.classList.toggle('hidden', mode === 'local');
+cfgDrawer.classList.toggle('hidden', mode !== 'api_direct');
 }
 const cloudModelBox = $('pa-cloud-model-box');
 if (cloudModelBox) {
@@ -22087,6 +22121,8 @@ if (cloudModelSel && !cloudModelSel.matches(':focus')) {
 const cm = getCloudModel();
 if (Array.from(cloudModelSel.options).some((o) => o.value === cm)) {
 cloudModelSel.value = cm;
+} else if (Array.from(cloudModelSel.options).some((o) => o.value === '')) {
+cloudModelSel.value = '';
 }
 }
 const localPeaceCard = $('pa-local-peace-card');
@@ -24210,7 +24246,7 @@ interjections: finalInterjections,
 history: compactHistory,
 screenSize,
 installedApps: compactInstalledApps,
-customModel: getCloudModel() || 'deepseek-v4.1-flash'
+customModel: getCloudModel()
 },
 signal
 );
@@ -24235,7 +24271,7 @@ interjections: finalInterjections,
 history: compactHistory,
 screenSize,
 installedApps: compactInstalledApps,
-customModel: cfg.model || ''
+customModel: getCloudModel()
 },
 signal
 );
@@ -26038,7 +26074,7 @@ $('pa-open-ds-official-btn')?.addEventListener('click', openDeepSeekOfficialPage
 $('pa-cfg-test-btn')?.addEventListener('click', async () => {
 const btn = $('pa-cfg-test-btn');
 const apiKey = cleanApiKey($('pa-cfg-apikey')?.value || '');
-const model = ($('pa-cfg-model')?.value || 'deepseek-chat').trim() || 'deepseek-chat';
+const model = ($('pa-cfg-model')?.value || 'deepseek-v4.1-flash').trim() || 'deepseek-v4.1-flash';
 const baseUrl = normalizeChatCompletionsUrl($('pa-cfg-baseurl')?.value || '');
 if (!apiKey) {
 showToast('请先输入 API Key 再测试连接');
@@ -26096,8 +26132,8 @@ if (btn) { btn.disabled = false; btn.textContent = origTxt; }
 }
 });
 $('pa-cloud-model-select')?.addEventListener('change', (e) => {
-const m = setCloudModel(e.target.value || 'deepseek-v4.1-flash');
-showToast(`云端 API 已切换模型：${m}`);
+const m = setCloudModel(e.target.value || '');
+showToast(m ? `云端 API 已切换模型：${m}` : '云端 API 已切换为智能默认模型');
 syncStatus();
 });
 let paCloudModelsFetched = false;
@@ -26127,28 +26163,33 @@ if (models.length > 0) {
 paCloudModelsFetched = true;
 const prev = getCloudModel();
 sel.innerHTML = '';
+const defaultOpt = document.createElement('option');
+defaultOpt.value = '';
+defaultOpt.textContent = '云端智能默认（自动拉取适配）';
+sel.appendChild(defaultOpt);
 for (const m of models) {
 const opt = document.createElement('option');
 opt.value = m;
 opt.textContent = m;
 sel.appendChild(opt);
 }
-if (models.includes(prev)) {
+if (prev && models.includes(prev)) {
 sel.value = prev;
 } else {
-sel.value = models[0];
-setCloudModel(models[0]);
+sel.value = '';
+setCloudModel('');
 }
 if (statusEl) statusEl.textContent = `（已自动拉取 ${models.length} 个）`;
 } else if (statusEl) {
-statusEl.textContent = '（默认预设）';
+statusEl.textContent = '（自动适配 / 预设）';
 }
 } catch {
-if (statusEl) statusEl.textContent = '（默认预设）';
+if (statusEl) statusEl.textContent = '（自动适配 / 预设）';
 } finally {
 if (btn) btn.disabled = false;
 }
 }
+triggerCloudModelsRefresh = fetchPhoneAgentCloudModels;
 $('pa-cloud-fetch-models-btn')?.addEventListener('click', () => fetchPhoneAgentCloudModels(true));
 $('pa-mode-api-cloud')?.addEventListener('click', () => setTimeout(() => fetchPhoneAgentCloudModels(false), 120));
 $('pa-cfg-save-btn')?.addEventListener('click', () => {
@@ -26614,6 +26655,8 @@ return isNativeApk();
 getInstalledVersionInfo,
 getInstalledVersionLabel,
 getExecMode,
+getCloudModel,
+setCloudModel,
 getConfig: () => ({ execMode: getExecMode(), ...getDirectConfig() }),
 setExecMode,
 setDirectApiKey,

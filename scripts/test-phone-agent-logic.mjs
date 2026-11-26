@@ -83,6 +83,9 @@ class MockElement {
   get innerHTML() {
     return this._innerHTML;
   }
+  get options() {
+    return this.children.filter((c) => c.tagName === 'OPTION');
+  }
   set innerHTML(html) {
     this._innerHTML = String(html || '');
     this.children = [];
@@ -214,7 +217,7 @@ class MockElement {
   }
 }
 
-function createHarness() {
+function createHarness(options = {}) {
   const doc = {
     readyState: 'complete',
     _idMap: new Map(),
@@ -259,7 +262,38 @@ function createHarness() {
   chatInput.id = 'chat-input';
   doc.body.appendChild(chatInput);
 
-  const storage = new Map();
+  if (options.withModePanel) {
+    const inlineDrawer = doc.createElement('div');
+    inlineDrawer.id = 'pa-inline-config-drawer';
+    const cfgModel = doc.createElement('input');
+    cfgModel.id = 'pa-cfg-model';
+    cfgModel.value = 'deepseek-v4.1-flash';
+    inlineDrawer.appendChild(cfgModel);
+    doc.body.appendChild(inlineDrawer);
+
+    const cloudBox = doc.createElement('div');
+    cloudBox.id = 'pa-cloud-model-box';
+    cloudBox.classList.add('hidden');
+    const cloudSel = doc.createElement('select');
+    cloudSel.id = 'pa-cloud-model-select';
+    const optDefault = doc.createElement('option');
+    optDefault.value = '';
+    optDefault.textContent = '云端智能默认（自动拉取适配）';
+    const optGemini = doc.createElement('option');
+    optGemini.value = 'gemini-2.5-flash';
+    optGemini.textContent = 'Google Gemini 2.5 Flash';
+    cloudSel.appendChild(optDefault);
+    cloudSel.appendChild(optGemini);
+    cloudBox.appendChild(cloudSel);
+    doc.body.appendChild(cloudBox);
+
+    const localCard = doc.createElement('div');
+    localCard.id = 'pa-local-peace-card';
+    localCard.classList.add('hidden');
+    doc.body.appendChild(localCard);
+  }
+
+  const storage = new Map(Object.entries(options.initialStorage || {}));
   const localStorageMock = {
     getItem: (k) => (storage.has(k) ? storage.get(k) : null),
     setItem: (k, v) => storage.set(k, String(v)),
@@ -307,7 +341,7 @@ function createHarness() {
       return true;
     },
     isAutoSwipeRunning: () => false,
-    getInstalledVersionInfo: () => JSON.stringify({ versionName: '2.7.4', versionCode: 165 }),
+    getInstalledVersionInfo: () => JSON.stringify({ versionName: '2.7.5', versionCode: 166 }),
     getScreenSize: () => JSON.stringify({ width: 1080, height: 2400 }),
     getInstalledApps: () => JSON.stringify([{ name: '微信' }, { name: '美团' }]),
     getLastExternalApp: () => JSON.stringify({ packageName: 'com.study.app', appName: '学习通' }),
@@ -795,6 +829,40 @@ async function runTests() {
 
     plugin.clearBillingRecords();
     ok(plugin.getState().records.length === 0 && localStorageMock.getItem('ds_billing_records_v1') === '[]', 'clearBillingRecords 正常清零');
+  }
+
+  // ========= 场景 10：手机辅助双模式默认模型矫正、历史遗留迁移与配置面板互斥隔离 =========
+  {
+    const h = createHarness({
+      withModePanel: true,
+      initialStorage: {
+        pa_exec_mode_v1: 'api_direct',
+        pa_direct_model_v1: 'deepseek-chat',
+        pa_cloud_model_v1: 'deepseek-v4.1-flash'
+      }
+    });
+    const { win, doc, localStorageMock } = h;
+
+    ok(win.PhoneAgent.getConfig().model === 'deepseek-v4.1-flash', '旧缓存 deepseek-chat 自动迁移为 DeepSeek V4.1 Flash');
+    ok(localStorageMock.getItem('pa_direct_model_v1') === 'deepseek-v4.1-flash', 'pa_direct_model_v1 已落盘更新为 deepseek-v4.1-flash');
+    ok(win.PhoneAgent.getCloudModel() === '', '误存于云端模式的 deepseek-v4.1-flash 已自动迁回智能默认空值');
+
+    const cfgModelInp = doc.getElementById('pa-cfg-model');
+    const inlineDrawer = doc.getElementById('pa-inline-config-drawer');
+    const cloudBox = doc.getElementById('pa-cloud-model-box');
+    const cloudSel = doc.getElementById('pa-cloud-model-select');
+
+    ok(cfgModelInp.value === 'deepseek-v4.1-flash', 'DeepSeek API 输入框显示 deepseek-v4.1-flash');
+    ok(!inlineDrawer.classList.contains('hidden') && cloudBox.classList.contains('hidden'), 'api_direct 模式下仅展示 DeepSeek 直连配置抽屉并隐藏云端选模框');
+
+    // 切换至云端 API 模式：必须隐藏 DeepSeek 直连抽屉，展示云端模型选择框，且不把 DeepSeek V4.1 Flash 强塞作云端默认
+    win.PhoneAgent.setExecMode('api_cloud');
+    ok(inlineDrawer.classList.contains('hidden') && !cloudBox.classList.contains('hidden'), 'api_cloud 模式下隐藏直连配置抽屉并仅展示云端模型选框');
+    ok(cloudSel.value === '', '云端 API 默认选项保持为智能默认（不强制绑定 DeepSeek V4.1 Flash）');
+
+    // 切换至本地免 API 模式：直连与云端均隐藏
+    win.PhoneAgent.setExecMode('local');
+    ok(inlineDrawer.classList.contains('hidden') && cloudBox.classList.contains('hidden'), 'local 模式下直连抽屉与云端选框均隐藏');
   }
 
   console.log(`ALL_PHONE_AGENT_LOGIC_TESTS_PASSED (${passed} assertions)`);

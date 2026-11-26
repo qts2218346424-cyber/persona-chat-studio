@@ -656,8 +656,8 @@ function extractAuthToken(req, parsedUrl = null) {
   return '';
 }
 
-const APP_LATEST_VERSION = '2.7.5';
-const APP_LATEST_VERSION_CODE = 166;
+const APP_LATEST_VERSION = '2.7.6';
+const APP_LATEST_VERSION_CODE = 167;
 const APP_OFFICIAL_CERT_SHA256 = '6fd05e32a3cabf327140129d866e55a342fe30daa3384c67aad4b3cbdd98a17b';
 const APP_UPDATE_TICKET_SECRET = crypto
   .createHash('sha256')
@@ -955,6 +955,7 @@ async function handleApi(req, res, pathname, parsedUrl) {
       forceUpdate,
       diffGenerations,
       changelog: [
+        '【DeepSeek 官方直连免填地址 + 云端 API 独立配置密钥地址与模型拉取（v2.7.6）】DeepSeek API 模式精简为官方直连，只需填 Key 并默认使用 deepseek-v4.1-flash 无需填接口地址；云端 API 抽屉新增「服务商预设 + 接口地址 Base URL + 云端 API Key + 自动/手动拉取可用模型 + 测试保存」完整能力',
         '【修复手机辅助默认模型分离与自动迁移（v2.7.5）】严格隔离 DeepSeek API 与云端 API 表单面板，DeepSeek API 自动迁移并默认锁定 deepseek-v4.1-flash；云端 API 恢复“云端智能默认（自动拉取适配）”并随打开/切换实时从 /v1/models 自动拉取可用模型列表，不再错把 V4.1 Flash 覆盖给云端 API',
         '【卡顿主动问询防循环 + 新手指引 + 本地强对话 + V4.1 Flash 默认与计费监测（v2.7.4）】DeepSeek API 默认使用 V4.1 Flash；云端 API 支持下拉选模型；新增实时 Token/费用/余额计费插件；遇连续2步卡顿/报错/往返循环时主动弹窗请用户给指示；新增3步交互式无障碍与悬浮窗新手指引向导',
         '【任务前主动需求确认 + 死循环自动纠偏（v2.7.3）】发模糊任务前 AI 先在当前界面主动提问确认需求（支持智能确认/每次先确认/直接执行三档），绝不盲目跳走；新增动作指纹与页面振荡死循环检测、三级自动纠偏换路与优雅跳出协作弹窗，执行更稳更丝滑',
@@ -2004,8 +2005,10 @@ async function handleApi(req, res, pathname, parsedUrl) {
           ? validateSafeUserApiBaseUrl(body.customBaseUrl)
           : OFFICIAL_DEEPSEEK_CHAT_URL;
         const endpoints = resolveDeepSeekEndpoints(safeUrl);
+        const rawReqModel = String(body.customModel || '').trim();
+        const fallbackCustomModel = endpoints.isOfficialDeepSeek ? 'deepseek-v4.1-flash' : 'gpt-4o-mini';
         const customModel = normalizeModelForEndpoint(
-          sanitizeUserModelName(body.customModel || 'deepseek-v4.1-flash'),
+          sanitizeUserModelName(rawReqModel || fallbackCustomModel),
           endpoints.chatUrl
         );
         list.push({
@@ -2069,7 +2072,7 @@ async function handleApi(req, res, pathname, parsedUrl) {
       return sendPlanJson(res, 400, {
         ok: false,
         code: 'NO_API_KEY',
-        error: '当前账号未配置可用云端 API 密钥。请在上方切换「DeepSeek API」填写您的个人密钥，或改用「本地免 API」直接下达系统口令。'
+        error: '当前账号未配置可用云端 API 密钥。请在手机辅助控制台「云端 API」下方填写您的云端接口地址与密钥，或切换「DeepSeek API」/「本地免 API」。'
       });
     }
 

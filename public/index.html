@@ -117,7 +117,7 @@
       pointer-events: none !important;
     }
   </style>
-  <link rel="preload" href="./dist/app.bundle.js?v=f8aef1a499" as="script" />
+  <link rel="preload" href="./dist/app.bundle.js?v=31a0026195" as="script" />
   <link rel="stylesheet" href="./dist/app.bundle.css?v=348d8118e4" />
 </head>
 <body data-ui-mode="deepseek">
@@ -3171,7 +3171,7 @@
         <div class="apk-hero-card" id="apk-web-download-card">
           <div class="apk-hero-top">
             <div class="apk-meta-pills">
-              <span class="apk-meta-pill" id="apk-modal-version-pill">版本 v2.7.5 (DeepSeek V4.1 Flash默认修复+云端自动拉取模型)</span>
+              <span class="apk-meta-pill" id="apk-modal-version-pill">版本 v2.7.6 (DeepSeek官方直连免填地址 + 云端API自定义密钥与拉取模型)</span>
               <span class="apk-meta-pill">极速包体 约 10.3 MB</span>
               <span class="apk-meta-pill">官方纯净 · 签名校验</span>
               <span class="apk-meta-pill" id="pa-device-info-pill">支持 Android 7.0 ~ 15+</span>
@@ -3215,7 +3215,7 @@
           <div class="anv-head">
             <div class="anv-title-row">
               <span class="anv-badge">已安装原生随身版</span>
-              <span class="anv-version" id="anv-current-version">v2.7.5 (已就绪)</span>
+              <span class="anv-version" id="anv-current-version">v2.7.6 (已就绪)</span>
             </div>
             <p class="anv-desc">您已在 Android 原生 APK 中运行。可在「手机辅助」工作台或桌面悬浮窗中使用 DeepSeek API 智能识屏操控或本地免 API 直控。</p>
           </div>
@@ -3606,7 +3606,7 @@
             </div>
             <div class="mfs-item-right">
               <span class="mfs-update-dot hidden" id="mfs-update-dot" aria-label="发现新版本"></span>
-              <span class="mfs-value" id="mfs-version-value">v2.7.5</span>
+              <span class="mfs-value" id="mfs-version-value">v2.7.6</span>
               <span class="mfs-arrow">›</span>
             </div>
           </div>
@@ -3690,7 +3690,7 @@
         <div class="upd-ver-compare">
           <div class="upd-ver-box">
             <span class="upd-ver-label">当前已安装</span>
-            <strong class="upd-ver-num" id="upd-local-ver">v2.7.5</strong>
+            <strong class="upd-ver-num" id="upd-local-ver">v2.7.6</strong>
           </div>
           <div class="upd-ver-arrow" aria-hidden="true">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
@@ -3860,9 +3860,26 @@
       <div class="pa-config-drawer hidden" id="pa-cloud-model-box" style="margin-bottom:8px;">
         <div class="pa-cfg-grid">
           <div class="pa-cfg-field">
+            <label>常用云端兼容服务商快捷填入</label>
+            <div class="api-preset-bar" id="pa-cloud-preset-bar" role="group" aria-label="快捷填入云端接口预设">
+              <button type="button" class="api-preset-chip" data-pa-cloud-preset="siliconflow" data-pa-cloud-url="https://api.siliconflow.cn/v1/chat/completions">硅基流动</button>
+              <button type="button" class="api-preset-chip" data-pa-cloud-preset="dashscope" data-pa-cloud-url="https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions">阿里云百炼</button>
+              <button type="button" class="api-preset-chip" data-pa-cloud-preset="openrouter" data-pa-cloud-url="https://openrouter.ai/api/v1/chat/completions">OpenRouter</button>
+              <button type="button" class="api-preset-chip" data-pa-cloud-preset="gemini" data-pa-cloud-url="https://generativelanguage.googleapis.com/v1beta/openai/chat/completions">Gemini</button>
+            </div>
+          </div>
+          <div class="pa-cfg-field">
+            <label for="pa-cloud-baseurl">云端接口地址 (Base URL)</label>
+            <input type="url" id="pa-cloud-baseurl" class="pa-cfg-input" placeholder="如 https://api.siliconflow.cn/v1/chat/completions（支持域名或 /v1 自动补全）" autocomplete="off" />
+          </div>
+          <div class="pa-cfg-field">
+            <label for="pa-cloud-apikey">云端 API Key（仅存本地沙盒，留空则用账号云端渠道）</label>
+            <input type="password" id="pa-cloud-apikey" class="pa-cfg-input" placeholder="输入第三方/中转云端 API Key，填完后自动拉取可用模型" autocomplete="off" />
+          </div>
+          <div class="pa-cfg-field">
             <div class="pa-cfg-label-row">
-              <label for="pa-cloud-model-select">云端 API 模型选择 <span id="pa-cloud-models-status" style="font-weight:normal;font-size:11.5px;opacity:0.75;">（自动拉取）</span></label>
-              <button type="button" class="pa-official-link-btn" id="pa-cloud-fetch-models-btn">刷新模型</button>
+              <label for="pa-cloud-model-select">可调用模型 <span id="pa-cloud-models-status" style="font-weight:normal;font-size:11.5px;opacity:0.75;">（填完地址与 Key 自动拉取）</span></label>
+              <button type="button" class="pa-official-link-btn" id="pa-cloud-fetch-models-btn">拉取模型</button>
             </div>
             <select id="pa-cloud-model-select" class="pa-cfg-input">
               <option value="">云端智能默认（自动拉取适配）</option>
@@ -3873,6 +3890,16 @@
               <option value="gpt-4o-mini">OpenAI · GPT-4o Mini</option>
             </select>
           </div>
+          <div class="pa-cfg-footer">
+            <label class="pa-cfg-check">
+              <input type="checkbox" id="pa-cloud-auto-approve" />
+              <span>dsh-Go 免确认模式（AI 自动连续执行，无需逐步确认）</span>
+            </label>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <button type="button" class="pa-banner-btn outline" id="pa-cloud-test-btn">测试连接</button>
+              <button type="button" class="pa-banner-btn" id="pa-cloud-save-btn">保存并应用</button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -3880,31 +3907,21 @@
         <div class="pa-cfg-grid">
           <div class="pa-cfg-field">
             <div class="pa-cfg-label-row">
-              <label for="pa-cfg-apikey">DeepSeek API Key（仅存本地沙盒）</label>
+              <label for="pa-cfg-apikey">DeepSeek API Key（直连官方 api.deepseek.com，仅存本地沙盒）</label>
               <button type="button" class="pa-official-link-btn" id="pa-open-ds-official-btn" title="前往 DeepSeek 官方控制台获取 API Key">
                 <span>前往 DeepSeek 官网获取密钥 ↗</span>
               </button>
             </div>
-            <input type="password" id="pa-cfg-apikey" class="pa-cfg-input" placeholder="sk-... (直连模式必填，本地/云端可留空)" autocomplete="off" />
+            <input type="password" id="pa-cfg-apikey" class="pa-cfg-input" placeholder="sk-... (输入 DeepSeek 官方 API Key)" autocomplete="off" />
           </div>
-          <div class="pa-cfg-row-2">
-            <div class="pa-cfg-field">
-              <label for="pa-cfg-model">推理模型</label>
-              <input type="text" id="pa-cfg-model" list="pa-model-presets" class="pa-cfg-input" value="deepseek-v4.1-flash" placeholder="deepseek-v4.1-flash 或第三方模型名" autocomplete="off" />
-              <datalist id="pa-model-presets">
-                <option value="deepseek-v4.1-flash"></option>
-                <option value="deepseek-chat"></option>
-                <option value="deepseek-reasoner"></option>
-                <option value="deepseek-ai/DeepSeek-V4.1-Flash"></option>
-                <option value="deepseek-ai/DeepSeek-V3"></option>
-                <option value="qwen-plus"></option>
-                <option value="gpt-4o-mini"></option>
-              </datalist>
-            </div>
-            <div class="pa-cfg-field">
-              <label for="pa-cfg-baseurl">接口地址 (可选)</label>
-              <input type="url" id="pa-cfg-baseurl" class="pa-cfg-input" placeholder="留空默认 DeepSeek 官网，支持填域名或 /v1 自动补全" />
-            </div>
+          <div class="pa-cfg-field">
+            <label for="pa-cfg-model">推理模型</label>
+            <input type="text" id="pa-cfg-model" list="pa-model-presets" class="pa-cfg-input" value="deepseek-v4.1-flash" placeholder="deepseek-v4.1-flash" autocomplete="off" />
+            <datalist id="pa-model-presets">
+              <option value="deepseek-v4.1-flash"></option>
+              <option value="deepseek-chat"></option>
+              <option value="deepseek-reasoner"></option>
+            </datalist>
           </div>
           <div class="pa-cfg-footer">
             <label class="pa-cfg-check">
@@ -3973,7 +3990,7 @@
   <!-- 全局 Top-Layer 顶层轻提示胶囊（popover="manual" 确保在任何模态 <dialog> 打开时依然 100% 可见，遵循 persistent-toast-notifications 规范） -->
   <div id="global-top-toast" popover="manual" class="global-top-toast" role="status" aria-live="polite"></div>
 
-  <script defer src="./dist/app.bundle.js?v=f8aef1a499"></script>
+  <script defer src="./dist/app.bundle.js?v=31a0026195"></script>
   <script>
     (function () {
       const isNativeApkEnv = Boolean(window.AndroidAppBridge) || window.location.hostname === 'appassets.androidplatform.net' || window.location.protocol === 'file:';

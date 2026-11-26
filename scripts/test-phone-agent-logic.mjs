@@ -274,6 +274,18 @@ function createHarness(options = {}) {
     const cloudBox = doc.createElement('div');
     cloudBox.id = 'pa-cloud-model-box';
     cloudBox.classList.add('hidden');
+    const cloudBaseUrlInp = doc.createElement('input');
+    cloudBaseUrlInp.id = 'pa-cloud-baseurl';
+    const cloudApiKeyInp = doc.createElement('input');
+    cloudApiKeyInp.id = 'pa-cloud-apikey';
+    const cloudModelsStatus = doc.createElement('span');
+    cloudModelsStatus.id = 'pa-cloud-models-status';
+    const cloudFetchBtn = doc.createElement('button');
+    cloudFetchBtn.id = 'pa-cloud-fetch-models-btn';
+    const cloudSaveBtn = doc.createElement('button');
+    cloudSaveBtn.id = 'pa-cloud-save-btn';
+    const cloudAutoChk = doc.createElement('input');
+    cloudAutoChk.id = 'pa-cloud-auto-approve';
     const cloudSel = doc.createElement('select');
     cloudSel.id = 'pa-cloud-model-select';
     const optDefault = doc.createElement('option');
@@ -284,7 +296,13 @@ function createHarness(options = {}) {
     optGemini.textContent = 'Google Gemini 2.5 Flash';
     cloudSel.appendChild(optDefault);
     cloudSel.appendChild(optGemini);
+    cloudBox.appendChild(cloudBaseUrlInp);
+    cloudBox.appendChild(cloudApiKeyInp);
+    cloudBox.appendChild(cloudModelsStatus);
+    cloudBox.appendChild(cloudFetchBtn);
     cloudBox.appendChild(cloudSel);
+    cloudBox.appendChild(cloudAutoChk);
+    cloudBox.appendChild(cloudSaveBtn);
     doc.body.appendChild(cloudBox);
 
     const localCard = doc.createElement('div');
@@ -341,7 +359,7 @@ function createHarness(options = {}) {
       return true;
     },
     isAutoSwipeRunning: () => false,
-    getInstalledVersionInfo: () => JSON.stringify({ versionName: '2.7.5', versionCode: 166 }),
+    getInstalledVersionInfo: () => JSON.stringify({ versionName: '2.7.6', versionCode: 167 }),
     getScreenSize: () => JSON.stringify({ width: 1080, height: 2400 }),
     getInstalledApps: () => JSON.stringify([{ name: '微信' }, { name: '美团' }]),
     getLastExternalApp: () => JSON.stringify({ packageName: 'com.study.app', appName: '学习通' }),
@@ -831,19 +849,22 @@ async function runTests() {
     ok(plugin.getState().records.length === 0 && localStorageMock.getItem('ds_billing_records_v1') === '[]', 'clearBillingRecords 正常清零');
   }
 
-  // ========= 场景 10：手机辅助双模式默认模型矫正、历史遗留迁移与配置面板互斥隔离 =========
+  // ========= 场景 10：DeepSeek 官方直连免填地址 + 云端 API 自定义接口地址/Key 与拉取模型 =========
   {
     const h = createHarness({
       withModePanel: true,
       initialStorage: {
         pa_exec_mode_v1: 'api_direct',
         pa_direct_model_v1: 'deepseek-chat',
+        pa_direct_baseurl_v1: 'https://legacy-proxy.example.com/v1',
         pa_cloud_model_v1: 'deepseek-v4.1-flash'
       }
     });
-    const { win, doc, localStorageMock } = h;
+    const { win, doc, localStorageMock, setFetchHandler } = h;
 
     ok(win.PhoneAgent.getConfig().model === 'deepseek-v4.1-flash', '旧缓存 deepseek-chat 自动迁移为 DeepSeek V4.1 Flash');
+    ok(win.PhoneAgent.getConfig().baseUrl === 'https://api.deepseek.com/v1/chat/completions', 'DeepSeek API 模式锁定官方接口地址且忽略旧接口地址输入');
+    ok(!doc.getElementById('pa-cfg-baseurl'), 'DeepSeek API 表单不再渲染冗余的接口地址输入框');
     ok(localStorageMock.getItem('pa_direct_model_v1') === 'deepseek-v4.1-flash', 'pa_direct_model_v1 已落盘更新为 deepseek-v4.1-flash');
     ok(win.PhoneAgent.getCloudModel() === '', '误存于云端模式的 deepseek-v4.1-flash 已自动迁回智能默认空值');
 
@@ -851,18 +872,66 @@ async function runTests() {
     const inlineDrawer = doc.getElementById('pa-inline-config-drawer');
     const cloudBox = doc.getElementById('pa-cloud-model-box');
     const cloudSel = doc.getElementById('pa-cloud-model-select');
+    const cloudUrlInp = doc.getElementById('pa-cloud-baseurl');
+    const cloudKeyInp = doc.getElementById('pa-cloud-apikey');
+    const cloudFetchBtn = doc.getElementById('pa-cloud-fetch-models-btn');
+    const cloudSaveBtn = doc.getElementById('pa-cloud-save-btn');
+    const cloudStatusEl = doc.getElementById('pa-cloud-models-status');
 
     ok(cfgModelInp.value === 'deepseek-v4.1-flash', 'DeepSeek API 输入框显示 deepseek-v4.1-flash');
-    ok(!inlineDrawer.classList.contains('hidden') && cloudBox.classList.contains('hidden'), 'api_direct 模式下仅展示 DeepSeek 直连配置抽屉并隐藏云端选模框');
+    ok(!inlineDrawer.classList.contains('hidden') && cloudBox.classList.contains('hidden'), 'api_direct 模式下仅展示 DeepSeek 直连配置抽屉并隐藏云端配置抽屉');
 
-    // 切换至云端 API 模式：必须隐藏 DeepSeek 直连抽屉，展示云端模型选择框，且不把 DeepSeek V4.1 Flash 强塞作云端默认
+    // 切换至云端 API 模式：必须隐藏 DeepSeek 直连抽屉，展示云端地址/Key/拉取模型抽屉
     win.PhoneAgent.setExecMode('api_cloud');
-    ok(inlineDrawer.classList.contains('hidden') && !cloudBox.classList.contains('hidden'), 'api_cloud 模式下隐藏直连配置抽屉并仅展示云端模型选框');
-    ok(cloudSel.value === '', '云端 API 默认选项保持为智能默认（不强制绑定 DeepSeek V4.1 Flash）');
+    ok(inlineDrawer.classList.contains('hidden') && !cloudBox.classList.contains('hidden'), 'api_cloud 模式下隐藏 DeepSeek 抽屉并展示云端配置抽屉');
+    ok(cloudSel.value === '', '云端 API 未拉取前默认选项保持为云端智能默认');
 
-    // 切换至本地免 API 模式：直连与云端均隐藏
+    // 在云端 API 下填入地址与 API Key，并模拟点击「拉取模型」
+    let fetchedModelsPayload = null;
+    setFetchHandler(async (url, opts = {}) => {
+      if (String(url).includes('/api/cloud/models')) {
+        fetchedModelsPayload = JSON.parse(opts.body || '{}');
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            ok: true,
+            models: ['Qwen/Qwen2.5-72B-Instruct', 'Pro/deepseek-ai/DeepSeek-V3', 'THUDM/glm-4-9b-chat']
+          })
+        };
+      }
+      return { ok: true, status: 200, json: async () => ({ ok: true }) };
+    });
+
+    cloudUrlInp.value = 'https://api.siliconflow.cn';
+    cloudKeyInp.value = 'sk-cloud-test-987654321';
+    cloudFetchBtn.click();
+    await new Promise((r) => setTimeout(r, 30));
+
+    ok(
+      fetchedModelsPayload && fetchedModelsPayload.apiKey === 'sk-cloud-test-987654321' && fetchedModelsPayload.baseUrl === 'https://api.siliconflow.cn/v1/chat/completions',
+      '点击拉取模型向 /api/cloud/models 正确传递云端 Key 与补全后的 Base URL'
+    );
+    ok(
+      cloudSel.options.some((o) => o.value === 'Qwen/Qwen2.5-72B-Instruct') && cloudSel.value === 'Qwen/Qwen2.5-72B-Instruct',
+      '拉取到的第三方云端模型已填充进下拉列表并自动选中首个可用模型'
+    );
+    ok(cloudStatusEl.textContent.includes('已拉取 3 个'), '云端模型状态提示已更新拉取数量');
+
+    // 保存云端配置并校验独立沙盒存储
+    cloudSel.value = 'Pro/deepseek-ai/DeepSeek-V3';
+    cloudSaveBtn.click();
+    const savedCloudCfg = win.PhoneAgent.getCloudConfig();
+    ok(
+      savedCloudCfg.apiKey === 'sk-cloud-test-987654321' &&
+      savedCloudCfg.baseUrl === 'https://api.siliconflow.cn/v1/chat/completions' &&
+      savedCloudCfg.model === 'Pro/deepseek-ai/DeepSeek-V3',
+      '云端 API Key、Base URL 与所选模型已独立落盘保存且与 DeepSeek 直连隔离'
+    );
+
+    // 切换至本地免 API 模式：直连与云端抽屉均隐藏
     win.PhoneAgent.setExecMode('local');
-    ok(inlineDrawer.classList.contains('hidden') && cloudBox.classList.contains('hidden'), 'local 模式下直连抽屉与云端选框均隐藏');
+    ok(inlineDrawer.classList.contains('hidden') && cloudBox.classList.contains('hidden'), 'local 模式下直连抽屉与云端配置抽屉均隐藏');
   }
 
   console.log(`ALL_PHONE_AGENT_LOGIC_TESTS_PASSED (${passed} assertions)`);

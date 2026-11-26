@@ -73,7 +73,7 @@
     hasMoreMessages: false,
     totalMessages: 0,
     oldestMessageId: 0,
-    appVersion: '2.7.5',
+    appVersion: '2.7.6',
     tourIndex: 0,
     tourActive: false,
     llmMode: 'local_antigravity',

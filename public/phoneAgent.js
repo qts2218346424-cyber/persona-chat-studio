@@ -7,9 +7,10 @@
    ========================================================================== */
 
 (() => {
-  const CURRENT_APK_VERSION = '2.7.5';
-  const CURRENT_APK_CODE = 166;
+  const CURRENT_APK_VERSION = '2.7.6';
+  const CURRENT_APK_CODE = 167;
   const DEEPSEEK_API_KEYS_URL = 'https://platform.deepseek.com/api_keys';
+  const DEEPSEEK_OFFICIAL_CHAT_URL = 'https://api.deepseek.com/v1/chat/completions';
   const PUBLIC_WEB_ORIGIN = 'https://star.claudexxb.online';
   const GITHUB_RELEASES_URL = 'https://github.com/qts2218346424-cyber/persona-chat-studio/releases';
 
@@ -18,6 +19,8 @@
     directModel: 'pa_direct_model_v1',
     directModelMigratedV41: 'pa_direct_model_v41_migrated_v1',
     cloudModel: 'pa_cloud_model_v1',
+    cloudApiKey: 'pa_cloud_apikey_v1',
+    cloudBaseUrl: 'pa_cloud_baseurl_v1',
     cloudModelMigratedV274: 'pa_cloud_model_migrated_v1',
     directBaseUrl: 'pa_direct_baseurl_v1',
     autoApprove: 'pa_auto_approve_v1',
@@ -694,58 +697,84 @@
   function getDirectConfig() {
     let apiKey = '';
     let model = 'deepseek-v4.1-flash';
-    let baseUrl = '';
     let autoApprove = false;
     try {
       apiKey = cleanApiKey(localStorage.getItem(STORAGE_KEYS.exclusiveKey) || '');
-      baseUrl = (localStorage.getItem(STORAGE_KEYS.directBaseUrl) || '').trim();
       const rawStored = (localStorage.getItem(STORAGE_KEYS.directModel) || '').trim();
       const migrated = localStorage.getItem(STORAGE_KEYS.directModelMigratedV41) === '1';
       if (!migrated) {
         localStorage.setItem(STORAGE_KEYS.directModelMigratedV41, '1');
-        const lowerBase = baseUrl.toLowerCase();
-        if (!rawStored || ((!lowerBase || lowerBase.includes('deepseek.com')) && (rawStored === 'deepseek-chat' || rawStored === 'deepseek-flash'))) {
+        if (!rawStored || rawStored === 'deepseek-chat' || rawStored === 'deepseek-flash') {
           localStorage.setItem(STORAGE_KEYS.directModel, 'deepseek-v4.1-flash');
           model = 'deepseek-v4.1-flash';
         } else {
-          model = rawStored || 'deepseek-v4.1-flash';
+          model = rawStored;
         }
       } else {
         model = rawStored || 'deepseek-v4.1-flash';
       }
       autoApprove = localStorage.getItem(STORAGE_KEYS.autoApprove) === '1';
     } catch {}
-    return { apiKey, model, baseUrl, autoApprove };
+    return { apiKey, model, baseUrl: DEEPSEEK_OFFICIAL_CHAT_URL, autoApprove };
+  }
+
+  function getCloudConfig() {
+    let apiKey = '';
+    let baseUrl = '';
+    let model = '';
+    let autoApprove = false;
+    try {
+      apiKey = cleanApiKey(localStorage.getItem(STORAGE_KEYS.cloudApiKey) || '');
+      baseUrl = (localStorage.getItem(STORAGE_KEYS.cloudBaseUrl) || '').trim();
+      const migrated = localStorage.getItem(STORAGE_KEYS.cloudModelMigratedV274) === '1';
+      const storedModel = (localStorage.getItem(STORAGE_KEYS.cloudModel) || '').trim();
+      if (!migrated) {
+        localStorage.setItem(STORAGE_KEYS.cloudModelMigratedV274, '1');
+        if (storedModel === 'deepseek-v4.1-flash') {
+          localStorage.removeItem(STORAGE_KEYS.cloudModel);
+          model = '';
+        } else {
+          model = storedModel;
+        }
+      } else {
+        model = storedModel;
+      }
+      autoApprove = localStorage.getItem(STORAGE_KEYS.autoApprove) === '1';
+    } catch {}
+    return { apiKey, baseUrl, model, autoApprove };
+  }
+
+  function setCloudConfig({ apiKey, baseUrl, model, autoApprove } = {}) {
+    try {
+      if (apiKey !== undefined) {
+        const cleanK = cleanApiKey(apiKey);
+        if (cleanK) localStorage.setItem(STORAGE_KEYS.cloudApiKey, cleanK);
+        else localStorage.removeItem(STORAGE_KEYS.cloudApiKey);
+      }
+      if (baseUrl !== undefined) {
+        const cleanU = String(baseUrl || '').trim();
+        if (cleanU) localStorage.setItem(STORAGE_KEYS.cloudBaseUrl, cleanU);
+        else localStorage.removeItem(STORAGE_KEYS.cloudBaseUrl);
+      }
+      if (model !== undefined) {
+        const cleanM = String(model || '').trim();
+        if (cleanM) localStorage.setItem(STORAGE_KEYS.cloudModel, cleanM);
+        else localStorage.removeItem(STORAGE_KEYS.cloudModel);
+        localStorage.setItem(STORAGE_KEYS.cloudModelMigratedV274, '1');
+      }
+      if (autoApprove !== undefined) {
+        localStorage.setItem(STORAGE_KEYS.autoApprove, autoApprove ? '1' : '0');
+      }
+    } catch {}
+    return getCloudConfig();
   }
 
   function getCloudModel() {
-    try {
-      const migrated = localStorage.getItem(STORAGE_KEYS.cloudModelMigratedV274) === '1';
-      const stored = (localStorage.getItem(STORAGE_KEYS.cloudModel) || '').trim();
-      if (!migrated) {
-        localStorage.setItem(STORAGE_KEYS.cloudModelMigratedV274, '1');
-        if (stored === 'deepseek-v4.1-flash') {
-          localStorage.removeItem(STORAGE_KEYS.cloudModel);
-          return '';
-        }
-      }
-      return stored;
-    } catch {
-      return '';
-    }
+    return getCloudConfig().model;
   }
 
   function setCloudModel(model) {
-    const clean = String(model || '').trim();
-    try {
-      if (clean) {
-        localStorage.setItem(STORAGE_KEYS.cloudModel, clean);
-      } else {
-        localStorage.removeItem(STORAGE_KEYS.cloudModel);
-      }
-      localStorage.setItem(STORAGE_KEYS.cloudModelMigratedV274, '1');
-    } catch {}
-    return clean;
+    return setCloudConfig({ model }).model;
   }
 
   function resolveDirectModelForUrl(rawModel, targetUrl = '') {
@@ -979,6 +1008,9 @@
     if (focusApiKey && curMode === 'api_direct') {
       $('pa-inline-config-drawer')?.classList.remove('hidden');
       setTimeout(() => $('pa-cfg-apikey')?.focus(), 80);
+    } else if (focusApiKey && curMode === 'api_cloud') {
+      $('pa-cloud-model-box')?.classList.remove('hidden');
+      setTimeout(() => ($('pa-cloud-baseurl')?.value ? $('pa-cloud-apikey') : $('pa-cloud-baseurl'))?.focus(), 80);
     }
   }
 
@@ -2096,6 +2128,7 @@
   function syncStatus() {
     const mode = getExecMode();
     const cfg = getDirectConfig();
+    const cloudCfg = getCloudConfig();
     const native = syncWebEnvironmentGates();
     const b = getBridge();
 
@@ -2106,7 +2139,7 @@
       btn.setAttribute('aria-selected', String(active));
     });
 
-    // 三模式表单严格互斥：本地免 API 展示安心状态卡；云端 API 展示自动拉取模型选择框；DeepSeek API 展示直连 Key 与 V4.1 Flash 抽屉
+    // 三模式表单严格互斥：本地免 API 展示安心状态卡；云端 API 展示接口地址+Key+拉取模型抽屉；DeepSeek API 展示官方直连 Key+V4.1 Flash 抽屉
     const cfgDrawer = $('pa-inline-config-drawer');
     if (cfgDrawer) {
       cfgDrawer.classList.toggle('hidden', mode !== 'api_direct');
@@ -2115,9 +2148,31 @@
     if (cloudModelBox) {
       cloudModelBox.classList.toggle('hidden', mode !== 'api_cloud');
     }
+    const cloudUrlInp = $('pa-cloud-baseurl');
+    if (cloudUrlInp && !cloudUrlInp.matches(':focus')) {
+      cloudUrlInp.value = cloudCfg.baseUrl || '';
+    }
+    const cloudKeyInp = $('pa-cloud-apikey');
+    if (cloudKeyInp && !cloudKeyInp.matches(':focus')) {
+      cloudKeyInp.value = cloudCfg.apiKey || '';
+    }
+    const cloudAutoChk = $('pa-cloud-auto-approve');
+    if (cloudAutoChk) {
+      cloudAutoChk.checked = Boolean(cloudCfg.autoApprove);
+    }
+    document.querySelectorAll('#pa-cloud-preset-bar .api-preset-chip').forEach((chip) => {
+      const u = String(chip.dataset.paCloudUrl || '').trim();
+      chip.classList.toggle('active', Boolean(u && cloudCfg.baseUrl && normalizeChatCompletionsUrl(cloudCfg.baseUrl) === normalizeChatCompletionsUrl(u)));
+    });
     const cloudModelSel = $('pa-cloud-model-select');
     if (cloudModelSel && !cloudModelSel.matches(':focus')) {
-      const cm = getCloudModel();
+      const cm = cloudCfg.model;
+      if (cm && !Array.from(cloudModelSel.options).some((o) => o.value === cm)) {
+        const extraOpt = document.createElement('option');
+        extraOpt.value = cm;
+        extraOpt.textContent = cm;
+        cloudModelSel.appendChild(extraOpt);
+      }
       if (Array.from(cloudModelSel.options).some((o) => o.value === cm)) {
         cloudModelSel.value = cm;
       } else if (Array.from(cloudModelSel.options).some((o) => o.value === '')) {
@@ -2131,7 +2186,7 @@
       if (cntEl) cntEl.textContent = String(loadLearnedSkills().length);
     }
 
-    // 2. 同步配置抽屉表单默认值
+    // 2. 同步 DeepSeek 官方直连配置抽屉表单默认值（无需接口地址）
     const keyInp = $('pa-cfg-apikey');
     if (keyInp && !keyInp.matches(':focus')) keyInp.value = cfg.apiKey;
     const modelSel = $('pa-cfg-model');
@@ -2139,13 +2194,11 @@
     try {
       window.DeepSeekMonitorPlugin?.syncPhoneAgent?.({
         execMode: mode,
-        apiKey: cfg.apiKey,
-        baseUrl: cfg.baseUrl,
-        model: mode === 'api_cloud' ? getCloudModel() : cfg.model
+        apiKey: mode === 'api_direct' ? cfg.apiKey : '',
+        baseUrl: mode === 'api_direct' ? DEEPSEEK_OFFICIAL_CHAT_URL : '',
+        model: mode === 'api_cloud' ? cloudCfg.model : cfg.model
       });
     } catch {}
-    const urlInp = $('pa-cfg-baseurl');
-    if (urlInp && !urlInp.matches(':focus')) urlInp.value = cfg.baseUrl || '';
     const autoChk = $('pa-cfg-auto-approve');
     if (autoChk) autoChk.checked = Boolean(cfg.autoApprove);
 
@@ -3544,21 +3597,19 @@
     }
 
     const cfg = getDirectConfig();
+    const cloudCfg = getCloudConfig();
     const compactApps = (installedApps || []).slice(0, 30).map((a) => (typeof a === 'string' ? a : a.name));
 
-    if (execMode === 'api_direct') {
-      const cleanKey = cleanApiKey(cfg.apiKey);
+    const runByokPreFlight = async ({ apiKey, targetUrl, targetModel }) => {
+      const cleanKey = cleanApiKey(apiKey);
       if (!cleanKey) {
-        return { ok: true, preflight: buildLocalFallbackPreFlight(task, clarifyPolicy) };
+        return null;
       }
-      const targetUrl = normalizeChatCompletionsUrl(cfg.baseUrl);
-      const rawModel = String(cfg.model || 'deepseek-v4.1-flash').trim() || 'deepseek-v4.1-flash';
-      const targetModel = /reasoner|r1/i.test(rawModel) ? 'deepseek-chat' : resolveDirectModelForUrl(rawModel, targetUrl);
       const preSys = [
         '你是星语手机辅助代理（Phone Agent · dsh-Go 任务前需求预检助手）。',
         '在真正切走手机界面或开始执行任务之前，快速判断用户的指令是否清晰完整，避免“一发指令就盲目跳走”。',
         '仅输出严格合法的 JSON 对象（不要 Markdown 代码块）：',
-        '{"intent":"chat|task","ready":true|false,"thought":"简短中文需求完整度分析(<=70字)","planPreview":"若现在执行将采取的1~2句中文拟定步骤","question":"若 ready=false，用友好简洁的中文一次性问清1~3个最关键的缺失细节","options":["快捷选项1","快捷选项2","快捷选项3"]}',
+        '{"intent":"chat|task","ready":true|false,"thought":"简短中文需求完整度分析(<=70字)","planPreview":"若现在执行将采取的1~2句中文拟定步骤","question":"若 ready=false，用友好简洁的中文一次性问清1~3个最关键的缺失细节","options":["可直接点击的快捷回答1","快捷回答2","快捷回答3"]}',
         '规则：1. 闲聊/提问咨询设 intent="chat", ready=true。2. 目标 App/当前上下文明确且无关键参数缺口（如“打开微信给张三发在吗”、“继续把当前这套单选题做完不交卷”）在 smart 模式设 intent="task", ready=true。3. 存在明显缺失或歧义（如“点外卖/写作业/发消息/买票/购物/刷视频”缺对象/条件）或 clarifyPolicy==="always" 设 intent="task", ready=false 并给出 2~4 个快捷选项。'
       ].join('\n');
       const preUser = JSON.stringify({
@@ -3588,7 +3639,7 @@
           max_tokens: 512,
           stream: false
         };
-        if (targetUrl.includes('deepseek.com')) {
+        if (String(targetUrl || '').includes('deepseek.com')) {
           bodyObj.response_format = { type: 'json_object' };
         }
         const resp = await fetch(targetUrl, {
@@ -3651,11 +3702,32 @@
           return { ok: true, preflight: pRes.data.preflight };
         }
       } catch {}
+      return null;
+    };
 
+    if (execMode === 'api_direct') {
+      const cleanKey = cleanApiKey(cfg.apiKey);
+      if (!cleanKey) {
+        return { ok: true, preflight: buildLocalFallbackPreFlight(task, clarifyPolicy) };
+      }
+      const rawModel = String(cfg.model || 'deepseek-v4.1-flash').trim() || 'deepseek-v4.1-flash';
+      const targetModel = /reasoner|r1/i.test(rawModel) ? 'deepseek-chat' : resolveDirectModelForUrl(rawModel, DEEPSEEK_OFFICIAL_CHAT_URL);
+      const res = await runByokPreFlight({ apiKey: cleanKey, targetUrl: DEEPSEEK_OFFICIAL_CHAT_URL, targetModel });
+      if (res) return res;
       return { ok: true, preflight: buildLocalFallbackPreFlight(task, clarifyPolicy) };
     }
 
-    // 云端 API 模式 preflight
+    // 云端 API 模式 preflight：若用户填了云端独立 Key 与地址，直接按自定义网关直连/代理执行；否则走平台云端接口
+    if (cloudCfg.apiKey) {
+      const targetCloudUrl = normalizeChatCompletionsUrl(cloudCfg.baseUrl || 'https://api.siliconflow.cn/v1/chat/completions');
+      const fallbackFirstOpt = Array.from($('pa-cloud-model-select')?.options || []).find((o) => String(o.value || '').trim())?.value || '';
+      const targetCloudModel = cloudCfg.model || fallbackFirstOpt;
+      if (targetCloudModel) {
+        const res = await runByokPreFlight({ apiKey: cloudCfg.apiKey, targetUrl: targetCloudUrl, targetModel: targetCloudModel });
+        if (res) return res;
+      }
+    }
+
     try {
       const cRes = await apiPostJson('/api/phone-agent/plan', {
         phase: 'preflight',
@@ -3664,7 +3736,7 @@
         lastExternalApp: lastExternalApp || getLastExternalAppInfo(),
         installedApps: compactApps,
         conversationMemory: paChatMemory.slice(-6),
-        customModel: cfg.model || ''
+        customModel: cloudCfg.model || ''
       }, signal);
       if (cRes.ok && cRes.data?.preflight) {
         return { ok: true, preflight: cRes.data.preflight };
@@ -4161,6 +4233,7 @@
 
   async function requestPlanStep({ execMode, task, snapshot, history, screenSize, installedApps, screenVerdict, loopDiagnostics, interjections, extraRecoveryHint = '', stepIndex, lastExternalApp, signal }) {
     const cfg = getDirectConfig();
+    const cloudCfg = getCloudConfig();
     const lastExt = lastExternalApp || getLastExternalAppInfo();
     const screenTreeText = String(snapshot?.screenTreeText || '');
     const screenNodes = screenTreeText ? [] : (snapshot?.nodes || []);
@@ -4189,14 +4262,9 @@
       ? [...(interjections || []), extraRecoveryHint]
       : (interjections || []);
 
-    if (execMode === 'api_direct') {
-      const cleanKey = cleanApiKey(cfg.apiKey);
-      if (!cleanKey) {
-        return { ok: false, code: 'NO_DIRECT_KEY', error: '手机辅助 DeepSeek / 自定义 API 密钥尚未配置，请填入密钥或切换至云端 API。' };
-      }
-      const targetUrl = normalizeChatCompletionsUrl(cfg.baseUrl);
-      const rawModelCfg = String(cfg.model || 'deepseek-v4.1-flash').trim() || 'deepseek-v4.1-flash';
-      const targetModel = resolveDirectModelForUrl(rawModelCfg, targetUrl);
+    const executeByokPlanCall = async ({ apiKey, targetUrl, targetModel, modeTag, allowDeepSeekMonitor }) => {
+      const cleanKey = cleanApiKey(apiKey);
+      const isOfficialDsUrl = String(targetUrl || '').toLowerCase().includes('deepseek.com');
       const baseMessages = buildPlanningPromptMessages({
         task,
         snapshot,
@@ -4220,7 +4288,7 @@
           max_tokens: isReasoner ? 2048 : 1024,
           stream: false
         };
-        if (allowJsonFormat && !isReasoner && targetUrl.includes('deepseek.com')) {
+        if (allowJsonFormat && !isReasoner && isOfficialDsUrl) {
           directBody.response_format = { type: 'json_object' };
         }
         const timeoutCtrl = new AbortController();
@@ -4282,7 +4350,7 @@
           }
           if (firstErr?.code === 'JSON_PARSE_ERROR' || Number(firstErr?.status) === 400 || Number(firstErr?.status) === 422 || /JSON|response_format|model/i.test(String(firstErr?.message || ''))) {
             const isModelErr = /model.*not.*exist|invalid.*model|does not exist/i.test(String(firstErr?.message || ''));
-            const retryModel = (/reasoner|r1/i.test(targetModel) || isModelErr) ? 'deepseek-chat' : targetModel;
+            const retryModel = (isOfficialDsUrl && (/reasoner|r1/i.test(targetModel) || isModelErr)) ? 'deepseek-chat' : targetModel;
             result = await attemptDirectCall(
               retryModel,
               '刚才未返回合法 JSON 动作指令。请严格只输出一个合法 JSON 对象（不要任何 Markdown 或解释文字）。',
@@ -4296,7 +4364,7 @@
           }
         }
         try {
-          if (result.usage && String(targetUrl || '').toLowerCase().includes('deepseek.com')) {
+          if (allowDeepSeekMonitor && result.usage && isOfficialDsUrl) {
             window.DeepSeekMonitorPlugin?.recordTurnUsage?.({
               usage: result.usage,
               model: result.model,
@@ -4307,7 +4375,7 @@
             });
           }
         } catch {}
-        return { ok: true, plan: result.plan, model: result.model, engine: 'api_direct' };
+        return { ok: true, plan: result.plan, model: result.model, engine: modeTag };
       } catch (directErr) {
         if (signal?.aborted) throw directErr;
         if (directErr?.code === 'DIRECT_AUTH_ERROR') {
@@ -4354,7 +4422,7 @@
         }
         if (proxyRes.ok && proxyRes.data?.plan) {
           try {
-            if (proxyRes.data?.usage && String(targetUrl || '').toLowerCase().includes('deepseek.com')) {
+            if (allowDeepSeekMonitor && proxyRes.data?.usage && isOfficialDsUrl) {
               window.DeepSeekMonitorPlugin?.recordTurnUsage?.({
                 usage: proxyRes.data.usage,
                 model: proxyRes.data.model || targetModel,
@@ -4365,7 +4433,7 @@
               });
             }
           } catch {}
-          return { ok: true, plan: proxyRes.data.plan, model: proxyRes.data.model, engine: 'api_direct_proxy' };
+          return { ok: true, plan: proxyRes.data.plan, model: proxyRes.data.model, engine: `${modeTag}_proxy` };
         }
         return {
           ok: false,
@@ -4373,6 +4441,38 @@
           error: proxyRes.data?.error || directErr?.message || '自定义 API 请求失败'
         };
       }
+    };
+
+    if (execMode === 'api_direct') {
+      const cleanKey = cleanApiKey(cfg.apiKey);
+      if (!cleanKey) {
+        return { ok: false, code: 'NO_DIRECT_KEY', error: '手机辅助 DeepSeek 官方 API 密钥尚未配置，请填入密钥或切换至云端 API。' };
+      }
+      const rawModelCfg = String(cfg.model || 'deepseek-v4.1-flash').trim() || 'deepseek-v4.1-flash';
+      const targetModel = resolveDirectModelForUrl(rawModelCfg, DEEPSEEK_OFFICIAL_CHAT_URL);
+      return executeByokPlanCall({
+        apiKey: cleanKey,
+        targetUrl: DEEPSEEK_OFFICIAL_CHAT_URL,
+        targetModel,
+        modeTag: 'api_direct',
+        allowDeepSeekMonitor: true
+      });
+    }
+
+    if (cloudCfg.apiKey) {
+      const targetCloudUrl = normalizeChatCompletionsUrl(cloudCfg.baseUrl || 'https://api.siliconflow.cn/v1/chat/completions');
+      const fallbackFirstOpt = Array.from($('pa-cloud-model-select')?.options || []).find((o) => String(o.value || '').trim())?.value || '';
+      const chosenCloudModel = cloudCfg.model || fallbackFirstOpt;
+      if (!chosenCloudModel) {
+        return { ok: false, code: 'CLOUD_MODEL_REQUIRED', error: '请先点击控制台中的「拉取模型」并选择一个可调用的云端模型。' };
+      }
+      return executeByokPlanCall({
+        apiKey: cloudCfg.apiKey,
+        targetUrl: targetCloudUrl,
+        targetModel: chosenCloudModel,
+        modeTag: 'api_cloud',
+        allowDeepSeekMonitor: false
+      });
     }
 
     let cloudRes = await apiPostJson(
@@ -4394,7 +4494,7 @@
         history: compactHistory,
         screenSize,
         installedApps: compactInstalledApps,
-        customModel: getCloudModel()
+        customModel: cloudCfg.model
       },
       signal
     );
@@ -4419,7 +4519,7 @@
           history: compactHistory,
           screenSize,
           installedApps: compactInstalledApps,
-          customModel: getCloudModel()
+          customModel: cloudCfg.model
         },
         signal
       );
@@ -6385,16 +6485,14 @@
       });
     });
 
-    // 3. 配置保存应用 (#pa-cfg-save-btn) 与官网获取密钥链接 (#pa-open-ds-official-btn)
+    // 3. 配置保存应用与测试连接（DeepSeek 官方直连免填地址 + 云端 API 自定义密钥与地址拉取模型）
     $('pa-open-ds-official-btn')?.addEventListener('click', openDeepSeekOfficialPage);
-    $('pa-cfg-test-btn')?.addEventListener('click', async () => {
-      const btn = $('pa-cfg-test-btn');
-      const apiKey = cleanApiKey($('pa-cfg-apikey')?.value || '');
-      const model = ($('pa-cfg-model')?.value || 'deepseek-v4.1-flash').trim() || 'deepseek-v4.1-flash';
-      const baseUrl = normalizeChatCompletionsUrl($('pa-cfg-baseurl')?.value || '');
-      if (!apiKey) {
-        showToast('请先输入 API Key 再测试连接');
-        $('pa-cfg-apikey')?.focus();
+
+    async function runConnectionTest({ btn, apiKey, baseUrl, model, okLabel, missingKeyMsg, focusEl, allowManagedCloudFallback = false }) {
+      const cleanK = cleanApiKey(apiKey);
+      if (!cleanK && !allowManagedCloudFallback) {
+        showToast(missingKeyMsg || '请先输入 API Key 再测试连接');
+        focusEl?.focus();
         return;
       }
       const origTxt = btn ? btn.textContent : '测试连接';
@@ -6402,26 +6500,33 @@
       try {
         let ok = false;
         let errTxt = '';
-        try {
-          const directRes = await fetch(baseUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-            body: JSON.stringify({ model, messages: [{ role: 'user', content: 'hi' }], max_tokens: 8 })
-          });
-          if (directRes.ok) ok = true;
-          else errTxt = `HTTP ${directRes.status}`;
-        } catch (e) {
-          errTxt = e?.message || '直连跨域或网络异常';
+        if (cleanK) {
+          try {
+            const directRes = await fetch(baseUrl, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${cleanK}` },
+              body: JSON.stringify({ model, messages: [{ role: 'user', content: 'hi' }], max_tokens: 8 })
+            });
+            if (directRes.ok) ok = true;
+            else errTxt = `HTTP ${directRes.status}`;
+          } catch (e) {
+            errTxt = e?.message || '直连跨域或网络异常';
+          }
         }
         if (!ok) {
-          const proxyBody = {
-            task: '测试连接：请回复 {"thought":"ok","tool":"chat","args":{"message":"ok"},"summary":"测试","risk":"read","reply":"ok"}',
-            customApiKey: apiKey,
-            customModel: model,
-            customBaseUrl: baseUrl
-          };
+          const proxyBody = cleanK
+            ? {
+                task: '测试连接：请回复 {"thought":"ok","tool":"chat","args":{"message":"ok"},"summary":"测试","risk":"read","reply":"ok"}',
+                customApiKey: cleanK,
+                customModel: model,
+                customBaseUrl: baseUrl
+              }
+            : {
+                task: '测试连接：请回复 {"thought":"ok","tool":"chat","args":{"message":"ok"},"summary":"测试","risk":"read","reply":"ok"}',
+                customModel: model || ''
+              };
           let pRes = await apiPostJson('/api/phone-agent/plan', proxyBody).catch(() => ({ ok: false, data: {} }));
-          if (!pRes.ok) {
+          if (!pRes.ok && cleanK) {
             const cRes = await fetch(`${PUBLIC_WEB_ORIGIN}/api/phone-agent/plan`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -6439,13 +6544,55 @@
           }
         }
         if (ok) {
-          showToast(`✅ 连接成功！模型 ${model} 可正常驱动手机辅助`);
+          showToast(okLabel || `✅ 连接成功！模型 ${model || '云端默认'} 可正常驱动手机辅助`);
         } else {
           showToast(`❌ 连接失败：${errTxt || '请检查密钥、接口地址与模型名'}`);
         }
       } finally {
         if (btn) { btn.disabled = false; btn.textContent = origTxt; }
       }
+    }
+
+    $('pa-cfg-test-btn')?.addEventListener('click', () => {
+      const apiKey = cleanApiKey($('pa-cfg-apikey')?.value || '');
+      const model = ($('pa-cfg-model')?.value || 'deepseek-v4.1-flash').trim() || 'deepseek-v4.1-flash';
+      runConnectionTest({
+        btn: $('pa-cfg-test-btn'),
+        apiKey,
+        baseUrl: DEEPSEEK_OFFICIAL_CHAT_URL,
+        model: resolveDirectModelForUrl(model, DEEPSEEK_OFFICIAL_CHAT_URL),
+        missingKeyMsg: '请先输入 DeepSeek API Key 再测试连接',
+        focusEl: $('pa-cfg-apikey'),
+        okLabel: `✅ DeepSeek 官方连接成功！模型 ${model} 已就绪`
+      });
+    });
+
+    $('pa-cloud-test-btn')?.addEventListener('click', () => {
+      const cloudCfg = getCloudConfig();
+      const apiKey = cleanApiKey($('pa-cloud-apikey')?.value || cloudCfg.apiKey);
+      const rawUrl = ($('pa-cloud-baseurl')?.value || cloudCfg.baseUrl).trim();
+      const baseUrl = normalizeChatCompletionsUrl(rawUrl || 'https://api.siliconflow.cn/v1/chat/completions');
+      const selEl = $('pa-cloud-model-select');
+      const firstOptModel = Array.from(selEl?.options || []).find((o) => String(o.value || '').trim())?.value || '';
+      const model = ($('pa-cloud-model-select')?.value || cloudCfg.model || firstOptModel).trim();
+      if (apiKey && !rawUrl) {
+        showToast('请先填写云端接口地址 (Base URL)');
+        $('pa-cloud-baseurl')?.focus();
+        return;
+      }
+      if (apiKey && !model) {
+        showToast('请先点击「拉取模型」并选择一个可调用模型');
+        return;
+      }
+      runConnectionTest({
+        btn: $('pa-cloud-test-btn'),
+        apiKey,
+        baseUrl,
+        model,
+        allowManagedCloudFallback: !apiKey,
+        focusEl: $('pa-cloud-apikey'),
+        okLabel: `✅ 云端 API 连接成功！${model ? `模型 ${model}` : '智能默认渠道'}已就绪`
+      });
     });
 
     $('pa-cloud-model-select')?.addEventListener('change', (e) => {
@@ -6455,35 +6602,79 @@
     });
 
     let paCloudModelsFetched = false;
+    let lastCloudModelsSig = '';
     async function fetchPhoneAgentCloudModels(force = false) {
       const sel = $('pa-cloud-model-select');
       const statusEl = $('pa-cloud-models-status');
       const btn = $('pa-cloud-fetch-models-btn');
       if (!sel) return;
-      if (!force && paCloudModelsFetched) return;
+
+      const cloudCfg = getCloudConfig();
+      const domUrl = ($('pa-cloud-baseurl')?.value ?? cloudCfg.baseUrl ?? '').trim();
+      const domKey = cleanApiKey($('pa-cloud-apikey')?.value ?? cloudCfg.apiKey ?? '');
+      const normalizedUrl = domUrl ? normalizeChatCompletionsUrl(domUrl) : '';
+      const sig = `${normalizedUrl}|${domKey}`;
+      if (!force && paCloudModelsFetched && sig === lastCloudModelsSig) return;
+      if (domUrl && !domKey && force) {
+        showToast('请先填入对应的云端 API Key，再点击拉取可用模型');
+        $('pa-cloud-apikey')?.focus();
+        return;
+      }
+
       if (statusEl) statusEl.textContent = '（拉取中…）';
       if (btn) btn.disabled = true;
       try {
-        let res = await apiPostJson('/api/cloud/models', {}).catch(() => ({ ok: false, data: {} }));
-        if ((!res.ok || !Array.isArray(res.data?.models) || !res.data.models.length) && isNativeApk()) {
+        const reqPayload = domKey
+          ? {
+              apiKey: domKey,
+              baseUrl: normalizedUrl || 'https://api.siliconflow.cn/v1/chat/completions'
+            }
+          : {};
+
+        let res = await apiPostJson('/api/cloud/models', reqPayload).catch(() => ({ ok: false, data: {} }));
+        if ((!res.ok || !Array.isArray(res.data?.models) || !res.data.models.length) && (isNativeApk() || domKey)) {
           const r2 = await fetch(`${PUBLIC_WEB_ORIGIN}/api/cloud/models`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({})
+            body: JSON.stringify(reqPayload)
           }).catch(() => null);
           if (r2 && r2.ok) {
             const d2 = await r2.json().catch(() => ({}));
             if (d2?.ok && Array.isArray(d2.models)) res = { ok: true, data: d2 };
+            else if (d2?.error && !res.data?.error) res = { ok: false, data: d2 };
           }
         }
+        // 第三重：若填了自定义地址与 Key 且服务端代理无法直达，尝一试浏览器直连 /models
+        if ((!res.ok || !Array.isArray(res.data?.models) || !res.data.models.length) && domKey) {
+          const targetChat = normalizedUrl || 'https://api.siliconflow.cn/v1/chat/completions';
+          const directModelsUrl = targetChat.replace(/\/chat\/completions$/i, '') + '/models';
+          try {
+            const r3 = await fetch(directModelsUrl, {
+              method: 'GET',
+              headers: { Accept: 'application/json', Authorization: `Bearer ${domKey}` }
+            });
+            if (r3.ok) {
+              const d3 = await r3.json().catch(() => ({}));
+              const list3 = Array.isArray(d3?.data) ? d3.data : (Array.isArray(d3?.models) ? d3.models : []);
+              const parsed3 = list3
+                .map((x) => (typeof x === 'string' ? x : (x?.id || x?.name || '')).trim())
+                .filter(Boolean);
+              if (parsed3.length > 0) {
+                res = { ok: true, data: { ok: true, models: parsed3 } };
+              }
+            }
+          } catch {}
+        }
+
         const models = Array.isArray(res.data?.models) ? res.data.models : [];
         if (models.length > 0) {
           paCloudModelsFetched = true;
+          lastCloudModelsSig = sig;
           const prev = getCloudModel();
           sel.innerHTML = '';
           const defaultOpt = document.createElement('option');
           defaultOpt.value = '';
-          defaultOpt.textContent = '云端智能默认（自动拉取适配）';
+          defaultOpt.textContent = domKey ? '请选择模型（或自动选首项）' : '云端智能默认（自动拉取适配）';
           sel.appendChild(defaultOpt);
           for (const m of models) {
             const opt = document.createElement('option');
@@ -6493,16 +6684,23 @@
           }
           if (prev && models.includes(prev)) {
             sel.value = prev;
+          } else if (domKey) {
+            sel.value = models[0];
+            setCloudModel(models[0]);
           } else {
             sel.value = '';
             setCloudModel('');
           }
-          if (statusEl) statusEl.textContent = `（已自动拉取 ${models.length} 个）`;
+          if (statusEl) statusEl.textContent = `（已拉取 ${models.length} 个可用模型）`;
+          if (force) showToast(`✅ 已成功拉取 ${models.length} 个可用云端模型`);
+        } else if (res.data?.error && domKey) {
+          if (statusEl) statusEl.textContent = `（拉取失败：${String(res.data.error).slice(0, 24)}）`;
+          if (force) showToast(`拉取模型失败：${res.data.error}`);
         } else if (statusEl) {
-          statusEl.textContent = '（自动适配 / 预设）';
+          statusEl.textContent = domKey ? '（请检查地址/Key 后点拉取）' : '（填完地址与 Key 自动拉取）';
         }
       } catch {
-        if (statusEl) statusEl.textContent = '（自动适配 / 预设）';
+        if (statusEl) statusEl.textContent = '（填完地址与 Key 自动拉取）';
       } finally {
         if (btn) btn.disabled = false;
       }
@@ -6511,22 +6709,86 @@
     $('pa-cloud-fetch-models-btn')?.addEventListener('click', () => fetchPhoneAgentCloudModels(true));
     $('pa-mode-api-cloud')?.addEventListener('click', () => setTimeout(() => fetchPhoneAgentCloudModels(false), 120));
 
+    let paCloudDebounceTimer = null;
+    const scheduleAutoFetchCloudModels = () => {
+      clearTimeout(paCloudDebounceTimer);
+      paCloudDebounceTimer = setTimeout(() => {
+        const u = ($('pa-cloud-baseurl')?.value || '').trim();
+        const k = cleanApiKey($('pa-cloud-apikey')?.value || '');
+        if (u && k) {
+          fetchPhoneAgentCloudModels(true);
+        }
+      }, 650);
+    };
+    $('pa-cloud-baseurl')?.addEventListener('blur', () => {
+      const u = ($('pa-cloud-baseurl')?.value || '').trim();
+      const k = cleanApiKey($('pa-cloud-apikey')?.value || '');
+      if (u && k) fetchPhoneAgentCloudModels(true);
+    });
+    $('pa-cloud-apikey')?.addEventListener('blur', () => {
+      const u = ($('pa-cloud-baseurl')?.value || '').trim();
+      const k = cleanApiKey($('pa-cloud-apikey')?.value || '');
+      if (u && k) fetchPhoneAgentCloudModels(true);
+    });
+    $('pa-cloud-baseurl')?.addEventListener('input', scheduleAutoFetchCloudModels);
+    $('pa-cloud-apikey')?.addEventListener('input', scheduleAutoFetchCloudModels);
+
+    document.querySelectorAll('#pa-cloud-preset-bar .api-preset-chip').forEach((chip) => {
+      chip.addEventListener('click', () => {
+        const u = String(chip.dataset.paCloudUrl || '').trim();
+        const urlInp = $('pa-cloud-baseurl');
+        if (urlInp && u) urlInp.value = u;
+        document.querySelectorAll('#pa-cloud-preset-bar .api-preset-chip').forEach((c) => {
+          c.classList.toggle('active', c === chip);
+        });
+        const k = cleanApiKey($('pa-cloud-apikey')?.value || '');
+        if (k) {
+          fetchPhoneAgentCloudModels(true);
+        } else {
+          $('pa-cloud-apikey')?.focus();
+          showToast(`已填入「${chip.textContent.trim()}」接口地址，请填写 API Key 自动拉取模型`);
+        }
+      });
+    });
+
+    $('pa-cloud-save-btn')?.addEventListener('click', () => {
+      const apiKey = cleanApiKey($('pa-cloud-apikey')?.value || '');
+      const baseUrl = ($('pa-cloud-baseurl')?.value || '').trim();
+      const model = ($('pa-cloud-model-select')?.value || '').trim();
+      const autoApprove = Boolean($('pa-cloud-auto-approve')?.checked);
+
+      if (apiKey && !baseUrl) {
+        showToast('请填写云端 API 接口地址 (Base URL)');
+        $('pa-cloud-baseurl')?.focus();
+        return;
+      }
+
+      setCloudConfig({
+        apiKey,
+        baseUrl: baseUrl ? normalizeChatCompletionsUrl(baseUrl) : '',
+        model,
+        autoApprove
+      });
+      closeControlSheet();
+      syncStatus();
+      showToast('云端 API 接口与模型配置已保存并应用');
+    });
+
     $('pa-cfg-save-btn')?.addEventListener('click', () => {
       const apiKey = cleanApiKey($('pa-cfg-apikey')?.value || '');
       const model = ($('pa-cfg-model')?.value || 'deepseek-v4.1-flash').trim() || 'deepseek-v4.1-flash';
-      const baseUrl = ($('pa-cfg-baseurl')?.value || '').trim();
       const autoApprove = Boolean($('pa-cfg-auto-approve')?.checked);
 
       setDirectApiKey(apiKey);
       try {
         localStorage.setItem(STORAGE_KEYS.directModel, model);
-        localStorage.setItem(STORAGE_KEYS.directBaseUrl, baseUrl);
+        localStorage.setItem(STORAGE_KEYS.directModelMigratedV41, '1');
         localStorage.setItem(STORAGE_KEYS.autoApprove, autoApprove ? '1' : '0');
       } catch {}
 
       closeControlSheet();
       syncStatus();
-      showToast('手机辅助独立参数与确认策略已保存');
+      showToast('DeepSeek 官方直连参数与确认策略已保存');
     });
 
     // 4. 权限状态胶囊与悬浮窗/自动刷视频快捷开关
@@ -7025,6 +7287,8 @@
     getInstalledVersionInfo,
     getInstalledVersionLabel,
     getExecMode,
+    getCloudConfig,
+    setCloudConfig,
     getCloudModel,
     setCloudModel,
     getConfig: () => ({ execMode: getExecMode(), ...getDirectConfig() }),

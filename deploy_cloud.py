@@ -194,10 +194,10 @@ const {{ db, getRawPlatformConfigInternal, updateAdminPlatformConfig, saveAdminA
 db.prepare("DELETE FROM personas WHERE id = \\x27persona_linqi\\x27").run();
 db.prepare("UPDATE site_announcements SET enabled = 0").run();
 saveAdminAnnouncement("admin", {{
-  title: "星语恋庭 v2.5.5 更新：彻底修复状态栏歌词错位与覆盖问题，上方歌名下方纯歌词丝滑同步！",
-  content: "1. 【彻底修复歌词反转与下方提示冲突】：自动拆解 QQ 音乐状态栏/灵动岛歌词模式下“title=当前歌词、artist=歌名-歌手”反转元数据；上方固定展示真实歌名与歌手，下方纯正同步显示实时歌词，彻底告别“暂无时间轴歌词”反过来盖掉实时歌词以及上下叠字。\\n2. 【整合大肥鱼慢漫步/捣蛋动作 & 外卖实时同步】：随身版同步升级至 v2.5.5 (Build 152)！",
+  title: "星语恋庭 v2.5.6 更新：删去歌词尾巴，肥鱼脚底接触阴影踩实地板、4关键帧自然步态与搞怪微尘特效！",
+  content: "1. 【删去多余歌词尾巴】：彻底取消折叠态肥鱼旁拖着的黑底歌词尾巴，且无歌词时桌面透明条自动隐身，画面更干净。\\n2. 【消除浮空感 · 双层地面接触阴影】：按鞋底真实像素锚定脚掌重心，新增跟随起跳/落地缩放浓淡的双层 AO 接触投影，拖拽放下更有“咚”地砸实回弹手感！\\n3. 【动作细节大升级】：引入 4 关键帧步态循环（蓄力、重踩落尘、3D微侧迈步、过冲刹车）、体积守恒挤压拉伸与左右偷瞄/踮脚/抖呆毛微动作，随身版升级至 v2.5.6 (Build 153)！",
   enabled: true,
-  version: 152
+  version: 153
 }});
 db.prepare("UPDATE sessions SET companion_config = NULL").run();
 db.prepare("UPDATE user_settings SET value = \\x27demo\\x27 WHERE key = \\x27provider\\x27").run();

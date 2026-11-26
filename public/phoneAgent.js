@@ -1,5 +1,5 @@
 /* ==========================================================================
-   Phone Agent 手机端 AI 辅助助理与 dsh-Go 规划循环模块 (v2.5.5)
+   Phone Agent 手机端 AI 辅助助理与 dsh-Go 规划循环模块 (v2.5.6)
    1. 高度还原 dsh-Go 控屏内核：snapshotId/ref 精准控屏、ScreenVerdict 非阻塞验证、
       三档 SafetyGate 安全确认 + App 白名单、执行中途随时插话/排队、无障碍内联引导
    2. 高度还原 dsh-Go 交互 UI：运行中流光胶囊 + 完成后自动折叠单行轨迹 + 自然语言回复
@@ -7,8 +7,8 @@
    ========================================================================== */
 
 (() => {
-  const CURRENT_APK_VERSION = '2.5.5';
-  const CURRENT_APK_CODE = 152;
+  const CURRENT_APK_VERSION = '2.5.6';
+  const CURRENT_APK_CODE = 153;
   const DEEPSEEK_API_KEYS_URL = 'https://platform.deepseek.com/api_keys';
   const PUBLIC_WEB_ORIGIN = 'https://star.claudexxb.online';
   const GITHUB_RELEASES_URL = 'https://github.com/qts2218346424-cyber/persona-chat-studio/releases';

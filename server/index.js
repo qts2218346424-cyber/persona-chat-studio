@@ -648,8 +648,8 @@ function extractAuthToken(req, parsedUrl = null) {
   return '';
 }
 
-const APP_LATEST_VERSION = '2.5.5';
-const APP_LATEST_VERSION_CODE = 152;
+const APP_LATEST_VERSION = '2.5.6';
+const APP_LATEST_VERSION_CODE = 153;
 const APP_OFFICIAL_CERT_SHA256 = '6fd05e32a3cabf327140129d866e55a342fe30daa3384c67aad4b3cbdd98a17b';
 const APP_UPDATE_TICKET_SECRET = crypto
   .createHash('sha256')
@@ -947,9 +947,9 @@ async function handleApi(req, res, pathname, parsedUrl) {
       forceUpdate,
       diffGenerations,
       changelog: [
-        '【状态栏歌词反转精准拆解 & 上下双行彻底清净】自动拆解 QQ 音乐状态栏/灵动岛歌词模式下“title=歌词一句、artist=歌名-歌手”反转元数据，上方小字稳稳固定显示真实歌名歌手、下方大字纯正实时同步歌词，绝不再把歌词错当歌名并显示“纯音乐或暂无时间轴歌词”覆盖掉实时歌词',
-        '【大肥鱼慢速自然漫步 & 6大搞怪捣蛋动作】漫步改成悠闲弧线散步，新增外置「😈闹」与面板「😈捣蛋」支持滑倒360度翻滚、倒立做鬼脸、吹泡泡吓一跳等 6 套滑稽微剧本',
-        '【外卖实时同步】后台通知与无障碍同步美团、饿了么、京东秒送配送阶段与「🛵查外卖」抓取，升级至 v2.5.5 (Build 152)'
+        '【彻底删除歌词尾巴 & 清净桌面歌词】移除大肥鱼折叠态右侧黑底歌词胶囊尾巴；无歌词或匹配期间不再在屏幕上挂出“暂无时间轴歌词”尾巴提示，桌面始终极简清爽',
+        '【脚底地面接触阴影 + 2D 动画物理引擎（消除浮空感）】依据真实鞋底像素位置精确锚定底部重心，新增双层软羽化接触 AO 投影（离地缩淡、踩实扩浓）与脚底微尘/星光/泡泡粒子；重构 4 关键帧步态周期（起步预备、踩地压沉、跨步抬脚 3D 侧身、刹车过冲回弹）、体积守恒挤压拉伸与左右张望/踮脚/抖毛细腻微动作',
+        '【集成状态栏歌词拆解、搞怪捣蛋动作与外卖同步】双端同步升级至 v2.5.6 (Build 153)'
       ]
     };
 

@@ -1,10 +1,10 @@
 // 星语恋庭 · PWA 极速离线与边缘加速 Service Worker
-const CACHE_VERSION = 'star-whisper-1013b15ddb';
+const CACHE_VERSION = 'star-whisper-e5096ba16a';
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const ASSETS_CACHE = `${CACHE_VERSION}-assets`;
 const PRECACHE_URLS = [
   './dist/app.bundle.css?v=decd6520e6',
-  './dist/app.bundle.js?v=3aeb5a9624',
+  './dist/app.bundle.js?v=91bedffed8',
   './assets/deepseek-whale.svg'
 ];
 const MAX_STATIC_CACHE_ENTRIES = 80;

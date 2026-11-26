@@ -2398,25 +2398,29 @@
   });
 
   window.__syncDefaultThemeRadios = (presetVal) => {
-    const curPreset = presetVal || (window.AppearanceSystem?.getCurrentSkin?.().preset) || 'minimal-studio';
+    const curPreset = presetVal || (window.AppearanceSystem?.getCurrentSkin?.().preset) || 'default';
     document.querySelectorAll('input[name="default-ui-theme"]').forEach((radio) => {
       radio.checked = radio.value === curPreset;
     });
     const defValEl = document.getElementById('mfs-default-theme-value');
     if (defValEl) {
       const defMap = {
-        'minimal-studio': '清透极简',
+        default: '原生极客风格',
         'qq-classic': '经典 QQ 聊天',
-        'warm-paper': '暖纸柔白',
-        'carbon-dark': '深邃碳黑'
+        'obsidian-gold': '曜石流金剧场',
+        'mist-silk': '晨雾丝绸',
+        'sakura-dawn': '朝雾樱白',
+        'crimson-scroll': '绯红古卷',
+        'cyber-neon': '赛博霓虹',
+        'eink-paper': '极简墨水屏'
       };
-      defValEl.textContent = defMap[curPreset] || '清透极简';
+      defValEl.textContent = defMap[curPreset] || '原生极客风格';
     }
   };
 
   document.querySelectorAll('input[name="default-ui-theme"]').forEach((radio) => {
     radio.addEventListener('change', (e) => {
-      const nextPreset = e.target.value || 'minimal-studio';
+      const nextPreset = e.target.value || 'default';
       if (window.AppearanceSystem?.applySkin) {
         const patch = nextPreset === 'qq-classic'
           ? { preset: 'qq-classic', bubbleStyle: 'im-bubble', accentColor: '' }
@@ -2425,10 +2429,9 @@
       }
       window.__syncDefaultThemeRadios(nextPreset);
       const tips = {
-        'minimal-studio': '已切换为「清透极简」默认主题（Lobe / Cherry 风格）',
-        'qq-classic': '已设为「经典 QQ 聊天」主题（洁净灰底 · 纯白对话 · QQ 蓝气泡）',
-        'warm-paper': '已切换为「暖纸柔白」护眼主题（Claude 纸感风格）',
-        'carbon-dark': '已切换为「深邃碳黑」暗夜主题'
+        default: '已恢复「原生极客风格」原版默认主题',
+        'qq-classic': '已切换为「经典 QQ 聊天」主题（洁净灰底 · 纯白对话 · QQ 蓝气泡）',
+        'obsidian-gold': '已切换为「曜石流金」暗夜剧场风格'
       };
       showToast(tips[nextPreset] || '已更新默认界面主题');
     });
@@ -9458,10 +9461,14 @@
     if (window.AppearanceSystem?.getCurrentSkin) {
       const curSkin = window.AppearanceSystem.getCurrentSkin();
       const presetNames = {
-        'minimal-studio': '清透极简',
+        default: '原生极客经典',
         'qq-classic': '经典 QQ 聊天',
-        'warm-paper': '暖纸柔白',
-        'carbon-dark': '深邃碳黑'
+        'obsidian-gold': '曜石流金',
+        'mist-silk': '晨雾丝绸',
+        'sakura-dawn': '朝雾樱白',
+        'crimson-scroll': '绯红古卷',
+        'cyber-neon': '赛博霓虹',
+        'eink-paper': '极简墨水屏'
       };
       const bubbleNames = {
         soft: '柔光圆润',
@@ -9470,7 +9477,7 @@
         outline: '极简细框',
         letter: '复古信纸'
       };
-      const pName = presetNames[curSkin.preset] || '清透极简';
+      const pName = presetNames[curSkin.preset] || '原生极客经典';
       const bName = bubbleNames[curSkin.bubbleStyle] || '柔光圆润';
       if (skinVal) skinVal.textContent = `${pName} · ${bName}`;
       if (defThemeVal) defThemeVal.textContent = pName;
@@ -9746,33 +9753,33 @@
 
     // 2.4 移动端专属默认界面主题设置
     document.getElementById('mfs-item-default-theme')?.addEventListener('click', () => {
-      const curPreset = (window.AppearanceSystem?.getCurrentSkin?.().preset) || 'minimal-studio';
+      const curPreset = (window.AppearanceSystem?.getCurrentSkin?.().preset) || 'default';
       openMfsSubSheet({
         title: '默认界面主题设置',
         subtitle: '设置默认聊天界面显示风格与气泡效果，随时可一键切换',
         bodyHtml:
           renderMfsOptionListHtml(
             [
-              { id: 'minimal-studio', title: '清透极简（默认推荐）', desc: 'Lobe / Cherry 风格 · 清爽高对比、呼吸感留白' },
+              { id: 'default', title: '原生极客风格（原版经典 · 默认）', desc: '跟随当前模式原版精致配色与圆润卡面布局' },
               { id: 'qq-classic', title: '经典 QQ 聊天', desc: '洁净浅灰画布 · 纯白逐句分段气泡 · QQ 蓝气泡' },
-              { id: 'warm-paper', title: '暖纸柔白护眼', desc: 'Claude 纸感 · 温润陶土棕、长时间阅读不刺眼' },
-              { id: 'carbon-dark', title: '深邃碳黑暗夜', desc: '高级暗夜碳黑 · 护眼冰蓝点缀' }
+              { id: 'obsidian-gold', title: '曜石流金剧场', desc: '深邃暗夜质感 · 暖金镶边与沉浸叙事光晕' },
+              { id: 'mist-silk', title: '晨雾丝绸（柔光浅色）', desc: '温和莫兰迪浅暖调 · 高对比明快可读体验' }
             ],
             curPreset
           ) +
           `
-          <div class="mfs-skin-promo-card" id="mfs-default-open-studio" style="margin-top: 14px; padding: 12px 14px; border-radius: 12px; background: var(--accent-soft); border: 1px solid var(--accent-border); display: flex; align-items: center; justify-content: space-between; cursor: pointer;">
+          <div class="mfs-skin-promo-card" id="mfs-default-open-studio" style="margin-top: 14px; padding: 12px 14px; border-radius: 12px; background: linear-gradient(135deg, rgba(77, 107, 254, 0.12), rgba(139, 92, 246, 0.08)); border: 1px solid rgba(77, 107, 254, 0.28); display: flex; align-items: center; justify-content: space-between; cursor: pointer;">
             <div>
-              <strong style="color: var(--text-primary); font-size: 13.5px; display: block; margin-bottom: 2px;">打开外观与皮肤工坊</strong>
+              <strong style="color: var(--text-primary); font-size: 13.5px; display: block; margin-bottom: 2px;">打开外观与皮肤工坊（8套免费皮肤）</strong>
               <span style="font-size: 11.5px; color: var(--text-secondary);">支持壁纸上传、背景取色、毛玻璃与字体字号精细调节</span>
             </div>
-            <span style="color: var(--accent); font-weight: 700; font-size: 18px; margin-left: 8px;">›</span>
+            <span style="color: #4d6bfe; font-weight: 700; font-size: 18px; margin-left: 8px;">›</span>
           </div>
         `,
         onMount: ({ bodyEl, close }) => {
           bodyEl.querySelectorAll('.mfs-opt-item').forEach((btn) => {
             btn.addEventListener('click', () => {
-              const nextPreset = btn.dataset.optId || 'minimal-studio';
+              const nextPreset = btn.dataset.optId || 'default';
               if (window.AppearanceSystem?.applySkin) {
                 const patch = nextPreset === 'qq-classic'
                   ? { preset: 'qq-classic', bubbleStyle: 'im-bubble', accentColor: '' }

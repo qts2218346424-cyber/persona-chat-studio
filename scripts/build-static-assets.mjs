@@ -12,11 +12,14 @@ const PUBLIC_DIR = path.join(PROJECT_ROOT, 'public');
 const DIST_DIR = path.join(PUBLIC_DIR, 'dist');
 
 const CSS_FILES = [
-  'ui-tokens.css',
-  'ui-shell.css',
-  'ui-components.css',
+  'styles.css',
+  'clean-ui.css',
+  'mobile-responsive.css',
   'phone-agent.css',
-  'appearance.css'
+  'mobile-deepseek.css',
+  'theater-luxury.css',
+  'appearance.css',
+  'ui-polish-v2.css'
 ];
 
 const JS_FILES = [

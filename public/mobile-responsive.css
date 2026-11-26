@@ -1,0 +1,1488 @@
+/* ==========================================================================
+   移动端全场景响应式适配与默认 DeepSeek 模式视觉统一样式层
+   遵循 modern-web-guidance: responsive-design, form-factor-adaptation
+   ========================================================================== */
+
+/* 1. 跨设备排版、溢出保护与触控热区基座 */
+:root {
+  --touch-target-min: 24px;
+}
+
+@media (pointer: coarse) {
+  :root {
+    --touch-target-min: 44px;
+  }
+}
+
+body {
+  overflow-wrap: break-word;
+}
+
+:where(a, code) {
+  overflow-wrap: anywhere;
+}
+
+img,
+video,
+canvas,
+svg {
+  max-inline-size: 100%;
+}
+
+:where(h1, h2, h3) {
+  text-wrap: balance;
+}
+
+:where(.assistant-prose p, .assistant-prose li, .ds-suite-desc, .sub-sec-hint) {
+  text-wrap: pretty;
+}
+
+.messages-viewport {
+  scroll-padding-bottom: calc(5rem + env(safe-area-inset-bottom, 0px));
+}
+
+/* 顶栏长短标签切换默认态（桌面端显示完整文案，手机窄屏显示精简文案） */
+.btn-short-lbl,
+.ds-mobile-empty-brand,
+.comp-mobile-close-btn,
+.ds-topbar-new-icon {
+  display: none;
+}
+
+/* ==========================================================================
+   2. 默认 DeepSeek 模式登录门扉（#auth-gate）视觉统一与手机安全滚动修复
+   ========================================================================== */
+
+.auth-gate,
+#auth-gate {
+  position: fixed !important;
+  inset: 0 !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  z-index: 100000 !important;
+  min-height: 100dvh;
+  height: 100dvh;
+  width: 100vw !important;
+  max-width: 100vw !important;
+  display: flex !important;
+  align-items: safe center !important;
+  justify-content: center !important;
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+  overscroll-behavior-y: contain !important;
+  background: var(--bg-app) !important;
+  padding:
+    max(20px, env(safe-area-inset-top, 0px))
+    max(14px, env(safe-area-inset-right, 0px))
+    max(36px, env(safe-area-inset-bottom, 0px))
+    max(14px, env(safe-area-inset-left, 0px)) !important;
+}
+
+.auth-card {
+  margin: auto !important;
+  width: min(94dvw, 440px) !important;
+  max-height: calc(100dvh - max(40px, env(safe-area-inset-top, 0px) + env(safe-area-inset-bottom, 0px)));
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+}
+
+.auth-submit-btn,
+.demo-login-btn,
+.ghost-link-btn {
+  white-space: normal !important;
+  line-height: 1.4 !important;
+  height: auto !important;
+  text-align: center;
+}
+
+/* 双模式登录门扉品牌徽标显隐 */
+.auth-ds-whale {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  margin: 0 auto 8px;
+  border-radius: 16px;
+  background: light-dark(#eff6ff, rgba(77, 107, 254, 0.16));
+  border: 1px solid light-dark(#dbeafe, rgba(96, 130, 255, 0.35));
+  box-shadow: 0 8px 22px rgba(77, 107, 254, 0.14);
+}
+
+html[data-ui-mode="deepseek"] .ambient-aurora,
+html[data-ui-mode="phone-agent"] .ambient-aurora,
+body[data-ui-mode="deepseek"] .ambient-aurora ,
+body[data-ui-mode="phone-agent"] .ambient-aurora {
+  display: none !important;
+}
+
+html[data-ui-mode="deepseek"] .auth-rp-gem,
+html[data-ui-mode="phone-agent"] .auth-rp-gem,
+body[data-ui-mode="deepseek"] .auth-rp-gem ,
+body[data-ui-mode="phone-agent"] .auth-rp-gem {
+  display: none !important;
+}
+
+html[data-ui-mode="deepseek"] .auth-ds-whale,
+html[data-ui-mode="phone-agent"] .auth-ds-whale,
+body[data-ui-mode="deepseek"] .auth-ds-whale ,
+body[data-ui-mode="phone-agent"] .auth-ds-whale {
+  display: inline-flex !important;
+}
+
+html[data-ui-mode="deepseek"] .auth-gate,
+html[data-ui-mode="phone-agent"] .auth-gate,
+body[data-ui-mode="deepseek"] .auth-gate ,
+body[data-ui-mode="phone-agent"] .auth-gate {
+  background: var(--bg-app);
+}
+
+html[data-ui-mode="deepseek"] .auth-card,
+html[data-ui-mode="phone-agent"] .auth-card,
+body[data-ui-mode="deepseek"] .auth-card ,
+body[data-ui-mode="phone-agent"] .auth-card {
+  background: var(--bg-composer) !important;
+  border: 1px solid var(--border-strong) !important;
+  box-shadow: var(--shadow-soft) !important;
+  backdrop-filter: none !important;
+}
+
+html[data-ui-mode="deepseek"] .auth-hero h1,
+html[data-ui-mode="phone-agent"] .auth-hero h1,
+body[data-ui-mode="deepseek"] .auth-hero h1 ,
+body[data-ui-mode="phone-agent"] .auth-hero h1 {
+  background: none !important;
+  -webkit-background-clip: border-box !important;
+  background-clip: border-box !important;
+  color: #4d6bfe !important;
+  font-family: "Inter", "HarmonyOS Sans SC", "PingFang SC", system-ui, sans-serif;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  font-size: clamp(1.4rem, 1.2rem + 1vw, 1.65rem);
+}
+
+html[data-ui-mode="deepseek"] .auth-tab.active,
+html[data-ui-mode="phone-agent"] .auth-tab.active,
+body[data-ui-mode="deepseek"] .auth-tab.active ,
+body[data-ui-mode="phone-agent"] .auth-tab.active {
+  background: var(--bg-app) !important;
+  color: var(--text-action) !important;
+  box-shadow: 0 2px 8px rgba(77, 107, 254, 0.12) !important;
+}
+
+html[data-ui-mode="deepseek"] .auth-submit-btn,
+html[data-ui-mode="phone-agent"] .auth-submit-btn,
+body[data-ui-mode="deepseek"] .auth-submit-btn ,
+body[data-ui-mode="phone-agent"] .auth-submit-btn {
+  background: #4d6bfe !important;
+  color: #ffffff !important;
+  box-shadow: 0 6px 18px rgba(77, 107, 254, 0.24) !important;
+}
+
+html[data-ui-mode="deepseek"] .auth-submit-btn:hover,
+html[data-ui-mode="phone-agent"] .auth-submit-btn:hover,
+body[data-ui-mode="deepseek"] .auth-submit-btn:hover ,
+body[data-ui-mode="phone-agent"] .auth-submit-btn:hover {
+  background: #3b58e8 !important;
+}
+
+html[data-ui-mode="deepseek"] .demo-login-btn,
+html[data-ui-mode="phone-agent"] .demo-login-btn,
+body[data-ui-mode="deepseek"] .demo-login-btn ,
+body[data-ui-mode="phone-agent"] .demo-login-btn {
+  border: 1.5px dashed var(--ds-blue-border) !important;
+  background: var(--ds-blue-soft) !important;
+  color: var(--text-action) !important;
+}
+
+html[data-ui-mode="deepseek"] .auth-gate .info-callout,
+html[data-ui-mode="phone-agent"] .auth-gate .info-callout,
+body[data-ui-mode="deepseek"] .auth-gate .info-callout ,
+body[data-ui-mode="phone-agent"] .auth-gate .info-callout {
+  background: var(--ds-blue-soft) !important;
+  border: 1px solid var(--ds-blue-border) !important;
+  color: var(--text-primary) !important;
+}
+
+/* DeepSeek 模式顶栏「🌸 恋庭」一键切换胶囊：桌面端隐藏（左侧栏已有模式切换），仅移动端收起侧栏时显示 */
+.ds-switch-rp-pill {
+  display: none !important;
+}
+
+.app-shell[data-ui-mode="deepseek"] .topbar-right .ds-switch-rp-pill ,
+.app-shell[data-ui-mode="phone-agent"] .topbar-right .ds-switch-rp-pill {
+  background: light-dark(#f5f3ff, rgba(139, 92, 246, 0.18)) !important;
+  border: 1px solid light-dark(#ddd6fe, rgba(167, 139, 250, 0.36)) !important;
+  color: light-dark(#6d28d9, #c4b5fd) !important;
+  font-weight: 600 !important;
+}
+
+.app-shell[data-ui-mode="deepseek"] .topbar-right .ds-switch-rp-pill:hover ,
+.app-shell[data-ui-mode="phone-agent"] .topbar-right .ds-switch-rp-pill:hover {
+  background: light-dark(#ede9fe, rgba(139, 92, 246, 0.28)) !important;
+  border-color: light-dark(#c4b5fd, rgba(167, 139, 250, 0.5)) !important;
+}
+
+/* Markdown 表格与代码容器防撑破保护 */
+.ds-code-block,
+.assistant-prose pre,
+.ds-md-table-wrap {
+  max-inline-size: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.msg-body,
+.assistant-prose,
+.user-msg-wrap {
+  min-inline-size: 0;
+}
+
+/* 追问胶囊允许长句自然折行，绝不横向溢出视口 */
+.follow-ups-row {
+  display: flex;
+  flex-wrap: wrap;
+  max-inline-size: 100%;
+}
+
+.followup-chip {
+  max-inline-size: 100%;
+  white-space: normal !important;
+  text-align: left;
+  height: auto !important;
+  line-height: 1.42;
+}
+
+/* 防止网格最小列宽在窄容器中横向溢出 */
+.tasks-section-grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)) !important;
+}
+
+.wallet-products-grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr)) !important;
+}
+
+.exchange-items-grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 185px), 1fr)) !important;
+}
+
+/* 触屏无悬停设备显露关键控件（避免 DeepSeek 空状态顶栏按钮与会话删除键隐身） */
+@media (hover: none) {
+  .app-shell[data-ui-mode="deepseek"] .chat-stage.ds-empty-mode .topbar-right ,
+  .app-shell[data-ui-mode="phone-agent"] .chat-stage.ds-empty-mode .topbar-right {
+    opacity: 1 !important;
+    visibility: visible !important;
+    pointer-events: auto !important;
+  }
+
+  .session-item .session-del-btn,
+  .app-shell[data-ui-mode="deepseek"] .session-item .session-del-btn ,
+  .app-shell[data-ui-mode="phone-agent"] .session-item .session-del-btn {
+    opacity: 0.65 !important;
+  }
+}
+
+/* 触屏设备防输入框字号 <16px 触发系统浏览器强制放大跑偏，并扩展紧凑图标点击热区 */
+@media (pointer: coarse), (max-width: 860px) {
+  input:not([type="checkbox"], [type="radio"], [type="range"]),
+  textarea,
+  select,
+  .app-shell[data-ui-mode="deepseek"] #chat-input,
+  .app-shell[data-ui-mode="phone-agent"] #chat-input,
+  #chat-input {
+    font-size: max(16px, 1rem) !important;
+  }
+
+  .icon-btn,
+  .ds-dots-btn,
+  .attach-icon-btn,
+  .ds-adv-icon-btn {
+    position: relative;
+    min-inline-size: 36px;
+    min-block-size: 36px;
+  }
+}
+
+/* ==========================================================================
+   4. 平板竖屏与手机主工作台架构（<=860px）：单栏全屏主舞台 + 双侧平滑滑出抽屉
+   ========================================================================== */
+.mobile-drawer-backdrop {
+  display: block;
+  position: fixed;
+  inset: 0;
+  width: 100dvw;
+  height: 100dvh;
+  z-index: 115 !important;
+  background: rgba(15, 23, 42, 0.44);
+  backdrop-filter: blur(2px);
+  opacity: 1;
+  transition: opacity 0.22s ease;
+}
+
+.mobile-drawer-backdrop.hidden {
+  display: none !important;
+  opacity: 0;
+  pointer-events: none;
+}
+
+@media (max-width: 860px) {
+  /* 严防未登录时主工作台在手机端穿透泄漏：最高特异性物理封锁 */
+  #app-shell.hidden,
+  .app-shell.hidden,
+  div#app-shell.hidden,
+  .app-shell[data-ui-mode="deepseek"].hidden,
+  .app-shell[data-ui-mode="phone-agent"].hidden,
+  .app-shell[data-ui-mode="roleplay"].hidden,
+  body:has(#auth-gate:not(.hidden)) #app-shell,
+  body:has(#auth-gate:not(.hidden)) .app-shell {
+    display: none !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+    opacity: 0 !important;
+    height: 0 !important;
+    max-height: 0 !important;
+    overflow: hidden !important;
+    position: absolute !important;
+    z-index: -99999 !important;
+  }
+
+  /* 登录门扉显示时，全量物理封杀底层工作台所有固定定位部件与浮层 */
+  body:has(#auth-gate:not(.hidden)) .stage-topbar,
+  body:has(#auth-gate:not(.hidden)) .composer-dock,
+  body:has(#auth-gate:not(.hidden)) .sidebar,
+  body:has(#auth-gate:not(.hidden)) .inspector-panel,
+  body:has(#auth-gate:not(.hidden)) .mobile-drawer-backdrop,
+  body:has(#auth-gate:not(.hidden)) .chat-stage,
+  body:has(#auth-gate:not(.hidden)) #phone-cmd-quick-drawer,
+  body:has(#auth-gate:not(.hidden)) #mobile-fullscreen-settings,
+  body:has(#auth-gate:not(.hidden)) #mfs-sub-sheet,
+  body:has(#auth-gate:not(.hidden)) .pa-float-btn,
+  body:has(#auth-gate:not(.hidden)) .tour-popover,
+  body:has(#auth-gate:not(.hidden)) [popover] {
+    display: none !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+  }
+
+  /* 彻底覆盖桌面端三栏固定像素 Grid，聊天主舞台 100% 占满手机屏幕（仅在已登录且非 hidden 状态下生效） */
+  .app-shell:not(.hidden),
+  .app-shell.left-collapsed:not(.hidden),
+  .app-shell.right-collapsed:not(.hidden),
+  .app-shell.left-collapsed.right-collapsed:not(.hidden),
+  .app-shell[data-ui-mode="roleplay"]:not(.hidden),
+  .app-shell[data-ui-mode="roleplay"]:not(.right-collapsed):not(.hidden),
+  .app-shell[data-ui-mode="roleplay"]:not(.left-collapsed):not(.hidden),
+  .app-shell[data-ui-mode="roleplay"].left-collapsed:not(.hidden),
+  .app-shell[data-ui-mode="roleplay"].right-collapsed:not(.hidden),
+  .app-shell[data-ui-mode="roleplay"].left-collapsed.right-collapsed:not(.hidden),
+  .app-shell[data-ui-mode="deepseek"]:not(.hidden),
+  .app-shell[data-ui-mode="phone-agent"]:not(.hidden),
+  .app-shell[data-ui-mode="deepseek"].artifacts-wide:not(.hidden),
+  .app-shell[data-ui-mode="phone-agent"].artifacts-wide:not(.hidden),
+  .app-shell[data-ui-mode="deepseek"].artifacts-wide:not(.right-collapsed):not(.hidden),
+  .app-shell[data-ui-mode="phone-agent"].artifacts-wide:not(.right-collapsed):not(.hidden),
+  .app-shell[data-ui-mode="deepseek"].left-collapsed:not(.hidden),
+  .app-shell[data-ui-mode="phone-agent"].left-collapsed:not(.hidden),
+  .app-shell[data-ui-mode="deepseek"].right-collapsed:not(.hidden),
+  .app-shell[data-ui-mode="phone-agent"].right-collapsed:not(.hidden),
+  .app-shell[data-ui-mode="deepseek"].left-collapsed.right-collapsed:not(.hidden) ,
+  .app-shell[data-ui-mode="phone-agent"].left-collapsed.right-collapsed:not(.hidden) {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    width: 100% !important;
+    max-width: 100dvw !important;
+    height: 100dvh !important;
+    overflow: hidden !important;
+  }
+
+  .chat-stage {
+    grid-column: 1 / -1 !important;
+    width: 100% !important;
+    max-width: 100dvw !important;
+    height: 100dvh !important;
+  }
+
+  /* 手机端左上角展开侧栏按钮常驻可见（侧栏关闭时始终能打开） */
+  #expand-left-btn {
+    display: inline-flex !important;
+  }
+
+  /* 左侧导航抽屉：固定覆层 + 60fps 硬件加速滑入滑出 + 安全区内边距 */
+  .sidebar,
+  .app-shell[data-ui-mode="roleplay"] .sidebar,
+  .app-shell[data-ui-mode="deepseek"] .sidebar,
+  .app-shell[data-ui-mode="phone-agent"] .sidebar,
+  .app-shell[data-ui-mode="roleplay"]:not(.left-collapsed) .sidebar,
+  .app-shell[data-ui-mode="deepseek"]:not(.left-collapsed) .sidebar ,
+  .app-shell[data-ui-mode="phone-agent"]:not(.left-collapsed) .sidebar {
+    position: fixed !important;
+    top: 0 !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    width: min(82dvw, 304px) !important;
+    max-width: calc(100dvw - 44px) !important;
+    height: 100dvh !important;
+    z-index: 120 !important;
+    transition: transform 0.26s cubic-bezier(0.22, 1, 0.36, 1) !important;
+    will-change: transform;
+  }
+
+  .app-shell.left-collapsed .sidebar,
+  .app-shell[data-ui-mode="roleplay"].left-collapsed .sidebar,
+  .app-shell[data-ui-mode="deepseek"].left-collapsed .sidebar ,
+  .app-shell[data-ui-mode="phone-agent"].left-collapsed .sidebar {
+    transform: translate3d(-105%, 0, 0) !important;
+    pointer-events: none !important;
+    box-shadow: none !important;
+  }
+
+  .app-shell:not(.left-collapsed) .sidebar,
+  .app-shell[data-ui-mode="roleplay"]:not(.left-collapsed) .sidebar,
+  .app-shell[data-ui-mode="deepseek"]:not(.left-collapsed) .sidebar ,
+  .app-shell[data-ui-mode="phone-agent"]:not(.left-collapsed) .sidebar {
+    transform: translate3d(0, 0, 0) !important;
+    pointer-events: auto !important;
+    box-shadow: 16px 0 42px rgba(15, 23, 42, 0.22) !important;
+  }
+
+  .sidebar-header,
+  .app-shell[data-ui-mode="deepseek"] .sidebar-header ,
+  .app-shell[data-ui-mode="phone-agent"] .sidebar-header {
+    padding-top: max(14px, env(safe-area-inset-top, 0px)) !important;
+  }
+
+  .sidebar-footer,
+  .ds-bottom-profile {
+    padding-bottom: max(14px, env(safe-area-inset-bottom, 0px)) !important;
+  }
+
+  /* 右侧养成 / 记忆世界书 / 畅玩状态抽屉：右侧滑出覆层（彻底根治手机端点击养成空白或溢出屏幕外的问题） */
+  .inspector-panel,
+  .inspector-panel#right-panel,
+  .app-shell[data-ui-mode="roleplay"] .inspector-panel#right-panel,
+  .app-shell[data-ui-mode="deepseek"] .inspector-panel#right-panel,
+  .app-shell[data-ui-mode="phone-agent"] .inspector-panel#right-panel {
+    position: fixed !important;
+    top: 0 !important;
+    bottom: 0 !important;
+    right: 0 !important;
+    left: auto !important;
+    width: min(88dvw, 352px) !important;
+    max-width: calc(100dvw - 24px) !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    margin: 0 !important;
+    z-index: 120 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    background: light-dark(#fffafd, #19142b) !important;
+    color: light-dark(#1e1b2e, #f8fafc) !important;
+    overflow: hidden !important;
+    contain: none !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    transform: translate3d(105%, 0, 0);
+    pointer-events: none;
+    box-shadow: none !important;
+    transition: transform 0.26s cubic-bezier(0.22, 1, 0.36, 1) !important;
+    will-change: transform;
+  }
+
+  .app-shell[data-ui-mode="deepseek"] .inspector-panel#right-panel,
+  .app-shell[data-ui-mode="phone-agent"] .inspector-panel#right-panel {
+    background: light-dark(#ffffff, #161822) !important;
+    color: light-dark(#0f172a, #f1f5f9) !important;
+  }
+
+  /* 登录遮罩或工作台隐藏时物理级封杀抽屉 */
+  .app-shell.hidden .inspector-panel,
+  body:has(#auth-gate:not(.hidden)) .inspector-panel {
+    display: none !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+  }
+
+  .app-shell.right-collapsed .inspector-panel,
+  .app-shell.right-collapsed .inspector-panel#right-panel,
+  .app-shell[data-ui-mode="roleplay"].right-collapsed .inspector-panel#right-panel,
+  .app-shell[data-ui-mode="deepseek"].right-collapsed .inspector-panel ,
+  .app-shell[data-ui-mode="phone-agent"].right-collapsed .inspector-panel {
+    transform: translate3d(105%, 0, 0) !important;
+    pointer-events: none !important;
+    box-shadow: none !important;
+  }
+
+  /* 仅当处于已登录工作台、显式非收起态且非 hidden 时才允许滑出 */
+  .app-shell:not(.hidden):not(.right-collapsed) .inspector-panel,
+  .app-shell:not(.hidden):not(.right-collapsed) .inspector-panel#right-panel,
+  .app-shell[data-ui-mode="roleplay"]:not(.hidden):not(.right-collapsed) .inspector-panel#right-panel,
+  .app-shell[data-ui-mode="deepseek"]:not(.hidden):not(.right-collapsed) .inspector-panel#right-panel,
+  .app-shell[data-ui-mode="phone-agent"]:not(.hidden):not(.right-collapsed) .inspector-panel#right-panel {
+    transform: translate3d(0, 0, 0) !important;
+    pointer-events: auto !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    box-shadow: -16px 0 42px rgba(15, 23, 42, 0.28) !important;
+  }
+
+  .inspector-tabs {
+    flex: 0 0 auto !important;
+    display: flex !important;
+    padding-top: max(10px, env(safe-area-inset-top, 0px)) !important;
+  }
+
+  .inspector-panel#right-panel .inspector-body:not(.hidden),
+  .inspector-panel#right-panel #nurture-tab:not(.hidden),
+  .inspector-panel#right-panel #memory-tab:not(.hidden),
+  .inspector-panel#right-panel #persona-tab:not(.hidden),
+  .inspector-panel#right-panel #ds-suite-tab:not(.hidden) {
+    display: flex !important;
+    flex-direction: column !important;
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    -webkit-overflow-scrolling: touch !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    padding: 14px 14px max(24px, env(safe-area-inset-bottom, 0px)) !important;
+  }
+
+  /* DeepSeek 空状态顶栏在窄屏下保持完全可见，左侧展示轻量品牌字标 */
+  .app-shell[data-ui-mode="deepseek"] .chat-stage.ds-empty-mode .topbar-right ,
+  .app-shell[data-ui-mode="phone-agent"] .chat-stage.ds-empty-mode .topbar-right {
+    opacity: 1 !important;
+    visibility: visible !important;
+    pointer-events: auto !important;
+  }
+
+  .app-shell[data-ui-mode="deepseek"] .chat-stage.ds-empty-mode .ds-topbar-meta ,
+  .app-shell[data-ui-mode="phone-agent"] .chat-stage.ds-empty-mode .ds-topbar-meta {
+    display: flex !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+  }
+
+  .ds-topbar-new-icon {
+    display: inline-flex !important;
+  }
+
+  /* 移动端侧边抽屉双模式切换开关加大触控面积，清晰醒目易点按 */
+  .sidebar .workspace-mode-bar {
+    display: flex !important;
+    margin: 4px 12px 10px !important;
+    padding: 3px !important;
+  }
+
+  .sidebar .ws-mode-btn {
+    min-height: 34px !important;
+    padding: 5px 8px !important;
+    font-size: 12.5px !important;
+    font-weight: 600 !important;
+  }
+
+  /* 移动端全尺寸（<=860px）统一隐藏顶栏极客监控与次级冗余图标，保留展开侧栏文字与更多菜单 */
+  #collapsed-quick-nav,
+  .oss-ds-monitor-pill,
+  .ds-desktop-tool,
+  #open-fim-dialog-btn,
+  #open-ds-inspector-btn,
+  #ds-share-session-btn,
+  #ds-quick-theme-btn,
+  #ds-composer-api-chip,
+  #composer-channel-badge,
+  #ds-model-pill,
+  #bond-level-tag,
+  #live-mood-chip,
+  .persona-chip-tagline,
+  #topbar-script-switch-btn,
+  #topbar-voice-call-btn,
+  .app-shell[data-ui-mode="deepseek"] #toggle-right-btn ,
+  .app-shell[data-ui-mode="phone-agent"] #toggle-right-btn {
+    display: none !important;
+  }
+
+  /* 协调移动端侧栏「+ 创建新角色」「+ 新对话」「导入」胶囊尺寸，与分组标题保持视觉平衡 */
+  .sidebar .text-action-btn,
+  #create-persona-btn,
+  #new-chat-btn,
+  #sidebar-import-history-btn {
+    min-height: 28px !important;
+    padding: 4px 10px !important;
+    font-size: 12px !important;
+    font-weight: 600 !important;
+    border-radius: 999px !important;
+    background: light-dark(rgba(236, 94, 167, 0.12), rgba(236, 94, 167, 0.22)) !important;
+    color: var(--brand-primary) !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    white-space: nowrap !important;
+  }
+
+  .sidebar .text-action-btn.hidden {
+    display: none !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar,
+  .inspector-panel {
+    transition: none !important;
+  }
+}
+
+/* ==========================================================================
+   5. 手机竖屏精细化排版优化（<=640px）：顶栏、气泡、输入舱、Popover 与全系弹窗
+   ========================================================================== */
+@media (max-width: 640px) {
+  /* 5.1 顶栏单行清爽排布，右侧留足安全内边距（彻底解决 390px 下 ⋯ 贴边仅 3px 问题） */
+  .stage-topbar,
+  .app-shell[data-ui-mode="deepseek"] .stage-topbar ,
+  .app-shell[data-ui-mode="phone-agent"] .stage-topbar {
+    padding:
+      max(8px, env(safe-area-inset-top, 0px))
+      max(12px, env(safe-area-inset-right, 12px))
+      8px
+      max(12px, env(safe-area-inset-left, 12px)) !important;
+    gap: 6px !important;
+    flex-wrap: nowrap !important;
+  }
+
+  .topbar-left {
+    gap: 6px !important;
+    min-width: 0 !important;
+    flex: 1 1 auto !important;
+  }
+
+  .topbar-right {
+    gap: 5px !important;
+    flex: 0 0 auto !important;
+    flex-wrap: nowrap !important;
+  }
+
+  .btn-full-lbl {
+    display: none !important;
+  }
+
+  .btn-short-lbl {
+    display: inline !important;
+  }
+
+  /* 手机端全面清理顶栏次级冗余图标，确保顶栏单行宽松、右侧 ⋯ 按钮留足安全边距 */
+  .ds-desktop-tool,
+  #open-fim-dialog-btn,
+  #open-ds-inspector-btn,
+  #ds-share-session-btn,
+  #ds-quick-theme-btn,
+  #ds-topbar-settings-btn,
+  #ds-composer-api-chip,
+  #composer-channel-badge,
+  #ds-model-pill,
+  #bond-level-tag,
+  #live-mood-chip,
+  .persona-chip-tagline,
+  #topbar-script-switch-btn,
+  #topbar-chapters-btn,
+  #proactive-now-btn,
+  #topbar-voice-call-btn,
+  #topbar-switch-ds-btn,
+  .app-shell[data-ui-mode="deepseek"] #toggle-right-btn,
+  .app-shell[data-ui-mode="phone-agent"] #toggle-right-btn,
+  .app-shell[data-ui-mode="deepseek"] #open-theater-btn,
+  .app-shell[data-ui-mode="deepseek"] #rp-toggle-prefix-btn,
+  .app-shell[data-ui-mode="phone-agent"] #open-theater-btn,
+  .app-shell[data-ui-mode="phone-agent"] #rp-toggle-prefix-btn,
+  .app-shell[data-ui-mode="roleplay"] #attach-file-btn {
+    display: none !important;
+  }
+
+  .avatar-halo {
+    width: 30px !important;
+    height: 30px !important;
+    flex-shrink: 0;
+  }
+
+  .persona-chip-avatar {
+    font-size: 16px !important;
+  }
+
+  .ds-topbar-title {
+    max-width: 48dvw !important;
+    font-size: 14.5px !important;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .persona-chip-name {
+    font-size: 14.5px !important;
+    max-width: 36dvw;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* 手机端消息气泡底部修正真实类名：隐藏低频按钮，保留宽敞好点的「复制 / 听声 / 重演」 */
+  .msg-footer-bar .branch-btn,
+  .msg-footer-bar .snap-btn,
+  .msg-footer-bar .edit-msg-btn {
+    display: none !important;
+  }
+
+  .topbar-right > button {
+    padding: 6px 10px !important;
+    font-size: 12px !important;
+    min-height: 36px !important;
+  }
+
+  .topbar-right > .icon-btn,
+  #topbar-more-btn.more-tools-trigger {
+    padding: 0 !important;
+    min-width: 36px !important;
+    width: 36px !important;
+    height: 36px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+  }
+
+  /* 轻提示气泡手机端安全定位（彻底消除 top + bottom 同时存在导致的全屏纵向拉伸遮挡！） */
+  .memory-toast {
+    top: auto !important;
+    bottom: calc(86px + env(safe-area-inset-bottom, 0px)) !important;
+    left: 50% !important;
+    right: auto !important;
+    transform: translateX(-50%) !important;
+    height: auto !important;
+    width: max-content;
+    max-width: calc(100dvw - 28px);
+    padding: 8px 14px;
+    font-size: 12.5px;
+    text-align: center;
+    white-space: normal;
+  }
+
+  /* 5.2 登录门扉手机紧凑内边距 */
+  .auth-card {
+    padding: 22px 18px 18px !important;
+    border-radius: 22px !important;
+  }
+
+  .auth-hero {
+    margin-bottom: 14px !important;
+  }
+
+  /* 5.3 聊天视窗与消息气泡释放黄金阅读宽度（底部预留与动态输入舱一致的安全空白间距） */
+  .messages-viewport,
+  .app-shell[data-ui-mode="roleplay"] .messages-viewport,
+  .app-shell[data-ui-mode="deepseek"] .messages-viewport,
+  .app-shell[data-ui-mode="phone-agent"] .messages-viewport {
+    padding: 10px 12px calc(var(--mobile-composer-h, 78px) + 28px + env(safe-area-inset-bottom, 0px)) !important;
+    scroll-padding-bottom: calc(var(--mobile-composer-h, 78px) + 28px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+
+  .messages-container,
+  .app-shell[data-ui-mode="roleplay"] .messages-container,
+  .app-shell[data-ui-mode="deepseek"] .messages-container,
+  .app-shell[data-ui-mode="phone-agent"] .messages-container {
+    gap: 16px !important;
+    padding-bottom: 12px !important;
+  }
+
+  .persona-story-banner {
+    padding: 12px 14px !important;
+    border-radius: 16px !important;
+    font-size: 13px !important;
+  }
+
+  .msg-row {
+    gap: 8px !important;
+  }
+
+  .msg-avatar,
+  .app-shell[data-ui-mode="deepseek"] .msg-row.assistant .msg-avatar.ds-svg-avatar ,
+  .app-shell[data-ui-mode="phone-agent"] .msg-row.assistant .msg-avatar.ds-svg-avatar {
+    width: 28px !important;
+    height: 28px !important;
+    font-size: 14px !important;
+    margin-top: 2px;
+  }
+
+  .msg-row.user .msg-body,
+  .app-shell[data-ui-mode="deepseek"] .msg-row.user .msg-body ,
+  .app-shell[data-ui-mode="phone-agent"] .msg-row.user .msg-body {
+    max-width: 88dvw !important;
+    padding: 10px 14px !important;
+    font-size: 15px !important;
+  }
+
+  .msg-row.assistant .msg-body {
+    padding: 12px 13px 9px !important;
+    border-radius: 6px 16px 16px 16px !important;
+  }
+
+  .app-shell[data-ui-mode="deepseek"] .msg-row.assistant .msg-body ,
+  .app-shell[data-ui-mode="phone-agent"] .msg-row.assistant .msg-body {
+    padding: 1px 2px 4px !important;
+  }
+
+  .assistant-prose {
+    font-size: 15px !important;
+    line-height: 1.7 !important;
+  }
+
+  .thought-summary {
+    padding: 6px 10px !important;
+    font-size: 12px !important;
+  }
+
+  .thought-content {
+    padding: 2px 10px 9px 10px !important;
+    margin-left: 8px !important;
+    font-size: 12.5px !important;
+  }
+
+  .msg-footer-bar {
+    opacity: 0.96 !important;
+    flex-wrap: wrap !important;
+    gap: 6px 8px !important;
+  }
+
+  .msg-tool-btn {
+    min-height: 34px !important;
+    min-width: 52px !important;
+    padding: 6px 11px !important;
+    font-size: 12.5px !important;
+  }
+
+  /* 5.4 DeepSeek 空状态居中欢迎区与底部输入舱安全区适配 */
+  .app-shell[data-ui-mode="deepseek"] .chat-stage.ds-empty-mode .composer-dock ,
+  .app-shell[data-ui-mode="phone-agent"] .chat-stage.ds-empty-mode .composer-dock {
+    padding:
+      0
+      12px
+      calc(8dvh + env(safe-area-inset-bottom, 0px)) !important;
+  }
+
+  .ds-home-greeting {
+    gap: 9px !important;
+    margin-bottom: 20px !important;
+    padding: 0 8px;
+    text-align: center;
+  }
+
+  .ds-greeting-whale {
+    width: 30px !important;
+    height: 30px !important;
+    flex-shrink: 0;
+  }
+
+  .ds-greeting-title {
+    font-size: clamp(1.12rem, 0.95rem + 1.8vw, 1.35rem) !important;
+  }
+
+  .composer-dock,
+  .app-shell[data-ui-mode="roleplay"] .composer-dock,
+  .app-shell[data-ui-mode="deepseek"] .composer-dock,
+  .app-shell[data-ui-mode="phone-agent"] .composer-dock {
+    padding:
+      4px
+      10px
+      calc(env(safe-area-inset-bottom, 0px) + 5px) !important;
+  }
+
+  .composer-card,
+  .app-shell[data-ui-mode="roleplay"] .composer-card,
+  .app-shell[data-ui-mode="deepseek"] .composer-card {
+    width: 100% !important;
+    max-width: 100% !important;
+    border-radius: 16px !important;
+    padding: 5px 10px 4px !important;
+    gap: 3px !important;
+  }
+
+  #chat-input,
+  .app-shell[data-ui-mode="roleplay"] #chat-input,
+  .app-shell[data-ui-mode="deepseek"] #chat-input {
+    min-height: 22px !important;
+    min-block-size: 1.25lh !important;
+    max-block-size: 4lh !important;
+    padding: 1px 2px 2px !important;
+    font-size: 14px !important;
+    line-height: 1.35 !important;
+  }
+
+  /* 输入舱底部工具栏单行防折行 + 左侧胶囊可横滑绝不挤出右侧上传/发送按钮 */
+  .composer-toolbar {
+    flex-wrap: nowrap !important;
+    gap: 6px !important;
+    padding-top: 3px !important;
+    margin-top: 0 !important;
+    min-height: 28px !important;
+  }
+
+  .composer-toggles {
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+    flex-wrap: nowrap !important;
+    gap: 5px !important;
+    overflow-x: auto !important;
+    scrollbar-width: none !important;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .composer-toggles::-webkit-scrollbar {
+    display: none !important;
+  }
+
+  .composer-toggles .pill-btn,
+  .app-shell[data-ui-mode="deepseek"] .ds-pill-toggle,
+  .app-shell[data-ui-mode="phone-agent"] .ds-pill-toggle {
+    flex: 0 0 auto !important;
+    height: 26px !important;
+    min-height: 26px !important;
+    padding: 0 8px !important;
+    font-size: 11px !important;
+    gap: 4px !important;
+    white-space: nowrap;
+  }
+
+  .app-shell[data-ui-mode="deepseek"] #attach-file-btn ,
+  .app-shell[data-ui-mode="phone-agent"] #attach-file-btn {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    flex-shrink: 0 !important;
+    position: relative !important;
+    z-index: 3 !important;
+    pointer-events: auto !important;
+    min-width: 36px !important;
+    min-height: 36px !important;
+    padding: 0 8px !important;
+  }
+
+  .pill-toggle {
+    padding: 5px 9px !important;
+    font-size: 12px !important;
+    white-space: nowrap;
+  }
+
+  .composer-actions {
+    gap: 5px !important;
+    flex-shrink: 0;
+  }
+
+  /* 指定对方开口引导条在手机端换行排布，防止输入框被挤没 */
+  .ds-prefix-bar {
+    flex-wrap: wrap !important;
+    gap: 6px !important;
+  }
+
+  .ds-prefix-bar #ds-prefix-input {
+    flex: 1 1 100% !important;
+    min-width: 0 !important;
+    order: 2;
+  }
+
+  .ds-prefix-presets {
+    order: 1;
+    margin-left: auto;
+  }
+
+  /* 5.5 原生 Popover 弹出菜单防切边与高度保护 */
+  [popover].anchored-popover,
+  [popover].ds-user-menu-popover,
+  [popover].ds-adv-popover-panel {
+    max-width: calc(100dvw - 20px) !important;
+    max-height: min(72dvh, 460px) !important;
+    overflow-y: auto !important;
+  }
+
+  [popover].ds-user-menu-popover {
+    inset: auto auto calc(60px + env(safe-area-inset-bottom, 0px)) 12px !important;
+    width: min(268px, calc(100dvw - 24px)) !important;
+  }
+
+  [popover].ds-adv-popover-panel {
+    inset: auto 12px calc(76px + env(safe-area-inset-bottom, 0px)) 12px !important;
+    margin-inline: auto !important;
+    transform: none !important;
+    width: min(260px, calc(100dvw - 24px)) !important;
+  }
+
+  #topbar-more-popover.anchored-popover {
+    min-width: 220px;
+    width: min(276px, calc(100dvw - 20px));
+  }
+
+  @supports not (position-area: block-end) {
+    #topbar-more-popover.anchored-popover {
+      inset: calc(52px + env(safe-area-inset-top, 0px)) 10px auto auto !important;
+    }
+  }
+
+  /* 5.6 全部 10 个 <dialog> 模态弹窗升级为现代手机 Bottom-Sheet 底部抽屉样式 */
+  .modal-dialog,
+  .modal-dialog.modal-wide,
+  .hub-modal,
+  .wallet-modal {
+    width: 100dvw !important;
+    max-width: 100dvw !important;
+    max-height: 92dvh !important;
+    margin: auto 0 0 0 !important;
+    border-radius: 22px 22px 0 0 !important;
+    border-left: none !important;
+    border-right: none !important;
+    border-bottom: none !important;
+    overflow: hidden !important;
+  }
+
+  .modal-inner {
+    padding:
+      16px
+      15px
+      max(20px, env(safe-area-inset-bottom, 0px)) !important;
+    max-height: 92dvh !important;
+  }
+
+  .modal-header {
+    gap: 8px;
+    margin-bottom: 12px !important;
+  }
+
+  .modal-header h2 {
+    font-size: 15.5px !important;
+    line-height: 1.35;
+  }
+
+  /* 模态框内多列横向表单在窄屏下自动纵向舒展堆叠 */
+  .modal-inner .inline-row:not(.auth-signup-nick-row),
+  .inspector-body .inline-row {
+    flex-wrap: wrap !important;
+  }
+
+  #own-api-unlocked-view .inline-row,
+  #advanced-tech-settings-fold .inline-row,
+  .ws-edit-section .inline-row {
+    flex-direction: column !important;
+    align-items: stretch !important;
+  }
+
+  #own-api-unlocked-view .field-group,
+  #advanced-tech-settings-fold .avatar-field,
+  .ws-edit-section .avatar-field {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .modal-actions.split-actions,
+  .ws-save-footer,
+  .ws-action-bar,
+  .sq-toolbar,
+  .sq-pub-actions,
+  .cashier-top-row,
+  .vip-status-hero {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 10px !important;
+  }
+
+  .modal-actions .right-btns,
+  .cashier-actions {
+    width: 100%;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .modal-actions .right-btns > button,
+  .cashier-actions > button,
+  #ws-analyze-btn,
+  .ws-save-play-btn,
+  .sq-open-pub-btn {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+
+  .sq-right-controls,
+  .sq-search-input {
+    width: 100% !important;
+  }
+
+  .redeem-form {
+    min-width: 0 !important;
+    flex-direction: column !important;
+  }
+
+  .redeem-form button {
+    width: 100%;
+  }
+
+  .hub-tablist {
+    gap: 2px !important;
+  }
+
+  .hub-tab {
+    padding: 8px 5px !important;
+    font-size: 11.5px !important;
+    flex: 1 1 auto;
+    text-align: center;
+  }
+
+  .wallet-tab {
+    padding: 9px 11px !important;
+    font-size: 12.5px !important;
+  }
+
+  .ds-welcome-chips {
+    display: flex;
+    flex-wrap: wrap !important;
+    justify-content: center !important;
+    gap: 6px !important;
+    max-width: 100% !important;
+    padding: 10px 4px 0 !important;
+  }
+
+  .ds-quick-scene-pill {
+    font-size: 12px !important;
+    padding: 5px 10px !important;
+  }
+
+  .ds-sandbox-frame-wrap {
+    height: min(62dvh, 420px) !important;
+  }
+}
+
+/* 超小屏手机（如 320px ~ 360px 宽）输入栏胶囊极限防溢出加固 */
+@media (max-width: 365px) {
+  .app-shell[data-ui-mode="deepseek"] .ds-pill-toggle ,
+  .app-shell[data-ui-mode="phone-agent"] .ds-pill-toggle {
+    padding: 0 8px !important;
+    font-size: 11.5px !important;
+  }
+
+  .app-shell[data-ui-mode="deepseek"] .ds-pill-toggle svg ,
+  .app-shell[data-ui-mode="phone-agent"] .ds-pill-toggle svg {
+    width: 13px;
+    height: 13px;
+  }
+
+  .ds-switch-rp-pill span {
+    font-size: 11.5px;
+  }
+}
+
+/* 手机端弹出软键盘时的矮视口（横屏或键盘弹起）紧凑化保护 */
+@media (max-width: 860px) and (max-height: 540px) {
+  .app-shell[data-ui-mode="deepseek"] .chat-stage.ds-empty-mode .composer-dock ,
+  .app-shell[data-ui-mode="phone-agent"] .chat-stage.ds-empty-mode .composer-dock {
+    justify-content: flex-end !important;
+    padding-bottom: max(8px, env(safe-area-inset-bottom, 0px)) !important;
+  }
+
+  .ds-home-greeting {
+    margin-bottom: 10px !important;
+  }
+
+  .ds-greeting-whale {
+    width: 24px !important;
+    height: 24px !important;
+  }
+
+  .ds-greeting-title {
+    font-size: 16px !important;
+  }
+}
+
+/* ==========================================================================
+   6. 桌面与笔记本中等视口（含左右双侧栏同时展开态）防重叠与防溢出加固
+   ========================================================================== */
+
+.stage-topbar .topbar-left,
+.app-shell[data-ui-mode="deepseek"] .stage-topbar .topbar-left ,
+.app-shell[data-ui-mode="phone-agent"] .stage-topbar .topbar-left {
+  min-width: 0 !important;
+  overflow: hidden !important;
+}
+
+.ds-topbar-meta {
+  min-width: 0 !important;
+  overflow: hidden !important;
+  flex-wrap: nowrap !important;
+}
+
+.composer-toolbar {
+  flex-wrap: nowrap !important;
+  gap: 8px !important;
+  min-width: 0 !important;
+}
+
+.composer-actions {
+  flex-shrink: 0 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+}
+
+.composer-actions .send-btn,
+.composer-actions .stop-btn,
+.composer-actions .attach-icon-btn {
+  flex-shrink: 0 !important;
+}
+
+.inspector-tabs {
+  display: flex !important;
+  align-items: center !important;
+  gap: 4px !important;
+  overflow-x: auto !important;
+  scrollbar-width: none !important;
+}
+
+.inspector-tabs .tab-btn {
+  flex: 0 0 auto !important;
+  padding: 6px 9px !important;
+  font-size: 12.5px !important;
+  white-space: nowrap !important;
+}
+
+.inspector-tabs .close-inspector-btn {
+  margin-left: auto !important;
+  position: sticky !important;
+  right: 0 !important;
+  flex-shrink: 0 !important;
+  background: var(--bg-surface, #ffffff) !important;
+  z-index: 2 !important;
+}
+
+@media (max-width: 860px) {
+  .app-shell[data-ui-mode="deepseek"] .composer-card,
+  .composer-card {
+    width: min(100%, 750px) !important;
+    max-width: min(100%, 750px) !important;
+    box-sizing: border-box !important;
+  }
+}
+
+/* 当右侧伴生面板展开且视口 <= 1520px 时，精简次要徽章释放顶栏对话标题空间，但保留导出与实时预览主按钮 */
+@media (max-width: 1520px) {
+  .app-shell:not(.right-collapsed) #ds-model-pill,
+  .app-shell:not(.right-collapsed) #open-ds-inspector-btn,
+  .app-shell:not(.right-collapsed) #ds-composer-api-chip,
+  .app-shell:not(.right-collapsed) #composer-channel-badge {
+    display: none !important;
+  }
+
+  .app-shell:not(.right-collapsed) .stage-topbar .topbar-right > button {
+    padding: 5px 9px !important;
+    font-size: 12px !important;
+  }
+}
+
+@media (max-width: 1220px) {
+  #ds-composer-api-chip,
+  #composer-channel-badge,
+  #ds-model-pill {
+    display: none !important;
+  }
+}
+
+/* ==========================================================================
+   6. 参考 DeepSeekGo (dsh-Go) 架构设计的原生级移动端极简高可用布局
+   ========================================================================== */
+
+/* 6.1 模式隔离铁律：DeepSeek 模式下彻底杜绝角色扮演浮层和养成面板的任何遮挡 */
+.app-shell[data-ui-mode="deepseek"] #toggle-right-btn,
+.app-shell[data-ui-mode="phone-agent"] #toggle-right-btn,
+.app-shell[data-ui-mode="deepseek"] #topbar-persona-chip,
+.app-shell[data-ui-mode="phone-agent"] #topbar-persona-chip,
+.app-shell[data-ui-mode="deepseek"] .active-script-wrap,
+.app-shell[data-ui-mode="phone-agent"] .active-script-wrap,
+.app-shell[data-ui-mode="deepseek"] #tour-anchor-vip ,
+.app-shell[data-ui-mode="phone-agent"] #tour-anchor-vip {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+/* 6.2 侧边栏抽屉顶部模式分段选择器 (Segmented Control，参考 dsh-Go 经典抽屉设计) */
+.dsh-segmented-bar {
+  display: flex !important;
+  align-items: center;
+  gap: 3px;
+  background: light-dark(#f1f5f9, rgba(255, 255, 255, 0.08)) !important;
+  padding: 4px;
+  border-radius: 14px !important;
+  border: 1px solid light-dark(rgba(0, 0, 0, 0.06), rgba(255, 255, 255, 0.12));
+  margin: 10px 12px 8px !important;
+}
+
+.dsh-segmented-bar .ws-mode-btn {
+  flex: 1 1 0 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 7px 4px !important;
+  border-radius: 10px !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  color: light-dark(#64748b, #94a3b8) !important;
+  background: transparent !important;
+  border: none !important;
+  cursor: pointer;
+  transition: background-color 0.2s cubic-bezier(0.16, 1, 0.3, 1), color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease !important;
+  white-space: nowrap !important;
+  text-align: center;
+}
+
+.dsh-segmented-bar .ws-mode-btn:hover {
+  color: light-dark(#0f172a, #ffffff) !important;
+}
+
+.dsh-segmented-bar .ws-mode-btn.active {
+  background: light-dark(#ffffff, #2d3348) !important;
+  color: light-dark(#4d6bfe, #93c5fd) !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08) !important;
+}
+
+/* 6.3 移动端顶栏重构 (<=860px)：单行克制防遮挡，彻底消除按钮溢出与标题折行 */
+@media (max-width: 860px) {
+  .stage-topbar {
+    height: 52px !important;
+    min-height: 52px !important;
+    max-height: 52px !important;
+    padding: 0 12px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    background: light-dark(rgba(255, 255, 255, 0.94), rgba(15, 23, 42, 0.94)) !important;
+    backdrop-filter: blur(8px) !important;
+    border-bottom: 1px solid light-dark(rgba(0, 0, 0, 0.06), rgba(255, 255, 255, 0.08)) !important;
+    z-index: 40 !important;
+  }
+
+  .topbar-left {
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    min-width: 0 !important;
+    flex: 1 1 auto !important;
+    overflow: hidden;
+  }
+
+  .sidebar-expand-btn {
+    width: 36px !important;
+    height: 36px !important;
+    min-width: 36px !important;
+    border-radius: 10px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    padding: 0 !important;
+    background: light-dark(rgba(0, 0, 0, 0.04), rgba(255, 255, 255, 0.08)) !important;
+    border: none !important;
+  }
+
+  .sidebar-expand-btn .expand-btn-label {
+    display: none !important;
+  }
+
+  .ds-topbar-meta {
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    min-width: 0 !important;
+    overflow: hidden;
+  }
+
+  .ds-topbar-title {
+    font-size: 14.5px !important;
+    font-weight: 600 !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    max-width: min(180px, 45dvw) !important;
+    color: light-dark(#0f172a, #f1f5f9) !important;
+  }
+
+  .topbar-right {
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    flex: 0 0 auto !important;
+  }
+
+  /* 在手机端隐藏收起时的堆叠按钮、系统预览大按钮与非必要插件，保证极简 */
+  .collapsed-quick-nav,
+  .ds-preview-icon-btn,
+  #open-ds-artifacts-btn,
+  #open-ds-inspector-btn,
+  #ds-share-session-btn,
+  #ds-quick-theme-btn,
+  #topbar-script-switch-btn,
+  #topbar-chapters-btn {
+    display: none !important;
+  }
+
+  /* 原生 APK 内部无需在顶栏显示下载 APK 入口，自动把空间腾给对话操作 */
+  .in-native-apk #topbar-apk-download-btn,
+  .apk-topbar-pill-btn.in-native-apk {
+    display: none !important;
+  }
+
+  /* 顶栏右侧快捷按钮高触控规范 */
+  .topbar-right .icon-btn,
+  .topbar-right .soft-tool-btn {
+    height: 34px !important;
+    min-width: 34px !important;
+    padding: 0 8px !important;
+    border-radius: 9px !important;
+    font-size: 13px !important;
+  }
+
+  /* 输入舱针对手机软键盘与底部安全区全面优化 */
+  .composer-dock {
+    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 4px) !important;
+  }
+
+  .composer-card {
+    border-radius: 16px !important;
+    box-shadow: 0 3px 16px rgba(0, 0, 0, 0.06) !important;
+  }
+
+  /* 深度思考 (R1) 胶囊在手机端醒目紧凑呈现 */
+  #ds-toggle-think {
+    display: inline-flex !important;
+    border-radius: 9999px !important;
+    font-size: 11px !important;
+    padding: 0 8px !important;
+    height: 24px !important;
+    min-height: 24px !important;
+    background: light-dark(rgba(77, 107, 254, 0.08), rgba(77, 107, 254, 0.16)) !important;
+  }
+
+  #ds-toggle-think.active {
+    background: #4d6bfe !important;
+    color: #ffffff !important;
+    box-shadow: 0 2px 10px rgba(77, 107, 254, 0.35) !important;
+  }
+
+  .p-avatar-edit-trigger {
+    opacity: 0.85 !important;
+    transform: scale(1) !important;
+  }
+
+  .theater-submode-bar {
+    margin: 0 10px 8px !important;
+  }
+
+  .character-mode-card-wrap {
+    margin: 0 10px 8px !important;
+  }
+}
+

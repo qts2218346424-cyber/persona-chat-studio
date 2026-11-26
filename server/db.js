@@ -3754,24 +3754,28 @@ function sanitizeSkinConfigInput(raw) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
     return null;
   }
-  const mapLegacyPreset = (p) => {
-    if (p === 'qq-classic') return 'qq-classic';
-    if (p === 'eink-paper' || p === 'warm-paper') return 'warm-paper';
-    if (p === 'obsidian-gold' || p === 'cyber-neon' || p === 'crimson-scroll' || p === 'carbon-dark') return 'carbon-dark';
-    return 'minimal-studio';
+  const mapFromV260 = (p) => {
+    if (p === 'minimal-studio') return 'default';
+    if (p === 'warm-paper') return 'eink-paper';
+    if (p === 'carbon-dark') return 'obsidian-gold';
+    return p;
   };
   const ALLOWED_PRESETS = new Set([
-    'minimal-studio',
+    'default',
     'qq-classic',
-    'warm-paper',
-    'carbon-dark'
+    'obsidian-gold',
+    'mist-silk',
+    'sakura-dawn',
+    'crimson-scroll',
+    'cyber-neon',
+    'eink-paper'
   ]);
   const ALLOWED_WALLPAPER_TYPES = new Set(['none', 'gradient', 'image']);
   const ALLOWED_BUBBLES = new Set(['im-bubble', 'soft', 'glass', 'outline', 'letter']);
   const ALLOWED_FONTS = new Set(['sans', 'serif', 'rounded']);
 
-  const mappedPreset = mapLegacyPreset(raw.preset);
-  const preset = ALLOWED_PRESETS.has(mappedPreset) ? mappedPreset : 'minimal-studio';
+  const mapped = mapFromV260(raw.preset);
+  const preset = ALLOWED_PRESETS.has(mapped) ? mapped : 'default';
   const accentColor =
     typeof raw.accentColor === 'string' && /^#[0-9a-fA-F]{6}$/.test(raw.accentColor.trim())
       ? raw.accentColor.trim()

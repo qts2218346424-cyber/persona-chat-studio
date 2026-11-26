@@ -656,8 +656,8 @@ function extractAuthToken(req, parsedUrl = null) {
   return '';
 }
 
-const APP_LATEST_VERSION = '2.6.0';
-const APP_LATEST_VERSION_CODE = 155;
+const APP_LATEST_VERSION = '2.6.1';
+const APP_LATEST_VERSION_CODE = 156;
 const APP_OFFICIAL_CERT_SHA256 = '6fd05e32a3cabf327140129d866e55a342fe30daa3384c67aad4b3cbdd98a17b';
 const APP_UPDATE_TICKET_SECRET = crypto
   .createHash('sha256')
@@ -955,9 +955,9 @@ async function handleApi(req, res, pathname, parsedUrl) {
       forceUpdate,
       diffGenerations,
       changelog: [
-        '【开源极简 UI 全面重构】参考 LobeChat / Cherry Studio / Claude / shadcn/ui 设计体系，彻底移除旧版多层冲突样式，CSS 体积瘦身近 80%，内置「清透极简（默认）/ 经典 QQ 聊天 / 暖纸柔白 / 深邃碳黑」4 套高审美主题并支持明暗自适应',
-        '【32 张大众高颜值头像库全套焕新】彻底淘汰 21 个旧版粗糙简笔画 SVG，全新升级 24 位角色清透插画肖像 + 8 张萌宠/风景/日常通用用户头像（512×512 轻量高清 WebP），老账号无感自动升级不裂图',
-        '【全端细节打磨与高对比修复】彻底修复右侧「养成 / 记忆档案 / 系统指令」抽屉、头像工坊暗夜模式与移动端全屏设置页的可读性与布局溢出问题，双端同步升级至 v2.6.0 (Build 155)'
+        '【完整还原改前原版精致 UI】恢复原生 DeepSeek 居中圆润输入舱、星语剧场沉浸氛围、手机端顺手交互与全部 8 套精选皮肤（默认恢复原生极客风格，并保留「经典 QQ 聊天」等主题随时切换）',
+        '【保留 32 张大众高颜值头像库全套焕新】保留全新升级的 24 位角色清透插画肖像 + 8 张萌宠/风景/日常通用用户头像（512×512 轻量高清 WebP），老账号无感自动升级不裂图',
+        '【精准修复右侧抽屉白底对比度】保留对右侧「养成 / 记忆档案 / 系统指令」抽屉高对比度适配，解决浅色背景下按钮与标签文字看不清问题，双端同步升级至 v2.6.1 (Build 156)'
       ]
     };
 

@@ -63,19 +63,22 @@
 
   const AVATAR_FRAMES = [
     { id: 'none', name: '无边框' },
-    { id: 'clean-ring', name: '极简细环' },
-    { id: 'soft-gold', name: '温润柔金' },
-    { id: 'sky-mist', name: '清透星蓝' },
-    { id: 'glass-halo', name: '磨砂微光' }
+    { id: 'starlight-gold', name: '星光流金' },
+    { id: 'sakura-bloom', name: '初樱漫舞' },
+    { id: 'cyber-pulse', name: '赛博脉冲' },
+    { id: 'moonlit-silver', name: '银月霜华' },
+    { id: 'crimson-seal', name: '绯红朱印' },
+    { id: 'aurora-halo', name: '极光幻彩' }
   ];
 
   const AVATAR_SHAPES = [
     { id: 'circle', name: '正圆' },
     { id: 'squircle', name: '超椭圆' },
-    { id: 'rounded', name: '圆角方' }
+    { id: 'rounded', name: '圆角方' },
+    { id: 'hex', name: '徽章六边' }
   ];
 
-  const AVATAR_BADGES = ['', '✨', '🌸', '🌙', '💫', '🎀', '🐾'];
+  const AVATAR_BADGES = ['', '✨', '🌸', '🌙', '💫', '🎀', '🦋', '🔥', '💎', '🐾'];
 
   function normalizeAvatarUrl(url) {
     const s = String(url || '').trim();
@@ -84,7 +87,6 @@
   }
 
   const ANIME_AVATAR_LIBRARY = [
-    // 大众热门高审美通用头像
     { id: 'user_cat_cream', name: '奶油布偶猫', url: '/assets/avatars/user_cat_cream.webp', category: 'aesthetic' },
     { id: 'user_shiba_smile', name: '微笑柴犬', url: '/assets/avatars/user_shiba_smile.webp', category: 'aesthetic' },
     { id: 'user_girl_minimal', name: '清冷氛围感少女', url: '/assets/avatars/user_girl_minimal.webp', category: 'aesthetic' },
@@ -93,7 +95,6 @@
     { id: 'user_coffee_desk', name: '午后咖啡书桌', url: '/assets/avatars/user_coffee_desk.webp', category: 'aesthetic' },
     { id: 'user_star_moon', name: '静谧星月海', url: '/assets/avatars/user_star_moon.webp', category: 'aesthetic' },
     { id: 'user_lotus_ink', name: '青绿水墨扁舟', url: '/assets/avatars/user_lotus_ink.webp', category: 'aesthetic' },
-    // 全套 24 位预设角色高清肖像
     { id: 'anime_shenxinghui', name: '沈星回', url: '/assets/avatars/shenxinghui.webp', category: 'male' },
     { id: 'anime_luchen', name: '陆沉', url: '/assets/avatars/luchen.webp', category: 'male' },
     { id: 'anime_suwanqing', name: '苏晚晴', url: '/assets/avatars/suwanqing.webp', category: 'female' },
@@ -140,52 +141,76 @@
 
   const PRESET_AVATARS = [
     {
-      id: 'preset_aurora_orb',
-      name: '极光球体',
-      bg: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)',
-      svg: '<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="g1" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#3b82f6"/><stop offset="100%" stop-color="#6366f1"/></linearGradient></defs><circle cx="32" cy="32" r="20" fill="url(#g1)"/><circle cx="25" cy="24" r="6" fill="#ffffff" opacity="0.28"/></svg>'
+      id: 'preset_sakura_fox',
+      name: '樱影灵狐',
+      bg: 'linear-gradient(135deg, #fdf2f8 0%, #fbcfe8 100%)',
+      svg: '<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"><path d="M14 26 L18 10 L30 20 Z" fill="#f472b6"/><path d="M50 26 L46 10 L34 20 Z" fill="#f472b6"/><circle cx="32" cy="34" r="18" fill="#fff5f7"/><circle cx="25" cy="33" r="2.6" fill="#3b1d36"/><circle cx="39" cy="33" r="2.6" fill="#3b1d36"/><path d="M29 40 Q32 43 35 40" stroke="#e11d48" stroke-width="2" fill="none" stroke-linecap="round"/><circle cx="20" cy="37" r="3" fill="#fda4af" opacity="0.7"/><circle cx="44" cy="37" r="3" fill="#fda4af" opacity="0.7"/></svg>'
     },
     {
-      id: 'preset_warm_sunset',
-      name: '落日柔环',
-      bg: 'linear-gradient(135deg, #fff7ed 0%, #ffedd5 100%)',
-      svg: '<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="g2" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#fb923c"/><stop offset="100%" stop-color="#f43f5e"/></linearGradient></defs><circle cx="32" cy="32" r="19" fill="url(#g2)"/><path d="M16 38 Q32 28 48 38" stroke="#fff" stroke-width="2.5" fill="none" opacity="0.55" stroke-linecap="round"/></svg>'
+      id: 'preset_star_witch',
+      name: '星夜魔女',
+      bg: 'linear-gradient(135deg, #1e1b4b 0%, #4c1d95 100%)',
+      svg: '<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"><path d="M12 34 L32 10 L52 34 Z" fill="#6d28d9"/><ellipse cx="32" cy="34" rx="24" ry="5" fill="#4c1d95"/><path d="M20 34 Q32 48 44 34" fill="#fde68a"/><circle cx="44" cy="18" r="2.5" fill="#fef08a"/><circle cx="22" cy="22" r="1.5" fill="#fef08a"/><path d="M32 22 L33.5 26 L37.5 26 L34.2 28.5 L35.5 32.5 L32 30 L28.5 32.5 L29.8 28.5 L26.5 26 L30.5 26 Z" fill="#fbbf24"/></svg>'
     },
     {
-      id: 'preset_mint_glass',
-      name: '薄荷棱镜',
-      bg: 'linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%)',
-      svg: '<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="g3" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#10b981"/><stop offset="100%" stop-color="#0ea5e9"/></linearGradient></defs><rect x="16" y="16" width="32" height="32" rx="11" fill="url(#g3)"/><circle cx="32" cy="32" r="7" fill="#ffffff" opacity="0.32"/></svg>'
+      id: 'preset_moon_knight',
+      name: '银月微徽',
+      bg: 'linear-gradient(135deg, #0f172a 0%, #334155 100%)',
+      svg: '<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"><path d="M38 14 A18 18 0 1 0 50 44 A14 14 0 1 1 38 14 Z" fill="#e2e8f0"/><circle cx="44" cy="24" r="3" fill="#fbbf24"/><circle cx="36" cy="18" r="1.5" fill="#fde68a"/><circle cx="48" cy="34" r="1.8" fill="#93c5fd"/></svg>'
     },
     {
-      id: 'preset_violet_star',
-      name: '星芒微徽',
-      bg: 'linear-gradient(135deg, #f5f3ff 0%, #ede9fe 100%)',
-      svg: '<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="g4" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#8b5cf6"/><stop offset="100%" stop-color="#ec4899"/></linearGradient></defs><path d="M32 12 L37 27 L52 32 L37 37 L32 52 L27 37 L12 32 L27 27 Z" fill="url(#g4)"/></svg>'
+      id: 'preset_fan_ink',
+      name: '朱砂折扇',
+      bg: 'linear-gradient(135deg, #291816 0%, #5c241d 100%)',
+      svg: '<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"><path d="M12 40 A24 24 0 0 1 52 40 L32 48 Z" fill="#f5e6d3"/><path d="M17 39 A19 19 0 0 1 47 39" stroke="#c8563d" stroke-width="2.5" fill="none"/><line x1="32" y1="48" x2="20" y2="28" stroke="#9a3412" stroke-width="1.2"/><line x1="32" y1="48" x2="32" y2="24" stroke="#9a3412" stroke-width="1.2"/><line x1="32" y1="48" x2="44" y2="28" stroke="#9a3412" stroke-width="1.2"/><circle cx="32" cy="48" r="3" fill="#fbbf24"/></svg>'
     },
     {
-      id: 'preset_slate_moon',
-      name: '静谧银月',
-      bg: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
-      svg: '<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"><path d="M38 14 A18 18 0 1 0 50 44 A14 14 0 1 1 38 14 Z" fill="#e2e8f0"/><circle cx="43" cy="23" r="2.2" fill="#93c5fd"/></svg>'
+      id: 'preset_cyber_cat',
+      name: '霓虹猫耳',
+      bg: 'linear-gradient(135deg, #090e1a 0%, #1e293b 100%)',
+      svg: '<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"><path d="M16 40 L18 18 L28 26 L36 26 L46 18 L48 40 Q48 50 32 50 Q16 50 16 40 Z" fill="#1e293b" stroke="#22d3ee" stroke-width="2.4"/><rect x="22" y="34" width="7" height="3" rx="1.5" fill="#22d3ee"/><rect x="35" y="34" width="7" height="3" rx="1.5" fill="#f472b6"/><path d="M29 42 L32 44 L35 42" stroke="#a78bfa" stroke-width="2" fill="none" stroke-linecap="round"/></svg>'
     },
     {
-      id: 'preset_amber_wave',
-      name: '暖茶几何',
-      bg: 'linear-gradient(135deg, #faf7f2 0%, #f3ebe0 100%)',
-      svg: '<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"><circle cx="26" cy="32" r="14" fill="#d97706" opacity="0.82"/><circle cx="38" cy="32" r="14" fill="#b85d3b" opacity="0.72"/></svg>'
+      id: 'preset_pearl_shell',
+      name: '深海明珠',
+      bg: 'linear-gradient(135deg, #0c4a6e 0%, #0284c7 100%)',
+      svg: '<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"><path d="M12 42 Q12 18 32 18 Q52 18 52 42 Q42 50 32 50 Q22 50 12 42 Z" fill="#e0f2fe"/><circle cx="32" cy="36" r="8" fill="#ffffff"/><circle cx="29" cy="33" r="2.2" fill="#bae6fd"/></svg>'
     },
     {
-      id: 'preset_nordic_ring',
-      name: '北欧双环',
-      bg: 'linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%)',
-      svg: '<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"><circle cx="32" cy="32" r="17" fill="none" stroke="#2563eb" stroke-width="5"/><circle cx="32" cy="32" r="7" fill="#60a5fa"/></svg>'
+      id: 'preset_paper_crane',
+      name: '千纸信鹤',
+      bg: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)',
+      svg: '<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"><polygon points="10,24 32,36 26,48" fill="#fb7185"/><polygon points="54,22 32,36 38,48" fill="#f43f5e"/><polygon points="26,48 32,20 38,48" fill="#fda4af"/><polygon points="32,20 40,16 34,26" fill="#e11d48"/></svg>'
     },
     {
-      id: 'preset_carbon_gem',
-      name: '碳黑星钻',
-      bg: 'linear-gradient(135deg, #111827 0%, #374151 100%)',
-      svg: '<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"><polygon points="32,14 48,28 32,50 16,28" fill="#60a5fa"/><polygon points="32,14 48,28 32,32" fill="#93c5fd" opacity="0.6"/></svg>'
+      id: 'preset_butterfly',
+      name: '蝶梦紫翼',
+      bg: 'linear-gradient(135deg, #2e1065 0%, #701a75 100%)',
+      svg: '<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"><path d="M32 32 C18 12, 8 22, 16 34 C10 42, 22 50, 32 38 Z" fill="#c084fc"/><path d="M32 32 C46 12, 56 22, 48 34 C54 42, 42 50, 32 38 Z" fill="#f472b6"/><rect x="30.5" y="22" width="3" height="22" rx="1.5" fill="#fef08a"/></svg>'
+    },
+    {
+      id: 'preset_matcha_bunny',
+      name: '云朵兔兔',
+      bg: 'linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%)',
+      svg: '<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"><ellipse cx="24" cy="20" rx="4.5" ry="12" fill="#ffffff"/><ellipse cx="40" cy="20" rx="4.5" ry="12" fill="#ffffff"/><circle cx="32" cy="38" r="15" fill="#ffffff"/><circle cx="26" cy="37" r="2.2" fill="#334155"/><circle cx="38" cy="37" r="2.2" fill="#334155"/><circle cx="22" cy="41" r="2.5" fill="#fda4af"/><circle cx="42" cy="41" r="2.5" fill="#fda4af"/></svg>'
+    },
+    {
+      id: 'preset_aurora',
+      name: '极光星环',
+      bg: 'linear-gradient(135deg, #064e3b 0%, #1e3a8a 100%)',
+      svg: '<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"><circle cx="32" cy="32" r="12" fill="#a7f3d0"/><ellipse cx="32" cy="32" rx="24" ry="8" transform="rotate(-22 32 32)" fill="none" stroke="#38bdf8" stroke-width="3"/><circle cx="48" cy="20" r="2.5" fill="#fef08a"/></svg>'
+    },
+    {
+      id: 'preset_tea',
+      name: '清茶幽兰',
+      bg: 'linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%)',
+      svg: '<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"><path d="M16 30 H48 V38 A14 14 0 0 1 16 38 Z" fill="#10b981"/><ellipse cx="32" cy="30" rx="16" ry="4" fill="#d1fae5"/><path d="M25 22 Q27 16 25 12" stroke="#6ee7b7" stroke-width="2" fill="none" stroke-linecap="round"/><path d="M35 20 Q37 14 35 10" stroke="#6ee7b7" stroke-width="2" fill="none" stroke-linecap="round"/></svg>'
+    },
+    {
+      id: 'preset_crown',
+      name: '星冠荣光',
+      bg: 'linear-gradient(135deg, #312e81 0%, #1e1b4b 100%)',
+      svg: '<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"><polygon points="14,44 18,22 28,32 32,18 36,32 46,22 50,44" fill="#fbbf24"/><rect x="14" y="44" width="36" height="5" rx="2.5" fill="#f59e0b"/><circle cx="32" cy="18" r="2.5" fill="#fef08a"/></svg>'
     }
   ];
 
@@ -1010,39 +1035,39 @@
      ======================================================================== */
 
   const SKIN_PRESETS = [
-    { id: 'minimal-studio', name: '清透极简（默认）', desc: 'Lobe / Cherry 风格 · 清爽高对比', bg: 'linear-gradient(135deg,#f7f8fa 52%,#2563eb 52%)', dot: '#2563eb' },
-    { id: 'qq-classic', name: '经典 QQ 聊天', desc: '洁净灰白底 · 经典蓝白气泡', bg: 'linear-gradient(135deg,#f2f4f7 52%,#0099ff 52%)', dot: '#0099ff' },
-    { id: 'warm-paper', name: '暖纸柔白', desc: 'Claude 护眼纸感 · 温润陶土棕', bg: '#faf9f6', dot: '#b85d3b' },
-    { id: 'carbon-dark', name: '深邃碳黑', desc: '高级暗夜碳黑 · 护眼冰蓝', bg: '#0d0f13', dot: '#60a5fa' }
+    { id: 'qq-classic', name: '经典 QQ 聊天', desc: '默认推荐 · 洁净灰底 · 蓝白气泡', bg: 'linear-gradient(135deg,#f2f3f5 52%,#1677ff 52%)', dot: '#1677ff' },
+    { id: 'default', name: '原生极客经典', desc: '跟随模式原生配色与排版', bg: 'linear-gradient(135deg,#f8e4f1,#231d3a)', dot: '#e2559d' },
+    { id: 'obsidian-gold', name: '曜石流金', desc: '深邃暗夜 · 暖金星轨', bg: '#0d0f14', dot: '#e5c185' },
+    { id: 'mist-silk', name: '晨雾丝绸', desc: '柔光浅色 · 莫兰迪棕', bg: '#f6f4f8', dot: '#b88b72' },
+    { id: 'sakura-dawn', name: '朝雾樱白', desc: '二次元粉樱 · 轻盈甜暖', bg: '#fff5fa', dot: '#e2559d' },
+    { id: 'crimson-scroll', name: '绯红古卷', desc: '古风悬疑 · 朱砂暗调', bg: '#191211', dot: '#d96b52' },
+    { id: 'cyber-neon', name: '赛博霓虹', desc: '未来都市 · 青紫微光', bg: '#080d18', dot: '#22d3ee' },
+    { id: 'eink-paper', name: '极简墨水屏', desc: '长篇护眼 · 纯净纸感', bg: '#f7f5ef', dot: '#3b3831' }
   ];
 
-  function migrateLegacyPreset(preset) {
-    if (preset === 'qq-classic') return 'qq-classic';
-    if (preset === 'eink-paper' || preset === 'warm-paper') return 'warm-paper';
-    if (preset === 'obsidian-gold' || preset === 'cyber-neon' || preset === 'crimson-scroll' || preset === 'carbon-dark') return 'carbon-dark';
-    return 'minimal-studio';
-  }
-
   const SKIN_ACCENT_SWATCHES = [
-    { name: '科技蓝', val: '#2563eb' },
-    { name: 'QQ天蓝', val: '#0099ff' },
-    { name: '陶土棕', val: '#b85d3b' },
-    { name: '翡翠绿', val: '#059669' },
-    { name: '鸢尾紫', val: '#7c3aed' },
-    { name: '珊瑚粉', val: '#e11d48' },
-    { name: '琥珀金', val: '#d97706' },
-    { name: '深石青', val: '#0284c7' }
+    { name: '樱粉', val: '#e2559d' },
+    { name: '流金', val: '#e5c185' },
+    { name: '鸢尾紫', val: '#8b5cf6' },
+    { name: '霓虹青', val: '#22d3ee' },
+    { name: '朱砂红', val: '#d96b52' },
+    { name: '翡翠绿', val: '#10b981' },
+    { name: '钴蓝', val: '#3b82f6' },
+    { name: '琥珀', val: '#f59e0b' }
   ];
 
   const BUILTIN_WALLPAPERS = [
-    { id: 'none', name: '无壁纸（推荐极简纯色）', type: 'none', val: '' },
-    { id: 'mist', name: '雪霁青灰', type: 'gradient', val: 'linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 50%, #ede9fe 100%)' },
-    { id: 'aurora', name: '星夜极光', type: 'gradient', val: 'radial-gradient(circle at 20% 20%, rgba(139,92,246,0.35), transparent 55%), radial-gradient(circle at 80% 75%, rgba(34,211,238,0.28), transparent 55%), #0c1020' },
-    { id: 'sakura', name: '樱雾暮云', type: 'gradient', val: 'linear-gradient(135deg, #fde2f3 0%, #e9d5ff 50%, #dbeafe 100%)' }
+    { id: 'none', name: '无壁纸', type: 'none', val: '' },
+    { id: 'aurora', name: '星夜极光', type: 'gradient', val: 'radial-gradient(circle at 20% 20%, rgba(139,92,246,0.45), transparent 55%), radial-gradient(circle at 80% 75%, rgba(34,211,238,0.35), transparent 55%), #0c1020' },
+    { id: 'sakura', name: '樱雾暮云', type: 'gradient', val: 'linear-gradient(135deg, #fde2f3 0%, #e9d5ff 50%, #dbeafe 100%)' },
+    { id: 'crimson', name: '朱墨残阳', type: 'gradient', val: 'radial-gradient(circle at 75% 25%, rgba(217,107,82,0.4), transparent 60%), linear-gradient(160deg, #1f1312 0%, #3a1c19 100%)' },
+    { id: 'forest', name: '森屿晨曦', type: 'gradient', val: 'radial-gradient(circle at 30% 25%, rgba(16,185,129,0.35), transparent 60%), linear-gradient(135deg, #06281e 0%, #0f172a 100%)' },
+    { id: 'gold', name: '碎金穹顶', type: 'gradient', val: 'radial-gradient(circle at 70% 20%, rgba(229,193,133,0.32), transparent 55%), linear-gradient(150deg, #0d0f14 0%, #1c1a17 100%)' },
+    { id: 'mist', name: '雪霁青灰', type: 'gradient', val: 'linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 50%, #ede9fe 100%)' }
   ];
 
   const DEFAULT_SKIN_CONFIG = {
-    preset: 'minimal-studio',
+    preset: 'default',
     accentColor: '',
     wallpaperType: 'none',
     wallpaperValue: '',
@@ -1052,6 +1077,13 @@
     fontStyle: 'sans',
     fontScale: 100
   };
+
+  function mapFromV260Preset(p) {
+    if (p === 'minimal-studio') return 'default';
+    if (p === 'warm-paper') return 'eink-paper';
+    if (p === 'carbon-dark') return 'obsidian-gold';
+    return p || 'default';
+  }
 
   let currentSkin = loadSkinFromStorage();
   let syncTimer = null;
@@ -1065,7 +1097,7 @@
       }
       const parsed = JSON.parse(raw);
       if (parsed && parsed.preset) {
-        parsed.preset = migrateLegacyPreset(parsed.preset);
+        parsed.preset = mapFromV260Preset(parsed.preset);
       }
       return Object.assign({}, DEFAULT_SKIN_CONFIG, parsed);
     } catch {
@@ -1075,19 +1107,19 @@
 
   function applySkin(configPatch, options = {}) {
     const { persist = true, syncServer = true } = options;
-    const prevPreset = currentSkin ? currentSkin.preset : 'minimal-studio';
+    const prevPreset = currentSkin ? currentSkin.preset : 'default';
     const nextPatch = configPatch && typeof configPatch === 'object' ? { ...configPatch } : {};
     if (nextPatch.preset) {
-      nextPatch.preset = migrateLegacyPreset(nextPatch.preset);
+      nextPatch.preset = mapFromV260Preset(nextPatch.preset);
     }
     if (nextPatch.preset === 'qq-classic' && prevPreset !== 'qq-classic' && !nextPatch.bubbleStyle) {
       nextPatch.bubbleStyle = 'im-bubble';
     }
     currentSkin = Object.assign({}, DEFAULT_SKIN_CONFIG, currentSkin, nextPatch);
-    currentSkin.preset = migrateLegacyPreset(currentSkin.preset);
+    currentSkin.preset = mapFromV260Preset(currentSkin.preset);
     const root = document.documentElement;
 
-    root.dataset.skin = currentSkin.preset || 'minimal-studio';
+    root.dataset.skin = currentSkin.preset || 'default';
     root.dataset.bubbleStyle = currentSkin.bubbleStyle || 'soft';
     root.dataset.fontStyle = currentSkin.fontStyle || 'sans';
 

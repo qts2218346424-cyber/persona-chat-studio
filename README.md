@@ -22,7 +22,7 @@
 </p>
 
 <p>
-  <img src="https://img.shields.io/badge/Release-v2.7.3_Build_164-7C3AED?style=flat-square&logo=rocket&logoColor=white" alt="Version v2.7.3" />
+  <img src="https://img.shields.io/badge/Release-v2.7.4_Build_165-7C3AED?style=flat-square&logo=rocket&logoColor=white" alt="Version v2.7.4" />
   <img src="https://img.shields.io/badge/Node.js-%3E%3D22.5.0-339933?style=flat-square&logo=node.js&logoColor=white" alt="Node.js >= 22.5.0" />
   <img src="https://img.shields.io/badge/Dependencies-0_npm_Packages-FF6B6B?style=flat-square&logo=npm&logoColor=white" alt="Zero npm Dependencies" />
   <img src="https://img.shields.io/badge/Storage-node%3Asqlite-003B57?style=flat-square&logo=sqlite&logoColor=white" alt="Native SQLite" />
@@ -47,9 +47,13 @@
 
 ---
 
-## 🚀 v2.7.3 最新版本核心特性
+## 🚀 v2.7.4 最新版本核心特性
 
-1. **任务前主动需求确认（Pre-Flight Clarification Gate）**：新增「智能确认（推荐）/ 每次先确认 / 直接执行」三档任务前确认策略；发模糊指令（如「帮我点外卖」「帮我写作业」「帮我发消息」）时，AI 先停留在当前界面主动提问并给出拟定思路与快捷选项，用户确认后再顺畅跳走执行，彻底告别一发指令就盲目跳走的问题。
+1. **DeepSeek API 默认 V4.1 Flash + 云端自动拉取模型 + 极简聊天框计费胶囊**：DeepSeek API 模式默认使用 `deepseek-v4.1-flash`；桌面/手机/手机辅助控制台的云端 API 模式填写地址与 Key 后自动从 `/v1/models` 拉取可用模型下拉选择（无需手填）；全新升级 DeepSeek 专属计费插件（v2.0.0），仅在 DeepSeek 官方 API 模式下于聊天框紧上方极简展示实时 Token 与额度/费用，点击展开详情与每轮消耗明细。
+2. **卡顿主动问询防死循环**：执行遇连续 2 步画面无变化、连续 2 步动作报错或纠偏后再次振荡时，AI 立即主动弹窗向用户请示（提供「跳过换方法 / 返回上一页 / 我已手动操作 / 停止任务」快捷选项 + 自由输入现场指示），彻底告别死循环。
+2. **本地免 API 强对话与离线工具**：全面扩展本地自然对话理解能力，覆盖情绪陪伴、无障碍/悬浮窗权限指引（附带一键打开指引按钮）、安全无 `eval` 算术计算、日期时间与设备状态查询、日常文案模板，普通闲聊再也不会报“离线口令未匹配”。
+3. **3 步交互式无障碍与悬浮窗新手指引向导**：首次缺失权限自动弹出，随时可在空态引导区或控制台重看；支持一键跳转系统设置并在切回应用时实时自动检测权限开启打绿勾。
+4. **任务前主动需求确认门控（Pre-Flight Clarification Gate）**：新增「智能确认（推荐）/ 每次先确认 / 直接执行」三档任务前确认策略；发模糊指令（如「帮我点外卖」「帮我写作业」「帮我发消息」）时，AI 先停留在当前界面主动提问并给出拟定思路与快捷选项，用户确认后再顺畅跳走执行。
 2. **卡死 / 死循环自动检测与三级纠偏（LoopGuard & Auto-Recovery）**：新增动作指纹与 A↔B 页面振荡死循环检测，打通完整历史参数记忆与 `loopDiagnostics` 诊断上下文；支持物理补点、自动清理遮挡弹窗、强制换路重规划以及优雅跳出循环弹出协作恢复弹窗，并优化屏变轮询节奏与微动作切页中断保护。
 3. **启动自动弹出版本更新公告 & 全面打通用户自带 API 驱动手机辅助**：修复启动检测到新版后自动弹出更新公告弹窗；全面打通 APK 离线壳透传与服务端防 CORS 代理（支持用户自带 DeepSeek / 第三方 OpenAI 兼容密钥免登录态直连代理、接口地址自动补全、自由输入模型名及一键测试连接）。
 

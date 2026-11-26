@@ -117,8 +117,8 @@
       pointer-events: none !important;
     }
   </style>
-  <link rel="preload" href="./dist/app.bundle.js?v=f15868aa84" as="script" />
-  <link rel="stylesheet" href="./dist/app.bundle.css?v=c0089a7ac7" />
+  <link rel="preload" href="./dist/app.bundle.js?v=1dd0fe1fc0" as="script" />
+  <link rel="stylesheet" href="./dist/app.bundle.css?v=348d8118e4" />
 </head>
 <body data-ui-mode="deepseek">
   <div id="skin-wallpaper-layer" class="skin-wallpaper-layer" aria-hidden="true"></div>
@@ -947,6 +947,10 @@
                 <span class="pa-cap-pill">任务屏弹窗确认</span>
                 <span class="pa-cap-pill">本地技能固化</span>
               </div>
+              <button type="button" class="pa-setup-guide-cta" id="pa-empty-setup-guide-btn">
+                <span>新手指引：30秒开启无障碍与悬浮窗</span>
+                <span aria-hidden="true">→</span>
+              </button>
             </div>
             <div class="pa-learned-box" id="pa-learned-skills-box"></div>
             <div class="pa-empty-guide-title">试着说一句，或点选示例任务</div>
@@ -2201,21 +2205,40 @@
                   </div>
 
                   <div class="spacious-field">
-                    <label for="st-custom-cloud-model">云端模型名称 (Model Name) <span style="font-weight:normal;color:var(--text-secondary);">（可自由指定填写）</span></label>
+                    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;">
+                      <label for="st-custom-cloud-model-select" style="margin:0;">云端模型选择 <span id="st-custom-cloud-models-status" style="font-weight:normal;font-size:12px;color:var(--text-secondary);">（填完地址与密钥后自动拉取）</span></label>
+                      <button type="button" class="pa-official-link-btn" id="st-custom-cloud-fetch-models-btn" title="从当前云端接口自动拉取可用模型列表">刷新模型</button>
+                    </div>
+                    <select id="st-custom-cloud-model-select" class="st-select-input" style="margin-bottom:8px;">
+                      <option value="deepseek-ai/DeepSeek-V4.1-Flash">硅基流动 · DeepSeek V4.1 Flash（默认推荐）</option>
+                      <option value="deepseek-v4.1-flash">阿里云百炼 / 通用 · DeepSeek V4.1 Flash</option>
+                      <option value="deepseek/deepseek-v4.1-flash">OpenRouter · DeepSeek V4.1 Flash</option>
+                      <option value="deepseek-ai/DeepSeek-V3">硅基流动 · DeepSeek V3</option>
+                      <option value="deepseek-ai/DeepSeek-R1">硅基流动 · DeepSeek R1（深度推理）</option>
+                      <option value="deepseek-chat">DeepSeek Chat / V3</option>
+                      <option value="deepseek-reasoner">DeepSeek Reasoner / R1</option>
+                      <option value="gemini-2.5-flash">Google Gemini 2.5 Flash</option>
+                      <option value="gemini-2.5-pro">Google Gemini 2.5 Pro</option>
+                      <option value="qwen-plus">通义千问 · Qwen Plus</option>
+                      <option value="gpt-4o-mini">OpenAI · GPT-4o Mini</option>
+                      <option value="__custom__">自定义模型名称…</option>
+                    </select>
                     <input
                       id="st-custom-cloud-model"
                       name="custom_cloud_model"
                       type="text"
+                      class="hidden"
                       list="custom-cloud-model-presets"
                       autocorrect="off"
                       autocapitalize="none"
                       spellcheck="false"
-                      placeholder="例如：deepseek-ai/DeepSeek-V4.1-Flash、deepseek-ai/DeepSeek-V3 或 qwen-plus"
+                      placeholder="输入自定义模型名称，如 deepseek-ai/DeepSeek-V4.1-Flash"
                       value="deepseek-ai/DeepSeek-V4.1-Flash"
                     />
                     <datalist id="custom-cloud-model-presets">
                       <option value="deepseek-ai/DeepSeek-V4.1-Flash">硅基流动 · DeepSeek V4.1 Flash</option>
                       <option value="deepseek-ai/DeepSeek-V3">硅基流动 · DeepSeek V3</option>
+                      <option value="deepseek-ai/DeepSeek-R1">硅基流动 · DeepSeek R1</option>
                       <option value="deepseek-v4.1-flash">阿里云百炼 · DeepSeek V4.1 Flash</option>
                       <option value="deepseek/deepseek-v4.1-flash">OpenRouter · DeepSeek V4.1 Flash</option>
                       <option value="gemini-2.5-flash">Google Gemini · 2.5 Flash</option>
@@ -3148,7 +3171,7 @@
         <div class="apk-hero-card" id="apk-web-download-card">
           <div class="apk-hero-top">
             <div class="apk-meta-pills">
-              <span class="apk-meta-pill" id="apk-modal-version-pill">版本 v2.7.3 (需求确认+防卡死纠偏)</span>
+              <span class="apk-meta-pill" id="apk-modal-version-pill">版本 v2.7.4 (卡顿主动问询+新手指引+本地强对话)</span>
               <span class="apk-meta-pill">极速包体 约 10.3 MB</span>
               <span class="apk-meta-pill">官方纯净 · 签名校验</span>
               <span class="apk-meta-pill" id="pa-device-info-pill">支持 Android 7.0 ~ 15+</span>
@@ -3192,7 +3215,7 @@
           <div class="anv-head">
             <div class="anv-title-row">
               <span class="anv-badge">已安装原生随身版</span>
-              <span class="anv-version" id="anv-current-version">v2.7.3 (已就绪)</span>
+              <span class="anv-version" id="anv-current-version">v2.7.4 (已就绪)</span>
             </div>
             <p class="anv-desc">您已在 Android 原生 APK 中运行。可在「手机辅助」工作台或桌面悬浮窗中使用 DeepSeek API 智能识屏操控或本地免 API 直控。</p>
           </div>
@@ -3583,7 +3606,7 @@
             </div>
             <div class="mfs-item-right">
               <span class="mfs-update-dot hidden" id="mfs-update-dot" aria-label="发现新版本"></span>
-              <span class="mfs-value" id="mfs-version-value">v2.7.3</span>
+              <span class="mfs-value" id="mfs-version-value">v2.7.4</span>
               <span class="mfs-arrow">›</span>
             </div>
           </div>
@@ -3667,7 +3690,7 @@
         <div class="upd-ver-compare">
           <div class="upd-ver-box">
             <span class="upd-ver-label">当前已安装</span>
-            <strong class="upd-ver-num" id="upd-local-ver">v2.7.3</strong>
+            <strong class="upd-ver-num" id="upd-local-ver">v2.7.4</strong>
           </div>
           <div class="upd-ver-arrow" aria-hidden="true">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
@@ -3820,6 +3843,9 @@
             <span class="pa-dot"></span><span id="pa-banner-confirm-text">仅敏感确认</span>
           </button>
         </div>
+        <button type="button" class="pa-banner-btn outline pa-open-guide-sheet-btn" id="pa-open-setup-guide-btn" style="width:100%;margin-top:6px;">
+          新手指引：如何开启无障碍与悬浮窗
+        </button>
         <label class="pa-cfg-check" style="margin-top:4px;">
           <input type="checkbox" id="pa-cfg-edge-glow" checked />
           <span>屏幕边缘柔和光效提示（AI 控屏时亮起微光边框）</span>
@@ -3829,6 +3855,26 @@
       <div class="pa-local-peace-card hidden" id="pa-local-peace-card">
         <strong>当前已就绪 · 本地免 API 离线引擎</strong>
         <span>无需配置任何 API Key，已加载 <strong id="pa-local-peace-skill-count">0</strong> 个本地已学技能与内置离线口令，零消耗快速直控。</span>
+      </div>
+
+      <div class="pa-config-drawer hidden" id="pa-cloud-model-box" style="margin-bottom:8px;">
+        <div class="pa-cfg-grid">
+          <div class="pa-cfg-field">
+            <div class="pa-cfg-label-row">
+              <label for="pa-cloud-model-select">云端 API 模型选择 <span id="pa-cloud-models-status" style="font-weight:normal;font-size:11.5px;opacity:0.75;">（自动拉取）</span></label>
+              <button type="button" class="pa-official-link-btn" id="pa-cloud-fetch-models-btn">刷新模型</button>
+            </div>
+            <select id="pa-cloud-model-select" class="pa-cfg-input">
+              <option value="deepseek-v4.1-flash">DeepSeek V4.1 Flash（默认极速）</option>
+              <option value="deepseek-ai/DeepSeek-V4.1-Flash">硅基流动 · DeepSeek V4.1 Flash</option>
+              <option value="deepseek-chat">DeepSeek Chat / V3</option>
+              <option value="deepseek-reasoner">DeepSeek Reasoner / R1</option>
+              <option value="gemini-2.5-flash">Google Gemini 2.5 Flash</option>
+              <option value="qwen-plus">通义千问 · Qwen Plus</option>
+              <option value="gpt-4o-mini">OpenAI · GPT-4o Mini</option>
+            </select>
+          </div>
+        </div>
       </div>
 
       <div class="pa-config-drawer" id="pa-inline-config-drawer">
@@ -3845,8 +3891,9 @@
           <div class="pa-cfg-row-2">
             <div class="pa-cfg-field">
               <label for="pa-cfg-model">推理模型</label>
-              <input type="text" id="pa-cfg-model" list="pa-model-presets" class="pa-cfg-input" value="deepseek-chat" placeholder="deepseek-chat 或第三方模型名" autocomplete="off" />
+              <input type="text" id="pa-cfg-model" list="pa-model-presets" class="pa-cfg-input" value="deepseek-v4.1-flash" placeholder="deepseek-v4.1-flash 或第三方模型名" autocomplete="off" />
               <datalist id="pa-model-presets">
+                <option value="deepseek-v4.1-flash"></option>
                 <option value="deepseek-chat"></option>
                 <option value="deepseek-reasoner"></option>
                 <option value="deepseek-ai/DeepSeek-V4.1-Flash"></option>
@@ -3927,7 +3974,7 @@
   <!-- 全局 Top-Layer 顶层轻提示胶囊（popover="manual" 确保在任何模态 <dialog> 打开时依然 100% 可见，遵循 persistent-toast-notifications 规范） -->
   <div id="global-top-toast" popover="manual" class="global-top-toast" role="status" aria-live="polite"></div>
 
-  <script defer src="./dist/app.bundle.js?v=f15868aa84"></script>
+  <script defer src="./dist/app.bundle.js?v=1dd0fe1fc0"></script>
   <script>
     (function () {
       const isNativeApkEnv = Boolean(window.AndroidAppBridge) || window.location.hostname === 'appassets.androidplatform.net' || window.location.protocol === 'file:';

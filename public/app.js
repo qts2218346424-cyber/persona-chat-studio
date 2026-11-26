@@ -73,7 +73,7 @@
     hasMoreMessages: false,
     totalMessages: 0,
     oldestMessageId: 0,
-    appVersion: '2.7.3',
+    appVersion: '2.7.4',
     tourIndex: 0,
     tourActive: false,
     llmMode: 'local_antigravity',
@@ -179,6 +179,16 @@
       state.activeSession.llm_mode = mode;
     }
     syncLlmModeUi();
+    try {
+      window.DeepSeekMonitorPlugin?.sync?.({
+        settings: {
+          provider: cfg.channel,
+          has_own_deepseek_key: Boolean(cfg.ownKey),
+          own_deepseek_model: 'deepseek-v4.1-flash'
+        },
+        forceBalanceRefresh: cfg.channel === 'own_deepseek' && Boolean(cfg.ownKey)
+      });
+    } catch {}
     return cfg;
   }
 
@@ -2874,7 +2884,7 @@
 
     const p = state.settings.provider || 'demo';
     const hasOwnKey = Boolean(state.settings.has_own_deepseek_key);
-    const rawOwnModel = state.settings.own_deepseek_model || 'deepseek-flash';
+    const rawOwnModel = state.settings.own_deepseek_model || 'deepseek-v4.1-flash';
     const rawLeaf = rawOwnModel.split('/').pop();
     const shortModel = /^deepseek[-_]?flash$/i.test(rawLeaf) ? 'V4.1-Flash' : rawLeaf;
 
@@ -7492,6 +7502,17 @@
               messages: state.messages,
               forceBalanceRefresh: true
             });
+            const turnUsage = finalAssistantMsg?.meta?.usage || payload?.usage || null;
+            const activeScopeCfg = getModeApiConfig(originIsDsUi ? 'deepseek' : 'roleplay');
+            const isDeepSeekOfficialTurn = activeScopeCfg.channel === 'own_deepseek' || state.settings?.provider === 'own_deepseek';
+            if (turnUsage && isDeepSeekOfficialTurn && activeScopeCfg.channel !== 'custom_cloud') {
+              window.DeepSeekMonitorPlugin?.recordTurnUsage({
+                usage: turnUsage,
+                model: finalAssistantMsg?.meta?.model || payload?.model || state.settings?.own_deepseek_model || 'deepseek-v4.1-flash',
+                source: originIsDsUi ? 'DeepSeek对话' : '剧场对话',
+                provider: 'own_deepseek'
+              });
+            }
             if (payload.chapter_advanced && !originIsDsUi && !chapterCurtainShown) {
               chapterCurtainShown = true;
               playChapterCurtainTransition(payload.chapter_advanced);
@@ -9835,8 +9856,24 @@
               <input type="url" class="mfs-sheet-input" id="mfs-sheet-cloud-url" value="${escapeHtml(curCfg.cloudUrl)}" placeholder="https://api.siliconflow.cn/v1/chat/completions" />
             </div>
             <div class="mfs-field-block" style="margin-bottom:8px;">
-              <label class="mfs-field-label" for="mfs-sheet-cloud-model">模型名称</label>
-              <input type="text" class="mfs-sheet-input" id="mfs-sheet-cloud-model" value="${escapeHtml(curCfg.cloudModel)}" placeholder="deepseek-ai/DeepSeek-V4.1-Flash" />
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+                <label class="mfs-field-label" for="mfs-sheet-cloud-model-select" style="margin:0;">云端模型选择 <span id="mfs-sheet-models-status" style="font-weight:normal;font-size:11px;opacity:0.75;">(填密钥自动拉取)</span></label>
+                <button type="button" class="mfs-official-link-btn" id="mfs-sheet-fetch-models-btn" style="padding:2px 8px;font-size:11px;">刷新模型</button>
+              </div>
+              <select class="mfs-sheet-input" id="mfs-sheet-cloud-model-select" style="margin-bottom:6px;">
+                <option value="deepseek-ai/DeepSeek-V4.1-Flash">硅基流动 · DeepSeek V4.1 Flash</option>
+                <option value="deepseek-v4.1-flash">阿里云百炼 / 通用 · DeepSeek V4.1 Flash</option>
+                <option value="deepseek/deepseek-v4.1-flash">OpenRouter · DeepSeek V4.1 Flash</option>
+                <option value="deepseek-ai/DeepSeek-V3">硅基流动 · DeepSeek V3</option>
+                <option value="deepseek-ai/DeepSeek-R1">硅基流动 · DeepSeek R1</option>
+                <option value="deepseek-chat">DeepSeek Chat / V3</option>
+                <option value="deepseek-reasoner">DeepSeek Reasoner / R1</option>
+                <option value="gemini-2.5-flash">Google Gemini 2.5 Flash</option>
+                <option value="qwen-plus">通义千问 · Qwen Plus</option>
+                <option value="gpt-4o-mini">OpenAI · GPT-4o Mini</option>
+                <option value="__custom__">自定义模型名…</option>
+              </select>
+              <input type="text" class="mfs-sheet-input hidden" id="mfs-sheet-cloud-model" value="${escapeHtml(curCfg.cloudModel)}" placeholder="输入自定义模型名" />
             </div>
             <div class="mfs-field-block">
               <label class="mfs-field-label" for="mfs-sheet-cloud-key">云端 API Key</label>
@@ -9850,8 +9887,57 @@
           const inp = bodyEl.querySelector('#mfs-sheet-apikey-input');
           const eyeBtn = bodyEl.querySelector('#mfs-sheet-eye-btn');
           const cloudUrlInp = bodyEl.querySelector('#mfs-sheet-cloud-url');
+          const cloudModelSel = bodyEl.querySelector('#mfs-sheet-cloud-model-select');
           const cloudModelInp = bodyEl.querySelector('#mfs-sheet-cloud-model');
           const cloudKeyInp = bodyEl.querySelector('#mfs-sheet-cloud-key');
+          const cloudFetchBtn = bodyEl.querySelector('#mfs-sheet-fetch-models-btn');
+          const cloudModelsStatus = bodyEl.querySelector('#mfs-sheet-models-status');
+          if (cloudModelSel && cloudModelInp) {
+            const syncMfsCloudSel = () => {
+              const val = (cloudModelInp.value || '').trim();
+              const matched = Array.from(cloudModelSel.options).some((o) => o.value === val && o.value !== '__custom__');
+              cloudModelSel.value = matched ? val : '__custom__';
+              cloudModelInp.classList.toggle('hidden', cloudModelSel.value !== '__custom__');
+            };
+            syncMfsCloudSel();
+            cloudModelSel.addEventListener('change', () => {
+              if (cloudModelSel.value !== '__custom__') {
+                cloudModelInp.value = cloudModelSel.value;
+                cloudModelInp.classList.add('hidden');
+              } else {
+                cloudModelInp.classList.remove('hidden');
+                cloudModelInp.focus();
+              }
+            });
+            cloudModelInp.addEventListener('input', syncMfsCloudSel);
+
+            let mfsFetchTimer = null;
+            const triggerMfsFetch = async () => {
+              const k = (cloudKeyInp?.value || '').trim();
+              const u = (cloudUrlInp?.value || '').trim();
+              if (!k || !u) return;
+              if (cloudModelsStatus) cloudModelsStatus.textContent = '(拉取中…)';
+              if (cloudFetchBtn) cloudFetchBtn.disabled = true;
+              const r = await fetchCloudModelsList({ baseUrl: u, apiKey: k });
+              if (cloudFetchBtn) cloudFetchBtn.disabled = false;
+              if (r.ok && r.models.length > 0) {
+                populateCloudModelSelect(cloudModelSel, cloudModelInp, r.models, cloudModelInp.value);
+                if (cloudModelsStatus) cloudModelsStatus.textContent = `(已拉取 ${r.models.length} 个模型)`;
+              } else if (cloudModelsStatus) {
+                cloudModelsStatus.textContent = `(${r.error || '拉取失败'})`;
+              }
+            };
+            cloudFetchBtn?.addEventListener('click', triggerMfsFetch);
+            const scheduleMfsFetch = () => {
+              clearTimeout(mfsFetchTimer);
+              mfsFetchTimer = setTimeout(triggerMfsFetch, 450);
+            };
+            cloudKeyInp?.addEventListener('input', scheduleMfsFetch);
+            cloudUrlInp?.addEventListener('input', scheduleMfsFetch);
+            if (chosenChannel === 'custom_cloud' && curCfg.cloudKey && curCfg.cloudUrl) {
+              setTimeout(triggerMfsFetch, 120);
+            }
+          }
           const syncSheetChannel = (nextCh) => {
             chosenChannel = nextCh;
             bodyEl.querySelectorAll('[data-mfs-ch]').forEach((btn) => {
@@ -10787,6 +10873,111 @@
       btn.textContent = origText;
     }
   });
+
+  async function fetchCloudModelsList({ baseUrl = '', apiKey = '' } = {}) {
+    try {
+      const data = await apiJson('/api/cloud/models', {
+        method: 'POST',
+        body: JSON.stringify({ baseUrl: String(baseUrl || '').trim(), apiKey: String(apiKey || '').trim() })
+      });
+      if (data && data.ok && Array.isArray(data.models) && data.models.length > 0) {
+        return { ok: true, models: data.models };
+      }
+      return { ok: false, models: [], error: data?.error || '未获取到模型列表' };
+    } catch (err) {
+      return { ok: false, models: [], error: err?.message || '拉取模型失败' };
+    }
+  }
+
+  function populateCloudModelSelect(selectEl, inputEl, models = [], preferredModel = '') {
+    if (!selectEl || !Array.isArray(models) || models.length === 0) return;
+    const prevVal = String(preferredModel || inputEl?.value || '').trim();
+    selectEl.innerHTML = '';
+    for (const m of models) {
+      const opt = document.createElement('option');
+      opt.value = m;
+      opt.textContent = m;
+      selectEl.appendChild(opt);
+    }
+    const customOpt = document.createElement('option');
+    customOpt.value = '__custom__';
+    customOpt.textContent = '自定义模型名称…';
+    selectEl.appendChild(customOpt);
+
+    if (prevVal && models.includes(prevVal)) {
+      selectEl.value = prevVal;
+      if (inputEl) {
+        inputEl.value = prevVal;
+        inputEl.classList.add('hidden');
+      }
+    } else {
+      selectEl.value = models[0];
+      if (inputEl) {
+        inputEl.value = models[0];
+        inputEl.classList.add('hidden');
+      }
+    }
+  }
+
+  // 云端 API 模型下拉选择器与自动拉取模型列表联动
+  (() => {
+    const sel = document.getElementById('st-custom-cloud-model-select');
+    const inp = document.getElementById('st-custom-cloud-model');
+    const urlInp = document.getElementById('st-custom-cloud-url');
+    const keyInp = document.getElementById('st-custom-cloud-key');
+    const fetchBtn = document.getElementById('st-custom-cloud-fetch-models-btn');
+    const statusEl = document.getElementById('st-custom-cloud-models-status');
+    if (!sel || !inp) return;
+
+    const syncSelectFromInput = () => {
+      const val = (inp.value || '').trim();
+      const matched = Array.from(sel.options).some((o) => o.value === val && o.value !== '__custom__');
+      sel.value = matched ? val : '__custom__';
+      inp.classList.toggle('hidden', sel.value !== '__custom__');
+    };
+    sel.addEventListener('change', () => {
+      if (sel.value !== '__custom__') {
+        inp.value = sel.value;
+        inp.classList.add('hidden');
+      } else {
+        inp.classList.remove('hidden');
+        inp.focus();
+      }
+    });
+    inp.addEventListener('input', syncSelectFromInput);
+
+    let fetchTimer = null;
+    const runDesktopModelsFetch = async () => {
+      const k = (keyInp?.value || '').trim();
+      const u = (urlInp?.value || '').trim();
+      if (!k || !u) return;
+      if (statusEl) statusEl.textContent = '（正在拉取模型列表…）';
+      if (fetchBtn) fetchBtn.disabled = true;
+      const res = await fetchCloudModelsList({ baseUrl: u, apiKey: k });
+      if (fetchBtn) fetchBtn.disabled = false;
+      if (res.ok && res.models.length > 0) {
+        populateCloudModelSelect(sel, inp, res.models, inp.value);
+        if (statusEl) statusEl.textContent = `（已自动拉取 ${res.models.length} 个模型）`;
+      } else if (statusEl) {
+        statusEl.textContent = `（${res.error || '拉取失败，可点选预设'}）`;
+      }
+    };
+    fetchBtn?.addEventListener('click', runDesktopModelsFetch);
+    const scheduleDesktopFetch = () => {
+      clearTimeout(fetchTimer);
+      fetchTimer = setTimeout(runDesktopModelsFetch, 450);
+    };
+    keyInp?.addEventListener('input', scheduleDesktopFetch);
+    urlInp?.addEventListener('input', scheduleDesktopFetch);
+
+    document.getElementById('cloud-api-preset-bar')?.addEventListener('click', () => {
+      setTimeout(() => {
+        syncSelectFromInput();
+        if ((keyInp?.value || '').trim()) runDesktopModelsFetch();
+      }, 0);
+    });
+    syncSelectFromInput();
+  })();
 
   // 云端 API 连接测试（用户可自由指定接口地址与模型名称）
   document.getElementById('verify-custom-cloud-key-btn')?.addEventListener('click', async (e) => {

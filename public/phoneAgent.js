@@ -7,8 +7,8 @@
    ========================================================================== */
 
 (() => {
-  const CURRENT_APK_VERSION = '2.7.3';
-  const CURRENT_APK_CODE = 164;
+  const CURRENT_APK_VERSION = '2.7.4';
+  const CURRENT_APK_CODE = 165;
   const DEEPSEEK_API_KEYS_URL = 'https://platform.deepseek.com/api_keys';
   const PUBLIC_WEB_ORIGIN = 'https://star.claudexxb.online';
   const GITHUB_RELEASES_URL = 'https://github.com/qts2218346424-cyber/persona-chat-studio/releases';
@@ -16,6 +16,7 @@
   const STORAGE_KEYS = {
     execMode: 'pa_exec_mode_v1',
     directModel: 'pa_direct_model_v1',
+    cloudModel: 'pa_cloud_model_v1',
     directBaseUrl: 'pa_direct_baseurl_v1',
     autoApprove: 'pa_auto_approve_v1',
     confirmPolicy: 'pa_confirm_policy_v2',
@@ -24,7 +25,8 @@
     edgeGlow: 'pa_edge_glow_v1',
     exclusiveKey: 'pa_exclusive_api_key_v1',
     learnedSkills: 'pa_learned_skills_v1',
-    taskHistory: 'pa_task_history_v1'
+    taskHistory: 'pa_task_history_v1',
+    setupGuideDone: 'pa_setup_guide_done_v1'
   };
 
   // 精炼高频快捷指令库（含 AI 固化本地技能、常用操作、输入搜索、手势系统、短视频、常用语、歌单）
@@ -148,18 +150,241 @@
     }
   }
 
+  const EXPLICIT_CONTROL_VERB_RE = /(?:打开|启动|进入|点击|点一下|按下|搜索|搜一下|查一下|发消息|发给|发送|回复给|点外卖|叫外卖|下单|写作业|做作业|答题|做题|刷题|刷视频|刷抖音|刷快手|下一题|切回|回到|返回|锁屏|截屏|截图|滑动|上滑|下滑|左滑|右滑|音量|静音|喂米饭|吃米饭|摸摸头|唱歌|播放|放一首|打字|输入并发送|粘贴|清空输入框)/;
+
   function isLikelyPureChat(text) {
     const clean = String(text || '').trim();
     if (!clean) return false;
-    if (/^(?:你好|您好|hi|hello|在吗|早上好|中午好|晚上好|谢谢|多谢|辛苦了|再见|拜拜|哈哈|你是谁|你能干嘛|你能做什么|介绍一下你自己|怎么用|有什么功能)[！!？?。.～~]*$/i.test(clean)) {
+    if (/^(?:你好|您好|hi|hello|在吗|早上好|中午好|晚上好|早安|午安|晚安|谢谢|多谢|辛苦了|再见|拜拜|哈哈|你是谁|你能干嘛|你能做什么|介绍一下你自己|怎么用|有什么功能)[！!？?。.～~]*$/i.test(clean)) {
       return true;
     }
-    const hasActionVerb = /(?:打开|启动|进入|点击|点一下|按下|搜索|搜一下|查一下|发消息|发给|发送|回复|点外卖|下单|写作业|做作业|答题|刷题|刷视频|下一题|切回|回到|返回|锁屏|截屏|滑动|上滑|下滑|音量|静音|喂米饭|唱歌|播放)/.test(clean);
-    if (hasActionVerb) return false;
+    if (/(?:怎么开|如何开|在哪开|怎么用|教程|指引|引导|是什么|干嘛用|功能)/.test(clean) && /(?:无障碍|悬浮窗|大肥鱼|api|密钥|key|技能|手机辅助|本地)/i.test(clean)) {
+      return true;
+    }
+    if (/^[\d\s+\-*/().（）×÷=？?]+$/.test(clean) && /\d/.test(clean) && /[+\-*/×÷]/.test(clean)) {
+      return true;
+    }
+    if (/(?:帮我算|算一下|计算|等于几|等于多少)/.test(clean) && /\d/.test(clean)) {
+      return true;
+    }
+    if (/(?:现在几点|几点了|今天几号|星期几|今天星期|今天日期|多少个技能|有什么技能|已学技能|权限状态|无障碍开了吗|悬浮窗开了吗|当前版本|版本号)/.test(clean)) {
+      return true;
+    }
+    if (/(?:好累|累了|无聊|难过|开心|睡不着|安慰|夸夸|吃什么|推荐|笑话|冷笑话|请假条|自我介绍|道歉|祝福|陪我聊|聊聊|聊聊天|心情)/.test(clean)) {
+      return true;
+    }
+    if (EXPLICIT_CONTROL_VERB_RE.test(clean)) return false;
     if (/(?:为什么|怎么回事|原理|是什么|是什么意思|怎么办|帮我解释|帮我分析|聊一聊|聊聊|讲个|觉得呢|好不好|是不是|能不能)[？?！!。]*$/.test(clean) || /[？?]$/.test(clean)) {
       return true;
     }
-    return false;
+    return !isSimpleBuiltInLocalCmd(clean) && clean.length <= 42;
+  }
+
+  function safeEvalArithmetic(rawExpr) {
+    const expr = String(rawExpr || '')
+      .replace(/[×xX]/g, '*')
+      .replace(/[÷]/g, '/')
+      .replace(/（/g, '(')
+      .replace(/）/g, ')')
+      .replace(/[^0-9+\-*/().]/g, '');
+    if (!expr || expr.length > 64 || !/\d/.test(expr) || !/[+\-*/]/.test(expr)) return null;
+    const tokens = [];
+    let i = 0;
+    while (i < expr.length) {
+      const ch = expr[i];
+      if (/\d|\./.test(ch)) {
+        let numStr = '';
+        let dots = 0;
+        while (i < expr.length && /[\d.]/.test(expr[i])) {
+          if (expr[i] === '.') dots += 1;
+          if (dots > 1) return null;
+          numStr += expr[i++];
+        }
+        const val = Number(numStr);
+        if (!Number.isFinite(val)) return null;
+        tokens.push({ type: 'num', val });
+      } else if ('+-*/()'.includes(ch)) {
+        tokens.push({ type: 'op', val: ch });
+        i += 1;
+      } else {
+        return null;
+      }
+    }
+    let pos = 0;
+    const peek = () => tokens[pos] || null;
+    const next = () => tokens[pos++] || null;
+    const parseExpr = () => {
+      let left = parseTerm();
+      if (left === null) return null;
+      while (peek() && peek().type === 'op' && (peek().val === '+' || peek().val === '-')) {
+        const op = next().val;
+        const right = parseTerm();
+        if (right === null) return null;
+        left = op === '+' ? left + right : left - right;
+      }
+      return left;
+    };
+    const parseTerm = () => {
+      let left = parseFactor();
+      if (left === null) return null;
+      while (peek() && peek().type === 'op' && (peek().val === '*' || peek().val === '/')) {
+        const op = next().val;
+        const right = parseFactor();
+        if (right === null) return null;
+        if (op === '/' && right === 0) return null;
+        left = op === '*' ? left * right : left / right;
+      }
+      return left;
+    };
+    const parseFactor = () => {
+      const t = peek();
+      if (!t) return null;
+      if (t.type === 'op' && (t.val === '+' || t.val === '-')) {
+        next();
+        const f = parseFactor();
+        return f === null ? null : (t.val === '-' ? -f : f);
+      }
+      if (t.type === 'op' && t.val === '(') {
+        next();
+        const inner = parseExpr();
+        if (!peek() || peek().val !== ')') return null;
+        next();
+        return inner;
+      }
+      if (t.type === 'num') {
+        next();
+        return t.val;
+      }
+      return null;
+    };
+    const res = parseExpr();
+    if (res === null || pos !== tokens.length || !Number.isFinite(res)) return null;
+    return Number.isInteger(res) ? res : Number(res.toFixed(6));
+  }
+
+  function buildLocalSmartChatReply(text) {
+    const clean = String(text || '').trim();
+    const perms = getSetupPermissionsState();
+    const skills = loadLearnedSkills();
+
+    // 1. 权限与新手指引咨询
+    if (/(?:无障碍|悬浮窗|大肥鱼|怎么开|如何开|在哪开|新手指引|教程)/.test(clean)) {
+      const a11yLine = perms.a11yOk ? '✅ 无障碍服务已开启' : '⚠️ 无障碍服务尚未开启';
+      const floatLine = perms.floatOn ? '✅ 悬浮窗运行中' : (perms.overlayOk ? '⚪ 已授权悬浮窗，可随时一键启动' : '⚠️ 悬浮窗权限未开启');
+      return {
+        thought: '用户在咨询无障碍或悬浮窗开启方法，已结合当前设备权限状态整理引导。',
+        reply: `开启权限只需两步：\n1. **无障碍服务**（${a11yLine}）：系统设置 → 无障碍 → 已下载的应用 → 打开「DeepSeek · 星语」。\n2. **桌面悬浮窗**（${floatLine}）：点击下方按钮一键前往授权，开启后可在任意 App 表面随时呼出大肥鱼或紧急叫停。`,
+        actionType: 'open_setup_guide'
+      };
+    }
+
+    // 2. API 配置 / 技能固化咨询
+    if (/(?:api|密钥|key|切换引擎|直连|云端|技能固化|学习操作)/i.test(clean)) {
+      return {
+        thought: '用户在咨询引擎配置或操作技能固化方式，整理当前可用方案。',
+        reply: `手机辅助支持三种引擎自由切换：\n• **本地免 API**：零费用毫秒执行常用系统口令、已学技能、计算与日常对话；\n• **DeepSeek API**：填入你自己的 Key，智能识屏完成复杂多步任务；\n• **云端 API**：直接使用平台内置托管智能体。\n用 API 跑通固定流程后，点击结果卡片下方的「✨ 固化为本地技能」，以后在本地免 API 模式也能一键免消耗复用！`,
+        actionType: 'open_settings'
+      };
+    }
+
+    // 3. 本地安全数学计算
+    const mathVal = safeEvalArithmetic(clean);
+    if (mathVal !== null) {
+      return {
+        thought: '识别为本地四则算术表达式，使用安全解析器直接离线算出结果。',
+        reply: `我帮你算好啦，结果是：**${mathVal}**`,
+        actionType: ''
+      };
+    }
+
+    // 4. 时间、日期查询
+    if (/(?:几点|几号|星期几|礼拜几|哪天|日期|现在时间|今天星期|今天是几|今天几号)/.test(clean) && !/(?:天气|快递|外卖)/.test(clean)) {
+      const now = new Date();
+      const weekDays = ['日', '一', '二', '三', '四', '五', '六'];
+      const pad = (n) => String(n).padStart(2, '0');
+      return {
+        thought: '读取本机实时时钟回答时间与日期问题。',
+        reply: `现在是 **${now.getFullYear()}年${now.getMonth() + 1}月${now.getDate()}日 星期${weekDays[now.getDay()]} ${pad(now.getHours())}:${pad(now.getMinutes())}**~`,
+        actionType: ''
+      };
+    }
+
+    // 5. 状态、技能清单与版本查询
+    if (/(?:技能|状态|版本|开了吗|就绪)/.test(clean)) {
+      const skillNames = skills.slice(0, 6).map((s) => `「${s.name || s.trigger}」`).join('、');
+      return {
+        thought: '汇总当前本地技能库、设备权限状态与客户端版本。',
+        reply: `当前版本 **v${CURRENT_APK_VERSION} (Build ${CURRENT_APK_CODE})**：\n• 无障碍：${perms.a11yOk ? '已开启 ✅' : '未开启 ⚠️'}\n• 悬浮窗：${perms.floatOn ? '运行中 ✅' : '未开启 ⚪'}\n• 已学本地技能：${skills.length} 个${skillNames ? `（${skillNames}）` : ''}`,
+        actionType: (!perms.a11yOk || !perms.overlayOk) ? 'open_setup_guide' : ''
+      };
+    }
+
+    // 6. 实用日常文案模板
+    if (/(?:请假条|请假)/.test(clean)) {
+      return {
+        thought: '用户需要请假文案模板，提供简洁得体的离线参考模板。',
+        reply: `给你准备了一段可以直接复制使用的请假条模板：\n\n「老师/领导您好，因身体略有不适（或家中有急事需处理），今天需请假一天休息调整，期间工作/作业已提前安排妥当，返岗后第一时间补齐进度，望批准！」`,
+        actionType: ''
+      };
+    }
+    if (/(?:晚安|早安|午安)/.test(clean)) {
+      const replyMap = {
+        晚安: '晚安呀🌙 今天也辛苦了，早点放下手机好好休息，明天见~',
+        早安: '早安☀️ 新的一天元气满满！需要我帮你打开应用、放首歌还是看看消息？',
+        午安: '午安~ 记得按时吃饭、小憩一会儿再继续哦！'
+      };
+      const hit = Object.keys(replyMap).find((k) => clean.includes(k));
+      return {
+        thought: '响应日常问候，送上温暖回应。',
+        reply: replyMap[hit] || '你好呀，我一直都在！',
+        actionType: ''
+      };
+    }
+    if (/(?:吃什么|推荐.*吃|午饭|晚饭|夜宵)/.test(clean)) {
+      const foods = ['热腾腾的番茄肥牛米线', '香喷喷的黄焖鸡米饭', '鲜香微辣的柳州螺蛳粉', '清爽低脂的照烧鸡排饭', '料足味美的砂锅麻辣烫', '皮薄馅大的鲜肉小笼包配紫菜蛋汤'];
+      const pick = foods[(clean.length + paChatMemory.length) % foods.length];
+      return {
+        thought: '根据日常美食库离线随机挑选高好评餐品推荐。',
+        reply: `今天试试 **${pick}** 怎么样？如果想让我直接打开外卖软件帮你选，切换「DeepSeek API」后跟我说「帮我点外卖」就行~`,
+        actionType: ''
+      };
+    }
+    if (/(?:笑话|开心一下|无聊|讲个)/.test(clean)) {
+      const jokes = [
+        '刚才大肥鱼问我为什么手机越用越烫，我说：因为你在屏幕里游太快，把算力摩擦生热啦🐋',
+        '程序员去买西瓜：看到“如果看见卖西瓜的，买一个；如果看见卖番茄的，买四个”，于是最后买了四个西瓜回来……',
+        '今天我学会了一个超厉害的省电技巧：只要把手机屏幕朝下扣在桌子上，它就会假装自己已经充好电了（并不）。'
+      ];
+      const joke = jokes[(paChatMemory.length + new Date().getMinutes()) % jokes.length];
+      return {
+        thought: '用户想放松一下，分享一条轻松幽默的段子。',
+        reply: joke,
+        actionType: ''
+      };
+    }
+    if (/(?:好累|累了|难过|压力|睡不着|安慰|夸夸)/.test(clean)) {
+      return {
+        thought: '感受到用户有些疲惫或需要鼓励，给予温暖安抚。',
+        reply: '抱抱你~ 已经坚持做完这么多事很了不起啦！先深呼吸放松一下肩颈，把繁琐的手机操作交给我来代劳就好。想休息的话，也可以让我帮你「用QQ音乐放一首轻音乐」或「刷几个短视频」~',
+        actionType: ''
+      };
+    }
+
+    // 7. 自我介绍与能力清单
+    if (/^(?:你好|您好|hi|hello|在吗|你是谁|你能干嘛|你能做什么|介绍一下你自己|怎么用|有什么功能)/i.test(clean)) {
+      return {
+        thought: '识别为问候与能力咨询，清晰介绍本地免 API 能力与智能 API 区别。',
+        reply: `你好呀，我是 **dsh-Go · 鲸语控屏助手** 🐋！\n在当前的「本地免 API」模式下，我已经能直接帮你：\n1. **快捷控屏**：打开应用、回桌面、返回、截屏、音量/静音、刷视频、打字发送、QQ音乐点歌；\n2. **离线对话小助手**：算术计算、查时间/权限状态、日常文案、陪聊解闷；\n3. **本地已学技能**：零消耗回放你固化保存的多步流程。\n如果要让我自己看懂复杂屏幕（如连续写作业、点外卖、跨应用操作），点上方「控制台 → DeepSeek API」即可！`,
+        actionType: (!perms.a11yOk || !perms.overlayOk) ? 'open_setup_guide' : ''
+      };
+    }
+
+    // 8. 通用自然兜底回复（绝不报红错）
+    return {
+      thought: '识别为自由聊天，当前处于本地离线模式，给予自然友好的回应。',
+      reply: `收到你说的话啦~ 当前处于「本地免 API」离线对话模式，如果只是日常聊天、算算数、查时间和权限指引我都随时在线；要是想让我展开深度知识解答，或者看懂手机屏幕帮你做复杂任务，可以在右上角切换为 **DeepSeek API** 或 **云端 API** 哦！`,
+      actionType: ''
+    };
   }
   let pendingNativeCheckResolve = null;
   let nativeCheckTimeoutId = null;
@@ -464,16 +689,41 @@
 
   function getDirectConfig() {
     let apiKey = '';
-    let model = 'deepseek-chat';
+    let model = 'deepseek-v4.1-flash';
     let baseUrl = '';
     let autoApprove = false;
     try {
       apiKey = cleanApiKey(localStorage.getItem(STORAGE_KEYS.exclusiveKey) || '');
-      model = (localStorage.getItem(STORAGE_KEYS.directModel) || 'deepseek-chat').trim();
+      model = (localStorage.getItem(STORAGE_KEYS.directModel) || 'deepseek-v4.1-flash').trim() || 'deepseek-v4.1-flash';
       baseUrl = (localStorage.getItem(STORAGE_KEYS.directBaseUrl) || '').trim();
       autoApprove = localStorage.getItem(STORAGE_KEYS.autoApprove) === '1';
     } catch {}
     return { apiKey, model, baseUrl, autoApprove };
+  }
+
+  function getCloudModel() {
+    try {
+      return (localStorage.getItem(STORAGE_KEYS.cloudModel) || 'deepseek-v4.1-flash').trim() || 'deepseek-v4.1-flash';
+    } catch {
+      return 'deepseek-v4.1-flash';
+    }
+  }
+
+  function setCloudModel(model) {
+    const clean = String(model || 'deepseek-v4.1-flash').trim() || 'deepseek-v4.1-flash';
+    try {
+      localStorage.setItem(STORAGE_KEYS.cloudModel, clean);
+    } catch {}
+    return clean;
+  }
+
+  function resolveDirectModelForUrl(rawModel, targetUrl = '') {
+    const m = String(rawModel || 'deepseek-v4.1-flash').trim() || 'deepseek-v4.1-flash';
+    const lowerUrl = String(targetUrl || '').toLowerCase();
+    if ((!lowerUrl || lowerUrl.includes('deepseek.com')) && /^deepseek[-_]?v?4(?:\.1)?[-_]?flash$/i.test(m)) {
+      return 'deepseek-flash';
+    }
+    return m;
   }
 
   function setDirectApiKey(key) {
@@ -655,6 +905,7 @@
     if (paSessionNodes.length > 0) {
       scrollChatToBottom();
     }
+    maybeAutoShowSetupGuide();
   }
 
   function resetTaskWorkspace() {
@@ -1820,10 +2071,21 @@
       btn.setAttribute('aria-selected', String(active));
     });
 
-    // 本地免 API 模式下自动折叠 API Key 输入面板，展示简洁安心状态卡
+    // 本地免 API 模式下自动折叠 API Key 输入面板，展示简洁安心状态卡；云端模式下展示下拉选模型
     const cfgDrawer = $('pa-inline-config-drawer');
     if (cfgDrawer) {
       cfgDrawer.classList.toggle('hidden', mode === 'local');
+    }
+    const cloudModelBox = $('pa-cloud-model-box');
+    if (cloudModelBox) {
+      cloudModelBox.classList.toggle('hidden', mode !== 'api_cloud');
+    }
+    const cloudModelSel = $('pa-cloud-model-select');
+    if (cloudModelSel && !cloudModelSel.matches(':focus')) {
+      const cm = getCloudModel();
+      if (Array.from(cloudModelSel.options).some((o) => o.value === cm)) {
+        cloudModelSel.value = cm;
+      }
     }
     const localPeaceCard = $('pa-local-peace-card');
     if (localPeaceCard) {
@@ -1836,7 +2098,15 @@
     const keyInp = $('pa-cfg-apikey');
     if (keyInp && !keyInp.matches(':focus')) keyInp.value = cfg.apiKey;
     const modelSel = $('pa-cfg-model');
-    if (modelSel && !modelSel.matches(':focus')) modelSel.value = cfg.model || 'deepseek-chat';
+    if (modelSel && !modelSel.matches(':focus')) modelSel.value = cfg.model || 'deepseek-v4.1-flash';
+    try {
+      window.DeepSeekMonitorPlugin?.syncPhoneAgent?.({
+        execMode: mode,
+        apiKey: cfg.apiKey,
+        baseUrl: cfg.baseUrl,
+        model: mode === 'api_cloud' ? getCloudModel() : cfg.model
+      });
+    } catch {}
     const urlInp = $('pa-cfg-baseurl');
     if (urlInp && !urlInp.matches(':focus')) urlInp.value = cfg.baseUrl || '';
     const autoChk = $('pa-cfg-auto-approve');
@@ -1986,6 +2256,7 @@
     }
 
     syncModalEngineAndApkState();
+    refreshSetupGuideStatus();
   }
 
   function getScreenSizeObj() {
@@ -2494,7 +2765,7 @@
     scrollChatToBottom();
   }
 
-  function finalizeAgentTurn(cardCtx, { status = 'done', summaryTitle = '', replyText = '', handoverCb = null, recordedSteps = null, sourceTask = '', isSkillReplay = false, isChatOnly = false }) {
+  function finalizeAgentTurn(cardCtx, { status = 'done', summaryTitle = '', replyText = '', handoverCb = null, recordedSteps = null, sourceTask = '', isSkillReplay = false, isChatOnly = false, quickAction = null } = {}) {
     if (!cardCtx) return;
     const elapsedSec = ((Date.now() - (cardCtx.startedAt || Date.now())) / 1000).toFixed(1);
     if (cardCtx.thinkingBox) {
@@ -2529,11 +2800,17 @@
     }
     const validSteps = Array.isArray(recordedSteps) ? recordedSteps : [];
     const canSaveSkill = !isSkillReplay && !isChatOnly && validSteps.length >= 1;
-    if (cardCtx.finalReplyEl && (replyText || typeof handoverCb === 'function' || canSaveSkill)) {
+    const hasQuickAction = Boolean(quickAction && quickAction.label && typeof quickAction.onClick === 'function');
+    if (cardCtx.finalReplyEl && (replyText || typeof handoverCb === 'function' || canSaveSkill || hasQuickAction)) {
       cardCtx.finalReplyEl.classList.remove('hidden');
       cardCtx.finalReplyEl.classList.toggle('pa-chat-reply', Boolean(isChatOnly));
       cardCtx.finalReplyEl.innerHTML = `
         ${replyText ? `<div class="pa-reply-prose">${escapeHtml(replyText).replace(/\n/g, '<br/>')}</div>` : ''}
+        ${hasQuickAction ? `
+          <div class="pa-local-action-bar">
+            <button type="button" class="pa-banner-btn outline pa-local-quick-action-btn">${escapeHtml(quickAction.label)}</button>
+          </div>
+        ` : ''}
         ${typeof handoverCb === 'function' ? `
           <div class="pa-handover-bar">
             <button type="button" class="pa-banner-btn pa-handover-resume-btn">我已完成，继续执行</button>
@@ -2545,6 +2822,11 @@
           </div>
         ` : ''}
       `;
+      if (hasQuickAction) {
+        cardCtx.finalReplyEl.querySelector('.pa-local-quick-action-btn')?.addEventListener('click', () => {
+          quickAction.onClick();
+        });
+      }
       if (typeof handoverCb === 'function') {
         cardCtx.finalReplyEl.querySelector('.pa-handover-resume-btn')?.addEventListener('click', (e) => {
           e.currentTarget.disabled = true;
@@ -2597,6 +2879,251 @@
       });
     }
     scrollChatToBottom();
+  }
+
+  function getSetupPermissionsState() {
+    const native = isNativeApk();
+    const b = getBridge();
+    if (!native || !b) {
+      return { native: false, a11yOk: false, overlayOk: false, floatOn: false };
+    }
+    let a11yOk = false;
+    let overlayOk = true;
+    let floatOn = false;
+    try {
+      a11yOk = Boolean(b.isAccessibilityEnabled && b.isAccessibilityEnabled());
+      if (typeof b.hasOverlayPermission === 'function') {
+        overlayOk = Boolean(b.hasOverlayPermission());
+      }
+      floatOn = Boolean(b.isFloatAgentRunning && b.isFloatAgentRunning());
+    } catch {}
+    return { native: true, a11yOk, overlayOk, floatOn };
+  }
+
+  let setupGuideCurrentStep = 1;
+  let setupGuideAutoTriggered = false;
+
+  function refreshSetupGuideStatus(showReadyToast = false) {
+    const modal = document.getElementById('pa-onboarding-guide-modal');
+    if (!modal) return;
+    const perms = getSetupPermissionsState();
+
+    const step1Pill = modal.querySelector('[data-guide-step="1"]');
+    const step2Pill = modal.querySelector('[data-guide-step="2"]');
+    const step3Pill = modal.querySelector('[data-guide-step="3"]');
+    if (step1Pill) step1Pill.classList.toggle('is-done', perms.a11yOk);
+    if (step2Pill) step2Pill.classList.toggle('is-done', perms.overlayOk && perms.floatOn);
+
+    const s1Status = modal.querySelector('#pa-guide-s1-status');
+    if (s1Status) {
+      s1Status.className = `pa-guide-status-bar ${perms.a11yOk ? 'is-ok' : 'is-pending'}`;
+      s1Status.innerHTML = perms.native
+        ? (perms.a11yOk ? '<span>✅ 无障碍服务已开启，可以读取并操作屏幕</span>' : '<span>⚠️ 无障碍服务尚未开启（必须开启后才能代劳控屏）</span>')
+        : '<span>ℹ️ 当前为网页端预览；在安卓随身版 APK 中可一键直达系统设置</span>';
+    }
+
+    const s2Status = modal.querySelector('#pa-guide-s2-status');
+    if (s2Status) {
+      const ok = perms.overlayOk && perms.floatOn;
+      s2Status.className = `pa-guide-status-bar ${ok ? 'is-ok' : (perms.overlayOk ? 'is-ok' : 'is-pending')}`;
+      s2Status.innerHTML = perms.native
+        ? (perms.floatOn
+            ? '<span>✅ 悬浮窗权限已授权，桌面悬浮球正在运行</span>'
+            : (perms.overlayOk
+                ? '<span>✅ 已允许悬浮窗权限，点击下方按钮即可启动悬浮球</span>'
+                : '<span>⚠️ 悬浮窗权限尚未授权（用于跨 App 弹窗确认与急停）</span>'))
+        : '<span>ℹ️ 当前为网页端预览；在安卓随身版 APK 中可一键开启桌面悬浮窗</span>';
+    }
+
+    if (showReadyToast && setupGuideCurrentStep === 1 && perms.a11yOk) {
+      showToast('无障碍服务已开启！可点击「下一步」继续开启悬浮窗');
+    }
+    if (step3Pill && perms.a11yOk && perms.overlayOk) {
+      step3Pill.classList.add('is-done');
+    }
+  }
+
+  function openSetupGuideWizard(initialStep = 1) {
+    document.getElementById('pa-onboarding-guide-modal')?.remove();
+    const perms = getSetupPermissionsState();
+    let step = Number(initialStep) || (perms.native && perms.a11yOk && !perms.overlayOk ? 2 : 1);
+    if (step < 1 || step > 3) step = 1;
+    setupGuideCurrentStep = step;
+
+    const modal = document.createElement('div');
+    modal.id = 'pa-onboarding-guide-modal';
+    modal.className = 'pa-modal-backdrop';
+
+    const markGuideDone = () => {
+      try { localStorage.setItem(STORAGE_KEYS.setupGuideDone, '1'); } catch {}
+    };
+
+    const closeWizard = () => {
+      markGuideDone();
+      modal.remove();
+    };
+
+    const renderStepBody = () => {
+      setupGuideCurrentStep = step;
+      const p = getSetupPermissionsState();
+      modal.querySelectorAll('.pa-guide-step-pill').forEach((el) => {
+        const s = Number(el.getAttribute('data-guide-step'));
+        el.classList.toggle('is-active', s === step);
+      });
+
+      const bodyEl = modal.querySelector('#pa-guide-modal-body');
+      const footEl = modal.querySelector('#pa-guide-modal-foot');
+      if (!bodyEl || !footEl) return;
+
+      if (step === 1) {
+        bodyEl.innerHTML = `
+          <div class="pa-guide-status-bar ${p.a11yOk ? 'is-ok' : 'is-pending'}" id="pa-guide-s1-status"></div>
+          <div class="pa-modal-title">第 1 步：开启「DeepSeek · 星语」无障碍服务</div>
+          <ol class="pa-guide-steps-ol">
+            <li>点击下方<strong>「前往系统无障碍设置」</strong>按钮直达设置页面。</li>
+            <li>在列表中找到<strong>「已下载的应用」</strong>或<strong>「已安装的服务」</strong>。</li>
+            <li>点进<strong>「DeepSeek · 星语」</strong>，打开开关并点击允许。</li>
+            <li>返回星语 App，此处状态会自动变绿 ✅。</li>
+          </ol>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button type="button" class="pa-banner-btn" id="pa-guide-go-a11y">前往系统无障碍设置</button>
+            <button type="button" class="pa-banner-btn outline" id="pa-guide-recheck-1">刷新检测状态</button>
+          </div>
+        `;
+        footEl.innerHTML = `
+          <button type="button" class="pa-banner-btn subtle" id="pa-guide-skip-btn">暂不设置</button>
+          <button type="button" class="pa-banner-btn" id="pa-guide-next-btn">下一步：悬浮窗 →</button>
+        `;
+        bodyEl.querySelector('#pa-guide-go-a11y')?.addEventListener('click', () => {
+          const b = getBridge();
+          if (p.native && b && typeof b.openAccessibilitySettings === 'function') {
+            b.openAccessibilitySettings();
+          } else {
+            showToast('当前为网页端；请在 Android 随身版 APK 中点击直达无障碍设置');
+          }
+        });
+        bodyEl.querySelector('#pa-guide-recheck-1')?.addEventListener('click', () => {
+          syncStatus();
+          refreshSetupGuideStatus(true);
+        });
+      } else if (step === 2) {
+        bodyEl.innerHTML = `
+          <div class="pa-guide-status-bar ${(p.overlayOk && p.floatOn) ? 'is-ok' : 'is-pending'}" id="pa-guide-s2-status"></div>
+          <div class="pa-modal-title">第 2 步：开启桌面悬浮窗（强烈推荐）</div>
+          <ol class="pa-guide-steps-ol">
+            <li>悬浮窗权限允许星语在你使用微信、学习软件或外卖软件时，<strong>直接在当前屏幕上方弹出确认框或急停球</strong>。</li>
+            <li>若尚未授权，点击下方<strong>「前往授权悬浮窗」</strong>并打开允许开关。</li>
+            <li>授权后点击<strong>「立即启动悬浮窗」</strong>，大肥鱼悬浮球就会常驻在屏幕侧边。</li>
+          </ol>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button type="button" class="pa-banner-btn" id="pa-guide-go-overlay">${p.overlayOk ? '立即启动悬浮窗' : '前往授权并开启悬浮窗'}</button>
+            <button type="button" class="pa-banner-btn outline" id="pa-guide-recheck-2">刷新检测状态</button>
+          </div>
+        `;
+        footEl.innerHTML = `
+          <button type="button" class="pa-banner-btn outline" id="pa-guide-prev-btn">← 上一步</button>
+          <button type="button" class="pa-banner-btn" id="pa-guide-next-btn">下一步：使用技巧 →</button>
+        `;
+        bodyEl.querySelector('#pa-guide-go-overlay')?.addEventListener('click', () => {
+          const b = getBridge();
+          const cur = getSetupPermissionsState();
+          if (!cur.native || !b) {
+            showToast('当前为网页端；请在 Android 随身版 APK 中开启悬浮窗');
+            return;
+          }
+          if (!cur.overlayOk && typeof b.requestOverlayPermission === 'function') {
+            b.requestOverlayPermission();
+            showToast('请在系统设置中允许「显示在其他应用上层」后返回');
+          } else if (typeof b.startFloatAgent === 'function') {
+            b.startFloatAgent();
+            showToast('已启动桌面多功能悬浮窗！');
+            setTimeout(() => { syncStatus(); refreshSetupGuideStatus(false); }, 300);
+          }
+        });
+        bodyEl.querySelector('#pa-guide-recheck-2')?.addEventListener('click', () => {
+          syncStatus();
+          refreshSetupGuideStatus(false);
+        });
+      } else {
+        bodyEl.innerHTML = `
+          <div class="pa-modal-title">第 3 步：30 秒上手 · 让 AI 顺畅干活</div>
+          <div class="pa-guide-tip-grid">
+            <div class="pa-guide-tip-item"><strong>1. 模糊任务先确认再跳走：</strong>发「帮我点外卖 / 写作业」时，AI 会先停在当前页向你确认细节，确认完再顺畅切 App。</div>
+            <div class="pa-guide-tip-item"><strong>2. 卡顿会主动问你：</strong>如果中途遇到按钮点不动或页面来回跳，AI 会自动暂停并弹窗问你的指示，不会死循环瞎点。</div>
+            <div class="pa-guide-tip-item"><strong>3. 本地免 API 也能聊天：</strong>问时间、算算数、聊日常或点「打开微信/音量加/截屏」无需消耗任何 API 额度。</div>
+          </div>
+        `;
+        footEl.innerHTML = `
+          <button type="button" class="pa-banner-btn outline" id="pa-guide-prev-btn">← 上一步</button>
+          <button type="button" class="pa-banner-btn" id="pa-guide-finish-btn">完成，开始使用</button>
+        `;
+      }
+
+      footEl.querySelector('#pa-guide-skip-btn')?.addEventListener('click', closeWizard);
+      footEl.querySelector('#pa-guide-prev-btn')?.addEventListener('click', () => {
+        step = Math.max(1, step - 1);
+        renderStepBody();
+      });
+      footEl.querySelector('#pa-guide-next-btn')?.addEventListener('click', () => {
+        step = Math.min(3, step + 1);
+        renderStepBody();
+      });
+      footEl.querySelector('#pa-guide-finish-btn')?.addEventListener('click', () => {
+        closeWizard();
+        showToast('新手指引已完成，随时可以在控制台重新查看~');
+      });
+
+      refreshSetupGuideStatus(false);
+    };
+
+    modal.innerHTML = `
+      <div class="pa-modal-dialog" role="dialog" aria-modal="true" aria-label="手机辅助新手指引">
+        <div class="pa-modal-head">
+          <div class="pa-modal-badge is-info">手机辅助 · 新手指引</div>
+          <button type="button" class="pa-sheet-close-btn" id="pa-guide-close-x" aria-label="关闭新手指引">✕</button>
+        </div>
+        <div style="padding:12px 16px 0;">
+          <div class="pa-guide-stepper">
+            <button type="button" class="pa-guide-step-pill" data-guide-step="1">1. 无障碍</button>
+            <button type="button" class="pa-guide-step-pill" data-guide-step="2">2. 悬浮窗</button>
+            <button type="button" class="pa-guide-step-pill" data-guide-step="3">3. 上手技巧</button>
+          </div>
+        </div>
+        <div class="pa-modal-body" id="pa-guide-modal-body"></div>
+        <div class="pa-modal-foot" id="pa-guide-modal-foot"></div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+
+    modal.querySelectorAll('.pa-guide-step-pill').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        step = Number(btn.getAttribute('data-guide-step')) || 1;
+        renderStepBody();
+      });
+    });
+    modal.querySelector('#pa-guide-close-x')?.addEventListener('click', closeWizard);
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) closeWizard();
+    });
+
+    renderStepBody();
+  }
+
+  function maybeAutoShowSetupGuide() {
+    if (setupGuideAutoTriggered) return;
+    if (!isNativeApk()) return;
+    try {
+      if (localStorage.getItem(STORAGE_KEYS.setupGuideDone) === '1') return;
+    } catch {}
+    const perms = getSetupPermissionsState();
+    if (perms.a11yOk && perms.overlayOk) return;
+    setupGuideAutoTriggered = true;
+    setTimeout(() => {
+      const shell = document.getElementById('app-shell');
+      if (shell && shell.dataset.uiMode === 'phone-agent' && !document.getElementById('pa-onboarding-guide-modal')) {
+        openSetupGuideWizard(perms.a11yOk ? 2 : 1);
+      }
+    }, 650);
   }
 
   function formatActionCodeDesc(plan) {
@@ -2686,6 +3213,7 @@
 
   window.__onNativeResume = () => {
     syncStatus();
+    refreshSetupGuideStatus(true);
     if (pendingTaskAfterA11y && isNativeApk() && getBridge()?.isAccessibilityEnabled?.()) {
       const card = $('pa-inline-a11y-card');
       if (card) {
@@ -2987,8 +3515,8 @@
         return { ok: true, preflight: buildLocalFallbackPreFlight(task, clarifyPolicy) };
       }
       const targetUrl = normalizeChatCompletionsUrl(cfg.baseUrl);
-      const rawModel = String(cfg.model || 'deepseek-chat').trim() || 'deepseek-chat';
-      const targetModel = /reasoner|r1/i.test(rawModel) ? 'deepseek-chat' : rawModel;
+      const rawModel = String(cfg.model || 'deepseek-v4.1-flash').trim() || 'deepseek-v4.1-flash';
+      const targetModel = /reasoner|r1/i.test(rawModel) ? 'deepseek-chat' : resolveDirectModelForUrl(rawModel, targetUrl);
       const preSys = [
         '你是星语手机辅助代理（Phone Agent · dsh-Go 任务前需求预检助手）。',
         '在真正切走手机界面或开始执行任务之前，快速判断用户的指令是否清晰完整，避免“一发指令就盲目跳走”。',
@@ -3630,7 +4158,8 @@
         return { ok: false, code: 'NO_DIRECT_KEY', error: '手机辅助 DeepSeek / 自定义 API 密钥尚未配置，请填入密钥或切换至云端 API。' };
       }
       const targetUrl = normalizeChatCompletionsUrl(cfg.baseUrl);
-      const targetModel = String(cfg.model || 'deepseek-chat').trim() || 'deepseek-chat';
+      const rawModelCfg = String(cfg.model || 'deepseek-v4.1-flash').trim() || 'deepseek-v4.1-flash';
+      const targetModel = resolveDirectModelForUrl(rawModelCfg, targetUrl);
       const baseMessages = buildPlanningPromptMessages({
         task,
         snapshot,
@@ -3697,10 +4226,10 @@
         try {
           const parsedPlan = extractJsonFromText(content);
           if (rawReasoning && !parsedPlan.reasoning) parsedPlan.reasoning = rawReasoning;
-          return { plan: parsedPlan, model: modelToUse };
+          return { plan: parsedPlan, model: modelToUse, usage: json?.usage || null };
         } catch (parseErr) {
           if (rawReasoning) {
-            return { plan: extractJsonFromText(rawReasoning), model: modelToUse };
+            return { plan: extractJsonFromText(rawReasoning), model: modelToUse, usage: json?.usage || null };
           }
           throw parseErr;
         }
@@ -3714,8 +4243,9 @@
           if (signal?.aborted || firstErr?.code === 'DIRECT_AUTH_ERROR') {
             throw firstErr;
           }
-          if (firstErr?.code === 'JSON_PARSE_ERROR' || Number(firstErr?.status) === 400 || Number(firstErr?.status) === 422 || /JSON|response_format/i.test(String(firstErr?.message || ''))) {
-            const retryModel = /reasoner|r1/i.test(targetModel) ? 'deepseek-chat' : targetModel;
+          if (firstErr?.code === 'JSON_PARSE_ERROR' || Number(firstErr?.status) === 400 || Number(firstErr?.status) === 422 || /JSON|response_format|model/i.test(String(firstErr?.message || ''))) {
+            const isModelErr = /model.*not.*exist|invalid.*model|does not exist/i.test(String(firstErr?.message || ''));
+            const retryModel = (/reasoner|r1/i.test(targetModel) || isModelErr) ? 'deepseek-chat' : targetModel;
             result = await attemptDirectCall(
               retryModel,
               '刚才未返回合法 JSON 动作指令。请严格只输出一个合法 JSON 对象（不要任何 Markdown 或解释文字）。',
@@ -3728,6 +4258,18 @@
             throw firstErr;
           }
         }
+        try {
+          if (result.usage && String(targetUrl || '').toLowerCase().includes('deepseek.com')) {
+            window.DeepSeekMonitorPlugin?.recordTurnUsage?.({
+              usage: result.usage,
+              model: result.model,
+              source: '手机辅助·直连',
+              apiKey: cleanKey,
+              baseUrl: targetUrl,
+              provider: 'own_deepseek'
+            });
+          }
+        } catch {}
         return { ok: true, plan: result.plan, model: result.model, engine: 'api_direct' };
       } catch (directErr) {
         if (signal?.aborted) throw directErr;
@@ -3774,6 +4316,18 @@
           } catch {}
         }
         if (proxyRes.ok && proxyRes.data?.plan) {
+          try {
+            if (proxyRes.data?.usage && String(targetUrl || '').toLowerCase().includes('deepseek.com')) {
+              window.DeepSeekMonitorPlugin?.recordTurnUsage?.({
+                usage: proxyRes.data.usage,
+                model: proxyRes.data.model || targetModel,
+                source: '手机辅助·代理',
+                apiKey: cleanKey,
+                baseUrl: targetUrl,
+                provider: 'own_deepseek'
+              });
+            }
+          } catch {}
           return { ok: true, plan: proxyRes.data.plan, model: proxyRes.data.model, engine: 'api_direct_proxy' };
         }
         return {
@@ -3803,7 +4357,7 @@
         history: compactHistory,
         screenSize,
         installedApps: compactInstalledApps,
-        customModel: cfg.model || ''
+        customModel: getCloudModel() || 'deepseek-v4.1-flash'
       },
       signal
     );
@@ -3919,6 +4473,23 @@
             ? b.clickByRefGesture(snapshotId, refId)
             : b.clickByRef(snapshotId, refId);
           const resObj = JSON.parse(rawRes || '{}');
+          if (!resObj.ok && Array.isArray(latestNodes) && typeof b.dispatchClick === 'function') {
+            const matchedNode = latestNodes.find((n) => n.ref === refId);
+            const fallbackCenter = parseBoundsCenter(matchedNode);
+            if (fallbackCenter && fallbackCenter.cx > 0 && fallbackCenter.cy > 0) {
+              const coordOk = b.dispatchClick(fallbackCenter.cx, fallbackCenter.cy);
+              if (coordOk) {
+                return {
+                  executed: true,
+                  error: false,
+                  method: 'gesture_fallback',
+                  x: fallbackCenter.cx,
+                  y: fallbackCenter.cy,
+                  text: `已通过坐标兜底点击控件 ${refId} (${fallbackCenter.cx}, ${fallbackCenter.cy})`
+                };
+              }
+            }
+          }
           return {
             executed: Boolean(resObj.ok),
             error: !resObj.ok,
@@ -4282,10 +4853,15 @@
       const shouldTryFullLocal = !isResuming && execMode === 'local';
       if (shouldTryFullLocal) {
         if (isLikelyPureChat(taskText) && !matchedOffline) {
-          const chatReply = '你好呀，我是 dsh-Go 手机辅助助手！目前处于「本地免 API」模式，可以直接帮你执行常用操作或已固化的本地技能；如果要和我自由深度对话、分析屏幕或执行跨应用多步任务，请在顶部控制台切换至 DeepSeek API 或云端 API。';
-          appendThoughtItem(cardCtx, '本地对话', '识别为自然聊天或咨询提问，无需操控手机。');
-          recordPaChatTurn('assistant', chatReply);
-          finalizeAgentTurn(cardCtx, { status: 'done', replyText: chatReply, isChatOnly: true });
+          const smart = buildLocalSmartChatReply(taskText);
+          appendThoughtItem(cardCtx, '本地思考', smart.thought || '识别为自然聊天或咨询提问，无需操控手机。');
+          recordPaChatTurn('assistant', smart.reply);
+          const quickAction = smart.actionType === 'open_setup_guide'
+            ? { label: '打开无障碍与悬浮窗新手指引', onClick: () => openSetupGuideWizard(1) }
+            : (smart.actionType === 'open_settings'
+                ? { label: '打开控制台切换 / 配置引擎', onClick: () => openControlSheet(false) }
+                : null);
+          finalizeAgentTurn(cardCtx, { status: 'done', replyText: smart.reply, isChatOnly: true, quickAction });
           return;
         }
 
@@ -4296,6 +4872,15 @@
             addStepItem(cardCtx.stepsList, 1, taskText, '网页预览模拟执行', '模拟完成', false, 'local.rule');
             finalSummaryTitle = `已完成本地口令演练 · ${taskText}`;
             finalReplyText = sim;
+          } else if (!EXPLICIT_CONTROL_VERB_RE.test(taskText)) {
+            const smart = buildLocalSmartChatReply(taskText);
+            appendThoughtItem(cardCtx, '本地思考', smart.thought);
+            recordPaChatTurn('assistant', smart.reply);
+            const quickAction = smart.actionType === 'open_setup_guide'
+              ? { label: '打开无障碍与悬浮窗新手指引', onClick: () => openSetupGuideWizard(1) }
+              : null;
+            finalizeAgentTurn(cardCtx, { status: 'done', replyText: smart.reply, isChatOnly: true, quickAction });
+            return;
           } else {
             addStepItem(cardCtx.stepsList, 1, '超出固定离线口令范围', '建议切换至 DeepSeek API 或云端 API 进行智能识屏规划。', '未匹配', true, 'local.rule');
             showInlineFixBox(cardCtx.fixSlot, { error: '该任务超出本地免 API 固定口令范围，请选择要切换的智能引擎继续：' }, {
@@ -4324,6 +4909,19 @@
             cardCtx.stopBtn.textContent = '停止连刷';
           }
           syncStatus();
+          return;
+        }
+
+        if (!EXPLICIT_CONTROL_VERB_RE.test(taskText)) {
+          const smart = buildLocalSmartChatReply(taskText);
+          appendThoughtItem(cardCtx, '本地思考', smart.thought);
+          recordPaChatTurn('assistant', smart.reply);
+          const quickAction = smart.actionType === 'open_setup_guide'
+            ? { label: '打开无障碍与悬浮窗新手指引', onClick: () => openSetupGuideWizard(1) }
+            : (smart.actionType === 'open_settings'
+                ? { label: '打开控制台切换 / 配置引擎', onClick: () => openControlSheet(false) }
+                : null);
+          finalizeAgentTurn(cardCtx, { status: 'done', replyText: smart.reply, isChatOnly: true, quickAction });
           return;
         }
 
@@ -4357,10 +4955,13 @@
         : '';
       const loopState = {
         noChangeStreak: 0,
+        errorStreak: 0,
         waitStreak: 0,
         recoveryAttempts: 0,
+        lastStuckReason: '',
         failedActionMap: new Map(),
         failedActionLabels: new Map(),
+        pageStepCounts: new Map(),
         recentPageSigs: [],
         recentActionFingerprints: []
       };
@@ -4487,16 +5088,19 @@
         if (native && currentPageKey !== '::') {
           loopState.recentPageSigs.push(currentPageKey);
           if (loopState.recentPageSigs.length > 8) loopState.recentPageSigs = loopState.recentPageSigs.slice(-8);
+          loopState.pageStepCounts.set(currentPageKey, (loopState.pageStepCounts.get(currentPageKey) || 0) + 1);
         }
         const oscDetected = native ? detectOscillation(loopState.recentPageSigs) : false;
         const blockedLabels = loopState.failedActionLabels.get(currentPageKey) || [];
+        const currentPageVisitsTotal = loopState.pageStepCounts.get(currentPageKey) || 0;
         const loopDiagnostics = {
           noChangeStreak: loopState.noChangeStreak,
+          errorStreak: loopState.errorStreak,
           waitStreak: loopState.waitStreak,
           oscillationDetected: oscDetected,
           recoveryAttempts: loopState.recoveryAttempts,
           blockedActions: blockedLabels.slice(-8),
-          samePageVisits: loopState.recentPageSigs.filter((x) => x === currentPageKey).length
+          samePageVisits: currentPageVisitsTotal
         };
 
         const beforeEventSeq = native ? (Number(snapshot.eventSeq) || Number(readScreenEventSeq().seq) || 0) : 0;
@@ -4571,7 +5175,7 @@
         let plan = planResp.plan;
         let toolName = plan.tool || plan.action || 'step';
 
-        // Level 2 & Level 3 死循环/卡死硬拦截与自动纠偏引擎
+        // Level 2 & Level 3 死循环/卡死硬拦截与卡顿主动询问用户防循环引擎
         if (native && toolName !== 'chat' && toolName !== 'done' && toolName !== 'ask_user') {
           let fp = getActionFingerprint(plan, snapshot);
           const pageBlockedSet = loopState.failedActionMap.get(currentPageKey);
@@ -4580,10 +5184,50 @@
             loopState.noChangeStreak >= 1 &&
             loopState.recentActionFingerprints.slice(-2).includes(fp);
           const isWaitLoop = (toolName === 'phone_wait' || toolName === 'wait') && loopState.waitStreak >= 1;
-          const needLoopIntercept = isWaitLoop || isRepeatedFail || isRepeatedRecent || (oscDetected && loopState.recoveryAttempts < 2);
+          const needLoopIntercept =
+            isWaitLoop ||
+            isRepeatedFail ||
+            isRepeatedRecent ||
+            oscDetected ||
+            loopState.noChangeStreak >= 2 ||
+            loopState.errorStreak >= 2 ||
+            (!isBatchContinuousTask && currentPageVisitsTotal >= 5);
+
+          const buildStuckAskPlan = (reasonText) => ({
+            thought: `检测到执行卡顿（${reasonText}），为防止陷入死循环，已主动暂停并向你请示指示。`,
+            tool: 'ask_user',
+            args: {
+              message: `我在「${snapshot.appName || '当前界面'}」出现卡顿（${reasonText}），为防止陷入死循环已暂停。请直接输入指示告诉我点哪里/怎么做，或选择下方方案：`,
+              reason: 'confirm',
+              options: ['帮我跳过这步换个方法', '返回上一页重新找', '我已手动操作，继续执行', '先停止本次任务']
+            },
+            risk: 'read',
+            summary: '遇到卡顿 · 请给指示防循环',
+            reply: `我在「${snapshot.appName || '当前界面'}」出现卡顿（${reasonText}），请给指示。`
+          });
 
           if (needLoopIntercept) {
-            if (loopState.recoveryAttempts < 2 && loopState.noChangeStreak < 4) {
+            const stuckReason = loopState.errorStreak >= 2
+              ? `连续 ${loopState.errorStreak} 步操作执行失败`
+              : (loopState.noChangeStreak >= 2
+                  ? `连续 ${loopState.noChangeStreak} 步画面无变化`
+                  : (oscDetected
+                      ? '页面在两个界面间反复跳转'
+                      : (isWaitLoop
+                          ? '连续等待界面仍无响应'
+                          : (!isBatchContinuousTask && currentPageVisitsTotal >= 5
+                              ? `在同一页面停留 ${currentPageVisitsTotal} 步未推进`
+                              : `动作 ${toolName}(${summarizePlanArgs(plan)}) 重复失效`))));
+            loopState.lastStuckReason = stuckReason;
+
+            const shouldProactiveAskUser =
+              loopState.noChangeStreak >= 2 ||
+              loopState.errorStreak >= 2 ||
+              (loopState.recoveryAttempts >= 1 && (isRepeatedFail || isRepeatedRecent || oscDetected || isWaitLoop)) ||
+              (!isBatchContinuousTask && currentPageVisitsTotal >= 5);
+
+            if (!shouldProactiveAskUser && loopState.recoveryAttempts < 1) {
+              // Level 2：仅允许 1 次无感自愈（清理遮挡弹窗 或 换路重规划）
               loopState.recoveryAttempts += 1;
               const dismissNode = findPopupDismissNode(snapshot.nodes, activeTaskText);
               const dismissFp = dismissNode ? `tap:${dismissNode.ref || ''}:${String(dismissNode.text || dismissNode.desc || '').slice(0, 24)}` : '';
@@ -4599,12 +5243,7 @@
                 toolName = 'phone_tap';
                 appendNativeConsoleLog(`第${step}步触发自动纠偏：清理遮挡弹窗「${dismissLabel}」`);
               } else {
-                const reasonDesc = isWaitLoop
-                  ? '已连续等待但画面仍未出现预期变化，严禁再次 phone_wait'
-                  : (oscDetected
-                      ? '检测到页面在两个界面间往返死循环，必须跳出当前路径，改用搜索框/换入口或返回上一级'
-                      : `动作 ${toolName}(${summarizePlanArgs(plan)}) 在当前画面已确认无效`);
-                const recoveryHint = `【系统死循环自动纠偏】${reasonDesc}。当前页面禁用动作列表：${blockedLabels.join('；') || fp}。请立即更换完全不同的策略（如换控件、改用坐标、滚动查找、phone_key(back) 或 ask_user）！`;
+                const recoveryHint = `【系统死循环自动纠偏】${stuckReason}。当前页面禁用动作列表：${blockedLabels.join('；') || fp}。请立即更换完全不同的策略（如换控件、改用坐标、滚动查找、phone_key(back) 或 ask_user）！`;
                 const rePlanResp = await requestPlanStep({
                   execMode,
                   task: activeTaskText,
@@ -4627,32 +5266,18 @@
                     plan = candPlan;
                     toolName = plan.tool || plan.action || 'step';
                     appendNativeConsoleLog(`第${step}步触发死循环纠偏重规划 -> ${toolName}`);
-                  } else if (snapshot.packageName !== 'com.deepseek.starwhisper.studio' && !String(snapshot.packageName || '').includes('launcher')) {
-                    plan = {
-                      thought: '连续纠偏仍命中相同无效路径，自动执行返回上一页跳出死循环。',
-                      tool: 'phone_key',
-                      args: { key: 'back' },
-                      risk: 'read',
-                      summary: '自动返回上一页跳出循环'
-                    };
-                    toolName = 'phone_key';
+                  } else {
+                    plan = buildStuckAskPlan(stuckReason);
+                    toolName = 'ask_user';
                   }
+                } else {
+                  plan = buildStuckAskPlan(stuckReason);
+                  toolName = 'ask_user';
                 }
               }
             } else {
-              // Level 3：优雅跳出循环，交还用户协作
-              plan = {
-                thought: `在当前界面已尝试 ${loopState.recoveryAttempts} 次自动纠偏仍未推进，已自动暂停防卡死，向你确认下一步。`,
-                tool: 'ask_user',
-                args: {
-                  message: `我在「${snapshot.appName || '当前界面'}」连续操作未见变化或出现循环跳转，已自动暂停。你想怎么继续？`,
-                  reason: 'confirm',
-                  options: ['我已手动处理，继续执行', '返回上一页换个方式找', '先停止本次任务']
-                },
-                risk: 'read',
-                summary: '检测到卡顿/循环 · 请求确认继续方式',
-                reply: `我在「${snapshot.appName || '当前界面'}」连续操作未见变化或出现循环跳转，已自动暂停。`
-              };
+              // Level 3：立即主动询问用户，防止死循环
+              plan = buildStuckAskPlan(stuckReason);
               toolName = 'ask_user';
             }
           }
@@ -4738,16 +5363,31 @@
             appendUserMessageRow(replyClean);
             recordPaChatTurn('user', replyClean);
             loopState.noChangeStreak = 0;
+            loopState.errorStreak = 0;
             loopState.waitStreak = 0;
             loopState.recoveryAttempts = 0;
+            loopState.lastStuckReason = '';
             loopState.recentPageSigs = [];
-            loopState.failedActionMap.delete(currentPageKey);
-            loopState.failedActionLabels.delete(currentPageKey);
-            if (/返回上一页/.test(replyClean) && native && b && typeof b.dispatchGlobalAction === 'function') {
-              try { b.dispatchGlobalAction('back'); } catch {}
-              await sleep(420);
+            loopState.pageStepCounts.delete(currentPageKey);
+
+            if (/帮我跳过这步换个方法/.test(replyClean)) {
+              autoContinueHint = '【用户现场指示】跳过刚才卡住的目标与方式，严格避开当前页面禁用动作列表，更换其他入口、滚动查找或搜索框继续完成任务！';
+            } else if (/返回上一页/.test(replyClean)) {
+              if (native && b && typeof b.dispatchGlobalAction === 'function') {
+                try { b.dispatchGlobalAction('back'); } catch {}
+                await sleep(420);
+              }
+              autoContinueHint = '【用户现场指示】已返回上一页，请换一条全新路径重新查找目标。';
+            } else if (/我已手动操作/.test(replyClean)) {
+              loopState.failedActionMap.delete(currentPageKey);
+              loopState.failedActionLabels.delete(currentPageKey);
+              autoContinueHint = '【用户已手动处理】请直接基于最新屏幕状态继续下一步。';
+            } else {
+              loopState.failedActionMap.delete(currentPageKey);
+              loopState.failedActionLabels.delete(currentPageKey);
+              autoContinueHint = `【用户现场指示（最高优先级执行）】：${replyClean}`;
             }
-            autoContinueHint = `【用户已确认/补充】${replyClean}`;
+
             updateStepResult(pendingStepEl, `已确认：${replyClean.slice(0, 14)}`, false);
             history.push({
               step,
@@ -4758,7 +5398,7 @@
               changed: true,
               page: snapshot.appName || snapshot.packageName || ''
             });
-            await sleep(180);
+            await sleep(160);
             continue;
           }
 
@@ -4800,9 +5440,12 @@
           break;
         }
 
-        const actionQueue = Array.isArray(plan.actions) && plan.actions.length >= 2
+        const rawActionQueue = Array.isArray(plan.actions) && plan.actions.length >= 2
           ? plan.actions
           : [{ tool: toolName, args: plan.args || plan.params || {}, risk: plan.risk, summary: plan.summary, needConfirm: plan.needConfirm }];
+        const actionQueue = (loopState.noChangeStreak >= 1 || loopState.errorStreak >= 1 || oscDetected)
+          ? rawActionQueue.slice(0, 1)
+          : rawActionQueue;
 
         let abortedByUser = false;
         let handedOver = false;
@@ -4933,6 +5576,12 @@
           loopState.waitStreak = 0;
         }
 
+        if (execRes.error) {
+          loopState.errorStreak += 1;
+        } else {
+          loopState.errorStreak = 0;
+        }
+
         if ((verdict && !verdict.changed && lastSubTool !== 'phone_wait') || execRes.error) {
           noChangeStreak += 1;
           loopState.noChangeStreak += 1;
@@ -4951,8 +5600,10 @@
         } else {
           noChangeStreak = 0;
           loopState.noChangeStreak = 0;
+          loopState.errorStreak = 0;
           if (verdict && verdict.changed && !oscDetected) {
             loopState.recoveryAttempts = 0;
+            loopState.lastStuckReason = '';
             earlyDoneIntercepts = 0;
           }
         }
@@ -5760,9 +6411,67 @@
       }
     });
 
+    $('pa-cloud-model-select')?.addEventListener('change', (e) => {
+      const m = setCloudModel(e.target.value || 'deepseek-v4.1-flash');
+      showToast(`云端 API 已切换模型：${m}`);
+      syncStatus();
+    });
+
+    let paCloudModelsFetched = false;
+    async function fetchPhoneAgentCloudModels(force = false) {
+      const sel = $('pa-cloud-model-select');
+      const statusEl = $('pa-cloud-models-status');
+      const btn = $('pa-cloud-fetch-models-btn');
+      if (!sel) return;
+      if (!force && paCloudModelsFetched) return;
+      if (statusEl) statusEl.textContent = '（拉取中…）';
+      if (btn) btn.disabled = true;
+      try {
+        let res = await apiPostJson('/api/cloud/models', {}).catch(() => ({ ok: false, data: {} }));
+        if ((!res.ok || !Array.isArray(res.data?.models) || !res.data.models.length) && isNativeApk()) {
+          const r2 = await fetch(`${PUBLIC_WEB_ORIGIN}/api/cloud/models`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({})
+          }).catch(() => null);
+          if (r2 && r2.ok) {
+            const d2 = await r2.json().catch(() => ({}));
+            if (d2?.ok && Array.isArray(d2.models)) res = { ok: true, data: d2 };
+          }
+        }
+        const models = Array.isArray(res.data?.models) ? res.data.models : [];
+        if (models.length > 0) {
+          paCloudModelsFetched = true;
+          const prev = getCloudModel();
+          sel.innerHTML = '';
+          for (const m of models) {
+            const opt = document.createElement('option');
+            opt.value = m;
+            opt.textContent = m;
+            sel.appendChild(opt);
+          }
+          if (models.includes(prev)) {
+            sel.value = prev;
+          } else {
+            sel.value = models[0];
+            setCloudModel(models[0]);
+          }
+          if (statusEl) statusEl.textContent = `（已自动拉取 ${models.length} 个）`;
+        } else if (statusEl) {
+          statusEl.textContent = '（默认预设）';
+        }
+      } catch {
+        if (statusEl) statusEl.textContent = '（默认预设）';
+      } finally {
+        if (btn) btn.disabled = false;
+      }
+    }
+    $('pa-cloud-fetch-models-btn')?.addEventListener('click', () => fetchPhoneAgentCloudModels(true));
+    $('pa-mode-api-cloud')?.addEventListener('click', () => setTimeout(() => fetchPhoneAgentCloudModels(false), 120));
+
     $('pa-cfg-save-btn')?.addEventListener('click', () => {
       const apiKey = cleanApiKey($('pa-cfg-apikey')?.value || '');
-      const model = ($('pa-cfg-model')?.value || 'deepseek-chat').trim() || 'deepseek-chat';
+      const model = ($('pa-cfg-model')?.value || 'deepseek-v4.1-flash').trim() || 'deepseek-v4.1-flash';
       const baseUrl = ($('pa-cfg-baseurl')?.value || '').trim();
       const autoApprove = Boolean($('pa-cfg-auto-approve')?.checked);
 
@@ -5794,6 +6503,11 @@
     };
     $('pa-banner-a11y-chip')?.addEventListener('click', handleOpenA11y);
     $('pa-open-a11y-btn')?.addEventListener('click', handleOpenA11y);
+    $('pa-empty-setup-guide-btn')?.addEventListener('click', () => openSetupGuideWizard(1));
+    $('pa-open-setup-guide-btn')?.addEventListener('click', () => {
+      closeControlSheet();
+      openSetupGuideWizard(1);
+    });
 
     const handleToggleFloat = () => {
       if (!isNativeApk()) {
@@ -6217,6 +6931,8 @@
     syncLearnedSkillsToNative(loadLearnedSkills());
     if (document.getElementById('app-shell')?.dataset.uiMode === 'phone-agent') {
       renderWorkspace();
+    } else {
+      maybeAutoShowSetupGuide();
     }
     setTimeout(() => {
       checkUpdateOnStartup();
@@ -6283,8 +6999,22 @@
     resetTaskWorkspace,
     openControlSheet,
     closeControlSheet,
+    openSetupGuideWizard,
     openDeepSeekOfficialPage,
     openModal,
-    closeModal
+    closeModal,
+    __testHooks: {
+      isLikelyPureChat,
+      safeEvalArithmetic,
+      buildLocalSmartChatReply,
+      detectOscillation,
+      findPopupDismissNode,
+      getActionFingerprint,
+      shouldSkipPreFlightClarify,
+      summarizePlanArgs,
+      runReActLoop,
+      openSetupGuideWizard,
+      getSetupPermissionsState
+    }
   };
 })();

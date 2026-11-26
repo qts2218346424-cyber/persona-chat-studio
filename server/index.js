@@ -656,8 +656,8 @@ function extractAuthToken(req, parsedUrl = null) {
   return '';
 }
 
-const APP_LATEST_VERSION = '2.7.3';
-const APP_LATEST_VERSION_CODE = 164;
+const APP_LATEST_VERSION = '2.7.4';
+const APP_LATEST_VERSION_CODE = 165;
 const APP_OFFICIAL_CERT_SHA256 = '6fd05e32a3cabf327140129d866e55a342fe30daa3384c67aad4b3cbdd98a17b';
 const APP_UPDATE_TICKET_SECRET = crypto
   .createHash('sha256')
@@ -955,6 +955,7 @@ async function handleApi(req, res, pathname, parsedUrl) {
       forceUpdate,
       diffGenerations,
       changelog: [
+        '【卡顿主动问询防循环 + 新手指引 + 本地强对话 + V4.1 Flash 默认与计费监测（v2.7.4）】DeepSeek API 默认使用 V4.1 Flash；云端 API 支持下拉选模型；新增实时 Token/费用/余额计费插件；遇连续2步卡顿/报错/往返循环时主动弹窗请用户给指示；新增3步交互式无障碍与悬浮窗新手指引向导',
         '【任务前主动需求确认 + 死循环自动纠偏（v2.7.3）】发模糊任务前 AI 先在当前界面主动提问确认需求（支持智能确认/每次先确认/直接执行三档），绝不盲目跳走；新增动作指纹与页面振荡死循环检测、三级自动纠偏换路与优雅跳出协作弹窗，执行更稳更丝滑',
         '【整套作业一口气连做不中断（Anti-Early-Done）】强化连续多题规划铁律并新增代码级防早退保护：检测到屏幕仍有“下一题”或题号进度未到最后一题时自动拦截提前结束，持续作答翻页直到整套题全部做完',
         '【修复启动更新弹窗 + 全面打通用户自带 API 控屏】修复启动检测到新版时自动弹出更新公告窗口；穿透 APK 离线壳与服务端 CORS 代理全面打通用户自带 DeepSeek/第三方 API Key 驱动手机辅助（支持接口地址自动补全、Bearer 自动清洗、自由输入模型与一键测试连接），双端同步升级至 v2.7.2 (Build 163)'
@@ -1642,8 +1643,8 @@ async function handleApi(req, res, pathname, parsedUrl) {
     }
   }
 
-  // ========= Phone Agent 预检与自带 Key 代理前置放行 =========
-  if (pathname === '/api/phone-agent/plan' && method === 'OPTIONS') {
+  // ========= Phone Agent、云端模型拉取 & DeepSeek 余额探针预检与自带 Key 代理前置放行 =========
+  if ((pathname === '/api/phone-agent/plan' || pathname === '/api/deepseek/check-balance' || pathname === '/api/cloud/models') && method === 'OPTIONS') {
     res.writeHead(204, { ...VOICE_CORS_HEADERS, ...SECURITY_HEADERS });
     res.end();
     return;
@@ -1657,8 +1658,24 @@ async function handleApi(req, res, pathname, parsedUrl) {
     }
   }
 
+  let preReadBalanceBody = null;
+  if (method === 'POST' && pathname === '/api/deepseek/check-balance') {
+    preReadBalanceBody = await readJsonBody(req);
+    if (!currentUser && !String(preReadBalanceBody?.customApiKey || '').trim()) {
+      return sendJson(res, 401, { ok: false, error: '请先登录或传入个人 API Key', code: 'AUTH_REQUIRED' }, VOICE_CORS_HEADERS);
+    }
+  }
+
+  let preReadCloudModelsBody = null;
+  if (method === 'POST' && pathname === '/api/cloud/models') {
+    preReadCloudModelsBody = await readJsonBody(req);
+    if (!currentUser && !String(preReadCloudModelsBody?.apiKey || preReadCloudModelsBody?.customApiKey || '').trim()) {
+      return sendJson(res, 401, { ok: false, models: [], error: '请先登录或传入个人 API Key', code: 'AUTH_REQUIRED' }, VOICE_CORS_HEADERS);
+    }
+  }
+
   // ========= 登录态守卫：以下业务接口均需已登录账号（自带 Key 代理除外） =========
-  if (!currentUser && !preReadPhoneAgentBody) {
+  if (!currentUser && !preReadPhoneAgentBody && !preReadBalanceBody && !preReadCloudModelsBody) {
     return sendJson(res, 401, { error: '请先登录您的星语恋庭账号', code: 'AUTH_REQUIRED' });
   }
 
@@ -1673,6 +1690,231 @@ async function handleApi(req, res, pathname, parsedUrl) {
   }
 
   const userId = currentUser ? currentUser.id : 'phone_agent_byok_guest';
+
+  // ========= 云端兼容 API 实时拉取可用模型列表接口 =========
+  if (method === 'POST' && pathname === '/api/cloud/models') {
+    const body = preReadCloudModelsBody || (await readJsonBody(req));
+    const sendModelsJson = (status, data) => sendJson(res, status, data, VOICE_CORS_HEADERS);
+
+    const buildCandidateModelsUrls = (rawBase) => {
+      const clean = String(rawBase || '').trim().replace(/\/+$/, '');
+      if (!clean) return [];
+      const stripped = clean.replace(/\/chat\/completions$/i, '').replace(/\/+$/, '');
+      if (/\/(?:v1|compatible-mode\/v1|api\/v1|v1beta\/openai)$/i.test(stripped)) {
+        return [`${stripped}/models`];
+      }
+      return [`${stripped}/v1/models`, `${stripped}/models`];
+    };
+
+    const rawKey = String(body.apiKey || body.customApiKey || '').trim();
+    const rawBaseUrl = String(body.baseUrl || body.customBaseUrl || '').trim();
+
+    const targets = [];
+    if (rawKey) {
+      let cleanKey = '';
+      try {
+        cleanKey = validateOfficialDeepSeekApiKey(rawKey);
+      } catch (err) {
+        return sendModelsJson(200, { ok: false, models: [], error: err.message || 'API Key 格式无效' });
+      }
+      const targetBase = rawBaseUrl || 'https://api.siliconflow.cn/v1/chat/completions';
+      let safeBase = '';
+      try {
+        safeBase = validateSafeUserApiBaseUrl(targetBase);
+      } catch (err) {
+        return sendModelsJson(200, { ok: false, models: [], error: err.message || '接口地址无效或存在安全风险' });
+      }
+      for (const mUrl of buildCandidateModelsUrls(safeBase)) {
+        targets.push({ url: mUrl, headers: { Authorization: `Bearer ${cleanKey}` } });
+      }
+    } else if (currentUser) {
+      const execSettings = getExecutionSettingsForUser(currentUser.id);
+      const suiteCred = resolveSuiteOrBridgeCredentials(execSettings);
+      if (suiteCred && suiteCred.hasKey && suiteCred.endpoints?.modelsUrl) {
+        targets.push({ url: suiteCred.endpoints.modelsUrl, headers: suiteCred.headers });
+      }
+      try {
+        const rt = loadBridgeRuntime();
+        if (rt?.options?.enabled && Array.isArray(rt.endpoints)) {
+          for (const ep of rt.endpoints) {
+            const chatEp = ep.urls?.openaiChatUrl || '';
+            if (!chatEp) continue;
+            for (const mUrl of buildCandidateModelsUrls(chatEp)) {
+              if (!targets.some((t) => t.url === mUrl)) {
+                targets.push({ url: mUrl, headers: { Authorization: `Bearer ${ep.apiKey}` } });
+              }
+            }
+          }
+        }
+      } catch {}
+    }
+
+    if (targets.length === 0) {
+      return sendModelsJson(200, { ok: false, models: [], error: '请先填写云端接口地址与 API Key' });
+    }
+
+    let lastErr = '';
+    for (const tgt of targets) {
+      try {
+        const resp = await fetch(tgt.url, {
+          method: 'GET',
+          headers: { Accept: 'application/json', ...tgt.headers },
+          signal: AbortSignal.timeout(8000)
+        });
+        if (!resp.ok) {
+          const txt = await resp.text().catch(() => '');
+          lastErr = `网关返回 (${resp.status})${txt ? `: ${txt.slice(0, 90)}` : ''}`;
+          continue;
+        }
+        const json = await resp.json().catch(() => ({}));
+        const rawList = Array.isArray(json?.data)
+          ? json.data
+          : (Array.isArray(json?.models) ? json.models : []);
+        const rawIds = rawList
+          .map((item) => String(typeof item === 'string' ? item : (item?.id || item?.name || '')).trim())
+          .filter(Boolean);
+
+        const uniqueIds = Array.from(new Set(rawIds));
+        const nonChatRe = /(?:embedding|rerank|bge-|tts|whisper|moderation|dall-e|stable-diffusion|flux|sdxl|kolors|cogview|image-gen)/i;
+        const filtered = uniqueIds.filter((id) => !nonChatRe.test(id));
+        const usable = (filtered.length > 0 ? filtered : uniqueIds);
+
+        const scoreModel = (id) => {
+          const lower = id.toLowerCase();
+          if (lower.includes('v4.1') && lower.includes('flash')) return 0;
+          if (lower.includes('deepseek-flash')) return 1;
+          if (lower.includes('deepseek') && lower.includes('v3')) return 2;
+          if (lower.includes('deepseek') && lower.includes('r1')) return 3;
+          if (lower.includes('deepseek')) return 4;
+          if (lower.includes('gemini-2.5')) return 5;
+          if (lower.includes('claude')) return 6;
+          if (lower.includes('gpt-4')) return 7;
+          if (lower.includes('qwen')) return 8;
+          return 20;
+        };
+        usable.sort((a, b) => scoreModel(a) - scoreModel(b) || a.localeCompare(b));
+        const finalModels = usable.slice(0, 120);
+
+        if (finalModels.length > 0) {
+          return sendModelsJson(200, {
+            ok: true,
+            models: finalModels,
+            count: finalModels.length,
+            source: 'live'
+          });
+        }
+        lastErr = '该接口返回的模型列表为空';
+      } catch (err) {
+        lastErr = err?.message || '拉取模型列表超时或网络异常';
+      }
+    }
+
+    return sendModelsJson(200, {
+      ok: false,
+      models: [],
+      error: lastErr || '未能从该接口拉取到可用模型列表'
+    });
+  }
+
+  // ========= DeepSeek / 兼容 API 个人余额独立查询接口（支持 BYOK 跨域） =========
+  if (method === 'POST' && pathname === '/api/deepseek/check-balance') {
+    const body = preReadBalanceBody || (await readJsonBody(req));
+    const sendBalJson = (status, data) => sendJson(res, status, data, VOICE_CORS_HEADERS);
+    let apiKey = String(body.customApiKey || '').trim();
+    let baseUrl = String(body.customBaseUrl || '').trim();
+    if (!apiKey && currentUser) {
+      const savedOwn = getRawUserOwnDeepSeekConfig(currentUser.id);
+      apiKey = savedOwn.apiKey || '';
+      if (!baseUrl) baseUrl = savedOwn.baseUrl || '';
+    }
+    if (!apiKey) {
+      return sendBalJson(400, { ok: false, enabled: false, error: '未提供可查询余额的 API Key' });
+    }
+    try {
+      apiKey = validateOfficialDeepSeekApiKey(apiKey);
+      baseUrl = baseUrl ? validateSafeUserApiBaseUrl(baseUrl) : OFFICIAL_DEEPSEEK_CHAT_URL;
+    } catch (err) {
+      return sendBalJson(400, { ok: false, enabled: false, error: err.message || 'API 参数无效' });
+    }
+
+    const lowerBase = baseUrl.toLowerCase();
+    if (lowerBase.includes('deepseek.com')) {
+      try {
+        const balData = await fetchDeepSeekBalance({
+          provider: 'deepseek',
+          deepseek_base_url: baseUrl,
+          deepseek_api_key: apiKey
+        });
+        const infos = Array.isArray(balData.balance_infos) ? balData.balance_infos : [];
+        const cnyInfo = infos.find((x) => x.currency === 'CNY') || infos[0] || null;
+        const currency = cnyInfo?.currency || 'CNY';
+        const symbol = currency === 'USD' ? '$' : '¥';
+        return sendBalJson(200, {
+          ok: true,
+          enabled: true,
+          provider_label: 'DeepSeek 官方 API',
+          is_official_deepseek: true,
+          balance_supported: Boolean(cnyInfo && balData.source === 'live'),
+          is_available: balData.is_available !== false,
+          currency,
+          symbol,
+          total_balance: cnyInfo ? String(cnyInfo.total_balance ?? '0.00') : null,
+          granted_balance: cnyInfo ? String(cnyInfo.granted_balance ?? '0.00') : '0.00',
+          topped_up_balance: cnyInfo ? String(cnyInfo.topped_up_balance ?? '0.00') : '0.00',
+          checked_at: Date.now()
+        });
+      } catch (err) {
+        return sendBalJson(200, {
+          ok: true,
+          enabled: true,
+          provider_label: 'DeepSeek 官方 API',
+          is_official_deepseek: true,
+          balance_supported: false,
+          error: sanitizePublicErrorMessage(err, '暂时无法读取官方余额')
+        });
+      }
+    }
+
+    if (lowerBase.includes('siliconflow.cn')) {
+      try {
+        const sfRes = await fetch('https://api.siliconflow.cn/v1/user/info', {
+          headers: { Authorization: `Bearer ${apiKey}` },
+          signal: AbortSignal.timeout(8000)
+        });
+        if (sfRes.ok) {
+          const sfJson = await sfRes.json().catch(() => ({}));
+          const uData = sfJson?.data || {};
+          const totalBal = uData.totalBalance ?? uData.balance ?? null;
+          if (totalBal !== null && totalBal !== undefined) {
+            return sendBalJson(200, {
+              ok: true,
+              enabled: true,
+              provider_label: 'SiliconFlow API',
+              is_official_deepseek: false,
+              balance_supported: true,
+              is_available: Number(totalBal) > 0,
+              currency: 'CNY',
+              symbol: '¥',
+              total_balance: Number(totalBal).toFixed(2),
+              granted_balance: uData.balance !== undefined ? Number(uData.balance).toFixed(2) : '0.00',
+              topped_up_balance: uData.chargeBalance !== undefined ? Number(uData.chargeBalance).toFixed(2) : '0.00',
+              checked_at: Date.now()
+            });
+          }
+        }
+      } catch {}
+    }
+
+    return sendBalJson(200, {
+      ok: true,
+      enabled: true,
+      provider_label: '兼容云端 API',
+      is_official_deepseek: false,
+      balance_supported: false,
+      is_available: true,
+      checked_at: Date.now()
+    });
+  }
 
   // ========= Phone Agent 手机辅助 dsh-Go 多步规划接口 =========
   if (method === 'POST' && pathname === '/api/phone-agent/plan') {
@@ -1762,7 +2004,7 @@ async function handleApi(req, res, pathname, parsedUrl) {
           : OFFICIAL_DEEPSEEK_CHAT_URL;
         const endpoints = resolveDeepSeekEndpoints(safeUrl);
         const customModel = normalizeModelForEndpoint(
-          sanitizeUserModelName(body.customModel || 'deepseek-chat'),
+          sanitizeUserModelName(body.customModel || 'deepseek-v4.1-flash'),
           endpoints.chatUrl
         );
         list.push({
@@ -1778,9 +2020,11 @@ async function handleApi(req, res, pathname, parsedUrl) {
       const execSettings = getExecutionSettingsForUser(userId);
       const suiteCred = resolveSuiteOrBridgeCredentials(execSettings);
       if (suiteCred && suiteCred.hasKey && suiteCred.endpoints?.chatUrl) {
-        let modelName = String(body.customModel || suiteCred.preferredModel || 'deepseek-chat').trim();
+        let modelName = String(body.customModel || suiteCred.preferredModel || 'deepseek-v4.1-flash').trim();
         if (/reasoner/i.test(modelName) && suiteCred.endpoints.isOfficialDeepSeek) {
           modelName = 'deepseek-chat';
+        } else {
+          modelName = normalizeModelForEndpoint(modelName, suiteCred.endpoints.chatUrl);
         }
         list.push({
           protocol: 'openai',
@@ -1893,7 +2137,7 @@ async function handleApi(req, res, pathname, parsedUrl) {
             const blocks = Array.isArray(data.content) ? data.content : [];
             const rawText = blocks.filter((b) => b.type === 'text').map((b) => b.text).join('\n');
             const parsed = normalizePreflight(extractPlanJson(rawText));
-            return sendPlanJson(res, 200, { ok: true, preflight: parsed, model: cand.model, engine: cand.engineName });
+            return sendPlanJson(res, 200, { ok: true, preflight: parsed, model: cand.model, engine: cand.engineName, usage: data?.usage || null });
           }
 
           const useReasoner = /reasoner|r1/i.test(String(cand.model || ''));
@@ -1925,7 +2169,7 @@ async function handleApi(req, res, pathname, parsedUrl) {
           const msgObj = data?.choices?.[0]?.message || {};
           const rawText = String(msgObj.content || '').trim();
           const parsed = normalizePreflight(extractPlanJson(rawText));
-          return sendPlanJson(res, 200, { ok: true, preflight: parsed, model: modelToUse, engine: cand.engineName });
+          return sendPlanJson(res, 200, { ok: true, preflight: parsed, model: modelToUse, engine: cand.engineName, usage: data?.usage || null });
         } catch (err) {
           preErr = err?.message || '需求预检请求失败';
           if (/\((?:401|403)\)|unauthorized|invalid.*key|authentication/i.test(preErr)) break;
@@ -1958,7 +2202,7 @@ async function handleApi(req, res, pathname, parsedUrl) {
       '0. 自由对话优先识别：若用户是在打招呼、闲聊、询问原理/题目思路、讨论方案、询问你能做什么、或仅针对屏幕内容提问而无需点击/打开手机时，直接返回 tool="chat"，用 reply 给出完整有温度的回答，严禁瞎点手机！',
       '0.5 模糊/不确定主动问清楚（关键！）：当用户指令缺少关键信息（如未指定发给谁/发什么内容/买哪款/选哪个规格、多选拿不准、当前界面有多个同名目标或即将执行重要提交/删除/付款）时，严禁瞎猜乱点！必须立即返回 tool="ask_user"，在 reply 中礼貌问清楚具体需求，并尽可能在 args.options 中提供 2~4 个简短清晰的快捷选项。',
       '1. 优先用 phone_open 打开目标应用；点击屏幕元素时优先使用 phone_tap 并携带准确 ref 与 snapshotId，避免盲猜坐标。',
-      '2. 防卡死与防死循环铁律：严禁连续 2 步返回 phone_wait！仔细检查 screenVerdict 与 loopDiagnostics：若 blockedActions 非空，严禁再输出列表中已失效的动作、控件或坐标；若 oscillationDetected=true（页面 A↔B 往返死循环），严禁继续在两个页面间重复点击，必须更换入口、改用搜索框、执行 phone_key(back) 退出重进，或返回 ask_user 请求用户协助。',
+      '2. 防卡死与防死循环铁律：严禁连续 2 步返回 phone_wait！仔细检查 screenVerdict 与 loopDiagnostics：若 noChangeStreak >= 1 或 errorStreak >= 1，必须立即更换完全不同的控件/坐标/路径，禁止死磕同一个操作；若 blockedActions 非空，严禁再输出列表中已失效的动作；若 oscillationDetected=true 或无法把握下一步，优先返回 ask_user 主动向用户请示指示。',
       '2.5 遮挡弹窗清理：若页面被开屏广告、版本更新、权限引导或好评弹窗遮挡，优先点击“跳过/取消/以后再说/暂不更新/知道了/关闭”等按钮清理遮挡后再继续主任务。',
       '3. 若同一屏幕上已同时清晰可见 2~3 个明确无歧义的连贯操作（例如学习答题时“先选中答案选项 + 再点击下一题/提交”），可在标准字段外额外附带 `"actions":[{"tool":"phone_tap","args":{"ref":"e10"}},{"tool":"phone_tap","args":{"ref":"e24"}}]`（最多 3 个同屏非敏感微动作），否则只输出单动作。',
       '4. 严禁操作控制端自身（packageName="com.deepseek.starwhisper.studio"）或在其聊天框打字；当用户说“继续写作业/继续答题”且未明确指定打开 DeepSeek 时，禁止打开 DeepSeek 应用，优先切回 lastExternalApp 或在目标学习软件内操作。',
@@ -2132,7 +2376,7 @@ async function handleApi(req, res, pathname, parsedUrl) {
           const blocks = Array.isArray(data.content) ? data.content : [];
           const rawText = blocks.filter((b) => b.type === 'text').map((b) => b.text).join('\n');
           const parsed = normalizePlan(extractPlanJson(rawText));
-          return sendPlanJson(res, 200, { ok: true, plan: parsed, model: cand.model, engine: cand.engineName });
+          return sendPlanJson(res, 200, { ok: true, plan: parsed, model: cand.model, engine: cand.engineName, usage: data?.usage || null });
         }
 
         const isReasonerModel = /reasoner|r1/i.test(String(cand.model || ''));
@@ -2172,33 +2416,35 @@ async function handleApi(req, res, pathname, parsedUrl) {
           try {
             const planObj = extractPlanJson(rawText);
             if (reasonTxt && !planObj.reasoning) planObj.reasoning = reasonTxt;
-            return planObj;
+            return { planObj, usage: data?.usage || null };
           } catch (parseErr) {
             if (reasonTxt) {
-              return extractPlanJson(reasonTxt);
+              return { planObj: extractPlanJson(reasonTxt), usage: data?.usage || null };
             }
             throw parseErr;
           }
         };
 
-        let rawPlan;
+        let attemptRes;
         let usedModel = cand.model;
         try {
-          rawPlan = await runOpenAiAttempt(cand.model, '', true);
+          attemptRes = await runOpenAiAttempt(cand.model, '', true);
         } catch (firstErr) {
-          if (/\((?:401|403)\)|unauthorized|invalid.*key|authentication/i.test(String(firstErr?.message || ''))) {
+          const firstMsg = String(firstErr?.message || '');
+          if (/\((?:401|403)\)|unauthorized|invalid.*key|authentication/i.test(firstMsg)) {
             throw firstErr;
           }
-          const fallbackModel = isReasonerModel ? 'deepseek-chat' : cand.model;
+          const isModelNotExist = /model.*not.*exist|invalid.*model|does not exist/i.test(firstMsg);
+          const fallbackModel = (isReasonerModel || isModelNotExist) ? 'deepseek-chat' : cand.model;
           usedModel = fallbackModel;
-          rawPlan = await runOpenAiAttempt(
+          attemptRes = await runOpenAiAttempt(
             fallbackModel,
             '请严格只输出一个合法 JSON 动作对象（不要输出任何思考说明），如果连续等待后界面无新控件，请返回 click/swipe 或 ask_user。',
             false
           );
         }
-        const parsed = normalizePlan(rawPlan);
-        return sendPlanJson(res, 200, { ok: true, plan: parsed, model: usedModel, engine: cand.engineName });
+        const parsed = normalizePlan(attemptRes.planObj);
+        return sendPlanJson(res, 200, { ok: true, plan: parsed, model: usedModel, engine: cand.engineName, usage: attemptRes.usage });
       } catch (err) {
         lastErr = err?.message || '规划请求超时或解析异常';
       }

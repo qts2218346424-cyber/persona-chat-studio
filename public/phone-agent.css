@@ -3750,3 +3750,117 @@
   font-size: 11px;
   font-weight: 600;
 }
+
+.pa-setup-guide-cta {
+  margin-top: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid light-dark(rgba(77, 107, 254, 0.28), rgba(147, 197, 253, 0.28));
+  background: light-dark(#eff6ff, rgba(77, 107, 254, 0.16));
+  color: light-dark(#2563eb, #93c5fd);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.14s ease, background-color 0.15s ease;
+}
+
+.pa-setup-guide-cta:hover {
+  background: light-dark(#dbeafe, rgba(77, 107, 254, 0.26));
+  transform: translateY(-1px);
+}
+
+.pa-guide-stepper {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.pa-guide-step-pill {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 6px 8px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid light-dark(rgba(15, 23, 42, 0.08), rgba(255, 255, 255, 0.1));
+  background: light-dark(#f8fafc, rgba(255, 255, 255, 0.04));
+  color: light-dark(#64748b, #94a3b8);
+  cursor: pointer;
+}
+
+.pa-guide-step-pill.is-active {
+  border-color: #4d6bfe;
+  background: light-dark(#eff6ff, rgba(77, 107, 254, 0.2));
+  color: light-dark(#1d4ed8, #bfdbfe);
+}
+
+.pa-guide-step-pill.is-done {
+  border-color: rgba(16, 185, 129, 0.35);
+  background: light-dark(#ecfdf5, rgba(16, 185, 129, 0.16));
+  color: light-dark(#047857, #6ee7b7);
+}
+
+.pa-guide-status-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 9px 12px;
+  border-radius: 11px;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.pa-guide-status-bar.is-ok {
+  background: light-dark(#ecfdf5, rgba(16, 185, 129, 0.18));
+  color: light-dark(#047857, #6ee7b7);
+  border: 1px solid rgba(16, 185, 129, 0.32);
+}
+
+.pa-guide-status-bar.is-pending {
+  background: light-dark(#fffbeb, rgba(245, 158, 11, 0.16));
+  color: light-dark(#b45309, #fcd34d);
+  border: 1px solid rgba(245, 158, 11, 0.28);
+}
+
+.pa-guide-steps-ol {
+  margin: 0;
+  padding: 10px 14px 10px 28px;
+  border-radius: 12px;
+  background: light-dark(#f8fafc, rgba(255, 255, 255, 0.04));
+  border: 1px solid light-dark(rgba(15, 23, 42, 0.06), rgba(255, 255, 255, 0.08));
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: light-dark(#334155, #e2e8f0);
+}
+
+.pa-guide-tip-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pa-guide-tip-item {
+  padding: 9px 12px;
+  border-radius: 11px;
+  background: light-dark(#f8fafc, rgba(255, 255, 255, 0.05));
+  border: 1px solid light-dark(rgba(15, 23, 42, 0.06), rgba(255, 255, 255, 0.09));
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: light-dark(#334155, #e2e8f0);
+}
+
+.pa-local-action-bar {
+  margin-top: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}

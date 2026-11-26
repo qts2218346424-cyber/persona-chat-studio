@@ -2796,7 +2796,7 @@ signal: init.signal
 }
 return originalFetch(input, { ...init, headers: mergedHeaders, cache: 'no-store' });
 }
-if (standaloneActive && (pathname.startsWith('/api/auth/') || pathname === '/api/announcement' || pathname === '/api/phone-agent/plan')) {
+if (standaloneActive && (pathname.startsWith('/api/auth/') || pathname === '/api/announcement' || pathname === '/api/phone-agent/plan' || pathname === '/api/deepseek/check-balance' || pathname === '/api/cloud/models')) {
 try {
 const remoteUrl = `https://star.claudexxb.online${pathname}${urlStr.includes('?') ? urlStr.slice(urlStr.indexOf('?')) : ''}`;
 const mergedHeaders = new Headers(init?.headers || {});
@@ -2809,7 +2809,7 @@ const resp = await originalFetch(remoteUrl, {
 headers: mergedHeaders,
 cache: 'no-store'
 });
-if (pathname === '/api/phone-agent/plan') {
+if (pathname === '/api/phone-agent/plan' || pathname === '/api/deepseek/check-balance' || pathname === '/api/cloud/models') {
 return resp;
 }
 if (resp.ok) {
@@ -3286,8 +3286,11 @@ syncMobileComposerHeightVar();
 const PLUGIN_STYLE_ID = 'oss-ds-monitor-plugin-style';
 const POPOVER_ID = 'oss-ds-monitor-popover';
 const TRIGGER_BTN_ID = 'oss-ds-monitor-trigger-btn';
+const RECORDS_STORAGE_KEY = 'ds_billing_records_v1';
+const PUBLIC_WEB_ORIGIN = 'https://star.claudexxb.online';
 const monitorState = {
 enabled: false,
+popoverOpen: false,
 loadingBalance: false,
 providerLabel: 'DeepSeek 官方 API',
 isOfficialDeepSeek: true,
@@ -3297,77 +3300,152 @@ symbol: '¥',
 totalBalance: null,
 toppedUpBalance: '0.00',
 grantedBalance: '0.00',
-model: 'deepseek-flash',
+model: 'deepseek-v4.1-flash',
 lastBalanceFetchAt: 0,
 sessionHitTokens: 0,
 sessionMissTokens: 0,
 sessionCompletionTokens: 0,
 lastTurnHitRate: null,
+lastTurnUsage: null,
+records: [],
+phoneAgentAuth: { apiKey: '', baseUrl: '', execMode: '' },
 errorMsg: ''
 };
+function loadStoredRecords() {
+try {
+const raw = localStorage.getItem(RECORDS_STORAGE_KEY);
+const arr = raw ? JSON.parse(raw) : [];
+return Array.isArray(arr) ? arr.slice(0, 30) : [];
+} catch {
+return [];
+}
+}
+function saveStoredRecords(records) {
+try {
+localStorage.setItem(RECORDS_STORAGE_KEY, JSON.stringify((records || []).slice(0, 30)));
+} catch {}
+}
+monitorState.records = loadStoredRecords();
+function estimateTurnCostCny(usage = {}, model = '') {
+const u = usage || {};
+const promptTokens = Math.max(0, Number(u.prompt_tokens) || 0);
+const hitTokens = Math.max(0, Number(u.prompt_cache_hit_tokens) || 0);
+const missTokens = u.prompt_cache_miss_tokens !== undefined
+? Math.max(0, Number(u.prompt_cache_miss_tokens) || 0)
+: Math.max(0, promptTokens - hitTokens);
+const completionTokens = Math.max(0, Number(u.completion_tokens) || 0);
+const totalTokens = Math.max(Number(u.total_tokens) || 0, hitTokens + missTokens + completionTokens);
+const isReasoner = /reasoner|r1/i.test(String(model || ''));
+const hitRatePer1M = isReasoner ? 1.0 : 0.2;
+const missRatePer1M = isReasoner ? 4.0 : 2.0;
+const outRatePer1M = isReasoner ? 16.0 : 3.0;
+const costCny =
+(hitTokens / 1e6) * hitRatePer1M +
+(missTokens / 1e6) * missRatePer1M +
+(completionTokens / 1e6) * outRatePer1M;
+const savedCny = (hitTokens / 1e6) * (missRatePer1M - hitRatePer1M);
+return {
+promptTokens: hitTokens + missTokens,
+hitTokens,
+missTokens,
+completionTokens,
+totalTokens,
+costCny: Number(costCny.toFixed(6)),
+savedCny: Number(savedCny.toFixed(6))
+};
+}
+function formatCny(val, digits = 4) {
+const n = Number(val) || 0;
+if (n > 0 && n < 0.0001) return '<¥0.0001';
+return `¥${n.toFixed(digits)}`;
+}
+function formatCompactInt(n) {
+const num = Number(n) || 0;
+if (num >= 10000) return `${(num / 1000).toFixed(1)}k`;
+return String(num);
+}
 function injectPluginStyles() {
+if (typeof document === 'undefined' || !document.head) return;
 if (document.getElementById(PLUGIN_STYLE_ID)) return;
 const style = document.createElement('style');
 style.id = PLUGIN_STYLE_ID;
 style.textContent = `
+      .oss-ds-composer-bar {
+        width: min(760px, 100%);
+        margin: 0 auto 6px;
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        padding: 0 4px;
+      }
+      .oss-ds-composer-bar.hidden {
+        display: none !important;
+      }
       .oss-ds-monitor-pill {
         display: inline-flex;
         align-items: center;
         gap: 6px;
-        padding: 5px 11px;
+        height: 24px;
+        padding: 0 9px;
         border-radius: 999px;
-        border: 1px solid light-dark(rgba(77, 107, 254, 0.28), rgba(96, 165, 250, 0.34));
-        background: light-dark(rgba(239, 246, 255, 0.92), rgba(30, 41, 59, 0.85));
-        color: light-dark(#1e3a8a, #dbeafe);
+        border: 1px solid light-dark(rgba(77, 107, 254, 0.2), rgba(147, 197, 253, 0.22));
+        background: light-dark(rgba(248, 250, 252, 0.86), rgba(30, 41, 59, 0.72));
+        color: light-dark(#475569, #cbd5e1);
         font: inherit;
-        font-size: 12.5px;
-        font-weight: 600;
-        line-height: 1.2;
+        font-size: 11.5px;
+        font-weight: 500;
+        line-height: 1;
         cursor: pointer;
         white-space: nowrap;
-        transition: transform 0.14s ease, border-color 0.14s ease, box-shadow 0.14s ease;
+        flex-shrink: 0;
+        backdrop-filter: blur(8px);
+        transition: border-color 0.14s ease, color 0.14s ease, background-color 0.14s ease;
       }
       .oss-ds-monitor-pill:hover {
-        transform: translateY(-1px);
         border-color: #4d6bfe;
-        box-shadow: 0 4px 12px rgba(77, 107, 254, 0.16);
+        color: light-dark(#1e3a8a, #f8fafc);
+        background: light-dark(rgba(239, 246, 255, 0.96), rgba(30, 41, 59, 0.92));
+      }
+      .oss-ds-monitor-pill.hidden {
+        display: none !important;
       }
       .oss-ds-monitor-pill .oss-sep {
-        opacity: 0.42;
+        opacity: 0.35;
       }
       .oss-ds-monitor-pill .oss-cache-tag {
-        color: light-dark(#047857, #34d399);
-        font-weight: 700;
+        color: light-dark(#2563eb, #93c5fd);
+        font-weight: 600;
+      }
+      .oss-ds-monitor-pill .oss-pill-caret {
+        opacity: 0.55;
+        font-size: 12px;
       }
       .oss-ds-monitor-pill.low-balance {
-        border-color: rgba(239, 68, 68, 0.45);
+        border-color: rgba(239, 68, 68, 0.48);
         color: light-dark(#b91c1c, #fca5a5);
       }
-
       .oss-ds-monitor-popover {
         position: fixed;
-        inset: auto;
-        top: 56px;
-        right: 18px;
+        bottom: 130px;
+        right: 16px;
         margin: 0;
-        width: min(348px, calc(100vw - 24px));
+        width: min(352px, calc(100vw - 24px));
+        max-height: min(460px, calc(100dvh - 140px));
+        overflow-y: auto;
         padding: 14px;
         border-radius: 16px;
-        border: 1px solid light-dark(rgba(15, 23, 42, 0.1), rgba(255, 255, 255, 0.12));
-        background: light-dark(#ffffff, #1a1f2e);
+        border: 1px solid light-dark(rgba(15, 23, 42, 0.1), rgba(255, 255, 255, 0.14));
+        background: light-dark(#ffffff, #171b28);
         color: var(--text-primary, #1f2329);
-        box-shadow: 0 16px 40px rgba(15, 23, 42, 0.18);
-        z-index: 950;
-      }
-      .oss-ds-monitor-popover:not(:is(:popover-open, .\\:popover-open)) {
+        box-shadow: 0 18px 44px rgba(15, 23, 42, 0.22);
+        z-index: 1280;
         display: none;
-      }
-      .oss-ds-monitor-popover:is(:popover-open, .\\:popover-open) {
-        display: flex;
         flex-direction: column;
-        gap: 12px;
+        gap: 10px;
       }
-
+      .oss-ds-monitor-popover.is-open {
+        display: flex;
+      }
       .oss-mon-head {
         display: flex;
         align-items: center;
@@ -3395,15 +3473,14 @@ style.textContent = `
         color: #4d6bfe;
         border-color: #4d6bfe;
       }
-
       .oss-mon-card {
-        padding: 11px 12px;
+        padding: 10px 12px;
         border-radius: 12px;
         background: light-dark(#f8fafc, rgba(255, 255, 255, 0.04));
-        border: 1px solid light-dark(rgba(15, 23, 42, 0.06), rgba(255, 255, 255, 0.07));
+        border: 1px solid light-dark(rgba(15, 23, 42, 0.06), rgba(255, 255, 255, 0.08));
         display: flex;
         flex-direction: column;
-        gap: 8px;
+        gap: 7px;
       }
       .oss-mon-bal-row {
         display: flex;
@@ -3412,7 +3489,7 @@ style.textContent = `
         gap: 8px;
       }
       .oss-mon-bal-num {
-        font-size: 22px;
+        font-size: 21px;
         font-weight: 800;
         letter-spacing: -0.02em;
         color: light-dark(#0f172a, #f8fafc);
@@ -3435,9 +3512,8 @@ style.textContent = `
       .oss-mon-sub-grid b {
         color: var(--text-primary, #1f2329);
       }
-
       .oss-mon-bar-track {
-        height: 8px;
+        height: 7px;
         border-radius: 999px;
         background: light-dark(#e2e8f0, #334155);
         overflow: hidden;
@@ -3451,13 +3527,13 @@ style.textContent = `
       .oss-mon-metrics-grid {
         display: grid;
         grid-template-columns: 1fr 1fr;
-        gap: 7px;
+        gap: 6px;
       }
       .oss-mon-metric-item {
         padding: 6px 8px;
         border-radius: 8px;
         background: light-dark(#ffffff, rgba(15, 23, 42, 0.45));
-        border: 1px solid light-dark(rgba(15, 23, 42, 0.05), rgba(255, 255, 255, 0.05));
+        border: 1px solid light-dark(rgba(15, 23, 42, 0.05), rgba(255, 255, 255, 0.06));
         display: flex;
         flex-direction: column;
         gap: 2px;
@@ -3468,6 +3544,28 @@ style.textContent = `
       }
       .oss-mon-metric-item strong {
         font-size: 12.5px;
+        font-weight: 700;
+      }
+      .oss-mon-records-list {
+        max-height: 150px;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+      }
+      .oss-mon-rec-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 6px;
+        padding: 5px 8px;
+        border-radius: 8px;
+        background: light-dark(#ffffff, rgba(255, 255, 255, 0.03));
+        font-size: 11px;
+        color: var(--text-secondary, #64748b);
+      }
+      .oss-mon-rec-row strong {
+        color: light-dark(#1e3a8a, #93c5fd);
         font-weight: 700;
       }
       .oss-mon-foot {
@@ -3495,21 +3593,135 @@ style.textContent = `
     `;
 document.head.appendChild(style);
 }
-function formatCompactInt(n) {
-const num = Number(n) || 0;
-if (num >= 10000) return `${(num / 1000).toFixed(1)}k`;
-return String(num);
-}
-function ensureDomMounted() {
-return null;
+function closePopover() {
+monitorState.popoverOpen = false;
+const pop = document.getElementById(POPOVER_ID);
+if (pop) pop.classList.remove('is-open');
 }
 function positionPopoverNearTrigger(btn, pop) {
+if (!btn || !pop || typeof btn.getBoundingClientRect !== 'function') return;
 const rect = btn.getBoundingClientRect();
 if (!rect.width && !rect.height) return;
-const top = Math.min(window.innerHeight - 360, Math.max(10, rect.bottom + 8));
-const right = Math.max(12, window.innerWidth - rect.right);
-pop.style.top = `${top}px`;
+const vh = window.innerHeight || 800;
+const vw = window.innerWidth || 1200;
+const bottom = Math.max(72, vh - rect.top + 8);
+const right = Math.max(12, vw - rect.right);
+pop.style.top = 'auto';
+pop.style.bottom = `${bottom}px`;
 pop.style.right = `${right}px`;
+}
+function openPopover() {
+const nodes = ensureDomMounted();
+if (!nodes) return;
+monitorState.popoverOpen = true;
+positionPopoverNearTrigger(nodes.btn, nodes.pop);
+nodes.pop.classList.add('is-open');
+renderMonitorUi();
+}
+function ensureDomMounted() {
+if (typeof document === 'undefined' || !document.body) return null;
+injectPluginStyles();
+const chatForm = document.getElementById('chat-form');
+const composerDock = document.getElementById('tour-anchor-composer');
+const hostParent = chatForm?.parentNode || composerDock;
+if (!hostParent) return null;
+let bar = document.getElementById('oss-ds-composer-bar');
+if (!bar) {
+bar = document.createElement('div');
+bar.id = 'oss-ds-composer-bar';
+bar.className = 'oss-ds-composer-bar hidden';
+if (chatForm && chatForm.parentNode === hostParent && typeof hostParent.insertBefore === 'function') {
+hostParent.insertBefore(bar, chatForm);
+} else {
+hostParent.appendChild(bar);
+}
+}
+let btn = document.getElementById(TRIGGER_BTN_ID);
+if (!btn) {
+btn = document.createElement('button');
+btn.id = TRIGGER_BTN_ID;
+btn.type = 'button';
+btn.className = 'oss-ds-monitor-pill hidden';
+btn.title = '查看 DeepSeek 实时消耗 Token、估算费用与剩余额度';
+bar.appendChild(btn);
+btn.addEventListener('click', (e) => {
+e.stopPropagation();
+if (monitorState.popoverOpen) closePopover();
+else openPopover();
+});
+}
+let pop = document.getElementById(POPOVER_ID);
+if (!pop) {
+pop = document.createElement('div');
+pop.id = POPOVER_ID;
+pop.className = 'oss-ds-monitor-popover';
+pop.setAttribute('role', 'dialog');
+pop.setAttribute('aria-label', 'DeepSeek 实时计费与余额监测');
+pop.innerHTML = `
+        <div class="oss-mon-head">
+          <div class="oss-mon-title" id="oss-mon-provider-title">DeepSeek 实时计费监控</div>
+          <div style="display:flex;gap:6px;align-items:center;">
+            <button type="button" class="oss-mon-refresh-btn" id="oss-mon-refresh-btn">刷新余额</button>
+            <button type="button" class="oss-mon-refresh-btn" id="oss-mon-close-btn">✕</button>
+          </div>
+        </div>
+        <div class="oss-mon-card">
+          <div class="oss-mon-bal-row">
+            <span class="oss-mon-bal-num" id="oss-mon-bal-num">--</span>
+            <span class="oss-mon-status-dot" id="oss-mon-bal-status">计费就绪</span>
+          </div>
+          <div class="oss-mon-sub-grid" id="oss-mon-bal-sub"></div>
+        </div>
+        <div class="oss-mon-card">
+          <div class="oss-mon-bal-row">
+            <span style="font-size:12px;font-weight:700;">本轮最新消耗</span>
+            <span style="font-size:11.5px;color:#4d6bfe;font-weight:700;" id="oss-mon-last-model">deepseek-v4.1-flash</span>
+          </div>
+          <div class="oss-mon-metrics-grid">
+            <div class="oss-mon-metric-item"><span>本轮 Token</span><strong id="oss-mon-last-tokens">0</strong></div>
+            <div class="oss-mon-metric-item"><span>本轮估算费用</span><strong id="oss-mon-last-cost">¥0.0000</strong></div>
+          </div>
+        </div>
+        <div class="oss-mon-card">
+          <div class="oss-mon-bal-row">
+            <span style="font-size:12px;font-weight:700;">累计统计与缓存省费</span>
+            <span style="font-size:11.5px;font-weight:700;color:#10b981;" id="oss-mon-hit-rate-label">等待首轮</span>
+          </div>
+          <div class="oss-mon-bar-track"><div class="oss-mon-bar-hit" id="oss-mon-bar-hit" style="width:0%"></div></div>
+          <div class="oss-mon-metrics-grid">
+            <div class="oss-mon-metric-item"><span>累计总 Token</span><strong id="oss-mon-total-tokens">0</strong></div>
+            <div class="oss-mon-metric-item"><span>累计总费用</span><strong id="oss-mon-total-cost">¥0.0000</strong></div>
+            <div class="oss-mon-metric-item"><span>缓存命中 / 未命中</span><strong id="oss-mon-hit-miss">0 / 0</strong></div>
+            <div class="oss-mon-metric-item"><span>缓存已省费用</span><strong id="oss-mon-saved-cny">¥0.0000</strong></div>
+          </div>
+        </div>
+        <div class="oss-mon-card">
+          <div class="oss-mon-bal-row">
+            <span style="font-size:12px;font-weight:700;">最近每轮消耗明细</span>
+            <button type="button" class="oss-mon-link-btn" id="oss-mon-clear-btn">清零统计</button>
+          </div>
+          <div class="oss-mon-records-list" id="oss-mon-records-list"></div>
+        </div>
+        <div class="oss-mon-foot">
+          <span>按 DeepSeek 官方阶梯单价实时估算</span>
+          <span>v2.0.0</span>
+        </div>
+      `;
+document.body.appendChild(pop);
+pop.addEventListener('click', (e) => e.stopPropagation());
+pop.querySelector('#oss-mon-refresh-btn')?.addEventListener('click', () => refreshBalance(true));
+pop.querySelector('#oss-mon-close-btn')?.addEventListener('click', closePopover);
+pop.querySelector('#oss-mon-clear-btn')?.addEventListener('click', () => {
+clearBillingRecords();
+});
+document.addEventListener('click', () => {
+if (monitorState.popoverOpen) closePopover();
+});
+document.addEventListener('keydown', (e) => {
+if (e.key === 'Escape' && monitorState.popoverOpen) closePopover();
+});
+}
+return { bar, btn, pop };
 }
 function parseMessageUsage(msg) {
 if (!msg || msg.role !== 'assistant') return null;
@@ -3549,40 +3761,58 @@ monitorState.sessionMissTokens = miss;
 monitorState.sessionCompletionTokens = comp;
 monitorState.lastTurnHitRate = lastRate;
 }
+function aggregateRecords() {
+let totalTokens = 0;
+let totalCost = 0;
+let totalSaved = 0;
+let hit = 0;
+let miss = 0;
+for (const r of monitorState.records) {
+totalTokens += Number(r.totalTokens) || 0;
+totalCost += Number(r.costCny) || 0;
+totalSaved += Number(r.savedCny) || 0;
+hit += Number(r.hitTokens) || 0;
+miss += Number(r.missTokens) || 0;
+}
+if (monitorState.records.length === 0) {
+totalTokens = monitorState.sessionHitTokens + monitorState.sessionMissTokens + monitorState.sessionCompletionTokens;
+hit = monitorState.sessionHitTokens;
+miss = monitorState.sessionMissTokens;
+}
+return { totalTokens, totalCost, totalSaved, hit, miss };
+}
 function renderMonitorUi() {
 const nodes = ensureDomMounted();
 if (!nodes) return;
-const { btn, pop } = nodes;
+const { bar, btn, pop } = nodes;
 if (!monitorState.enabled) {
+if (bar) bar.classList.add('hidden');
 btn.classList.add('hidden');
-try {
-if (pop.matches(':popover-open') && typeof pop.hidePopover === 'function') {
-pop.hidePopover();
-}
-} catch {}
+closePopover();
 return;
 }
+if (bar) bar.classList.remove('hidden');
 btn.classList.remove('hidden');
-const totalPrompt = monitorState.sessionHitTokens + monitorState.sessionMissTokens;
-const hitRate = totalPrompt > 0 ? Math.round((monitorState.sessionHitTokens / totalPrompt) * 100) : null;
-const balPart = monitorState.loadingBalance && monitorState.totalBalance === null
-? '查余额…'
-: monitorState.balanceSupported && monitorState.totalBalance !== null
-? `${monitorState.symbol}${monitorState.totalBalance}`
-: '个人 API';
-const cachePart =
-hitRate !== null
-? `<span class="oss-cache-tag">缓存 ${hitRate}%</span>`
-: '<span class="oss-cache-tag">缓存就绪</span>';
+const agg = aggregateRecords();
+const lastRec = monitorState.records[0] || monitorState.lastTurnUsage || null;
+const totalPrompt = agg.hit + agg.miss;
+const hitRate = totalPrompt > 0 ? Math.round((agg.hit / totalPrompt) * 100) : null;
+const tokNum = lastRec ? lastRec.totalTokens : agg.totalTokens;
+const tokPart = `<span class="oss-cache-tag">${formatCompactInt(tokNum)} tok</span>`;
+const quotaPart = monitorState.loadingBalance && monitorState.totalBalance === null
+? '查额度…'
+: (monitorState.balanceSupported && monitorState.totalBalance !== null)
+? `余 ${monitorState.symbol}${monitorState.totalBalance}`
+: formatCny(lastRec ? lastRec.costCny : agg.totalCost, 4);
 const isLow =
 monitorState.balanceSupported &&
 monitorState.totalBalance !== null &&
-Number(monitorState.totalBalance) <= 0.5;
+Number(monitorState.totalBalance) <= 1.0;
 btn.classList.toggle('low-balance', isLow);
-btn.innerHTML = `<span>${balPart}</span><span class="oss-sep">·</span>${cachePart}`;
+btn.innerHTML = `${tokPart}<span class="oss-sep">·</span><span>${quotaPart}</span><span class="oss-pill-caret">›</span>`;
 const titleEl = pop.querySelector('#oss-mon-provider-title');
 if (titleEl) {
-titleEl.textContent = `${monitorState.providerLabel} 实时监控`;
+titleEl.textContent = `${monitorState.providerLabel || 'DeepSeek API'} · 实时计费`;
 }
 const balNumEl = pop.querySelector('#oss-mon-bal-num');
 const balStatusEl = pop.querySelector('#oss-mon-bal-status');
@@ -3600,65 +3830,128 @@ balSubEl.innerHTML = `
         `;
 }
 } else {
-if (balNumEl) balNumEl.textContent = monitorState.model || '直连就绪';
+if (balNumEl) balNumEl.textContent = formatCny(agg.totalCost, 4);
 if (balStatusEl) {
-balStatusEl.textContent = monitorState.loadingBalance ? '同步中…' : '个人密钥生效中';
+balStatusEl.textContent = monitorState.loadingBalance ? '查询中…' : '累计估算支出';
 balStatusEl.classList.remove('warn');
 }
 if (balSubEl) {
 balSubEl.innerHTML = `<span style="grid-column: 1 / -1;">${
-monitorState.errorMsg || '当前兼容接口未开放余额数字查询，下方实时统计硬盘缓冲命中率'
+monitorState.errorMsg || '当前网关未返回余额数值，可点击右上角「刷新余额」或正常查看 Token 与费用统计'
 }</span>`;
 }
 }
+const lastModelEl = pop.querySelector('#oss-mon-last-model');
+const lastTokEl = pop.querySelector('#oss-mon-last-tokens');
+const lastCostEl = pop.querySelector('#oss-mon-last-cost');
+if (lastModelEl) lastModelEl.textContent = lastRec?.model || monitorState.model || 'deepseek-v4.1-flash';
+if (lastTokEl) {
+lastTokEl.textContent = lastRec
+? `${formatCompactInt(lastRec.totalTokens)}（入 ${formatCompactInt(lastRec.promptTokens)} / 出 ${formatCompactInt(lastRec.completionTokens)}）`
+: '0';
+}
+if (lastCostEl) lastCostEl.textContent = lastRec ? formatCny(lastRec.costCny, 5) : '¥0.0000';
 const rateLabelEl = pop.querySelector('#oss-mon-hit-rate-label');
 const barHitEl = pop.querySelector('#oss-mon-bar-hit');
-const hitTokEl = pop.querySelector('#oss-mon-hit-tokens');
-const missTokEl = pop.querySelector('#oss-mon-miss-tokens');
-const compTokEl = pop.querySelector('#oss-mon-comp-tokens');
-const savedPctEl = pop.querySelector('#oss-mon-saved-pct');
-if (rateLabelEl) {
-rateLabelEl.textContent =
-hitRate !== null
-? `${hitRate}%${monitorState.lastTurnHitRate !== null ? ` (本轮 ${monitorState.lastTurnHitRate}%)` : ''}`
-: '等待首轮回复';
-}
-if (barHitEl) {
-barHitEl.style.width = `${hitRate !== null ? Math.max(4, hitRate) : 0}%`;
-}
-if (hitTokEl) hitTokEl.textContent = `${formatCompactInt(monitorState.sessionHitTokens)}`;
-if (missTokEl) missTokEl.textContent = `${formatCompactInt(monitorState.sessionMissTokens)}`;
-if (compTokEl) compTokEl.textContent = `${formatCompactInt(monitorState.sessionCompletionTokens)}`;
-if (savedPctEl) {
-if (totalPrompt > 0 && monitorState.sessionHitTokens > 0) {
-const savedRatio = Math.round(((monitorState.sessionHitTokens * 0.9) / totalPrompt) * 100);
-savedPctEl.textContent = `已省约 ${savedRatio}% 输入费`;
-} else if (totalPrompt > 0) {
-savedPctEl.textContent = '首轮已建立缓冲前缀';
+const totalTokEl = pop.querySelector('#oss-mon-total-tokens');
+const totalCostEl = pop.querySelector('#oss-mon-total-cost');
+const hitMissEl = pop.querySelector('#oss-mon-hit-miss');
+const savedCnyEl = pop.querySelector('#oss-mon-saved-cny');
+if (rateLabelEl) rateLabelEl.textContent = hitRate !== null ? `缓存命中 ${hitRate}%` : '等待首轮回复';
+if (barHitEl) barHitEl.style.width = `${hitRate !== null ? Math.max(4, hitRate) : 0}%`;
+if (totalTokEl) totalTokEl.textContent = formatCompactInt(agg.totalTokens);
+if (totalCostEl) totalCostEl.textContent = formatCny(agg.totalCost, 4);
+if (hitMissEl) hitMissEl.textContent = `${formatCompactInt(agg.hit)} / ${formatCompactInt(agg.miss)}`;
+if (savedCnyEl) savedCnyEl.textContent = formatCny(agg.totalSaved, 4);
+const recListEl = pop.querySelector('#oss-mon-records-list');
+if (recListEl) {
+if (monitorState.records.length === 0) {
+recListEl.innerHTML = '<div class="oss-mon-rec-row"><span>暂无消费记录，发送任意消息后自动统计</span></div>';
 } else {
-savedPctEl.textContent = '多轮对话自动省费';
+recListEl.innerHTML = monitorState.records.slice(0, 12).map((r) => {
+const d = new Date(r.ts || Date.now());
+const tm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;
+return `<div class="oss-mon-rec-row"><span>${tm} · ${r.source || '对话'}</span><strong>${formatCompactInt(r.totalTokens)} tok · ${formatCny(r.costCny, 4)}</strong></div>`;
+}).join('');
 }
 }
+}
+function recordTurnUsage({ usage, model = '', source = '对话', apiKey = '', baseUrl = '', provider = '' } = {}) {
+if (!usage || typeof usage !== 'object') return null;
+if (provider === 'custom_cloud' || provider === 'api_cloud' || provider === 'local' || provider === 'local_antigravity') {
+return null;
+}
+const lowerBase = String(baseUrl || '').trim().toLowerCase();
+if (lowerBase && !lowerBase.includes('deepseek.com')) {
+return null;
+}
+const usedModel = String(model || monitorState.model || 'deepseek-v4.1-flash').trim();
+const calc = estimateTurnCostCny(usage, usedModel);
+if (calc.totalTokens <= 0) return null;
+const record = {
+ts: Date.now(),
+source: String(source || '对话'),
+model: usedModel,
+...calc
+};
+monitorState.enabled = true;
+monitorState.model = usedModel;
+monitorState.lastTurnUsage = record;
+monitorState.records.unshift(record);
+if (monitorState.records.length > 30) {
+monitorState.records = monitorState.records.slice(0, 30);
+}
+saveStoredRecords(monitorState.records);
+if (apiKey) {
+monitorState.phoneAgentAuth = { apiKey, baseUrl, execMode: monitorState.phoneAgentAuth.execMode || 'api_direct' };
+}
+renderMonitorUi();
+return record;
+}
+function clearBillingRecords() {
+monitorState.records = [];
+monitorState.lastTurnUsage = null;
+monitorState.sessionHitTokens = 0;
+monitorState.sessionMissTokens = 0;
+monitorState.sessionCompletionTokens = 0;
+saveStoredRecords([]);
+renderMonitorUi();
 }
 async function refreshBalance(force = false) {
-if (!monitorState.enabled) return;
+if (!monitorState.enabled && !monitorState.phoneAgentAuth.apiKey) return;
 if (monitorState.loadingBalance) return;
 if (!force && Date.now() - monitorState.lastBalanceFetchAt < 6000) return;
 monitorState.loadingBalance = true;
-const refreshBtn = document.getElementById('oss-mon-refresh-btn');
+const refreshBtn = typeof document !== 'undefined' ? document.getElementById('oss-mon-refresh-btn') : null;
 if (refreshBtn) refreshBtn.textContent = '查询中…';
 renderMonitorUi();
 try {
-const headers = {};
-const activeToken = window.__starAuthStore?.getActiveToken?.() || localStorage.getItem('star_auth_token') || '';
+const headers = { 'Content-Type': 'application/json' };
+const activeToken =
+window.__starAuthStore?.getToken?.() ||
+window.__starAuthStore?.getActiveToken?.() ||
+localStorage.getItem('star_whisper_token') ||
+localStorage.getItem('star_auth_token') ||
+'';
 if (activeToken) headers.Authorization = `Bearer ${activeToken}`;
-const res = await fetch('/api/deepseek/my-balance', { headers });
-if (res.ok) {
-const data = await res.json();
-monitorState.lastBalanceFetchAt = Date.now();
-if (!data.enabled) {
-monitorState.enabled = false;
+let data = null;
+if (monitorState.phoneAgentAuth?.apiKey) {
+const body = JSON.stringify({
+customApiKey: monitorState.phoneAgentAuth.apiKey,
+customBaseUrl: monitorState.phoneAgentAuth.baseUrl || ''
+});
+let res = await fetch('/api/deepseek/check-balance', { method: 'POST', headers, body }).catch(() => null);
+if (!res || !res.ok) {
+res = await fetch(`${PUBLIC_WEB_ORIGIN}/api/deepseek/check-balance`, { method: 'POST', headers, body }).catch(() => null);
+}
+if (res && res.ok) data = await res.json().catch(() => null);
 } else {
+const res = await fetch('/api/deepseek/my-balance', { headers }).catch(() => null);
+if (res && res.ok) data = await res.json().catch(() => null);
+}
+if (data) {
+monitorState.lastBalanceFetchAt = Date.now();
+if (data.enabled) {
 monitorState.providerLabel = data.provider_label || 'DeepSeek 官方 API';
 monitorState.isOfficialDeepSeek = Boolean(data.is_official_deepseek);
 monitorState.balanceSupported = Boolean(data.balance_supported && data.total_balance !== null);
@@ -3680,27 +3973,50 @@ renderMonitorUi();
 }
 }
 function syncFromHost({ settings, messages, forceBalanceRefresh = false } = {}) {
-const isUsingOwnKey = Boolean(
-settings && settings.provider === 'own_deepseek' && settings.has_own_deepseek_key
-);
+const isUsingDeepSeek = Boolean(settings && settings.provider === 'own_deepseek');
 const prevEnabled = monitorState.enabled;
-monitorState.enabled = isUsingOwnKey;
+monitorState.enabled = isUsingDeepSeek;
 if (settings?.own_deepseek_model) {
 monitorState.model = settings.own_deepseek_model;
 }
+monitorState.providerLabel = 'DeepSeek 官方 API';
 if (Array.isArray(messages)) {
 recomputeCacheMetrics(messages);
 }
 renderMonitorUi();
-if (isUsingOwnKey && (!prevEnabled || forceBalanceRefresh || monitorState.totalBalance === null)) {
+if (isUsingDeepSeek && settings?.has_own_deepseek_key && (!prevEnabled || forceBalanceRefresh || monitorState.totalBalance === null)) {
 refreshBalance(forceBalanceRefresh);
 }
 }
+function syncPhoneAgent({ execMode = '', apiKey = '', baseUrl = '', model = '' } = {}) {
+const lowerBase = String(baseUrl || '').trim().toLowerCase();
+const isDeepSeekDirect = execMode === 'api_direct' && (!lowerBase || lowerBase.includes('deepseek.com'));
+const prevKey = monitorState.phoneAgentAuth.apiKey;
+monitorState.phoneAgentAuth = {
+apiKey: isDeepSeekDirect ? String(apiKey || '') : '',
+baseUrl: isDeepSeekDirect ? String(baseUrl || '') : '',
+execMode: String(execMode || '')
+};
+monitorState.enabled = isDeepSeekDirect;
+if (model && isDeepSeekDirect) monitorState.model = model;
+monitorState.providerLabel = 'DeepSeek API · 手机辅助';
+renderMonitorUi();
+if (isDeepSeekDirect && apiKey && (monitorState.totalBalance === null || prevKey !== apiKey)) {
+refreshBalance(false);
+}
+}
 window.DeepSeekMonitorPlugin = {
-version: '1.1.0',
+version: '2.0.0',
 license: 'MIT',
 sync: syncFromHost,
-refreshBalance
+syncPhoneAgent,
+recordTurnUsage,
+refreshBalance,
+clearBillingRecords,
+estimateTurnCostCny,
+openPopover,
+closePopover,
+getState: () => ({ ...monitorState, aggregate: aggregateRecords() })
 };
 window.addEventListener('deepseek:monitor-sync', (e) => {
 syncFromHost(e.detail || {});
@@ -5237,7 +5553,7 @@ lastInteractionAt: Date.now(),
 hasMoreMessages: false,
 totalMessages: 0,
 oldestMessageId: 0,
-appVersion: '2.7.3',
+appVersion: '2.7.4',
 tourIndex: 0,
 tourActive: false,
 llmMode: 'local_antigravity',
@@ -5336,6 +5652,16 @@ if (state.activeSession) {
 state.activeSession.llm_mode = mode;
 }
 syncLlmModeUi();
+try {
+window.DeepSeekMonitorPlugin?.sync?.({
+settings: {
+provider: cfg.channel,
+has_own_deepseek_key: Boolean(cfg.ownKey),
+own_deepseek_model: 'deepseek-v4.1-flash'
+},
+forceBalanceRefresh: cfg.channel === 'own_deepseek' && Boolean(cfg.ownKey)
+});
+} catch {}
 return cfg;
 }
 state.llmMode = getModeApiConfig('deepseek').channel === 'local_antigravity' ? 'local_antigravity' : 'api';
@@ -7784,7 +8110,7 @@ theaterLbl.textContent = hasNote ? '幕次演绎中' : '本剧幕次';
 }
 const p = state.settings.provider || 'demo';
 const hasOwnKey = Boolean(state.settings.has_own_deepseek_key);
-const rawOwnModel = state.settings.own_deepseek_model || 'deepseek-flash';
+const rawOwnModel = state.settings.own_deepseek_model || 'deepseek-v4.1-flash';
 const rawLeaf = rawOwnModel.split('/').pop();
 const shortModel = /^deepseek[-_]?flash$/i.test(rawLeaf) ? 'V4.1-Flash' : rawLeaf;
 const dsComposerChip = document.getElementById('ds-composer-api-chip');
@@ -12053,6 +12379,17 @@ settings: state.settings,
 messages: state.messages,
 forceBalanceRefresh: true
 });
+const turnUsage = finalAssistantMsg?.meta?.usage || payload?.usage || null;
+const activeScopeCfg = getModeApiConfig(originIsDsUi ? 'deepseek' : 'roleplay');
+const isDeepSeekOfficialTurn = activeScopeCfg.channel === 'own_deepseek' || state.settings?.provider === 'own_deepseek';
+if (turnUsage && isDeepSeekOfficialTurn && activeScopeCfg.channel !== 'custom_cloud') {
+window.DeepSeekMonitorPlugin?.recordTurnUsage({
+usage: turnUsage,
+model: finalAssistantMsg?.meta?.model || payload?.model || state.settings?.own_deepseek_model || 'deepseek-v4.1-flash',
+source: originIsDsUi ? 'DeepSeek对话' : '剧场对话',
+provider: 'own_deepseek'
+});
+}
 if (payload.chapter_advanced && !originIsDsUi && !chapterCurtainShown) {
 chapterCurtainShown = true;
 playChapterCurtainTransition(payload.chapter_advanced);
@@ -14197,8 +14534,24 @@ bodyHtml: `
               <input type="url" class="mfs-sheet-input" id="mfs-sheet-cloud-url" value="${escapeHtml(curCfg.cloudUrl)}" placeholder="https://api.siliconflow.cn/v1/chat/completions" />
             </div>
             <div class="mfs-field-block" style="margin-bottom:8px;">
-              <label class="mfs-field-label" for="mfs-sheet-cloud-model">模型名称</label>
-              <input type="text" class="mfs-sheet-input" id="mfs-sheet-cloud-model" value="${escapeHtml(curCfg.cloudModel)}" placeholder="deepseek-ai/DeepSeek-V4.1-Flash" />
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+                <label class="mfs-field-label" for="mfs-sheet-cloud-model-select" style="margin:0;">云端模型选择 <span id="mfs-sheet-models-status" style="font-weight:normal;font-size:11px;opacity:0.75;">(填密钥自动拉取)</span></label>
+                <button type="button" class="mfs-official-link-btn" id="mfs-sheet-fetch-models-btn" style="padding:2px 8px;font-size:11px;">刷新模型</button>
+              </div>
+              <select class="mfs-sheet-input" id="mfs-sheet-cloud-model-select" style="margin-bottom:6px;">
+                <option value="deepseek-ai/DeepSeek-V4.1-Flash">硅基流动 · DeepSeek V4.1 Flash</option>
+                <option value="deepseek-v4.1-flash">阿里云百炼 / 通用 · DeepSeek V4.1 Flash</option>
+                <option value="deepseek/deepseek-v4.1-flash">OpenRouter · DeepSeek V4.1 Flash</option>
+                <option value="deepseek-ai/DeepSeek-V3">硅基流动 · DeepSeek V3</option>
+                <option value="deepseek-ai/DeepSeek-R1">硅基流动 · DeepSeek R1</option>
+                <option value="deepseek-chat">DeepSeek Chat / V3</option>
+                <option value="deepseek-reasoner">DeepSeek Reasoner / R1</option>
+                <option value="gemini-2.5-flash">Google Gemini 2.5 Flash</option>
+                <option value="qwen-plus">通义千问 · Qwen Plus</option>
+                <option value="gpt-4o-mini">OpenAI · GPT-4o Mini</option>
+                <option value="__custom__">自定义模型名…</option>
+              </select>
+              <input type="text" class="mfs-sheet-input hidden" id="mfs-sheet-cloud-model" value="${escapeHtml(curCfg.cloudModel)}" placeholder="输入自定义模型名" />
             </div>
             <div class="mfs-field-block">
               <label class="mfs-field-label" for="mfs-sheet-cloud-key">云端 API Key</label>
@@ -14212,8 +14565,56 @@ onMount: ({ bodyEl, footerEl, close }) => {
 const inp = bodyEl.querySelector('#mfs-sheet-apikey-input');
 const eyeBtn = bodyEl.querySelector('#mfs-sheet-eye-btn');
 const cloudUrlInp = bodyEl.querySelector('#mfs-sheet-cloud-url');
+const cloudModelSel = bodyEl.querySelector('#mfs-sheet-cloud-model-select');
 const cloudModelInp = bodyEl.querySelector('#mfs-sheet-cloud-model');
 const cloudKeyInp = bodyEl.querySelector('#mfs-sheet-cloud-key');
+const cloudFetchBtn = bodyEl.querySelector('#mfs-sheet-fetch-models-btn');
+const cloudModelsStatus = bodyEl.querySelector('#mfs-sheet-models-status');
+if (cloudModelSel && cloudModelInp) {
+const syncMfsCloudSel = () => {
+const val = (cloudModelInp.value || '').trim();
+const matched = Array.from(cloudModelSel.options).some((o) => o.value === val && o.value !== '__custom__');
+cloudModelSel.value = matched ? val : '__custom__';
+cloudModelInp.classList.toggle('hidden', cloudModelSel.value !== '__custom__');
+};
+syncMfsCloudSel();
+cloudModelSel.addEventListener('change', () => {
+if (cloudModelSel.value !== '__custom__') {
+cloudModelInp.value = cloudModelSel.value;
+cloudModelInp.classList.add('hidden');
+} else {
+cloudModelInp.classList.remove('hidden');
+cloudModelInp.focus();
+}
+});
+cloudModelInp.addEventListener('input', syncMfsCloudSel);
+let mfsFetchTimer = null;
+const triggerMfsFetch = async () => {
+const k = (cloudKeyInp?.value || '').trim();
+const u = (cloudUrlInp?.value || '').trim();
+if (!k || !u) return;
+if (cloudModelsStatus) cloudModelsStatus.textContent = '(拉取中…)';
+if (cloudFetchBtn) cloudFetchBtn.disabled = true;
+const r = await fetchCloudModelsList({ baseUrl: u, apiKey: k });
+if (cloudFetchBtn) cloudFetchBtn.disabled = false;
+if (r.ok && r.models.length > 0) {
+populateCloudModelSelect(cloudModelSel, cloudModelInp, r.models, cloudModelInp.value);
+if (cloudModelsStatus) cloudModelsStatus.textContent = `(已拉取 ${r.models.length} 个模型)`;
+} else if (cloudModelsStatus) {
+cloudModelsStatus.textContent = `(${r.error || '拉取失败'})`;
+}
+};
+cloudFetchBtn?.addEventListener('click', triggerMfsFetch);
+const scheduleMfsFetch = () => {
+clearTimeout(mfsFetchTimer);
+mfsFetchTimer = setTimeout(triggerMfsFetch, 450);
+};
+cloudKeyInp?.addEventListener('input', scheduleMfsFetch);
+cloudUrlInp?.addEventListener('input', scheduleMfsFetch);
+if (chosenChannel === 'custom_cloud' && curCfg.cloudKey && curCfg.cloudUrl) {
+setTimeout(triggerMfsFetch, 120);
+}
+}
 const syncSheetChannel = (nextCh) => {
 chosenChannel = nextCh;
 bodyEl.querySelectorAll('[data-mfs-ch]').forEach((btn) => {
@@ -15068,6 +15469,103 @@ btn.disabled = false;
 btn.textContent = origText;
 }
 });
+async function fetchCloudModelsList({ baseUrl = '', apiKey = '' } = {}) {
+try {
+const data = await apiJson('/api/cloud/models', {
+method: 'POST',
+body: JSON.stringify({ baseUrl: String(baseUrl || '').trim(), apiKey: String(apiKey || '').trim() })
+});
+if (data && data.ok && Array.isArray(data.models) && data.models.length > 0) {
+return { ok: true, models: data.models };
+}
+return { ok: false, models: [], error: data?.error || '未获取到模型列表' };
+} catch (err) {
+return { ok: false, models: [], error: err?.message || '拉取模型失败' };
+}
+}
+function populateCloudModelSelect(selectEl, inputEl, models = [], preferredModel = '') {
+if (!selectEl || !Array.isArray(models) || models.length === 0) return;
+const prevVal = String(preferredModel || inputEl?.value || '').trim();
+selectEl.innerHTML = '';
+for (const m of models) {
+const opt = document.createElement('option');
+opt.value = m;
+opt.textContent = m;
+selectEl.appendChild(opt);
+}
+const customOpt = document.createElement('option');
+customOpt.value = '__custom__';
+customOpt.textContent = '自定义模型名称…';
+selectEl.appendChild(customOpt);
+if (prevVal && models.includes(prevVal)) {
+selectEl.value = prevVal;
+if (inputEl) {
+inputEl.value = prevVal;
+inputEl.classList.add('hidden');
+}
+} else {
+selectEl.value = models[0];
+if (inputEl) {
+inputEl.value = models[0];
+inputEl.classList.add('hidden');
+}
+}
+}
+(() => {
+const sel = document.getElementById('st-custom-cloud-model-select');
+const inp = document.getElementById('st-custom-cloud-model');
+const urlInp = document.getElementById('st-custom-cloud-url');
+const keyInp = document.getElementById('st-custom-cloud-key');
+const fetchBtn = document.getElementById('st-custom-cloud-fetch-models-btn');
+const statusEl = document.getElementById('st-custom-cloud-models-status');
+if (!sel || !inp) return;
+const syncSelectFromInput = () => {
+const val = (inp.value || '').trim();
+const matched = Array.from(sel.options).some((o) => o.value === val && o.value !== '__custom__');
+sel.value = matched ? val : '__custom__';
+inp.classList.toggle('hidden', sel.value !== '__custom__');
+};
+sel.addEventListener('change', () => {
+if (sel.value !== '__custom__') {
+inp.value = sel.value;
+inp.classList.add('hidden');
+} else {
+inp.classList.remove('hidden');
+inp.focus();
+}
+});
+inp.addEventListener('input', syncSelectFromInput);
+let fetchTimer = null;
+const runDesktopModelsFetch = async () => {
+const k = (keyInp?.value || '').trim();
+const u = (urlInp?.value || '').trim();
+if (!k || !u) return;
+if (statusEl) statusEl.textContent = '（正在拉取模型列表…）';
+if (fetchBtn) fetchBtn.disabled = true;
+const res = await fetchCloudModelsList({ baseUrl: u, apiKey: k });
+if (fetchBtn) fetchBtn.disabled = false;
+if (res.ok && res.models.length > 0) {
+populateCloudModelSelect(sel, inp, res.models, inp.value);
+if (statusEl) statusEl.textContent = `（已自动拉取 ${res.models.length} 个模型）`;
+} else if (statusEl) {
+statusEl.textContent = `（${res.error || '拉取失败，可点选预设'}）`;
+}
+};
+fetchBtn?.addEventListener('click', runDesktopModelsFetch);
+const scheduleDesktopFetch = () => {
+clearTimeout(fetchTimer);
+fetchTimer = setTimeout(runDesktopModelsFetch, 450);
+};
+keyInp?.addEventListener('input', scheduleDesktopFetch);
+urlInp?.addEventListener('input', scheduleDesktopFetch);
+document.getElementById('cloud-api-preset-bar')?.addEventListener('click', () => {
+setTimeout(() => {
+syncSelectFromInput();
+if ((keyInp?.value || '').trim()) runDesktopModelsFetch();
+}, 0);
+});
+syncSelectFromInput();
+})();
 document.getElementById('verify-custom-cloud-key-btn')?.addEventListener('click', async (e) => {
 const btn = e.currentTarget;
 const origText = btn.textContent;
@@ -19676,14 +20174,15 @@ runCloneBtn.innerHTML = origHtml;
 })();
 ;
 (() => {
-const CURRENT_APK_VERSION = '2.7.3';
-const CURRENT_APK_CODE = 164;
+const CURRENT_APK_VERSION = '2.7.4';
+const CURRENT_APK_CODE = 165;
 const DEEPSEEK_API_KEYS_URL = 'https://platform.deepseek.com/api_keys';
 const PUBLIC_WEB_ORIGIN = 'https://star.claudexxb.online';
 const GITHUB_RELEASES_URL = 'https://github.com/qts2218346424-cyber/persona-chat-studio/releases';
 const STORAGE_KEYS = {
 execMode: 'pa_exec_mode_v1',
 directModel: 'pa_direct_model_v1',
+cloudModel: 'pa_cloud_model_v1',
 directBaseUrl: 'pa_direct_baseurl_v1',
 autoApprove: 'pa_auto_approve_v1',
 confirmPolicy: 'pa_confirm_policy_v2',
@@ -19692,7 +20191,8 @@ trustedApps: 'pa_trusted_apps_v1',
 edgeGlow: 'pa_edge_glow_v1',
 exclusiveKey: 'pa_exclusive_api_key_v1',
 learnedSkills: 'pa_learned_skills_v1',
-taskHistory: 'pa_task_history_v1'
+taskHistory: 'pa_task_history_v1',
+setupGuideDone: 'pa_setup_guide_done_v1'
 };
 const LOCAL_COMMAND_CATALOG = [
 {
@@ -19807,18 +20307,222 @@ inp.setAttribute('placeholder', '直接回复上面的确认问题，我将继�
 inp.setAttribute('placeholder', '告诉我你想操作什么，或者直接和我聊天提问…');
 }
 }
+const EXPLICIT_CONTROL_VERB_RE = /(?:打开|启动|进入|点击|点一下|按下|搜索|搜一下|查一下|发消息|发给|发送|回复给|点外卖|叫外卖|下单|写作业|做作业|答题|做题|刷题|刷视频|刷抖音|刷快手|下一题|切回|回到|返回|锁屏|截屏|截图|滑动|上滑|下滑|左滑|右滑|音量|静音|喂米饭|吃米饭|摸摸头|唱歌|播放|放一首|打字|输入并发送|粘贴|清空输入框)/;
 function isLikelyPureChat(text) {
 const clean = String(text || '').trim();
 if (!clean) return false;
-if (/^(?:你好|您好|hi|hello|在吗|早上好|中午好|晚上好|谢谢|多谢|辛苦了|再见|拜拜|哈哈|你是谁|你能干嘛|你能做什么|介绍一下你自己|怎么用|有什么功能)[！!？?。.～~]*$/i.test(clean)) {
+if (/^(?:你好|您好|hi|hello|在吗|早上好|中午好|晚上好|早安|午安|晚安|谢谢|多谢|辛苦了|再见|拜拜|哈哈|你是谁|你能干嘛|你能做什么|介绍一下你自己|怎么用|有什么功能)[！!？?。.～~]*$/i.test(clean)) {
 return true;
 }
-const hasActionVerb = /(?:打开|启动|进入|点击|点一下|按下|搜索|搜一下|查一下|发消息|发给|发送|回复|点外卖|下单|写作业|做作业|答题|刷题|刷视频|下一题|切回|回到|返回|锁屏|截屏|滑动|上滑|下滑|音量|静音|喂米饭|唱歌|播放)/.test(clean);
-if (hasActionVerb) return false;
+if (/(?:怎么开|如何开|在哪开|怎么用|教程|指引|引导|是什么|干嘛用|功能)/.test(clean) && /(?:无障碍|悬浮窗|大肥鱼|api|密钥|key|技能|手机辅助|本地)/i.test(clean)) {
+return true;
+}
+if (/^[\d\s+\-*/().（）×÷=？?]+$/.test(clean) && /\d/.test(clean) && /[+\-*/×÷]/.test(clean)) {
+return true;
+}
+if (/(?:帮我算|算一下|计算|等于几|等于多少)/.test(clean) && /\d/.test(clean)) {
+return true;
+}
+if (/(?:现在几点|几点了|今天几号|星期几|今天星期|今天日期|多少个技能|有什么技能|已学技能|权限状态|无障碍开了吗|悬浮窗开了吗|当前版本|版本号)/.test(clean)) {
+return true;
+}
+if (/(?:好累|累了|无聊|难过|开心|睡不着|安慰|夸夸|吃什么|推荐|笑话|冷笑话|请假条|自我介绍|道歉|祝福|陪我聊|聊聊|聊聊天|心情)/.test(clean)) {
+return true;
+}
+if (EXPLICIT_CONTROL_VERB_RE.test(clean)) return false;
 if (/(?:为什么|怎么回事|原理|是什么|是什么意思|怎么办|帮我解释|帮我分析|聊一聊|聊聊|讲个|觉得呢|好不好|是不是|能不能)[？?！!。]*$/.test(clean) || /[？?]$/.test(clean)) {
 return true;
 }
-return false;
+return !isSimpleBuiltInLocalCmd(clean) && clean.length <= 42;
+}
+function safeEvalArithmetic(rawExpr) {
+const expr = String(rawExpr || '')
+.replace(/[×xX]/g, '*')
+.replace(/[÷]/g, '/')
+.replace(/（/g, '(')
+.replace(/）/g, ')')
+.replace(/[^0-9+\-*/().]/g, '');
+if (!expr || expr.length > 64 || !/\d/.test(expr) || !/[+\-*/]/.test(expr)) return null;
+const tokens = [];
+let i = 0;
+while (i < expr.length) {
+const ch = expr[i];
+if (/\d|\./.test(ch)) {
+let numStr = '';
+let dots = 0;
+while (i < expr.length && /[\d.]/.test(expr[i])) {
+if (expr[i] === '.') dots += 1;
+if (dots > 1) return null;
+numStr += expr[i++];
+}
+const val = Number(numStr);
+if (!Number.isFinite(val)) return null;
+tokens.push({ type: 'num', val });
+} else if ('+-*/()'.includes(ch)) {
+tokens.push({ type: 'op', val: ch });
+i += 1;
+} else {
+return null;
+}
+}
+let pos = 0;
+const peek = () => tokens[pos] || null;
+const next = () => tokens[pos++] || null;
+const parseExpr = () => {
+let left = parseTerm();
+if (left === null) return null;
+while (peek() && peek().type === 'op' && (peek().val === '+' || peek().val === '-')) {
+const op = next().val;
+const right = parseTerm();
+if (right === null) return null;
+left = op === '+' ? left + right : left - right;
+}
+return left;
+};
+const parseTerm = () => {
+let left = parseFactor();
+if (left === null) return null;
+while (peek() && peek().type === 'op' && (peek().val === '*' || peek().val === '/')) {
+const op = next().val;
+const right = parseFactor();
+if (right === null) return null;
+if (op === '/' && right === 0) return null;
+left = op === '*' ? left * right : left / right;
+}
+return left;
+};
+const parseFactor = () => {
+const t = peek();
+if (!t) return null;
+if (t.type === 'op' && (t.val === '+' || t.val === '-')) {
+next();
+const f = parseFactor();
+return f === null ? null : (t.val === '-' ? -f : f);
+}
+if (t.type === 'op' && t.val === '(') {
+next();
+const inner = parseExpr();
+if (!peek() || peek().val !== ')') return null;
+next();
+return inner;
+}
+if (t.type === 'num') {
+next();
+return t.val;
+}
+return null;
+};
+const res = parseExpr();
+if (res === null || pos !== tokens.length || !Number.isFinite(res)) return null;
+return Number.isInteger(res) ? res : Number(res.toFixed(6));
+}
+function buildLocalSmartChatReply(text) {
+const clean = String(text || '').trim();
+const perms = getSetupPermissionsState();
+const skills = loadLearnedSkills();
+if (/(?:无障碍|悬浮窗|大肥鱼|怎么开|如何开|在哪开|新手指引|教程)/.test(clean)) {
+const a11yLine = perms.a11yOk ? '✅ 无障碍服务已开启' : '⚠️ 无障碍服务尚未开启';
+const floatLine = perms.floatOn ? '✅ 悬浮窗运行中' : (perms.overlayOk ? '⚪ 已授权悬浮窗，可随时一键启动' : '⚠️ 悬浮窗权限未开启');
+return {
+thought: '用户在咨询无障碍或悬浮窗开启方法，已结合当前设备权限状态整理引导。',
+reply: `开启权限只需两步：\n1. **无障碍服务**（${a11yLine}）：系统设置 → 无障碍 → 已下载的应用 → 打开「DeepSeek · 星语」。\n2. **桌面悬浮窗**（${floatLine}）：点击下方按钮一键前往授权，开启后可在任意 App 表面随时呼出大肥鱼或紧急叫停。`,
+actionType: 'open_setup_guide'
+};
+}
+if (/(?:api|密钥|key|切换引擎|直连|云端|技能固化|学习操作)/i.test(clean)) {
+return {
+thought: '用户在咨询引擎配置或操作技能固化方式，整理当前可用方案。',
+reply: `手机辅助支持三种引擎自由切换：\n• **本地免 API**：零费用毫秒执行常用系统口令、已学技能、计算与日常对话；\n• **DeepSeek API**：填入你自己的 Key，智能识屏完成复杂多步任务；\n• **云端 API**：直接使用平台内置托管智能体。\n用 API 跑通固定流程后，点击结果卡片下方的「✨ 固化为本地技能」，以后在本地免 API 模式也能一键免消耗复用！`,
+actionType: 'open_settings'
+};
+}
+const mathVal = safeEvalArithmetic(clean);
+if (mathVal !== null) {
+return {
+thought: '识别为本地四则算术表达式，使用安全解析器直接离线算出结果。',
+reply: `我帮你算好啦，结果是：**${mathVal}**`,
+actionType: ''
+};
+}
+if (/(?:几点|几号|星期几|礼拜几|哪天|日期|现在时间|今天星期|今天是几|今天几号)/.test(clean) && !/(?:天气|快递|外卖)/.test(clean)) {
+const now = new Date();
+const weekDays = ['日', '一', '二', '三', '四', '五', '六'];
+const pad = (n) => String(n).padStart(2, '0');
+return {
+thought: '读取本机实时时钟回答时间与日期问题。',
+reply: `现在是 **${now.getFullYear()}年${now.getMonth() + 1}月${now.getDate()}日 星期${weekDays[now.getDay()]} ${pad(now.getHours())}:${pad(now.getMinutes())}**~`,
+actionType: ''
+};
+}
+if (/(?:技能|状态|版本|开了吗|就绪)/.test(clean)) {
+const skillNames = skills.slice(0, 6).map((s) => `「${s.name || s.trigger}」`).join('、');
+return {
+thought: '汇总当前本地技能库、设备权限状态与客户端版本。',
+reply: `当前版本 **v${CURRENT_APK_VERSION} (Build ${CURRENT_APK_CODE})**：\n• 无障碍：${perms.a11yOk ? '已开启 ✅' : '未开启 ⚠️'}\n• 悬浮窗：${perms.floatOn ? '运行中 ✅' : '未开启 ⚪'}\n• 已学本地技能：${skills.length} 个${skillNames ? `（${skillNames}）` : ''}`,
+actionType: (!perms.a11yOk || !perms.overlayOk) ? 'open_setup_guide' : ''
+};
+}
+if (/(?:请假条|请假)/.test(clean)) {
+return {
+thought: '用户需要请假文案模板，提供简洁得体的离线参考模板。',
+reply: `给你准备了一段可以直接复制使用的请假条模板：\n\n「老师/领导您好，因身体略有不适（或家中有急事需处理），今天需请假一天休息调整，期间工作/作业已提前安排妥当，返岗后第一时间补齐进度，望批准！」`,
+actionType: ''
+};
+}
+if (/(?:晚安|早安|午安)/.test(clean)) {
+const replyMap = {
+晚安: '晚安呀🌙 今天也辛苦了，早点放下手机好好休息，明天见~',
+早安: '早安☀️ 新的一天元气满满！需要我帮你打开应用、放首歌还是看看消息？',
+午安: '午安~ 记得按时吃饭、小憩一会儿再继续哦！'
+};
+const hit = Object.keys(replyMap).find((k) => clean.includes(k));
+return {
+thought: '响应日常问候，送上温暖回应。',
+reply: replyMap[hit] || '你好呀，我一直都在！',
+actionType: ''
+};
+}
+if (/(?:吃什么|推荐.*吃|午饭|晚饭|夜宵)/.test(clean)) {
+const foods = ['热腾腾的番茄肥牛米线', '香喷喷的黄焖鸡米饭', '鲜香微辣的柳州螺蛳粉', '清爽低脂的照烧鸡排饭', '料足味美的砂锅麻辣烫', '皮薄馅大的鲜肉小笼包配紫菜蛋汤'];
+const pick = foods[(clean.length + paChatMemory.length) % foods.length];
+return {
+thought: '根据日常美食库离线随机挑选高好评餐品推荐。',
+reply: `今天试试 **${pick}** 怎么样？如果想让我直接打开外卖软件帮你选，切换「DeepSeek API」后跟我说「帮我点外卖」就行~`,
+actionType: ''
+};
+}
+if (/(?:笑话|开心一下|无聊|讲个)/.test(clean)) {
+const jokes = [
+'刚才大肥鱼问我为什么手机越用越烫，我说：因为你在屏幕里游太快，把算力摩擦生热啦🐋',
+'程序员去买西瓜：看到“如果看见卖西瓜的，买一个；如果看见卖番茄的，买四个”，于是最后买了四个西瓜回来……',
+'今天我学会了一个超厉害的省电技巧：只要把手机屏幕朝下扣在桌子上，它就会假装自己已经充好电了（并不）。'
+];
+const joke = jokes[(paChatMemory.length + new Date().getMinutes()) % jokes.length];
+return {
+thought: '用户想放松一下，分享一条轻松幽默的段子。',
+reply: joke,
+actionType: ''
+};
+}
+if (/(?:好累|累了|难过|压力|睡不着|安慰|夸夸)/.test(clean)) {
+return {
+thought: '感受到用户有些疲惫或需要鼓励，给予温暖安抚。',
+reply: '抱抱你~ 已经坚持做完这么多事很了不起啦！先深呼吸放松一下肩颈，把繁琐的手机操作交给我来代劳就好。想休息的话，也可以让我帮你「用QQ音乐放一首轻音乐」或「刷几个短视频」~',
+actionType: ''
+};
+}
+if (/^(?:你好|您好|hi|hello|在吗|你是谁|你能干嘛|你能做什么|介绍一下你自己|怎么用|有什么功能)/i.test(clean)) {
+return {
+thought: '识别为问候与能力咨询，清晰介绍本地免 API 能力与智能 API 区别。',
+reply: `你好呀，我是 **dsh-Go · 鲸语控屏助手** 🐋！\n在当前的「本地免 API」模式下，我已经能直接帮你：\n1. **快捷控屏**：打开应用、回桌面、返回、截屏、音量/静音、刷视频、打字发送、QQ音乐点歌；\n2. **离线对话小助手**：算术计算、查时间/权限状态、日常文案、陪聊解闷；\n3. **本地已学技能**：零消耗回放你固化保存的多步流程。\n如果要让我自己看懂复杂屏幕（如连续写作业、点外卖、跨应用操作），点上方「控制台 → DeepSeek API」即可！`,
+actionType: (!perms.a11yOk || !perms.overlayOk) ? 'open_setup_guide' : ''
+};
+}
+return {
+thought: '识别为自由聊天，当前处于本地离线模式，给予自然友好的回应。',
+reply: `收到你说的话啦~ 当前处于「本地免 API」离线对话模式，如果只是日常聊天、算算数、查时间和权限指引我都随时在线；要是想让我展开深度知识解答，或者看懂手机屏幕帮你做复杂任务，可以在右上角切换为 **DeepSeek API** 或 **云端 API** 哦！`,
+actionType: ''
+};
 }
 let pendingNativeCheckResolve = null;
 let nativeCheckTimeoutId = null;
@@ -20094,16 +20798,38 @@ return `${s}/v1/chat/completions`;
 }
 function getDirectConfig() {
 let apiKey = '';
-let model = 'deepseek-chat';
+let model = 'deepseek-v4.1-flash';
 let baseUrl = '';
 let autoApprove = false;
 try {
 apiKey = cleanApiKey(localStorage.getItem(STORAGE_KEYS.exclusiveKey) || '');
-model = (localStorage.getItem(STORAGE_KEYS.directModel) || 'deepseek-chat').trim();
+model = (localStorage.getItem(STORAGE_KEYS.directModel) || 'deepseek-v4.1-flash').trim() || 'deepseek-v4.1-flash';
 baseUrl = (localStorage.getItem(STORAGE_KEYS.directBaseUrl) || '').trim();
 autoApprove = localStorage.getItem(STORAGE_KEYS.autoApprove) === '1';
 } catch {}
 return { apiKey, model, baseUrl, autoApprove };
+}
+function getCloudModel() {
+try {
+return (localStorage.getItem(STORAGE_KEYS.cloudModel) || 'deepseek-v4.1-flash').trim() || 'deepseek-v4.1-flash';
+} catch {
+return 'deepseek-v4.1-flash';
+}
+}
+function setCloudModel(model) {
+const clean = String(model || 'deepseek-v4.1-flash').trim() || 'deepseek-v4.1-flash';
+try {
+localStorage.setItem(STORAGE_KEYS.cloudModel, clean);
+} catch {}
+return clean;
+}
+function resolveDirectModelForUrl(rawModel, targetUrl = '') {
+const m = String(rawModel || 'deepseek-v4.1-flash').trim() || 'deepseek-v4.1-flash';
+const lowerUrl = String(targetUrl || '').toLowerCase();
+if ((!lowerUrl || lowerUrl.includes('deepseek.com')) && /^deepseek[-_]?v?4(?:\.1)?[-_]?flash$/i.test(m)) {
+return 'deepseek-flash';
+}
+return m;
 }
 function setDirectApiKey(key) {
 const clean = cleanApiKey(key);
@@ -20273,6 +20999,7 @@ window.__refreshChatQuickNav();
 if (paSessionNodes.length > 0) {
 scrollChatToBottom();
 }
+maybeAutoShowSetupGuide();
 }
 function resetTaskWorkspace() {
 if (activeAbortController) {
@@ -21351,6 +22078,17 @@ const cfgDrawer = $('pa-inline-config-drawer');
 if (cfgDrawer) {
 cfgDrawer.classList.toggle('hidden', mode === 'local');
 }
+const cloudModelBox = $('pa-cloud-model-box');
+if (cloudModelBox) {
+cloudModelBox.classList.toggle('hidden', mode !== 'api_cloud');
+}
+const cloudModelSel = $('pa-cloud-model-select');
+if (cloudModelSel && !cloudModelSel.matches(':focus')) {
+const cm = getCloudModel();
+if (Array.from(cloudModelSel.options).some((o) => o.value === cm)) {
+cloudModelSel.value = cm;
+}
+}
 const localPeaceCard = $('pa-local-peace-card');
 if (localPeaceCard) {
 localPeaceCard.classList.toggle('hidden', mode !== 'local');
@@ -21360,7 +22098,15 @@ if (cntEl) cntEl.textContent = String(loadLearnedSkills().length);
 const keyInp = $('pa-cfg-apikey');
 if (keyInp && !keyInp.matches(':focus')) keyInp.value = cfg.apiKey;
 const modelSel = $('pa-cfg-model');
-if (modelSel && !modelSel.matches(':focus')) modelSel.value = cfg.model || 'deepseek-chat';
+if (modelSel && !modelSel.matches(':focus')) modelSel.value = cfg.model || 'deepseek-v4.1-flash';
+try {
+window.DeepSeekMonitorPlugin?.syncPhoneAgent?.({
+execMode: mode,
+apiKey: cfg.apiKey,
+baseUrl: cfg.baseUrl,
+model: mode === 'api_cloud' ? getCloudModel() : cfg.model
+});
+} catch {}
 const urlInp = $('pa-cfg-baseurl');
 if (urlInp && !urlInp.matches(':focus')) urlInp.value = cfg.baseUrl || '';
 const autoChk = $('pa-cfg-auto-approve');
@@ -21497,6 +22243,7 @@ mode === 'api_cloud'
 : 'DeepSeek 直连 API';
 }
 syncModalEngineAndApkState();
+refreshSetupGuideStatus();
 }
 function getScreenSizeObj() {
 if (isNativeApk()) {
@@ -21968,7 +22715,7 @@ resEl.classList.toggle('is-error', Boolean(isError));
 }
 scrollChatToBottom();
 }
-function finalizeAgentTurn(cardCtx, { status = 'done', summaryTitle = '', replyText = '', handoverCb = null, recordedSteps = null, sourceTask = '', isSkillReplay = false, isChatOnly = false }) {
+function finalizeAgentTurn(cardCtx, { status = 'done', summaryTitle = '', replyText = '', handoverCb = null, recordedSteps = null, sourceTask = '', isSkillReplay = false, isChatOnly = false, quickAction = null } = {}) {
 if (!cardCtx) return;
 const elapsedSec = ((Date.now() - (cardCtx.startedAt || Date.now())) / 1000).toFixed(1);
 if (cardCtx.thinkingBox) {
@@ -22003,11 +22750,17 @@ cardCtx.stopBtn.classList.add('hidden');
 }
 const validSteps = Array.isArray(recordedSteps) ? recordedSteps : [];
 const canSaveSkill = !isSkillReplay && !isChatOnly && validSteps.length >= 1;
-if (cardCtx.finalReplyEl && (replyText || typeof handoverCb === 'function' || canSaveSkill)) {
+const hasQuickAction = Boolean(quickAction && quickAction.label && typeof quickAction.onClick === 'function');
+if (cardCtx.finalReplyEl && (replyText || typeof handoverCb === 'function' || canSaveSkill || hasQuickAction)) {
 cardCtx.finalReplyEl.classList.remove('hidden');
 cardCtx.finalReplyEl.classList.toggle('pa-chat-reply', Boolean(isChatOnly));
 cardCtx.finalReplyEl.innerHTML = `
         ${replyText ? `<div class="pa-reply-prose">${escapeHtml(replyText).replace(/\n/g, '<br/>')}</div>` : ''}
+        ${hasQuickAction ? `
+          <div class="pa-local-action-bar">
+            <button type="button" class="pa-banner-btn outline pa-local-quick-action-btn">${escapeHtml(quickAction.label)}</button>
+          </div>
+        ` : ''}
         ${typeof handoverCb === 'function' ? `
           <div class="pa-handover-bar">
             <button type="button" class="pa-banner-btn pa-handover-resume-btn">我已完成，继续执行</button>
@@ -22019,6 +22772,11 @@ cardCtx.finalReplyEl.innerHTML = `
           </div>
         ` : ''}
       `;
+if (hasQuickAction) {
+cardCtx.finalReplyEl.querySelector('.pa-local-quick-action-btn')?.addEventListener('click', () => {
+quickAction.onClick();
+});
+}
 if (typeof handoverCb === 'function') {
 cardCtx.finalReplyEl.querySelector('.pa-handover-resume-btn')?.addEventListener('click', (e) => {
 e.currentTarget.disabled = true;
@@ -22069,6 +22827,231 @@ executeTaskInChat(pending);
 });
 }
 scrollChatToBottom();
+}
+function getSetupPermissionsState() {
+const native = isNativeApk();
+const b = getBridge();
+if (!native || !b) {
+return { native: false, a11yOk: false, overlayOk: false, floatOn: false };
+}
+let a11yOk = false;
+let overlayOk = true;
+let floatOn = false;
+try {
+a11yOk = Boolean(b.isAccessibilityEnabled && b.isAccessibilityEnabled());
+if (typeof b.hasOverlayPermission === 'function') {
+overlayOk = Boolean(b.hasOverlayPermission());
+}
+floatOn = Boolean(b.isFloatAgentRunning && b.isFloatAgentRunning());
+} catch {}
+return { native: true, a11yOk, overlayOk, floatOn };
+}
+let setupGuideCurrentStep = 1;
+let setupGuideAutoTriggered = false;
+function refreshSetupGuideStatus(showReadyToast = false) {
+const modal = document.getElementById('pa-onboarding-guide-modal');
+if (!modal) return;
+const perms = getSetupPermissionsState();
+const step1Pill = modal.querySelector('[data-guide-step="1"]');
+const step2Pill = modal.querySelector('[data-guide-step="2"]');
+const step3Pill = modal.querySelector('[data-guide-step="3"]');
+if (step1Pill) step1Pill.classList.toggle('is-done', perms.a11yOk);
+if (step2Pill) step2Pill.classList.toggle('is-done', perms.overlayOk && perms.floatOn);
+const s1Status = modal.querySelector('#pa-guide-s1-status');
+if (s1Status) {
+s1Status.className = `pa-guide-status-bar ${perms.a11yOk ? 'is-ok' : 'is-pending'}`;
+s1Status.innerHTML = perms.native
+? (perms.a11yOk ? '<span>✅ 无障碍服务已开启，可以读取并操作屏幕</span>' : '<span>⚠️ 无障碍服务尚未开启（必须开启后才能代劳控屏）</span>')
+: '<span>ℹ️ 当前为网页端预览；在安卓随身版 APK 中可一键直达系统设置</span>';
+}
+const s2Status = modal.querySelector('#pa-guide-s2-status');
+if (s2Status) {
+const ok = perms.overlayOk && perms.floatOn;
+s2Status.className = `pa-guide-status-bar ${ok ? 'is-ok' : (perms.overlayOk ? 'is-ok' : 'is-pending')}`;
+s2Status.innerHTML = perms.native
+? (perms.floatOn
+? '<span>✅ 悬浮窗权限已授权，桌面悬浮球正在运行</span>'
+: (perms.overlayOk
+? '<span>✅ 已允许悬浮窗权限，点击下方按钮即可启动悬浮球</span>'
+: '<span>⚠️ 悬浮窗权限尚未授权（用于跨 App 弹窗确认与急停）</span>'))
+: '<span>ℹ️ 当前为网页端预览；在安卓随身版 APK 中可一键开启桌面悬浮窗</span>';
+}
+if (showReadyToast && setupGuideCurrentStep === 1 && perms.a11yOk) {
+showToast('无障碍服务已开启！可点击「下一步」继续开启悬浮窗');
+}
+if (step3Pill && perms.a11yOk && perms.overlayOk) {
+step3Pill.classList.add('is-done');
+}
+}
+function openSetupGuideWizard(initialStep = 1) {
+document.getElementById('pa-onboarding-guide-modal')?.remove();
+const perms = getSetupPermissionsState();
+let step = Number(initialStep) || (perms.native && perms.a11yOk && !perms.overlayOk ? 2 : 1);
+if (step < 1 || step > 3) step = 1;
+setupGuideCurrentStep = step;
+const modal = document.createElement('div');
+modal.id = 'pa-onboarding-guide-modal';
+modal.className = 'pa-modal-backdrop';
+const markGuideDone = () => {
+try { localStorage.setItem(STORAGE_KEYS.setupGuideDone, '1'); } catch {}
+};
+const closeWizard = () => {
+markGuideDone();
+modal.remove();
+};
+const renderStepBody = () => {
+setupGuideCurrentStep = step;
+const p = getSetupPermissionsState();
+modal.querySelectorAll('.pa-guide-step-pill').forEach((el) => {
+const s = Number(el.getAttribute('data-guide-step'));
+el.classList.toggle('is-active', s === step);
+});
+const bodyEl = modal.querySelector('#pa-guide-modal-body');
+const footEl = modal.querySelector('#pa-guide-modal-foot');
+if (!bodyEl || !footEl) return;
+if (step === 1) {
+bodyEl.innerHTML = `
+          <div class="pa-guide-status-bar ${p.a11yOk ? 'is-ok' : 'is-pending'}" id="pa-guide-s1-status"></div>
+          <div class="pa-modal-title">第 1 步：开启「DeepSeek · 星语」无障碍服务</div>
+          <ol class="pa-guide-steps-ol">
+            <li>点击下方<strong>「前往系统无障碍设置」</strong>按钮直达设置页面。</li>
+            <li>在列表中找到<strong>「已下载的应用」</strong>或<strong>「已安装的服务」</strong>。</li>
+            <li>点进<strong>「DeepSeek · 星语」</strong>，打开开关并点击允许。</li>
+            <li>返回星语 App，此处状态会自动变绿 ✅。</li>
+          </ol>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button type="button" class="pa-banner-btn" id="pa-guide-go-a11y">前往系统无障碍设置</button>
+            <button type="button" class="pa-banner-btn outline" id="pa-guide-recheck-1">刷新检测状态</button>
+          </div>
+        `;
+footEl.innerHTML = `
+          <button type="button" class="pa-banner-btn subtle" id="pa-guide-skip-btn">暂不设置</button>
+          <button type="button" class="pa-banner-btn" id="pa-guide-next-btn">下一步：悬浮窗 →</button>
+        `;
+bodyEl.querySelector('#pa-guide-go-a11y')?.addEventListener('click', () => {
+const b = getBridge();
+if (p.native && b && typeof b.openAccessibilitySettings === 'function') {
+b.openAccessibilitySettings();
+} else {
+showToast('当前为网页端；请在 Android 随身版 APK 中点击直达无障碍设置');
+}
+});
+bodyEl.querySelector('#pa-guide-recheck-1')?.addEventListener('click', () => {
+syncStatus();
+refreshSetupGuideStatus(true);
+});
+} else if (step === 2) {
+bodyEl.innerHTML = `
+          <div class="pa-guide-status-bar ${(p.overlayOk && p.floatOn) ? 'is-ok' : 'is-pending'}" id="pa-guide-s2-status"></div>
+          <div class="pa-modal-title">第 2 步：开启桌面悬浮窗（强烈推荐）</div>
+          <ol class="pa-guide-steps-ol">
+            <li>悬浮窗权限允许星语在你使用微信、学习软件或外卖软件时，<strong>直接在当前屏幕上方弹出确认框或急停球</strong>。</li>
+            <li>若尚未授权，点击下方<strong>「前往授权悬浮窗」</strong>并打开允许开关。</li>
+            <li>授权后点击<strong>「立即启动悬浮窗」</strong>，大肥鱼悬浮球就会常驻在屏幕侧边。</li>
+          </ol>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button type="button" class="pa-banner-btn" id="pa-guide-go-overlay">${p.overlayOk ? '立即启动悬浮窗' : '前往授权并开启悬浮窗'}</button>
+            <button type="button" class="pa-banner-btn outline" id="pa-guide-recheck-2">刷新检测状态</button>
+          </div>
+        `;
+footEl.innerHTML = `
+          <button type="button" class="pa-banner-btn outline" id="pa-guide-prev-btn">← 上一步</button>
+          <button type="button" class="pa-banner-btn" id="pa-guide-next-btn">下一步：使用技巧 →</button>
+        `;
+bodyEl.querySelector('#pa-guide-go-overlay')?.addEventListener('click', () => {
+const b = getBridge();
+const cur = getSetupPermissionsState();
+if (!cur.native || !b) {
+showToast('当前为网页端；请在 Android 随身版 APK 中开启悬浮窗');
+return;
+}
+if (!cur.overlayOk && typeof b.requestOverlayPermission === 'function') {
+b.requestOverlayPermission();
+showToast('请在系统设置中允许「显示在其他应用上层」后返回');
+} else if (typeof b.startFloatAgent === 'function') {
+b.startFloatAgent();
+showToast('已启动桌面多功能悬浮窗！');
+setTimeout(() => { syncStatus(); refreshSetupGuideStatus(false); }, 300);
+}
+});
+bodyEl.querySelector('#pa-guide-recheck-2')?.addEventListener('click', () => {
+syncStatus();
+refreshSetupGuideStatus(false);
+});
+} else {
+bodyEl.innerHTML = `
+          <div class="pa-modal-title">第 3 步：30 秒上手 · 让 AI 顺畅干活</div>
+          <div class="pa-guide-tip-grid">
+            <div class="pa-guide-tip-item"><strong>1. 模糊任务先确认再跳走：</strong>发「帮我点外卖 / 写作业」时，AI 会先停在当前页向你确认细节，确认完再顺畅切 App。</div>
+            <div class="pa-guide-tip-item"><strong>2. 卡顿会主动问你：</strong>如果中途遇到按钮点不动或页面来回跳，AI 会自动暂停并弹窗问你的指示，不会死循环瞎点。</div>
+            <div class="pa-guide-tip-item"><strong>3. 本地免 API 也能聊天：</strong>问时间、算算数、聊日常或点「打开微信/音量加/截屏」无需消耗任何 API 额度。</div>
+          </div>
+        `;
+footEl.innerHTML = `
+          <button type="button" class="pa-banner-btn outline" id="pa-guide-prev-btn">← 上一步</button>
+          <button type="button" class="pa-banner-btn" id="pa-guide-finish-btn">完成，开始使用</button>
+        `;
+}
+footEl.querySelector('#pa-guide-skip-btn')?.addEventListener('click', closeWizard);
+footEl.querySelector('#pa-guide-prev-btn')?.addEventListener('click', () => {
+step = Math.max(1, step - 1);
+renderStepBody();
+});
+footEl.querySelector('#pa-guide-next-btn')?.addEventListener('click', () => {
+step = Math.min(3, step + 1);
+renderStepBody();
+});
+footEl.querySelector('#pa-guide-finish-btn')?.addEventListener('click', () => {
+closeWizard();
+showToast('新手指引已完成，随时可以在控制台重新查看~');
+});
+refreshSetupGuideStatus(false);
+};
+modal.innerHTML = `
+      <div class="pa-modal-dialog" role="dialog" aria-modal="true" aria-label="手机辅助新手指引">
+        <div class="pa-modal-head">
+          <div class="pa-modal-badge is-info">手机辅助 · 新手指引</div>
+          <button type="button" class="pa-sheet-close-btn" id="pa-guide-close-x" aria-label="关闭新手指引">✕</button>
+        </div>
+        <div style="padding:12px 16px 0;">
+          <div class="pa-guide-stepper">
+            <button type="button" class="pa-guide-step-pill" data-guide-step="1">1. 无障碍</button>
+            <button type="button" class="pa-guide-step-pill" data-guide-step="2">2. 悬浮窗</button>
+            <button type="button" class="pa-guide-step-pill" data-guide-step="3">3. 上手技巧</button>
+          </div>
+        </div>
+        <div class="pa-modal-body" id="pa-guide-modal-body"></div>
+        <div class="pa-modal-foot" id="pa-guide-modal-foot"></div>
+      </div>
+    `;
+document.body.appendChild(modal);
+modal.querySelectorAll('.pa-guide-step-pill').forEach((btn) => {
+btn.addEventListener('click', () => {
+step = Number(btn.getAttribute('data-guide-step')) || 1;
+renderStepBody();
+});
+});
+modal.querySelector('#pa-guide-close-x')?.addEventListener('click', closeWizard);
+modal.addEventListener('click', (e) => {
+if (e.target === modal) closeWizard();
+});
+renderStepBody();
+}
+function maybeAutoShowSetupGuide() {
+if (setupGuideAutoTriggered) return;
+if (!isNativeApk()) return;
+try {
+if (localStorage.getItem(STORAGE_KEYS.setupGuideDone) === '1') return;
+} catch {}
+const perms = getSetupPermissionsState();
+if (perms.a11yOk && perms.overlayOk) return;
+setupGuideAutoTriggered = true;
+setTimeout(() => {
+const shell = document.getElementById('app-shell');
+if (shell && shell.dataset.uiMode === 'phone-agent' && !document.getElementById('pa-onboarding-guide-modal')) {
+openSetupGuideWizard(perms.a11yOk ? 2 : 1);
+}
+}, 650);
 }
 function formatActionCodeDesc(plan) {
 const tool = plan?.tool || plan?.action || 'done';
@@ -22149,6 +23132,7 @@ executeTaskInChat(clean);
 };
 window.__onNativeResume = () => {
 syncStatus();
+refreshSetupGuideStatus(true);
 if (pendingTaskAfterA11y && isNativeApk() && getBridge()?.isAccessibilityEnabled?.()) {
 const card = $('pa-inline-a11y-card');
 if (card) {
@@ -22425,8 +23409,8 @@ if (!cleanKey) {
 return { ok: true, preflight: buildLocalFallbackPreFlight(task, clarifyPolicy) };
 }
 const targetUrl = normalizeChatCompletionsUrl(cfg.baseUrl);
-const rawModel = String(cfg.model || 'deepseek-chat').trim() || 'deepseek-chat';
-const targetModel = /reasoner|r1/i.test(rawModel) ? 'deepseek-chat' : rawModel;
+const rawModel = String(cfg.model || 'deepseek-v4.1-flash').trim() || 'deepseek-v4.1-flash';
+const targetModel = /reasoner|r1/i.test(rawModel) ? 'deepseek-chat' : resolveDirectModelForUrl(rawModel, targetUrl);
 const preSys = [
 '你是星语手机辅助代理（Phone Agent · dsh-Go 任务前需求预检助手）。',
 '在真正切走手机界面或开始执行任务之前，快速判断用户的指令是否清晰完整，避免“一发指令就盲目跳走”。',
@@ -23030,7 +24014,8 @@ if (!cleanKey) {
 return { ok: false, code: 'NO_DIRECT_KEY', error: '手机辅助 DeepSeek / 自定义 API 密钥尚未配置，请填入密钥或切换至云端 API。' };
 }
 const targetUrl = normalizeChatCompletionsUrl(cfg.baseUrl);
-const targetModel = String(cfg.model || 'deepseek-chat').trim() || 'deepseek-chat';
+const rawModelCfg = String(cfg.model || 'deepseek-v4.1-flash').trim() || 'deepseek-v4.1-flash';
+const targetModel = resolveDirectModelForUrl(rawModelCfg, targetUrl);
 const baseMessages = buildPlanningPromptMessages({
 task,
 snapshot,
@@ -23096,10 +24081,10 @@ const rawReasoning = String(msgObj.reasoning_content || '').trim();
 try {
 const parsedPlan = extractJsonFromText(content);
 if (rawReasoning && !parsedPlan.reasoning) parsedPlan.reasoning = rawReasoning;
-return { plan: parsedPlan, model: modelToUse };
+return { plan: parsedPlan, model: modelToUse, usage: json?.usage || null };
 } catch (parseErr) {
 if (rawReasoning) {
-return { plan: extractJsonFromText(rawReasoning), model: modelToUse };
+return { plan: extractJsonFromText(rawReasoning), model: modelToUse, usage: json?.usage || null };
 }
 throw parseErr;
 }
@@ -23112,8 +24097,9 @@ result = await attemptDirectCall(targetModel, '', true);
 if (signal?.aborted || firstErr?.code === 'DIRECT_AUTH_ERROR') {
 throw firstErr;
 }
-if (firstErr?.code === 'JSON_PARSE_ERROR' || Number(firstErr?.status) === 400 || Number(firstErr?.status) === 422 || /JSON|response_format/i.test(String(firstErr?.message || ''))) {
-const retryModel = /reasoner|r1/i.test(targetModel) ? 'deepseek-chat' : targetModel;
+if (firstErr?.code === 'JSON_PARSE_ERROR' || Number(firstErr?.status) === 400 || Number(firstErr?.status) === 422 || /JSON|response_format|model/i.test(String(firstErr?.message || ''))) {
+const isModelErr = /model.*not.*exist|invalid.*model|does not exist/i.test(String(firstErr?.message || ''));
+const retryModel = (/reasoner|r1/i.test(targetModel) || isModelErr) ? 'deepseek-chat' : targetModel;
 result = await attemptDirectCall(
 retryModel,
 '刚才未返回合法 JSON 动作指令。请严格只输出一个合法 JSON 对象（不要任何 Markdown 或解释文字）。',
@@ -23126,6 +24112,18 @@ result = await attemptDirectCall(targetModel, '', false);
 throw firstErr;
 }
 }
+try {
+if (result.usage && String(targetUrl || '').toLowerCase().includes('deepseek.com')) {
+window.DeepSeekMonitorPlugin?.recordTurnUsage?.({
+usage: result.usage,
+model: result.model,
+source: '手机辅助·直连',
+apiKey: cleanKey,
+baseUrl: targetUrl,
+provider: 'own_deepseek'
+});
+}
+} catch {}
 return { ok: true, plan: result.plan, model: result.model, engine: 'api_direct' };
 } catch (directErr) {
 if (signal?.aborted) throw directErr;
@@ -23172,6 +24170,18 @@ proxyRes = { ok: false, status: cloudFallback.status, data: cData };
 } catch {}
 }
 if (proxyRes.ok && proxyRes.data?.plan) {
+try {
+if (proxyRes.data?.usage && String(targetUrl || '').toLowerCase().includes('deepseek.com')) {
+window.DeepSeekMonitorPlugin?.recordTurnUsage?.({
+usage: proxyRes.data.usage,
+model: proxyRes.data.model || targetModel,
+source: '手机辅助·代理',
+apiKey: cleanKey,
+baseUrl: targetUrl,
+provider: 'own_deepseek'
+});
+}
+} catch {}
 return { ok: true, plan: proxyRes.data.plan, model: proxyRes.data.model, engine: 'api_direct_proxy' };
 }
 return {
@@ -23200,7 +24210,7 @@ interjections: finalInterjections,
 history: compactHistory,
 screenSize,
 installedApps: compactInstalledApps,
-customModel: cfg.model || ''
+customModel: getCloudModel() || 'deepseek-v4.1-flash'
 },
 signal
 );
@@ -23307,6 +24317,23 @@ const rawRes = forceGesture && typeof b.clickByRefGesture === 'function'
 ? b.clickByRefGesture(snapshotId, refId)
 : b.clickByRef(snapshotId, refId);
 const resObj = JSON.parse(rawRes || '{}');
+if (!resObj.ok && Array.isArray(latestNodes) && typeof b.dispatchClick === 'function') {
+const matchedNode = latestNodes.find((n) => n.ref === refId);
+const fallbackCenter = parseBoundsCenter(matchedNode);
+if (fallbackCenter && fallbackCenter.cx > 0 && fallbackCenter.cy > 0) {
+const coordOk = b.dispatchClick(fallbackCenter.cx, fallbackCenter.cy);
+if (coordOk) {
+return {
+executed: true,
+error: false,
+method: 'gesture_fallback',
+x: fallbackCenter.cx,
+y: fallbackCenter.cy,
+text: `已通过坐标兜底点击控件 ${refId} (${fallbackCenter.cx}, ${fallbackCenter.cy})`
+};
+}
+}
+}
 return {
 executed: Boolean(resObj.ok),
 error: !resObj.ok,
@@ -23634,10 +24661,15 @@ const matchedOffline = isSimpleBuiltInLocalCmd(taskText);
 const shouldTryFullLocal = !isResuming && execMode === 'local';
 if (shouldTryFullLocal) {
 if (isLikelyPureChat(taskText) && !matchedOffline) {
-const chatReply = '你好呀，我是 dsh-Go 手机辅助助手！目前处于「本地免 API」模式，可以直接帮你执行常用操作或已固化的本地技能；如果要和我自由深度对话、分析屏幕或执行跨应用多步任务，请在顶部控制台切换至 DeepSeek API 或云端 API。';
-appendThoughtItem(cardCtx, '本地对话', '识别为自然聊天或咨询提问，无需操控手机。');
-recordPaChatTurn('assistant', chatReply);
-finalizeAgentTurn(cardCtx, { status: 'done', replyText: chatReply, isChatOnly: true });
+const smart = buildLocalSmartChatReply(taskText);
+appendThoughtItem(cardCtx, '本地思考', smart.thought || '识别为自然聊天或咨询提问，无需操控手机。');
+recordPaChatTurn('assistant', smart.reply);
+const quickAction = smart.actionType === 'open_setup_guide'
+? { label: '打开无障碍与悬浮窗新手指引', onClick: () => openSetupGuideWizard(1) }
+: (smart.actionType === 'open_settings'
+? { label: '打开控制台切换 / 配置引擎', onClick: () => openControlSheet(false) }
+: null);
+finalizeAgentTurn(cardCtx, { status: 'done', replyText: smart.reply, isChatOnly: true, quickAction });
 return;
 }
 if (!native) {
@@ -23647,6 +24679,15 @@ const sim = simulateWebLocalPreview(taskText);
 addStepItem(cardCtx.stepsList, 1, taskText, '网页预览模拟执行', '模拟完成', false, 'local.rule');
 finalSummaryTitle = `已完成本地口令演练 · ${taskText}`;
 finalReplyText = sim;
+} else if (!EXPLICIT_CONTROL_VERB_RE.test(taskText)) {
+const smart = buildLocalSmartChatReply(taskText);
+appendThoughtItem(cardCtx, '本地思考', smart.thought);
+recordPaChatTurn('assistant', smart.reply);
+const quickAction = smart.actionType === 'open_setup_guide'
+? { label: '打开无障碍与悬浮窗新手指引', onClick: () => openSetupGuideWizard(1) }
+: null;
+finalizeAgentTurn(cardCtx, { status: 'done', replyText: smart.reply, isChatOnly: true, quickAction });
+return;
 } else {
 addStepItem(cardCtx.stepsList, 1, '超出固定离线口令范围', '建议切换至 DeepSeek API 或云端 API 进行智能识屏规划。', '未匹配', true, 'local.rule');
 showInlineFixBox(cardCtx.fixSlot, { error: '该任务超出本地免 API 固定口令范围，请选择要切换的智能引擎继续：' }, {
@@ -23674,6 +24715,18 @@ cardCtx.stopBtn.classList.remove('hidden');
 cardCtx.stopBtn.textContent = '停止连刷';
 }
 syncStatus();
+return;
+}
+if (!EXPLICIT_CONTROL_VERB_RE.test(taskText)) {
+const smart = buildLocalSmartChatReply(taskText);
+appendThoughtItem(cardCtx, '本地思考', smart.thought);
+recordPaChatTurn('assistant', smart.reply);
+const quickAction = smart.actionType === 'open_setup_guide'
+? { label: '打开无障碍与悬浮窗新手指引', onClick: () => openSetupGuideWizard(1) }
+: (smart.actionType === 'open_settings'
+? { label: '打开控制台切换 / 配置引擎', onClick: () => openControlSheet(false) }
+: null);
+finalizeAgentTurn(cardCtx, { status: 'done', replyText: smart.reply, isChatOnly: true, quickAction });
 return;
 }
 cardCtx.stepCount = 1;
@@ -23704,10 +24757,13 @@ let autoContinueHint = Array.isArray(resumeOpts?.initialInterjections)
 : '';
 const loopState = {
 noChangeStreak: 0,
+errorStreak: 0,
 waitStreak: 0,
 recoveryAttempts: 0,
+lastStuckReason: '',
 failedActionMap: new Map(),
 failedActionLabels: new Map(),
+pageStepCounts: new Map(),
 recentPageSigs: [],
 recentActionFingerprints: []
 };
@@ -23823,16 +24879,19 @@ const currentPageKey = `${snapshot.packageName || ''}::${snapshot.signature || '
 if (native && currentPageKey !== '::') {
 loopState.recentPageSigs.push(currentPageKey);
 if (loopState.recentPageSigs.length > 8) loopState.recentPageSigs = loopState.recentPageSigs.slice(-8);
+loopState.pageStepCounts.set(currentPageKey, (loopState.pageStepCounts.get(currentPageKey) || 0) + 1);
 }
 const oscDetected = native ? detectOscillation(loopState.recentPageSigs) : false;
 const blockedLabels = loopState.failedActionLabels.get(currentPageKey) || [];
+const currentPageVisitsTotal = loopState.pageStepCounts.get(currentPageKey) || 0;
 const loopDiagnostics = {
 noChangeStreak: loopState.noChangeStreak,
+errorStreak: loopState.errorStreak,
 waitStreak: loopState.waitStreak,
 oscillationDetected: oscDetected,
 recoveryAttempts: loopState.recoveryAttempts,
 blockedActions: blockedLabels.slice(-8),
-samePageVisits: loopState.recentPageSigs.filter((x) => x === currentPageKey).length
+samePageVisits: currentPageVisitsTotal
 };
 const beforeEventSeq = native ? (Number(snapshot.eventSeq) || Number(readScreenEventSeq().seq) || 0) : 0;
 const pendingStepEl = addStepItem(
@@ -23910,9 +24969,45 @@ const isRepeatedRecent =
 loopState.noChangeStreak >= 1 &&
 loopState.recentActionFingerprints.slice(-2).includes(fp);
 const isWaitLoop = (toolName === 'phone_wait' || toolName === 'wait') && loopState.waitStreak >= 1;
-const needLoopIntercept = isWaitLoop || isRepeatedFail || isRepeatedRecent || (oscDetected && loopState.recoveryAttempts < 2);
+const needLoopIntercept =
+isWaitLoop ||
+isRepeatedFail ||
+isRepeatedRecent ||
+oscDetected ||
+loopState.noChangeStreak >= 2 ||
+loopState.errorStreak >= 2 ||
+(!isBatchContinuousTask && currentPageVisitsTotal >= 5);
+const buildStuckAskPlan = (reasonText) => ({
+thought: `检测到执行卡顿（${reasonText}），为防止陷入死循环，已主动暂停并向你请示指示。`,
+tool: 'ask_user',
+args: {
+message: `我在「${snapshot.appName || '当前界面'}」出现卡顿（${reasonText}），为防止陷入死循环已暂停。请直接输入指示告诉我点哪里/怎么做，或选择下方方案：`,
+reason: 'confirm',
+options: ['帮我跳过这步换个方法', '返回上一页重新找', '我已手动操作，继续执行', '先停止本次任务']
+},
+risk: 'read',
+summary: '遇到卡顿 · 请给指示防循环',
+reply: `我在「${snapshot.appName || '当前界面'}」出现卡顿（${reasonText}），请给指示。`
+});
 if (needLoopIntercept) {
-if (loopState.recoveryAttempts < 2 && loopState.noChangeStreak < 4) {
+const stuckReason = loopState.errorStreak >= 2
+? `连续 ${loopState.errorStreak} 步操作执行失败`
+: (loopState.noChangeStreak >= 2
+? `连续 ${loopState.noChangeStreak} 步画面无变化`
+: (oscDetected
+? '页面在两个界面间反复跳转'
+: (isWaitLoop
+? '连续等待界面仍无响应'
+: (!isBatchContinuousTask && currentPageVisitsTotal >= 5
+? `在同一页面停留 ${currentPageVisitsTotal} 步未推进`
+: `动作 ${toolName}(${summarizePlanArgs(plan)}) 重复失效`))));
+loopState.lastStuckReason = stuckReason;
+const shouldProactiveAskUser =
+loopState.noChangeStreak >= 2 ||
+loopState.errorStreak >= 2 ||
+(loopState.recoveryAttempts >= 1 && (isRepeatedFail || isRepeatedRecent || oscDetected || isWaitLoop)) ||
+(!isBatchContinuousTask && currentPageVisitsTotal >= 5);
+if (!shouldProactiveAskUser && loopState.recoveryAttempts < 1) {
 loopState.recoveryAttempts += 1;
 const dismissNode = findPopupDismissNode(snapshot.nodes, activeTaskText);
 const dismissFp = dismissNode ? `tap:${dismissNode.ref || ''}:${String(dismissNode.text || dismissNode.desc || '').slice(0, 24)}` : '';
@@ -23928,12 +25023,7 @@ summary: `自动清理遮挡弹窗「${dismissLabel}」`
 toolName = 'phone_tap';
 appendNativeConsoleLog(`第${step}步触发自动纠偏：清理遮挡弹窗「${dismissLabel}」`);
 } else {
-const reasonDesc = isWaitLoop
-? '已连续等待但画面仍未出现预期变化，严禁再次 phone_wait'
-: (oscDetected
-? '检测到页面在两个界面间往返死循环，必须跳出当前路径，改用搜索框/换入口或返回上一级'
-: `动作 ${toolName}(${summarizePlanArgs(plan)}) 在当前画面已确认无效`);
-const recoveryHint = `【系统死循环自动纠偏】${reasonDesc}。当前页面禁用动作列表：${blockedLabels.join('；') || fp}。请立即更换完全不同的策略（如换控件、改用坐标、滚动查找、phone_key(back) 或 ask_user）！`;
+const recoveryHint = `【系统死循环自动纠偏】${stuckReason}。当前页面禁用动作列表：${blockedLabels.join('；') || fp}。请立即更换完全不同的策略（如换控件、改用坐标、滚动查找、phone_key(back) 或 ask_user）！`;
 const rePlanResp = await requestPlanStep({
 execMode,
 task: activeTaskText,
@@ -23956,31 +25046,17 @@ if (!pageBlockedSet?.has(candFp) && candFp !== fp) {
 plan = candPlan;
 toolName = plan.tool || plan.action || 'step';
 appendNativeConsoleLog(`第${step}步触发死循环纠偏重规划 -> ${toolName}`);
-} else if (snapshot.packageName !== 'com.deepseek.starwhisper.studio' && !String(snapshot.packageName || '').includes('launcher')) {
-plan = {
-thought: '连续纠偏仍命中相同无效路径，自动执行返回上一页跳出死循环。',
-tool: 'phone_key',
-args: { key: 'back' },
-risk: 'read',
-summary: '自动返回上一页跳出循环'
-};
-toolName = 'phone_key';
+} else {
+plan = buildStuckAskPlan(stuckReason);
+toolName = 'ask_user';
 }
+} else {
+plan = buildStuckAskPlan(stuckReason);
+toolName = 'ask_user';
 }
 }
 } else {
-plan = {
-thought: `在当前界面已尝试 ${loopState.recoveryAttempts} 次自动纠偏仍未推进，已自动暂停防卡死，向你确认下一步。`,
-tool: 'ask_user',
-args: {
-message: `我在「${snapshot.appName || '当前界面'}」连续操作未见变化或出现循环跳转，已自动暂停。你想怎么继续？`,
-reason: 'confirm',
-options: ['我已手动处理，继续执行', '返回上一页换个方式找', '先停止本次任务']
-},
-risk: 'read',
-summary: '检测到卡顿/循环 · 请求确认继续方式',
-reply: `我在「${snapshot.appName || '当前界面'}」连续操作未见变化或出现循环跳转，已自动暂停。`
-};
+plan = buildStuckAskPlan(stuckReason);
 toolName = 'ask_user';
 }
 }
@@ -24058,16 +25134,29 @@ break;
 appendUserMessageRow(replyClean);
 recordPaChatTurn('user', replyClean);
 loopState.noChangeStreak = 0;
+loopState.errorStreak = 0;
 loopState.waitStreak = 0;
 loopState.recoveryAttempts = 0;
+loopState.lastStuckReason = '';
 loopState.recentPageSigs = [];
-loopState.failedActionMap.delete(currentPageKey);
-loopState.failedActionLabels.delete(currentPageKey);
-if (/返回上一页/.test(replyClean) && native && b && typeof b.dispatchGlobalAction === 'function') {
+loopState.pageStepCounts.delete(currentPageKey);
+if (/帮我跳过这步换个方法/.test(replyClean)) {
+autoContinueHint = '【用户现场指示】跳过刚才卡住的目标与方式，严格避开当前页面禁用动作列表，更换其他入口、滚动查找或搜索框继续完成任务！';
+} else if (/返回上一页/.test(replyClean)) {
+if (native && b && typeof b.dispatchGlobalAction === 'function') {
 try { b.dispatchGlobalAction('back'); } catch {}
 await sleep(420);
 }
-autoContinueHint = `【用户已确认/补充】${replyClean}`;
+autoContinueHint = '【用户现场指示】已返回上一页，请换一条全新路径重新查找目标。';
+} else if (/我已手动操作/.test(replyClean)) {
+loopState.failedActionMap.delete(currentPageKey);
+loopState.failedActionLabels.delete(currentPageKey);
+autoContinueHint = '【用户已手动处理】请直接基于最新屏幕状态继续下一步。';
+} else {
+loopState.failedActionMap.delete(currentPageKey);
+loopState.failedActionLabels.delete(currentPageKey);
+autoContinueHint = `【用户现场指示（最高优先级执行）】：${replyClean}`;
+}
 updateStepResult(pendingStepEl, `已确认：${replyClean.slice(0, 14)}`, false);
 history.push({
 step,
@@ -24078,7 +25167,7 @@ result: `用户回复确认：${replyClean}`,
 changed: true,
 page: snapshot.appName || snapshot.packageName || ''
 });
-await sleep(180);
+await sleep(160);
 continue;
 }
 if (askResult.mode === 'back_to_chat') {
@@ -24117,9 +25206,12 @@ finalSummaryTitle = '用户已取消确认';
 finalReplyText = '已取消本次待确认操作。';
 break;
 }
-const actionQueue = Array.isArray(plan.actions) && plan.actions.length >= 2
+const rawActionQueue = Array.isArray(plan.actions) && plan.actions.length >= 2
 ? plan.actions
 : [{ tool: toolName, args: plan.args || plan.params || {}, risk: plan.risk, summary: plan.summary, needConfirm: plan.needConfirm }];
+const actionQueue = (loopState.noChangeStreak >= 1 || loopState.errorStreak >= 1 || oscDetected)
+? rawActionQueue.slice(0, 1)
+: rawActionQueue;
 let abortedByUser = false;
 let handedOver = false;
 let gateRejected = false;
@@ -24240,6 +25332,11 @@ loopState.waitStreak += 1;
 } else {
 loopState.waitStreak = 0;
 }
+if (execRes.error) {
+loopState.errorStreak += 1;
+} else {
+loopState.errorStreak = 0;
+}
 if ((verdict && !verdict.changed && lastSubTool !== 'phone_wait') || execRes.error) {
 noChangeStreak += 1;
 loopState.noChangeStreak += 1;
@@ -24258,8 +25355,10 @@ loopState.failedActionLabels.set(currentPageKey, labelList.slice(-10));
 } else {
 noChangeStreak = 0;
 loopState.noChangeStreak = 0;
+loopState.errorStreak = 0;
 if (verdict && verdict.changed && !oscDetected) {
 loopState.recoveryAttempts = 0;
+loopState.lastStuckReason = '';
 earlyDoneIntercepts = 0;
 }
 }
@@ -24996,9 +26095,65 @@ showToast(`❌ 连接失败：${errTxt || '请检查密钥、接口地址与模�
 if (btn) { btn.disabled = false; btn.textContent = origTxt; }
 }
 });
+$('pa-cloud-model-select')?.addEventListener('change', (e) => {
+const m = setCloudModel(e.target.value || 'deepseek-v4.1-flash');
+showToast(`云端 API 已切换模型：${m}`);
+syncStatus();
+});
+let paCloudModelsFetched = false;
+async function fetchPhoneAgentCloudModels(force = false) {
+const sel = $('pa-cloud-model-select');
+const statusEl = $('pa-cloud-models-status');
+const btn = $('pa-cloud-fetch-models-btn');
+if (!sel) return;
+if (!force && paCloudModelsFetched) return;
+if (statusEl) statusEl.textContent = '（拉取中…）';
+if (btn) btn.disabled = true;
+try {
+let res = await apiPostJson('/api/cloud/models', {}).catch(() => ({ ok: false, data: {} }));
+if ((!res.ok || !Array.isArray(res.data?.models) || !res.data.models.length) && isNativeApk()) {
+const r2 = await fetch(`${PUBLIC_WEB_ORIGIN}/api/cloud/models`, {
+method: 'POST',
+headers: { 'Content-Type': 'application/json' },
+body: JSON.stringify({})
+}).catch(() => null);
+if (r2 && r2.ok) {
+const d2 = await r2.json().catch(() => ({}));
+if (d2?.ok && Array.isArray(d2.models)) res = { ok: true, data: d2 };
+}
+}
+const models = Array.isArray(res.data?.models) ? res.data.models : [];
+if (models.length > 0) {
+paCloudModelsFetched = true;
+const prev = getCloudModel();
+sel.innerHTML = '';
+for (const m of models) {
+const opt = document.createElement('option');
+opt.value = m;
+opt.textContent = m;
+sel.appendChild(opt);
+}
+if (models.includes(prev)) {
+sel.value = prev;
+} else {
+sel.value = models[0];
+setCloudModel(models[0]);
+}
+if (statusEl) statusEl.textContent = `（已自动拉取 ${models.length} 个）`;
+} else if (statusEl) {
+statusEl.textContent = '（默认预设）';
+}
+} catch {
+if (statusEl) statusEl.textContent = '（默认预设）';
+} finally {
+if (btn) btn.disabled = false;
+}
+}
+$('pa-cloud-fetch-models-btn')?.addEventListener('click', () => fetchPhoneAgentCloudModels(true));
+$('pa-mode-api-cloud')?.addEventListener('click', () => setTimeout(() => fetchPhoneAgentCloudModels(false), 120));
 $('pa-cfg-save-btn')?.addEventListener('click', () => {
 const apiKey = cleanApiKey($('pa-cfg-apikey')?.value || '');
-const model = ($('pa-cfg-model')?.value || 'deepseek-chat').trim() || 'deepseek-chat';
+const model = ($('pa-cfg-model')?.value || 'deepseek-v4.1-flash').trim() || 'deepseek-v4.1-flash';
 const baseUrl = ($('pa-cfg-baseurl')?.value || '').trim();
 const autoApprove = Boolean($('pa-cfg-auto-approve')?.checked);
 setDirectApiKey(apiKey);
@@ -25026,6 +26181,11 @@ setTimeout(syncStatus, 1000);
 };
 $('pa-banner-a11y-chip')?.addEventListener('click', handleOpenA11y);
 $('pa-open-a11y-btn')?.addEventListener('click', handleOpenA11y);
+$('pa-empty-setup-guide-btn')?.addEventListener('click', () => openSetupGuideWizard(1));
+$('pa-open-setup-guide-btn')?.addEventListener('click', () => {
+closeControlSheet();
+openSetupGuideWizard(1);
+});
 const handleToggleFloat = () => {
 if (!isNativeApk()) {
 showToast('多功能桌面悬浮窗需在 Android 原生随身版 APK 中运行');
@@ -25410,6 +26570,8 @@ syncStatus();
 syncLearnedSkillsToNative(loadLearnedSkills());
 if (document.getElementById('app-shell')?.dataset.uiMode === 'phone-agent') {
 renderWorkspace();
+} else {
+maybeAutoShowSetupGuide();
 }
 setTimeout(() => {
 checkUpdateOnStartup();
@@ -25468,8 +26630,22 @@ renderWorkspace,
 resetTaskWorkspace,
 openControlSheet,
 closeControlSheet,
+openSetupGuideWizard,
 openDeepSeekOfficialPage,
 openModal,
-closeModal
+closeModal,
+__testHooks: {
+isLikelyPureChat,
+safeEvalArithmetic,
+buildLocalSmartChatReply,
+detectOscillation,
+findPopupDismissNode,
+getActionFingerprint,
+shouldSkipPreFlightClarify,
+summarizePlanArgs,
+runReActLoop,
+openSetupGuideWizard,
+getSetupPermissionsState
+}
 };
 })();

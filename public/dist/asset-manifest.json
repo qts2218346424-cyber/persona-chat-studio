@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-11-26T18:19:06.459Z",
-  "bundleHash": "bf67340cdb",
+  "generatedAt": "2026-11-26T18:38:15.883Z",
+  "bundleHash": "a04e52c548",
   "css": {
     "file": "dist/app.bundle.css",
     "hash": "9099220479",
@@ -9,9 +9,9 @@
   },
   "js": {
     "file": "dist/app.bundle.js",
-    "hash": "c2049dbcf1",
-    "rawBytes": 1218116,
-    "minifiedBytes": 1018365,
+    "hash": "a8c7378c0a",
+    "rawBytes": 1223187,
+    "minifiedBytes": 1022475,
     "fellBack": false
   }
 }

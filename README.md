@@ -22,7 +22,7 @@
 </p>
 
 <p>
-  <img src="https://img.shields.io/badge/Release-v2.7.1_Build_162-7C3AED?style=flat-square&logo=rocket&logoColor=white" alt="Version v2.7.1" />
+  <img src="https://img.shields.io/badge/Release-v2.7.2_Build_163-7C3AED?style=flat-square&logo=rocket&logoColor=white" alt="Version v2.7.2" />
   <img src="https://img.shields.io/badge/Node.js-%3E%3D22.5.0-339933?style=flat-square&logo=node.js&logoColor=white" alt="Node.js >= 22.5.0" />
   <img src="https://img.shields.io/badge/Dependencies-0_npm_Packages-FF6B6B?style=flat-square&logo=npm&logoColor=white" alt="Zero npm Dependencies" />
   <img src="https://img.shields.io/badge/Storage-node%3Asqlite-003B57?style=flat-square&logo=sqlite&logoColor=white" alt="Native SQLite" />
@@ -47,7 +47,9 @@
 
 ---
 
-## 🚀 v2.7.1 最新版本核心特性
+## 🚀 v2.7.2 最新版本核心特性
+
+1. **启动自动弹出版本更新公告 & 全面打通用户自带 API 驱动手机辅助**：修复启动检测到新版后自动弹出更新公告弹窗；全面打通 APK 离线壳透传与服务端防 CORS 代理（支持用户自带 DeepSeek / 第三方 OpenAI 兼容密钥免登录态直连代理、接口地址自动补全、自由输入模型名及一键测试连接）。
 
 1. **透明思考过程 + 自由对话 + 任务屏弹窗确认**：手机辅助新增类 DeepSeek R1 独立可折叠「思考过程」实时卡片与 `chat` 自由对话能力；遇到模糊或不确定的任务时，优先以居中弹窗确认，若正在第三方应用内执行则直接在当前任务画面上方弹出原生悬浮确认弹窗（支持快捷选项、直接输入回复或一键返回聊天）；本地免 API 报错弹窗精准提供切换 DeepSeek API / 云端 API。
 2. **dsh-Go 深海大鲸鱼半透明主题 UI**：手机辅助模式专属深海鲸影半透明背景（亮/暗双模式自适应，不遮挡交互）与毛玻璃思考/对话/输入组件。

@@ -2796,7 +2796,7 @@ signal: init.signal
 }
 return originalFetch(input, { ...init, headers: mergedHeaders, cache: 'no-store' });
 }
-if (standaloneActive && (pathname.startsWith('/api/auth/') || pathname === '/api/announcement')) {
+if (standaloneActive && (pathname.startsWith('/api/auth/') || pathname === '/api/announcement' || pathname === '/api/phone-agent/plan')) {
 try {
 const remoteUrl = `https://star.claudexxb.online${pathname}${urlStr.includes('?') ? urlStr.slice(urlStr.indexOf('?')) : ''}`;
 const mergedHeaders = new Headers(init?.headers || {});
@@ -2809,6 +2809,9 @@ const resp = await originalFetch(remoteUrl, {
 headers: mergedHeaders,
 cache: 'no-store'
 });
+if (pathname === '/api/phone-agent/plan') {
+return resp;
+}
 if (resp.ok) {
 const clone = resp.clone();
 const data = await clone.json().catch(() => null);
@@ -5234,7 +5237,7 @@ lastInteractionAt: Date.now(),
 hasMoreMessages: false,
 totalMessages: 0,
 oldestMessageId: 0,
-appVersion: '2.7.1',
+appVersion: '2.7.2',
 tourIndex: 0,
 tourActive: false,
 llmMode: 'local_antigravity',
@@ -19673,8 +19676,8 @@ runCloneBtn.innerHTML = origHtml;
 })();
 ;
 (() => {
-const CURRENT_APK_VERSION = '2.7.1';
-const CURRENT_APK_CODE = 162;
+const CURRENT_APK_VERSION = '2.7.2';
+const CURRENT_APK_CODE = 163;
 const DEEPSEEK_API_KEYS_URL = 'https://platform.deepseek.com/api_keys';
 const PUBLIC_WEB_ORIGIN = 'https://star.claudexxb.online';
 const GITHUB_RELEASES_URL = 'https://github.com/qts2218346424-cyber/persona-chat-studio/releases';
@@ -20044,13 +20047,37 @@ removeTrustedApp(btn.getAttribute('data-remove-trust') || '');
 });
 });
 }
+function cleanApiKey(rawKey) {
+let clean = String(rawKey || '').trim().replace(/[\r\n\t]+/g, '');
+if (/^Bearer\s+/i.test(clean)) {
+clean = clean.replace(/^Bearer\s+/i, '').trim();
+}
+return clean;
+}
+function normalizeChatCompletionsUrl(rawUrl) {
+let s = String(rawUrl || '').trim();
+if (!s) return 'https://api.deepseek.com/v1/chat/completions';
+if (!/^https?:\/\//i.test(s) && /^[a-z0-9.-]+\.[a-z]{2,}(?:\/.*)?$/i.test(s)) {
+s = `https://${s}`;
+}
+s = s.replace(/\/+$/, '');
+if (/\/chat\/completions$/i.test(s)) return s;
+if (/\/(?:v1|v1beta\/openai|compatible-mode\/v1|api\/v1)$/i.test(s)) {
+return `${s}/chat/completions`;
+}
+try {
+const u = new URL(s);
+if (!u.pathname || u.pathname === '/') return `${s}/v1/chat/completions`;
+} catch {}
+return `${s}/v1/chat/completions`;
+}
 function getDirectConfig() {
 let apiKey = '';
 let model = 'deepseek-chat';
 let baseUrl = '';
 let autoApprove = false;
 try {
-apiKey = (localStorage.getItem(STORAGE_KEYS.exclusiveKey) || '').trim();
+apiKey = cleanApiKey(localStorage.getItem(STORAGE_KEYS.exclusiveKey) || '');
 model = (localStorage.getItem(STORAGE_KEYS.directModel) || 'deepseek-chat').trim();
 baseUrl = (localStorage.getItem(STORAGE_KEYS.directBaseUrl) || '').trim();
 autoApprove = localStorage.getItem(STORAGE_KEYS.autoApprove) === '1';
@@ -20058,7 +20085,7 @@ autoApprove = localStorage.getItem(STORAGE_KEYS.autoApprove) === '1';
 return { apiKey, model, baseUrl, autoApprove };
 }
 function setDirectApiKey(key) {
-const clean = String(key || '').trim();
+const clean = cleanApiKey(key);
 try {
 if (clean) {
 localStorage.setItem(STORAGE_KEYS.exclusiveKey, clean);
@@ -22615,11 +22642,12 @@ const compactInstalledApps = needApps
 : [];
 const compactHistory = (history || []).slice(-6);
 if (execMode === 'api_direct') {
-if (!cfg.apiKey) {
-return { ok: false, code: 'NO_DIRECT_KEY', error: '手机辅助 DeepSeek API 密钥尚未配置，请填入密钥或切换至云端 API。' };
+const cleanKey = cleanApiKey(cfg.apiKey);
+if (!cleanKey) {
+return { ok: false, code: 'NO_DIRECT_KEY', error: '手机辅助 DeepSeek / 自定义 API 密钥尚未配置，请填入密钥或切换至云端 API。' };
 }
-const targetUrl = cfg.baseUrl || 'https://api.deepseek.com/v1/chat/completions';
-const targetModel = cfg.model || 'deepseek-chat';
+const targetUrl = normalizeChatCompletionsUrl(cfg.baseUrl);
+const targetModel = String(cfg.model || 'deepseek-chat').trim() || 'deepseek-chat';
 const baseMessages = buildPlanningPromptMessages({
 task,
 snapshot,
@@ -22630,7 +22658,7 @@ screenVerdict,
 interjections,
 stepIndex
 });
-const attemptDirectCall = async (modelToUse, extraHint = '') => {
+const attemptDirectCall = async (modelToUse, extraHint = '', allowJsonFormat = true) => {
 const msgs = extraHint ? [...baseMessages, { role: 'user', content: extraHint }] : baseMessages;
 const isReasoner = /reasoner|r1/i.test(String(modelToUse || ''));
 const directBody = {
@@ -22640,7 +22668,7 @@ temperature: isReasoner ? 0.2 : 0.15,
 max_tokens: isReasoner ? 2048 : 1024,
 stream: false
 };
-if (!isReasoner && (targetUrl.includes('deepseek.com') || /deepseek/i.test(modelToUse))) {
+if (allowJsonFormat && !isReasoner && targetUrl.includes('deepseek.com')) {
 directBody.response_format = { type: 'json_object' };
 }
 const timeoutCtrl = new AbortController();
@@ -22660,7 +22688,7 @@ directRes = await fetch(targetUrl, {
 method: 'POST',
 headers: {
 'Content-Type': 'application/json',
-Authorization: `Bearer ${cfg.apiKey}`
+Authorization: `Bearer ${cleanKey}`
 },
 body: JSON.stringify(directBody),
 signal: timeoutCtrl.signal
@@ -22671,7 +22699,7 @@ if (signal) signal.removeEventListener('abort', onOuterAbort);
 }
 if (!directRes.ok) {
 const txt = await directRes.text().catch(() => '');
-const httpErr = new Error(`直连 DeepSeek 返回 (${directRes.status}): ${txt.slice(0, 120)}`);
+const httpErr = new Error(`直连 API 返回 (${directRes.status}): ${txt.slice(0, 120)}`);
 httpErr.code = directRes.status === 401 || directRes.status === 403 ? 'DIRECT_AUTH_ERROR' : 'DIRECT_HTTP_ERROR';
 httpErr.status = directRes.status;
 throw httpErr;
@@ -22694,20 +22722,21 @@ throw parseErr;
 try {
 let result;
 try {
-result = await attemptDirectCall(targetModel);
+result = await attemptDirectCall(targetModel, '', true);
 } catch (firstErr) {
 if (signal?.aborted || firstErr?.code === 'DIRECT_AUTH_ERROR') {
 throw firstErr;
 }
-if (firstErr?.code === 'JSON_PARSE_ERROR' || /JSON/i.test(String(firstErr?.message || ''))) {
+if (firstErr?.code === 'JSON_PARSE_ERROR' || Number(firstErr?.status) === 400 || Number(firstErr?.status) === 422 || /JSON|response_format/i.test(String(firstErr?.message || ''))) {
 const retryModel = /reasoner|r1/i.test(targetModel) ? 'deepseek-chat' : targetModel;
 result = await attemptDirectCall(
 retryModel,
-'刚才未返回合法 JSON 动作指令。请严格只输出一个合法 JSON 对象（不要任何 Markdown 或解释文字）。'
+'刚才未返回合法 JSON 动作指令。请严格只输出一个合法 JSON 对象（不要任何 Markdown 或解释文字）。',
+false
 );
 } else if (firstErr?.name === 'AbortError' || Number(firstErr?.status) >= 500 || /fetch|network|timeout/i.test(String(firstErr?.message || ''))) {
 await sleep(400);
-result = await attemptDirectCall(targetModel);
+result = await attemptDirectCall(targetModel, '', false);
 } else {
 throw firstErr;
 }
@@ -22718,9 +22747,7 @@ if (signal?.aborted) throw directErr;
 if (directErr?.code === 'DIRECT_AUTH_ERROR') {
 return { ok: false, code: 'DIRECT_AUTH_ERROR', error: directErr.message };
 }
-const proxyRes = await apiPostJson(
-'/api/phone-agent/plan',
-{
+const proxyPayload = {
 task,
 stepIndex,
 lastExternalApp: lastExt,
@@ -22733,22 +22760,38 @@ screenTreeText,
 screenNodes,
 screenVerdict,
 interjections,
+conversationMemory: paChatMemory.slice(-6),
 history: compactHistory,
 screenSize,
 installedApps: compactInstalledApps,
-customApiKey: cfg.apiKey,
+customApiKey: cleanKey,
 customModel: targetModel,
-customBaseUrl: cfg.baseUrl
-},
+customBaseUrl: targetUrl
+};
+let proxyRes = await apiPostJson('/api/phone-agent/plan', proxyPayload, signal).catch(() => ({ ok: false, status: 0, data: {} }));
+if ((!proxyRes.ok || !proxyRes.data?.plan) && !signal?.aborted) {
+try {
+const cloudFallback = await fetch(`${PUBLIC_WEB_ORIGIN}/api/phone-agent/plan`, {
+method: 'POST',
+headers: { 'Content-Type': 'application/json' },
+body: JSON.stringify(proxyPayload),
 signal
-);
+});
+const cData = await cloudFallback.json().catch(() => ({}));
+if (cloudFallback.ok && cData?.plan) {
+proxyRes = { ok: true, status: cloudFallback.status, data: cData };
+} else if (cData?.error) {
+proxyRes = { ok: false, status: cloudFallback.status, data: cData };
+}
+} catch {}
+}
 if (proxyRes.ok && proxyRes.data?.plan) {
 return { ok: true, plan: proxyRes.data.plan, model: proxyRes.data.model, engine: 'api_direct_proxy' };
 }
 return {
 ok: false,
 code: proxyRes.data?.code || directErr?.code || 'PROXY_FAILED',
-error: proxyRes.data?.error || directErr?.message || 'DeepSeek API 请求失败'
+error: proxyRes.data?.error || directErr?.message || '自定义 API 请求失败'
 };
 }
 }
@@ -23959,7 +24002,7 @@ secBtn.classList.add('hidden');
 }
 if (!dlg.open) dlg.showModal();
 }
-function renderUpdateDialogResult(info, localInfo) {
+function renderUpdateDialogResult(info, localInfo, opts = {}) {
 const iconWrap = $('upd-icon-wrap');
 const titleEl = $('upd-title');
 const subEl = $('upd-subtitle');
@@ -24097,6 +24140,10 @@ secBtn.classList.remove('hidden');
 secBtn.textContent = '强制重下当前包';
 secBtn.onclick = () => triggerDownloadFromInfo(info);
 }
+}
+const shouldOpen = opts?.openDialog !== false;
+if (shouldOpen && dlg && !dlg.open) {
+try { dlg.showModal(); } catch {}
 }
 }
 function fetchNativeCheckWithFallback(localInfo) {
@@ -24277,9 +24324,69 @@ showToast(`手机辅助已切换至「${getEngineLabel(mode)}」`);
 });
 });
 $('pa-open-ds-official-btn')?.addEventListener('click', openDeepSeekOfficialPage);
+$('pa-cfg-test-btn')?.addEventListener('click', async () => {
+const btn = $('pa-cfg-test-btn');
+const apiKey = cleanApiKey($('pa-cfg-apikey')?.value || '');
+const model = ($('pa-cfg-model')?.value || 'deepseek-chat').trim() || 'deepseek-chat';
+const baseUrl = normalizeChatCompletionsUrl($('pa-cfg-baseurl')?.value || '');
+if (!apiKey) {
+showToast('请先输入 API Key 再测试连接');
+$('pa-cfg-apikey')?.focus();
+return;
+}
+const origTxt = btn ? btn.textContent : '测试连接';
+if (btn) { btn.disabled = true; btn.textContent = '测试中…'; }
+try {
+let ok = false;
+let errTxt = '';
+try {
+const directRes = await fetch(baseUrl, {
+method: 'POST',
+headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+body: JSON.stringify({ model, messages: [{ role: 'user', content: 'hi' }], max_tokens: 8 })
+});
+if (directRes.ok) ok = true;
+else errTxt = `HTTP ${directRes.status}`;
+} catch (e) {
+errTxt = e?.message || '直连跨域或网络异常';
+}
+if (!ok) {
+const proxyBody = {
+task: '测试连接：请回复 {"thought":"ok","tool":"chat","args":{"message":"ok"},"summary":"测试","risk":"read","reply":"ok"}',
+customApiKey: apiKey,
+customModel: model,
+customBaseUrl: baseUrl
+};
+let pRes = await apiPostJson('/api/phone-agent/plan', proxyBody).catch(() => ({ ok: false, data: {} }));
+if (!pRes.ok) {
+const cRes = await fetch(`${PUBLIC_WEB_ORIGIN}/api/phone-agent/plan`, {
+method: 'POST',
+headers: { 'Content-Type': 'application/json' },
+body: JSON.stringify(proxyBody)
+}).catch(() => null);
+if (cRes) {
+const cd = await cRes.json().catch(() => ({}));
+pRes = { ok: cRes.ok && cd?.ok !== false, data: cd };
+}
+}
+if (pRes.ok && pRes.data?.plan) {
+ok = true;
+} else if (pRes.data?.error) {
+errTxt = pRes.data.error;
+}
+}
+if (ok) {
+showToast(`✅ 连接成功！模型 ${model} 可正常驱动手机辅助`);
+} else {
+showToast(`❌ 连接失败：${errTxt || '请检查密钥、接口地址与模型名'}`);
+}
+} finally {
+if (btn) { btn.disabled = false; btn.textContent = origTxt; }
+}
+});
 $('pa-cfg-save-btn')?.addEventListener('click', () => {
-const apiKey = ($('pa-cfg-apikey')?.value || '').trim();
-const model = ($('pa-cfg-model')?.value || 'deepseek-chat').trim();
+const apiKey = cleanApiKey($('pa-cfg-apikey')?.value || '');
+const model = ($('pa-cfg-model')?.value || 'deepseek-chat').trim() || 'deepseek-chat';
 const baseUrl = ($('pa-cfg-baseurl')?.value || '').trim();
 const autoApprove = Boolean($('pa-cfg-auto-approve')?.checked);
 setDirectApiKey(apiKey);
@@ -24646,9 +24753,14 @@ $('pa-open-cmdlib-btn')?.classList.remove('is-active');
 }
 }
 });
+let lastStartupUpdateCheckAt = Date.now();
 document.addEventListener('visibilitychange', () => {
 if (document.visibilityState === 'visible') {
 setTimeout(syncStatus, 250);
+if (Date.now() - lastStartupUpdateCheckAt > 180000) {
+lastStartupUpdateCheckAt = Date.now();
+setTimeout(checkUpdateOnStartup, 600);
+}
 }
 });
 window.addEventListener('focus', () => setTimeout(syncStatus, 250));
@@ -24694,6 +24806,7 @@ const hasUpdate = typeof info.hasUpdate === 'boolean'
 ? info.hasUpdate
 : ((remoteCode > 0 && localInfo.versionCode > 0 && remoteCode > localInfo.versionCode) || isNewerVersion(remoteVer, localInfo.versionName));
 if (!hasUpdate) return;
+setUpdateRedDot(true);
 const diffGenerations = (remoteCode > 0 && localInfo.versionCode > 0)
 ? Math.max(0, remoteCode - localInfo.versionCode)
 : (info.diffGenerations || 0);
@@ -24701,7 +24814,7 @@ const isForcedUpdate = Boolean(info.forceUpdate || diffGenerations >= 3);
 let ignoredVer = '';
 try { ignoredVer = localStorage.getItem('star_ignore_update_ver') || ''; } catch {}
 if (isForcedUpdate || ignoredVer !== remoteVer) {
-renderUpdateDialogResult(info, localInfo);
+renderUpdateDialogResult(info, localInfo, { openDialog: true });
 }
 }
 if (document.readyState === 'loading') {

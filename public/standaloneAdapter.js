@@ -2918,7 +2918,7 @@
       return originalFetch(input, { ...init, headers: mergedHeaders, cache: 'no-store' });
     }
 
-    if (standaloneActive && (pathname.startsWith('/api/auth/') || pathname === '/api/announcement')) {
+    if (standaloneActive && (pathname.startsWith('/api/auth/') || pathname === '/api/announcement' || pathname === '/api/phone-agent/plan')) {
       try {
         const remoteUrl = `https://star.claudexxb.online${pathname}${urlStr.includes('?') ? urlStr.slice(urlStr.indexOf('?')) : ''}`;
         const mergedHeaders = new Headers(init?.headers || {});
@@ -2931,6 +2931,9 @@
           headers: mergedHeaders,
           cache: 'no-store'
         });
+        if (pathname === '/api/phone-agent/plan') {
+          return resp;
+        }
         if (resp.ok) {
           const clone = resp.clone();
           const data = await clone.json().catch(() => null);

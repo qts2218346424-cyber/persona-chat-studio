@@ -656,8 +656,8 @@ function extractAuthToken(req, parsedUrl = null) {
   return '';
 }
 
-const APP_LATEST_VERSION = '2.7.1';
-const APP_LATEST_VERSION_CODE = 162;
+const APP_LATEST_VERSION = '2.7.2';
+const APP_LATEST_VERSION_CODE = 163;
 const APP_OFFICIAL_CERT_SHA256 = '6fd05e32a3cabf327140129d866e55a342fe30daa3384c67aad4b3cbdd98a17b';
 const APP_UPDATE_TICKET_SECRET = crypto
   .createHash('sha256')
@@ -956,7 +956,7 @@ async function handleApi(req, res, pathname, parsedUrl) {
       diffGenerations,
       changelog: [
         '【整套作业一口气连做不中断（Anti-Early-Done）】强化连续多题规划铁律并新增代码级防早退保护：检测到屏幕仍有“下一题”或题号进度未到最后一题时自动拦截提前结束，持续作答翻页直到整套题全部做完',
-        '【透明思考 + 任务屏弹窗确认 + dsh-Go 深海鲸影 UI】手机辅助全面支持思考过程实时透明展示、自由对话问答；遇到模糊或不确定的操作优先以弹窗形式确认（执行中直接在第三方任务画面弹出悬浮确认窗）；本地引擎切换弹窗精准提供 DeepSeek API / 云端 API；新增大鲸鱼半透明主题背景，双端同步升级至 v2.7.1 (Build 162)'
+        '【修复启动更新弹窗 + 全面打通用户自带 API 控屏】修复启动检测到新版时自动弹出更新公告窗口；穿透 APK 离线壳与服务端 CORS 代理全面打通用户自带 DeepSeek/第三方 API Key 驱动手机辅助（支持接口地址自动补全、Bearer 自动清洗、自由输入模型与一键测试连接），双端同步升级至 v2.7.2 (Build 163)'
       ]
     };
 
@@ -1641,14 +1641,29 @@ async function handleApi(req, res, pathname, parsedUrl) {
     }
   }
 
-  // ========= 登录态守卫：以下业务接口均需已登录账号 =========
-  if (!currentUser) {
+  // ========= Phone Agent 预检与自带 Key 代理前置放行 =========
+  if (pathname === '/api/phone-agent/plan' && method === 'OPTIONS') {
+    res.writeHead(204, { ...VOICE_CORS_HEADERS, ...SECURITY_HEADERS });
+    res.end();
+    return;
+  }
+
+  let preReadPhoneAgentBody = null;
+  if (method === 'POST' && pathname === '/api/phone-agent/plan' && !currentUser) {
+    preReadPhoneAgentBody = await readJsonBody(req);
+    if (!String(preReadPhoneAgentBody?.customApiKey || '').trim()) {
+      return sendJson(res, 401, { error: '请先登录您的星语恋庭账号，或填写个人 API Key', code: 'AUTH_REQUIRED' }, VOICE_CORS_HEADERS);
+    }
+  }
+
+  // ========= 登录态守卫：以下业务接口均需已登录账号（自带 Key 代理除外） =========
+  if (!currentUser && !preReadPhoneAgentBody) {
     return sendJson(res, 401, { error: '请先登录您的星语恋庭账号', code: 'AUTH_REQUIRED' });
   }
 
   // 严格防切号串台守卫：若窗口声明的用户 ID 与当前令牌对应用户不一致，立即阻断
   const expectedUserId = String(req.headers['x-expected-user-id'] || '').trim();
-  if (expectedUserId && expectedUserId !== currentUser.id) {
+  if (currentUser && expectedUserId && expectedUserId !== currentUser.id) {
     return sendJson(res, 409, {
       error: '检测到当前窗口账户已切换，已自动拦截跨账号操作以保障会话隔离',
       code: 'ACCOUNT_MISMATCH',
@@ -1656,14 +1671,15 @@ async function handleApi(req, res, pathname, parsedUrl) {
     });
   }
 
-  const userId = currentUser.id;
+  const userId = currentUser ? currentUser.id : 'phone_agent_byok_guest';
 
   // ========= Phone Agent 手机辅助 dsh-Go 多步规划接口 =========
   if (method === 'POST' && pathname === '/api/phone-agent/plan') {
-    const body = await readJsonBody(req);
+    const body = preReadPhoneAgentBody || (await readJsonBody(req));
+    const sendPlanJson = (targetRes, status, data) => sendJson(targetRes, status, data, VOICE_CORS_HEADERS);
     const task = String(body.task || '').trim().slice(0, 1000);
     if (!task) {
-      return sendJson(res, 400, { ok: false, error: '请提供需要规划的手机操作任务' });
+      return sendPlanJson(res, 400, { ok: false, error: '请提供需要规划的手机操作任务' });
     }
 
     const screenSize =
@@ -1926,7 +1942,7 @@ async function handleApi(req, res, pathname, parsedUrl) {
           engineName: 'api_direct_proxy'
         });
       } catch (err) {
-        return sendJson(res, 400, { ok: false, error: err.message || '个人 API 参数校验失败' });
+        return sendPlanJson(res, 400, { ok: false, error: err.message || '个人 API 参数校验失败' });
       }
     } else {
       const execSettings = getExecutionSettingsForUser(userId);
@@ -1969,7 +1985,7 @@ async function handleApi(req, res, pathname, parsedUrl) {
     }
 
     if (candidates.length === 0) {
-      return sendJson(res, 400, {
+      return sendPlanJson(res, 400, {
         ok: false,
         code: 'NO_API_KEY',
         error: '当前账号未配置可用云端 API 密钥。请在上方切换「DeepSeek API」填写您的个人密钥，或改用「本地免 API」直接下达系统口令。'
@@ -2000,11 +2016,11 @@ async function handleApi(req, res, pathname, parsedUrl) {
           const blocks = Array.isArray(data.content) ? data.content : [];
           const rawText = blocks.filter((b) => b.type === 'text').map((b) => b.text).join('\n');
           const parsed = normalizePlan(extractPlanJson(rawText));
-          return sendJson(res, 200, { ok: true, plan: parsed, model: cand.model, engine: cand.engineName });
+          return sendPlanJson(res, 200, { ok: true, plan: parsed, model: cand.model, engine: cand.engineName });
         }
 
         const isReasonerModel = /reasoner|r1/i.test(String(cand.model || ''));
-        const runOpenAiAttempt = async (modelToUse, extraRetryHint = '') => {
+        const runOpenAiAttempt = async (modelToUse, extraRetryHint = '', allowJsonFormat = true) => {
           const msgs = [
             { role: 'system', content: sysPrompt },
             { role: 'user', content: userMsg }
@@ -2017,10 +2033,10 @@ async function handleApi(req, res, pathname, parsedUrl) {
             model: modelToUse,
             messages: msgs,
             temperature: useReasoner ? 0.2 : 0.15,
-            max_tokens: useReasoner ? 2048 : 512,
+            max_tokens: useReasoner ? 2048 : 1024,
             stream: false
           };
-          if (!useReasoner && (cand.url.includes('deepseek.com') || /deepseek/i.test(modelToUse))) {
+          if (allowJsonFormat && !useReasoner && cand.url.includes('deepseek.com')) {
             payload.response_format = { type: 'json_object' };
           }
           const resp = await fetch(cand.url, {
@@ -2036,10 +2052,12 @@ async function handleApi(req, res, pathname, parsedUrl) {
           const data = await resp.json();
           const msgObj = data?.choices?.[0]?.message || {};
           const rawText = String(msgObj.content || '').trim();
+          const reasonTxt = String(msgObj.reasoning_content || '').trim();
           try {
-            return extractPlanJson(rawText);
+            const planObj = extractPlanJson(rawText);
+            if (reasonTxt && !planObj.reasoning) planObj.reasoning = reasonTxt;
+            return planObj;
           } catch (parseErr) {
-            const reasonTxt = String(msgObj.reasoning_content || '').trim();
             if (reasonTxt) {
               return extractPlanJson(reasonTxt);
             }
@@ -2050,23 +2068,24 @@ async function handleApi(req, res, pathname, parsedUrl) {
         let rawPlan;
         let usedModel = cand.model;
         try {
-          rawPlan = await runOpenAiAttempt(cand.model);
+          rawPlan = await runOpenAiAttempt(cand.model, '', true);
         } catch (firstErr) {
           const fallbackModel = isReasonerModel ? 'deepseek-chat' : cand.model;
           usedModel = fallbackModel;
           rawPlan = await runOpenAiAttempt(
             fallbackModel,
-            '请严格只输出一个合法 JSON 动作对象（不要输出任何思考说明），如果连续等待后界面无新控件，请返回 click/swipe 或 ask_user。'
+            '请严格只输出一个合法 JSON 动作对象（不要输出任何思考说明），如果连续等待后界面无新控件，请返回 click/swipe 或 ask_user。',
+            false
           );
         }
         const parsed = normalizePlan(rawPlan);
-        return sendJson(res, 200, { ok: true, plan: parsed, model: usedModel, engine: cand.engineName });
+        return sendPlanJson(res, 200, { ok: true, plan: parsed, model: usedModel, engine: cand.engineName });
       } catch (err) {
         lastErr = err?.message || '规划请求超时或解析异常';
       }
     }
 
-    return sendJson(res, 502, {
+    return sendPlanJson(res, 422, {
       ok: false,
       code: 'PLAN_FAILED',
       error: lastErr || '手机辅助规划请求暂时不可用，请检查密钥与网络或改用本地免 API 模式'
@@ -6032,6 +6051,7 @@ const server = http.createServer(async (req, res) => {
   } catch (err) {
     const code = err?.statusCode && err.statusCode >= 400 && err.statusCode < 500 ? err.statusCode : 500;
     if (code >= 500) {
+      console.error('[ServerError500]', err?.stack || err);
       bumpMetric('error5xxCount');
       recordSecurityEvent({
         level: 'danger',

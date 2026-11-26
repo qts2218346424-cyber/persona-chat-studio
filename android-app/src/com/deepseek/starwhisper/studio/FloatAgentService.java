@@ -229,6 +229,9 @@ public class FloatAgentService extends Service {
     private volatile long qqMusicLastNativeLyricMs = 0L;
     private volatile long lastExternalTitleSwitchMs = 0L;
     private int externalRapidSwitchCount = 0;
+    private volatile String lastRawSessionArtist = "";
+    private volatile long lastRawSessionDurationMs = 0L;
+    private volatile String lastRawSessionTitle = "";
     private volatile String qqMusicCurrentLyric = "";
     private volatile String lastFetchedLyricsKey = "";
     private int inactiveMusicStreak = 0;
@@ -1732,7 +1735,7 @@ public class FloatAgentService extends Service {
         if (qqMusicPlaying && !qqMusicTitle.isEmpty()) {
             String artistPart = qqMusicArtist.isEmpty() ? "" : (" - " + qqMusicArtist);
             floatingLyricSubText.setText("🎵 " + qqMusicTitle + artistPart);
-            String lyr = !qqMusicCurrentLyric.isEmpty() ? qqMusicCurrentLyric : ("♪ " + qqMusicTitle);
+            String lyr = !qqMusicCurrentLyric.isEmpty() ? qqMusicCurrentLyric : "♪ 纯音乐或暂无时间轴歌词";
             floatingLyricMainText.setText(lyr);
             floatingLyricRootView.setVisibility(View.VISIBLE);
             return;
@@ -3776,6 +3779,48 @@ public class FloatAgentService extends Service {
         return false;
     }
 
+    /**
+     * 识别开启“系统状态栏歌词/灵动岛歌词”后 QQ 音乐将“当前歌词”放到 title、将“歌名-歌手”拼到 artist 的反转元数据。
+     * 返回 [真实歌名, 真实歌手]，未命中状态栏反转模式则返回 null。
+     */
+    private static String[] parseSwappedTrackArtistFromStatusLyric(String rawTitle, String rawArtist) {
+        if (rawArtist == null) return null;
+        String a = rawArtist.trim();
+        if (a.isEmpty()) return null;
+
+        String lowerA = a.toLowerCase(Locale.ROOT);
+        if (lowerA.equals("a-lin") || lowerA.equals("t-ara") || lowerA.equals("g-eazy")
+                || lowerA.equals("ne-yo") || lowerA.equals("jay-z") || lowerA.equals("x-japan")
+                || lowerA.equals("g-dragon") || lowerA.equals("wu-tang")) {
+            return null;
+        }
+
+        int splitIdx = a.indexOf(" - ");
+        int sepLen = 3;
+        if (splitIdx <= 0) {
+            splitIdx = a.indexOf('-');
+            sepLen = 1;
+        }
+        if (splitIdx <= 0 || splitIdx + sepLen >= a.length()) return null;
+
+        String left = a.substring(0, splitIdx).trim();
+        String right = a.substring(splitIdx + sepLen).trim();
+        if (left.length() < 2 || right.length() < 2) return null;
+        if (rawTitle != null && left.equalsIgnoreCase(rawTitle.trim())) return null;
+
+        boolean strongSignal = (sepLen == 3)
+                || left.contains(" ")
+                || right.contains("/")
+                || right.contains("、")
+                || right.contains("&")
+                || right.contains(" ")
+                || (left.length() >= 4 && right.length() >= 4)
+                || (left.matches(".*[\\u4e00-\\u9fa5].*") && right.matches(".*[\\u4e00-\\u9fa5].*"));
+        if (!strongSignal) return null;
+
+        return new String[]{left, right};
+    }
+
     private void handleMusicMetadataUpdate(
             String pkg,
             String title,
@@ -3785,15 +3830,44 @@ public class FloatAgentService extends Service {
             long durMs,
             boolean exactSession
     ) {
-        String cleanTitle = title != null ? title.trim() : "";
-        String cleanArtist = artist != null ? artist.trim() : "";
-        if (cleanTitle.isEmpty()) return;
+        String rawTitle = title != null ? title.trim() : "";
+        String rawArtist = artist != null ? artist.trim() : "";
+        if (rawTitle.isEmpty()) return;
 
         long nowSys = System.currentTimeMillis();
+        String effectiveTitle = rawTitle;
+        String effectiveArtist = rawArtist;
+        String swappedLyricFromTitle = "";
 
-        // 防“一句一搜索”硬护栏：非官方 MediaSession 来源时，如检测到歌词特征或短时高频换名，直接当原生同步歌词处理而不搜歌！
-        if (!exactSession && !qqMusicTitle.isEmpty()) {
-            boolean titleDiffers = !cleanTitle.equalsIgnoreCase(qqMusicTitle);
+        // 1. 首帧直接侦测 QQ 音乐状态栏歌词反转格式：title="歌词一句", artist="真实歌名-真实歌手"
+        String[] swappedPair = parseSwappedTrackArtistFromStatusLyric(rawTitle, rawArtist);
+        if (swappedPair != null) {
+            effectiveTitle = swappedPair[0];
+            effectiveArtist = swappedPair[1];
+            swappedLyricFromTitle = rawTitle;
+        } else if (exactSession
+                && !qqMusicTitle.isEmpty()
+                && !rawArtist.isEmpty()
+                && rawArtist.equals(lastRawSessionArtist)
+                && durMs > 0
+                && durMs == lastRawSessionDurationMs
+                && !rawTitle.equalsIgnoreCase(lastRawSessionTitle)
+                && !rawTitle.equalsIgnoreCase(qqMusicTitle)) {
+            // 2. 兜底侦测：同一个 MediaSession（同一原始歌手与同一总时长 ms）下，title 突然每几秒换一次 -> 必为状态栏实时滚动歌词！
+            swappedLyricFromTitle = rawTitle;
+            effectiveTitle = qqMusicTitle;
+            effectiveArtist = qqMusicArtist;
+        }
+
+        lastRawSessionTitle = rawTitle;
+        lastRawSessionArtist = rawArtist;
+        if (durMs > 0) {
+            lastRawSessionDurationMs = durMs;
+        }
+
+        // 3. 防“一句一搜索”硬护栏：非官方 MediaSession 来源时，如检测到歌词特征或短时高频换名，直接当原生同步歌词处理而不搜歌！
+        if (!exactSession && swappedLyricFromTitle.isEmpty() && !qqMusicTitle.isEmpty()) {
+            boolean titleDiffers = !effectiveTitle.equalsIgnoreCase(qqMusicTitle);
             if (titleDiffers) {
                 if (nowSys - lastExternalTitleSwitchMs <= 6500L) {
                     externalRapidSwitchCount++;
@@ -3805,22 +3879,22 @@ public class FloatAgentService extends Service {
                 boolean hasRecentNativeLyric = (nowSys - qqMusicLastNativeLyricMs) < 16000L;
                 boolean hasOfficialPerm = QqMusicListenerService.isNotificationAccessEnabled(this);
                 if (hasRecentNativeLyric
-                        || (hasOfficialPerm && cleanArtist.isEmpty())
+                        || (hasOfficialPerm && effectiveArtist.isEmpty())
                         || externalRapidSwitchCount >= 2
-                        || looksLikeLyricSentenceInsteadOfTitle(cleanTitle, cleanArtist)) {
-                    handleExternalNativeLyricLine(cleanTitle);
+                        || looksLikeLyricSentenceInsteadOfTitle(effectiveTitle, effectiveArtist)) {
+                    handleExternalNativeLyricLine(effectiveTitle);
                     return;
                 }
             }
         }
 
-        boolean songChanged = !cleanTitle.equalsIgnoreCase(qqMusicTitle)
-                || (!cleanArtist.isEmpty() && !cleanArtist.equalsIgnoreCase(qqMusicArtist));
+        boolean songChanged = !effectiveTitle.equalsIgnoreCase(qqMusicTitle)
+                || (!effectiveArtist.isEmpty() && !effectiveArtist.equalsIgnoreCase(qqMusicArtist));
 
         qqMusicPkg = pkg != null ? pkg : "";
-        qqMusicTitle = cleanTitle;
-        if (!cleanArtist.isEmpty() || songChanged) {
-            qqMusicArtist = cleanArtist;
+        qqMusicTitle = effectiveTitle;
+        if (!effectiveArtist.isEmpty() || songChanged) {
+            qqMusicArtist = effectiveArtist;
         }
         qqMusicPlaying = playing;
         if (songChanged) {
@@ -3843,10 +3917,17 @@ public class FloatAgentService extends Service {
             qqMusicDurationMs = durMs;
         }
 
-        if (songChanged) {
+        if (!swappedLyricFromTitle.isEmpty()) {
+            // 优先把刚从状态栏歌词反转中分离出来的当前句直接作为原生同步歌词展示，绝不被“同步歌词中…”覆盖！
+            if (songChanged) {
+                qqMusicLyrics.clear();
+                fetchLyricsAsync(effectiveTitle, effectiveArtist);
+            }
+            handleExternalNativeLyricLine(swappedLyricFromTitle);
+        } else if (songChanged) {
             qqMusicLyrics.clear();
-            qqMusicCurrentLyric = "🎵 " + cleanTitle + (cleanArtist.isEmpty() ? "" : " - " + cleanArtist) + "（同步歌词中…）";
-            fetchLyricsAsync(cleanTitle, cleanArtist);
+            qqMusicCurrentLyric = "♪ 正在匹配《" + effectiveTitle + "》歌词…";
+            fetchLyricsAsync(effectiveTitle, effectiveArtist);
         }
 
         if (playing && "idle".equals(sCurrentStatus) && !isDraggingPet) {
@@ -3908,8 +3989,17 @@ public class FloatAgentService extends Service {
                             qqMusicLyrics.clear();
                             qqMusicLyrics.addAll(parsed);
                         }
+                        boolean hasLiveNativeLyric = qqMusicLastNativeLyricMs > 0L
+                                && (System.currentTimeMillis() - qqMusicLastNativeLyricMs) < 25000L
+                                && !qqMusicCurrentLyric.isEmpty()
+                                && !qqMusicCurrentLyric.startsWith("♪ 正在匹配");
                         if (parsed.isEmpty()) {
-                            qqMusicCurrentLyric = "🎵 " + qqMusicTitle + (qqMusicArtist.isEmpty() ? "" : " - " + qqMusicArtist) + "（纯音乐或暂无时间轴歌词）";
+                            // 若 QQ 音乐当前已在实时同步原生歌词，绝不用“暂无时间轴歌词”将其冲掉！
+                            if (!hasLiveNativeLyric) {
+                                qqMusicCurrentLyric = "♪ 暂无时间轴歌词（可在 QQ 音乐开状态栏歌词直连同步）";
+                            }
+                        } else if (hasLiveNativeLyric) {
+                            alignLrcPositionByNativeLyric(qqMusicCurrentLyric);
                         } else {
                             updateCurrentLyricFromClock();
                         }

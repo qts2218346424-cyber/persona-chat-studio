@@ -648,8 +648,8 @@ function extractAuthToken(req, parsedUrl = null) {
   return '';
 }
 
-const APP_LATEST_VERSION = '2.5.4';
-const APP_LATEST_VERSION_CODE = 151;
+const APP_LATEST_VERSION = '2.5.5';
+const APP_LATEST_VERSION_CODE = 152;
 const APP_OFFICIAL_CERT_SHA256 = '6fd05e32a3cabf327140129d866e55a342fe30daa3384c67aad4b3cbdd98a17b';
 const APP_UPDATE_TICKET_SECRET = crypto
   .createHash('sha256')
@@ -947,9 +947,9 @@ async function handleApi(req, res, pathname, parsedUrl) {
       forceUpdate,
       diffGenerations,
       changelog: [
-        '【QQ音乐歌词真同步 · 杜绝一句一搜索】拦截无 MediaSession 的状态栏/桌面歌词广播并直通同频显示，结合时间轴 LRC 自动对齐与网易云+LRCLIB双源互补，告别歌词逐句乱跳搜索',
-        '【大肥鱼动作去僵硬 & 慢速自然漫步 & 搞怪捣蛋】重做底重心果冻呼吸与踩地回弹，漫步放慢成自然弧线散步；新增外置「😈闹」与面板「😈捣蛋」6大整蛊微剧本（打滑翻滚/倒立鬼脸/吹泡泡炸开/偷吃算力/打盹惊醒/蓄力撞屏）',
-        '【外卖状态实时同步】后台通知与无障碍同步美团、饿了么、京东秒送、淘宝闪购等配送阶段（接单/取餐/逼近/送达），大肥鱼全程蹲守吐槽并支持面板「🛵查外卖」查看或一键已取餐清除，升级至 v2.5.4 (Build 151)'
+        '【状态栏歌词反转精准拆解 & 上下双行彻底清净】自动拆解 QQ 音乐状态栏/灵动岛歌词模式下“title=歌词一句、artist=歌名-歌手”反转元数据，上方小字稳稳固定显示真实歌名歌手、下方大字纯正实时同步歌词，绝不再把歌词错当歌名并显示“纯音乐或暂无时间轴歌词”覆盖掉实时歌词',
+        '【大肥鱼慢速自然漫步 & 6大搞怪捣蛋动作】漫步改成悠闲弧线散步，新增外置「😈闹」与面板「😈捣蛋」支持滑倒360度翻滚、倒立做鬼脸、吹泡泡吓一跳等 6 套滑稽微剧本',
+        '【外卖实时同步】后台通知与无障碍同步美团、饿了么、京东秒送配送阶段与「🛵查外卖」抓取，升级至 v2.5.5 (Build 152)'
       ]
     };
 

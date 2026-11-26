@@ -194,10 +194,10 @@ const {{ db, getRawPlatformConfigInternal, updateAdminPlatformConfig, saveAdminA
 db.prepare("DELETE FROM personas WHERE id = \\x27persona_linqi\\x27").run();
 db.prepare("UPDATE site_announcements SET enabled = 0").run();
 saveAdminAnnouncement("admin", {{
-  title: "星语恋庭 v2.5.4 更新：歌词真同步不误搜、肥鱼慢漫步搞怪捣蛋 & 外卖实时同步！",
-  content: "1. 【QQ音乐歌词真同步 · 绝不一句一搜索】：自动辨别状态栏/桌面实时歌词，直接同频显示并用 LRC 反查校准时钟，叠加网易云+LRCLIB双源曲库。\\n2. 【大肥鱼去僵硬 & 慢速散步 & 搞怪捣蛋】：漫步速度放慢并加入弧线柔韧小碎步，外置「😈闹」与面板「😈捣蛋」支持翻跟头、倒立吐舌、吹泡泡、装睡惊醒等 6 大滑稽动作！\\n3. 【外卖配送实时同步】：支持美团、饿了么、京东秒送等外卖接单/取餐/逼近/送达自动同步到肥鱼卡片与折叠胶囊，随身版升级至 v2.5.4 (Build 151)！",
+  title: "星语恋庭 v2.5.5 更新：彻底修复状态栏歌词错位与覆盖问题，上方歌名下方纯歌词丝滑同步！",
+  content: "1. 【彻底修复歌词反转与下方提示冲突】：自动拆解 QQ 音乐状态栏/灵动岛歌词模式下“title=当前歌词、artist=歌名-歌手”反转元数据；上方固定展示真实歌名与歌手，下方纯正同步显示实时歌词，彻底告别“暂无时间轴歌词”反过来盖掉实时歌词以及上下叠字。\\n2. 【整合大肥鱼慢漫步/捣蛋动作 & 外卖实时同步】：随身版同步升级至 v2.5.5 (Build 152)！",
   enabled: true,
-  version: 151
+  version: 152
 }});
 db.prepare("UPDATE sessions SET companion_config = NULL").run();
 db.prepare("UPDATE user_settings SET value = \\x27demo\\x27 WHERE key = \\x27provider\\x27").run();

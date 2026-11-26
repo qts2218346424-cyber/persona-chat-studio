@@ -5165,7 +5165,7 @@ lastInteractionAt: Date.now(),
 hasMoreMessages: false,
 totalMessages: 0,
 oldestMessageId: 0,
-appVersion: '2.5.3',
+appVersion: '2.5.4',
 tourIndex: 0,
 tourActive: false,
 llmMode: localStorage.getItem('user_llm_mode') || 'local_antigravity',
@@ -5546,7 +5546,7 @@ return null;
 }
 }
 function syncWebVersionBadges(verStr) {
-const raw = String(verStr || state.appVersion || '2.5.3').trim().replace(/^v/i, '');
+const raw = String(verStr || state.appVersion || '2.5.4').trim().replace(/^v/i, '');
 if (!raw) return;
 const vLabel = `v${raw}`;
 const isNativeApk = Boolean(
@@ -6410,6 +6410,7 @@ throw err;
 return data;
 }
 function resetClientWorkspaceState() {
+const prevUid = state.user?.id || '';
 if (state.isStreaming && state.streamingAbort) {
 try {
 state.streamingAbort.abort();
@@ -6458,6 +6459,10 @@ codeSnippetStore.clear();
 codeSeq = 0;
 markdownRenderCache.clear();
 sessionDetailCache.clear();
+inFlightSessionFetches.clear();
+bootSnapshotDirty = false;
+clearTimeout(bootSnapshotTimer);
+if (prevUid) sessionIdbStore.clearUser(prevUid).catch(() => {});
 window.__activeSessionId = null;
 window.__isAdminUser = false;
 window.dispatchEvent(new CustomEvent('user-role-changed'));
@@ -8516,7 +8521,7 @@ setTxt(
 'adm-kpi-channel-sub',
 tunnelProbe?.online ? '本机电脑 Antigravity 直连' : report.channels?.localCli?.transport === 'local_cli' ? '本机 CLI 就绪' : '电脑离线时自动回退'
 );
-setTxt('adm-sys-meta', `v${sys.appVersion || '2.5.3'} · ${sys.platform || ''} · Node ${sys.nodeVersion || ''} · ${sys.cpuCores || 1} 核 (负载 ${sys.load1m ?? 0})`);
+setTxt('adm-sys-meta', `v${sys.appVersion || '2.5.4'} · ${sys.platform || ''} · Node ${sys.nodeVersion || ''} · ${sys.cpuCores || 1} 核 (负载 ${sys.load1m ?? 0})`);
 setTxt('adm-stat-mem', `${sys.memUsedPct ?? 0}% (进程 ${sys.rssMb ?? 0} MB)`);
 setTxt('adm-stat-db', `${formatBytesCompact(dbInfo.dbSizeBytes)} / ${formatBytesCompact(dbInfo.walSizeBytes)}`);
 setTxt('adm-stat-uptime', formatUptimeCompact(sys.uptimeSec));
@@ -9807,6 +9812,20 @@ item.innerHTML = `
           </button>
         </div>
       `;
+let hoverPrefetchTimer = 0;
+item.addEventListener('pointerenter', () => {
+clearTimeout(hoverPrefetchTimer);
+hoverPrefetchTimer = setTimeout(() => {
+prefetchSessionDetail(s.id);
+}, 90);
+});
+item.addEventListener('pointerleave', () => {
+clearTimeout(hoverPrefetchTimer);
+});
+item.addEventListener('pointerdown', () => {
+clearTimeout(hoverPrefetchTimer);
+prefetchSessionDetail(s.id);
+});
 item.addEventListener('click', (e) => {
 if (
 e.target.closest('.session-del-btn') ||
@@ -10606,7 +10625,7 @@ msg.content = nextVal;
 box.remove();
 onSaved();
 syncActiveSessionToCache();
-saveBootSnapshot();
+scheduleSaveBootSnapshot();
 showToast('内容已保存');
 });
 const resubmitBtn = box.querySelector('.resubmit-edit-btn');
@@ -11820,7 +11839,7 @@ if (typeof state.totalMessages === 'number') {
 state.totalMessages = Math.max(state.totalMessages + 2, state.messages.length);
 }
 syncActiveSessionToCache();
-saveBootSnapshot();
+scheduleSaveBootSnapshot();
 window.DeepSeekMonitorPlugin?.sync({
 settings: state.settings,
 messages: state.messages,
@@ -12488,7 +12507,7 @@ proBtnEl.textContent = proOn
 : '角色安静时自动搭话：已关闭';
 }
 if (!fromCache) {
-saveBootSnapshot();
+scheduleSaveBootSnapshot();
 }
 if (!fromCache && sessMode === 'roleplay' && data.auto_dream_diary) {
 setTimeout(() => {
@@ -12558,7 +12577,26 @@ const forceNetwork = Boolean(opts && opts.forceNetwork) || !isSwitching;
 const cached = !forceNetwork ? getSessionCache(sessionId) : null;
 if (cached) {
 await applySessionDetailPayload(sessionId, cached, { reqSeq, fromCache: true });
-apiJson(`/api/sessions/${encodeURIComponent(sessionId)}?limit=60`)
+if (Date.now() - (cached.cachedAt || 0) >= SESSION_RECONCILE_COOLDOWN_MS) {
+fetchSessionDetailDeduped(sessionId, 60)
+.then((freshData) => {
+if (reqSeq !== loadSessionSeq || state.activeSessionId !== sessionId) return;
+applySessionDetailPayload(sessionId, freshData, { reqSeq, silentReconcile: true });
+})
+.catch(() => {});
+}
+return;
+}
+let l2Applied = false;
+if (!forceNetwork && state.user?.id) {
+try {
+const l2Payload = await sessionIdbStore.get(state.user.id, sessionId);
+if (reqSeq !== loadSessionSeq) return;
+if (l2Payload && l2Payload.session) {
+l2Applied = true;
+setSessionCache(sessionId, l2Payload, { syncIdb: false });
+await applySessionDetailPayload(sessionId, l2Payload, { reqSeq, fromCache: true });
+fetchSessionDetailDeduped(sessionId, 60)
 .then((freshData) => {
 if (reqSeq !== loadSessionSeq || state.activeSessionId !== sessionId) return;
 applySessionDetailPayload(sessionId, freshData, { reqSeq, silentReconcile: true });
@@ -12566,7 +12604,9 @@ applySessionDetailPayload(sessionId, freshData, { reqSeq, silentReconcile: true 
 .catch(() => {});
 return;
 }
-if (isSwitching) {
+} catch {}
+}
+if (isSwitching && !l2Applied) {
 state.activeSessionId = sessionId;
 renderSessionList();
 if (messagesContainer) {
@@ -12575,7 +12615,7 @@ messagesContainer.innerHTML = '<div class="session-loading-banner" role="status"
 }
 let data;
 try {
-data = await apiJson(`/api/sessions/${encodeURIComponent(sessionId)}?limit=60`);
+data = await fetchSessionDetailDeduped(sessionId, 60);
 } catch (err) {
 if (/未找到|不存在|404/i.test(err?.message || '')) {
 console.warn(`[Session] 会话 ${sessionId} 不存在，自动切换到有效会话`);
@@ -18154,8 +18194,29 @@ showToast('欢迎来到星语恋庭 · 点击左侧任意角色即可开启沉�
 }
 setTimeout(() => {
 checkAnnouncementOnStartup();
+if (!state.antigravityStatus?.checked) {
 checkLocalAntigravityStatus();
+}
 }, 800);
+const scheduleIdleWarmup = (fn) => {
+if (typeof window.requestIdleCallback === 'function') {
+window.requestIdleCallback(fn, { timeout: 3500 });
+} else {
+setTimeout(fn, 1400);
+}
+};
+scheduleIdleWarmup(() => {
+const isDsUi = state.uiMode === 'deepseek' || state.uiMode === 'phone-agent';
+const candidates = (state.sessions || [])
+.filter((s) =>
+s.id !== state.activeSessionId &&
+(isDsUi ? s.session_mode === 'deepseek_native' : s.session_mode !== 'deepseek_native')
+)
+.slice(0, 2);
+for (const c of candidates) {
+prefetchSessionDetail(c.id);
+}
+});
 }
 async function checkAnnouncementOnStartup() {
 try {
@@ -18467,6 +18528,42 @@ let ttsFetchAbort = null;
 let isSynthesizing = false;
 let synthStartedAt = 0;
 let activeObjectUrl = '';
+const TTS_CLIENT_CACHE_MAX = 30;
+const TTS_CLIENT_CACHE_MAX_BYTES = 12 * 1024 * 1024;
+const clientTtsAudioCache = new Map();
+let clientTtsCacheBytes = 0;
+const inFlightTtsFetches = new Map();
+function getClientTtsCache(key) {
+const hit = clientTtsAudioCache.get(key);
+if (!hit) return null;
+clientTtsAudioCache.delete(key);
+clientTtsAudioCache.set(key, hit);
+return hit;
+}
+function setClientTtsCache(key, buffer, mimeType) {
+if (!key || !buffer || buffer.byteLength <= 512 || buffer.byteLength > 4 * 1024 * 1024) return;
+const prev = clientTtsAudioCache.get(key);
+if (prev) {
+clientTtsCacheBytes = Math.max(0, clientTtsCacheBytes - prev.size);
+clientTtsAudioCache.delete(key);
+}
+while (
+clientTtsAudioCache.size >= TTS_CLIENT_CACHE_MAX ||
+(clientTtsCacheBytes + buffer.byteLength > TTS_CLIENT_CACHE_MAX_BYTES && clientTtsAudioCache.size > 0)
+) {
+const oldestKey = clientTtsAudioCache.keys().next().value;
+if (oldestKey === undefined) break;
+const oldest = clientTtsAudioCache.get(oldestKey);
+clientTtsAudioCache.delete(oldestKey);
+if (oldest) clientTtsCacheBytes = Math.max(0, clientTtsCacheBytes - oldest.size);
+}
+clientTtsAudioCache.set(key, {
+buffer,
+mimeType: mimeType || 'audio/mpeg',
+size: buffer.byteLength
+});
+clientTtsCacheBytes += buffer.byteLength;
+}
 function getCurrentSpeakerLabel() {
 const raw =
 document.getElementById('topbar-name')?.textContent?.trim() ||
@@ -18912,6 +19009,12 @@ if (presetUrl) {
 const ok = await playAudioUrlWithStudioEq(presetUrl, meta, btnEl);
 if (ok) return;
 }
+const ttsCacheKey = `${currentVoiceId}::${cleaned}`;
+const cachedAudio = getClientTtsCache(ttsCacheKey);
+if (cachedAudio) {
+await playAudioBufferWithStudioEq(cachedAudio.buffer, meta, btnEl, cachedAudio.mimeType);
+return;
+}
 isSynthesizing = true;
 synthStartedAt = Date.now();
 const myAbort = new AbortController();
@@ -18928,7 +19031,9 @@ activeFallbackBtn = btnEl;
 }
 showDynamicIslandTts(`${getCurrentSpeakerLabel()} · 合成声线中`, true);
 try {
-const resp = await fetch('/api/tts/speak', {
+let fetchTask = inFlightTtsFetches.get(ttsCacheKey);
+if (!fetchTask) {
+fetchTask = fetch('/api/tts/speak', {
 method: 'POST',
 headers: { 'Content-Type': 'application/json' },
 body: JSON.stringify({
@@ -18937,14 +19042,26 @@ voiceId: currentVoiceId,
 sessionId: window.__activeSessionId || ''
 }),
 signal: myAbort.signal
-});
-if (myAbort.signal.aborted) return;
-isSynthesizing = false;
+})
+.then(async (resp) => {
 const ctype = resp.headers.get('content-type') || '';
 if (resp.ok && ctype.includes('audio/')) {
 const buf = await resp.arrayBuffer();
+setClientTtsCache(ttsCacheKey, buf, ctype);
+return { ok: true, buf, ctype };
+}
+return { ok: false };
+})
+.finally(() => {
+inFlightTtsFetches.delete(ttsCacheKey);
+});
+inFlightTtsFetches.set(ttsCacheKey, fetchTask);
+}
+const result = await fetchTask;
 if (myAbort.signal.aborted) return;
-await playAudioBufferWithStudioEq(buf, meta, btnEl, ctype);
+isSynthesizing = false;
+if (result && result.ok && result.buf) {
+await playAudioBufferWithStudioEq(result.buf, meta, btnEl, result.ctype);
 return;
 }
 } catch (err) {
@@ -19155,8 +19272,8 @@ runCloneBtn.innerHTML = origHtml;
 })();
 ;
 (() => {
-const CURRENT_APK_VERSION = '2.5.3';
-const CURRENT_APK_CODE = 150;
+const CURRENT_APK_VERSION = '2.5.4';
+const CURRENT_APK_CODE = 151;
 const DEEPSEEK_API_KEYS_URL = 'https://platform.deepseek.com/api_keys';
 const PUBLIC_WEB_ORIGIN = 'https://star.claudexxb.online';
 const GITHUB_RELEASES_URL = 'https://github.com/qts2218346424-cyber/persona-chat-studio/releases';

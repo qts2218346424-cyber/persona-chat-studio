@@ -22,7 +22,7 @@
 </p>
 
 <p>
-  <img src="https://img.shields.io/badge/Release-v2.5.3_Build_150-7C3AED?style=flat-square&logo=rocket&logoColor=white" alt="Version v2.5.3" />
+  <img src="https://img.shields.io/badge/Release-v2.5.4_Build_151-7C3AED?style=flat-square&logo=rocket&logoColor=white" alt="Version v2.5.4" />
   <img src="https://img.shields.io/badge/Node.js-%3E%3D22.5.0-339933?style=flat-square&logo=node.js&logoColor=white" alt="Node.js >= 22.5.0" />
   <img src="https://img.shields.io/badge/Dependencies-0_npm_Packages-FF6B6B?style=flat-square&logo=npm&logoColor=white" alt="Zero npm Dependencies" />
   <img src="https://img.shields.io/badge/Storage-node%3Asqlite-003B57?style=flat-square&logo=sqlite&logoColor=white" alt="Native SQLite" />
@@ -30,7 +30,7 @@
 </p>
 
 <p>
-  <a href="#-v253-最新版本核心特性">🚀 最新特性</a> •
+  <a href="#-v254-最新版本核心特性">🚀 最新特性</a> •
   <a href="#-三大工作台">🌐 三大工作台</a> •
   <a href="#-外观皮肤与头像工坊">🎨 外观工坊</a> •
   <a href="#-五大内置剧本与-20-位角色">🎬 剧本角色</a> •
@@ -47,12 +47,12 @@
 
 ---
 
-## 🚀 v2.5.3 最新版本核心特性
+## 🚀 v2.5.4 最新版本核心特性
 
-1. **全屏自由漫步 & 纯透明头顶低频气泡**：大肥鱼可在手机安全工作区内自由转身小碎步散步；头顶气泡改为纯透明背景 + 立体描边文字不挡画面，并调优为每 5~10 分钟随机弹一条实时天气吐槽或暖心安慰鼓励，面板支持 **`💬头顶气泡:开/关`** 随时隐藏开启。
-2. **QQ 音乐点歌精准锁定「单曲」列表播放**：搜索结果页自动跳过顶部歌手卡与歌单推荐卡，锁定下方「单曲」分段第一首歌或主动切入「歌曲」Tab 起播，兜底点位精确下移。
-3. **鲸鱼娘真实声音歌唱引擎 & 多选音频导入（彻底告别电子哼调）**：内置真人甜美中文少女唱词示例曲，并支持在悬浮面板「📥导歌」或 App「肥鱼歌单」里批量导入手机本地 `.mp3/.m4a/.wav/.ogg/.flac` 实际歌声音频。
-4. **悬浮窗外置肥鱼互动条 & 不抢焦点悬浮快捷打字条**：点外面即看大肥鱼立绘动画，支持剪贴板/文件批量导入常用聊天文字并双端同步，升级至 `v2.5.3 (Build 150)`。
+1. **QQ 音乐歌词真同步（杜绝逐句误搜）& 双源 LRC**：自动区分官方媒体会话与状态栏/桌面滚动歌词广播，直通原词同频并反查 LRC 校时，彻底杜绝“把每句歌词当新歌一搜再搜”；云端 `/api/music/lyrics` 接入网易云音乐 + `lrclib.net` 双源互补。
+2. **大肥鱼去僵硬自然慢漫步 & 搞怪捣蛋微剧本**：重塑底部贴地重心果冻呼吸与小碎步挤压回弹动画，漫步改为悠闲弧线慢走；外置交互栏与展开面板均配备 **`😈闹 / 😈捣蛋`**，演出打滑翻滚 360°、倒立吐舌鬼脸、吹大泡泡吓一跳、偷啃算力、装睡惊醒、后仰撞屏等 6 套滑稽细节动作。
+3. **外卖进度实时同步 & 蹲守催餐互动**：支持通知监听与无障碍自动捕获美团、饿了么、京东秒送、淘宝闪购等配送阶段（接单 / 备餐 / 取餐配送 / 逼近 / 送达），面板新增专属 **`🛵 外卖卡片`** 与 **`🛵查外卖`**，大肥鱼跟着一起流口水等开饭！
+4. **QQ 音乐点歌精准锁定「单曲」列表 & 真实歌声 & 外置互动条**：跳过歌手/歌单卡下移直击「单曲」起播、支持多选导入真实音频告别电子哼调、悬浮窗外置肥鱼互动条与不抢焦点快捷打字条同步升级至 `v2.5.4 (Build 151)`。
 5. **三通道独立隔离连接中心与极速预压缩管线**：本地直连 / DeepSeek 官方 API / 自定义云端 API 独立切换，`scripts/build-static-assets.mjs` 全面提供 `.gz` 与 `.br` 极速加载。
 
 ---

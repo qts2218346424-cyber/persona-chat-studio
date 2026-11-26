@@ -287,7 +287,7 @@ function resolveOrGenerateCompanion({
     aura: baseSkin.aura,
     particle: baseSkin.particle,
     reminderEnabled: currentConfig?.reminderEnabled !== false,
-    updatedAt: Date.now()
+    updatedAt: currentConfig?.updatedAt || Number(persona?.updated_at || 0) || 0
   };
 }
 

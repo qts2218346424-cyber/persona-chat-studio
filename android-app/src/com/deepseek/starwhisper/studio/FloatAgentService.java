@@ -123,6 +123,11 @@ public class FloatAgentService extends Service {
     private LinearLayout musicSearchBox;
     private EditText musicSearchEditText;
 
+    // 外卖同步实时卡片控件
+    private LinearLayout takeoutCardBox;
+    private TextView takeoutTitleView;
+    private TextView takeoutDetailView;
+
     // 语音输入与丰富提示向导 UI
     private LinearLayout voiceGuideBanner;
     private TextView voiceGuideTitle;
@@ -210,6 +215,7 @@ public class FloatAgentService extends Service {
     private int patIndex = 0;
     private int danceIndex = 0;
     private int singSongIndex = 0;
+    private int mischiefIndex = 0;
     private long lastTapPetMs = 0L;
 
     // QQ 音乐与歌词同步状态
@@ -220,10 +226,21 @@ public class FloatAgentService extends Service {
     private volatile long qqMusicPosMs = 0L;
     private volatile long qqMusicDurationMs = 0L;
     private volatile long qqMusicLastSyncMs = 0L;
+    private volatile long qqMusicLastNativeLyricMs = 0L;
+    private volatile long lastExternalTitleSwitchMs = 0L;
+    private int externalRapidSwitchCount = 0;
     private volatile String qqMusicCurrentLyric = "";
     private volatile String lastFetchedLyricsKey = "";
     private int inactiveMusicStreak = 0;
     private final List<LyricLine> qqMusicLyrics = Collections.synchronizedList(new ArrayList<LyricLine>());
+
+    // 实时外卖同步状态
+    private volatile String takeoutPlatform = "";
+    private volatile String takeoutStage = "";
+    private volatile String takeoutTitle = "";
+    private volatile String takeoutDetail = "";
+    private volatile long takeoutUpdatedMs = 0L;
+    private volatile String lastAnnouncedTakeoutKey = "";
 
     // 原生 MediaRecorder + 云端 ASR 语音识别状态
     private MediaRecorder mediaRecorder = null;
@@ -299,6 +316,9 @@ public class FloatAgentService extends Service {
         public void run() {
             if ("idle".equals(sCurrentStatus) && !isDraggingPet && !isRecordingVoice && !qqMusicPlaying
                     && (singerEngine == null || !singerEngine.isSinging())) {
+                if (petAvatarView != null) {
+                    petAvatarView.animate().rotation(0f).scaleX(1f).scaleY(1f).translationY(0f).translationX(0f).setDuration(260).start();
+                }
                 setPetPoseDrawable(R.drawable.feiyu_idle);
             }
         }
@@ -332,27 +352,29 @@ public class FloatAgentService extends Service {
                     fetchWeatherSummaryAsync();
                 }
 
-                // 1. 自由满屏漫步模式：真正大范围在手机屏幕上自由走动
-                if (freeRoamEnabled && !qqMusicPlaying && (petRoamAnimator == null || !petRoamAnimator.isRunning())) {
-                    if (autoLifeStep % 2 == 0 || petRandom.nextInt(10) < 7) {
-                        startPetFreeRoamStep();
-                    }
+                // 1. 自由漫步模式：节奏更舒缓（55% 慢步散步、22% 原地细腻微动作、23% 搞怪捣蛋自嗨秀）
+                int dice = petRandom.nextInt(100);
+                if (freeRoamEnabled && !qqMusicPlaying && (petRoamAnimator == null || !petRoamAnimator.isRunning()) && dice < 55) {
+                    startPetFreeRoamStep();
+                } else if (!qqMusicPlaying && dice >= 77) {
+                    // 自主随机表演一次静音小捣蛋，增加“活物灵魂感”而不刷屏打扰
+                    triggerMischiefAction(false);
                 } else {
                     int step = autoLifeStep % 6;
                     int pose = R.drawable.feiyu_eating;
-                    String anim = "eat";
+                    String anim = "nibble";
                     switch (step) {
-                        case 0: pose = R.drawable.feiyu_eating; anim = "eat"; break;
-                        case 1: pose = R.drawable.feiyu_walk; anim = "walk"; break;
+                        case 0: pose = R.drawable.feiyu_eating; anim = "nibble"; break;
+                        case 1: pose = R.drawable.feiyu_sleepy; anim = "nap_startle"; break;
                         case 2: pose = R.drawable.feiyu_focus; anim = "bounce"; break;
                         case 3: pose = R.drawable.feiyu_dance; anim = "dance"; break;
-                        case 4: pose = R.drawable.feiyu_beg; anim = "eat"; break;
-                        default: pose = R.drawable.feiyu_happy; anim = "bounce"; break;
+                        case 4: pose = R.drawable.feiyu_beg; anim = "bubble_pop"; break;
+                        default: pose = R.drawable.feiyu_derp; anim = "curious"; break;
                     }
                     setPetPoseDrawable(pose);
                     playPetBounceAnim(anim);
                     mainHandler.removeCallbacks(lifePoseResetRunnable);
-                    mainHandler.postDelayed(lifePoseResetRunnable, 4200);
+                    mainHandler.postDelayed(lifePoseResetRunnable, 4600);
                 }
 
                 // 2. 开启头顶气泡时，严格每 5 分钟 ~ 10 分钟随机弹一条天气吐槽或暖心安慰（不频繁打扰）
@@ -372,7 +394,7 @@ public class FloatAgentService extends Service {
                 }
                 autoLifeStep++;
             }
-            mainHandler.postDelayed(this, 10500);
+            mainHandler.postDelayed(this, 13500);
         }
     };
 
@@ -585,18 +607,55 @@ public class FloatAgentService extends Service {
                 String t = rawTitle != null ? rawTitle.trim() : "";
                 String s = rawText != null ? rawText.trim() : "";
                 if (t.isEmpty()) return;
-                // 若当前已有同歌名且 text 明显是一句实时歌词而非歌手专辑，则直接把 text 作为实时通知歌词展示
-                if (!inst.qqMusicTitle.isEmpty() && t.equalsIgnoreCase(inst.qqMusicTitle) && !s.isEmpty() && s.length() > 2 && !s.contains("正在播放")) {
-                    inst.qqMusicPlaying = true;
-                    inst.qqMusicCurrentLyric = s;
-                    inst.refreshMusicUi();
+                // 过滤系统下载/缓存/广告杂项通知，防止误清空正在同步的歌曲与歌词
+                if (t.contains("正在下载") || t.contains("下载完成") || t.contains("桌面歌词") || t.contains("已暂停") || s.contains("点击打开")) {
                     return;
+                }
+                boolean hasSessionPerm = QqMusicListenerService.isNotificationAccessEnabled(inst);
+                if (!inst.qqMusicTitle.isEmpty()) {
+                    String tLower = t.toLowerCase(Locale.ROOT);
+                    String curLower = inst.qqMusicTitle.toLowerCase(Locale.ROOT);
+                    boolean sameTrack = tLower.equals(curLower) || tLower.contains(curLower) || curLower.contains(tLower);
+                    if (sameTrack && !s.isEmpty() && s.length() > 2 && !s.contains("正在播放")) {
+                        inst.qqMusicPlaying = true;
+                        // 仅当通知文本不是单纯“歌手”且没有时间轴 LRC 时，同步作为状态栏歌词；如果有明显“歌手 - 专辑”也不乱覆盖
+                        if (inst.qqMusicLyrics.isEmpty() && !s.equalsIgnoreCase(inst.qqMusicArtist) && !s.contains(" - ")) {
+                            inst.handleExternalNativeLyricLine(s);
+                        }
+                        return;
+                    }
+                    // 已开启通知监听时以官方 MediaSession 元数据为准，不让辅助歌词通知覆盖原歌名
+                    if (hasSessionPerm && !s.contains(" - ")) {
+                        return;
+                    }
                 }
                 String artist = s;
                 if (artist.contains(" - ")) {
                     artist = artist.split(" - ")[0].trim();
                 }
                 inst.handleMusicMetadataUpdate(pkg, t, artist, true, 0L, 0L, false);
+            }
+        });
+    }
+
+    public static void onExternalNativeLyric(final String pkg, final String rawPrimary, final String rawSecondary) {
+        final FloatAgentService inst = sInstance;
+        if (inst == null) return;
+        inst.mainHandler.post(new Runnable() {
+            @Override
+            public void run() {
+                inst.handleExternalNativeLyricFromService(pkg, rawPrimary, rawSecondary);
+            }
+        });
+    }
+
+    public static void onExternalTakeoutUpdate(final String pkg, final String rawTitle, final String rawDetail) {
+        final FloatAgentService inst = sInstance;
+        if (inst == null) return;
+        inst.mainHandler.post(new Runnable() {
+            @Override
+            public void run() {
+                inst.handleExternalTakeoutUpdate(pkg, rawTitle, rawDetail);
             }
         });
     }
@@ -1302,6 +1361,13 @@ public class FloatAgentService extends Service {
                 triggerSingSongAction();
             }
         });
+        TextView extMischief = createExternalActionPill("😈闹", "#3B0764", "#E9D5FF", "#A855F7");
+        extMischief.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                triggerMischiefAction(true);
+            }
+        });
         TextView extMeme = createExternalActionPill("🫧梗", "#1E293B", "#BAE6FD", "#0EA5E9");
         extMeme.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -1328,6 +1394,7 @@ public class FloatAgentService extends Service {
         externalPetActionBar.addView(extPat);
         externalPetActionBar.addView(extDance);
         externalPetActionBar.addView(extSing);
+        externalPetActionBar.addView(extMischief);
         externalPetActionBar.addView(extMeme);
         externalPetActionBar.addView(extHide);
 
@@ -1673,30 +1740,43 @@ public class FloatAgentService extends Service {
         floatingLyricRootView.setVisibility(View.GONE);
     }
 
+    private void applyPetBottomPivot(View target, float yRatio) {
+        if (target == null) return;
+        float w = target.getWidth() > 0 ? target.getWidth() : dp(62);
+        float h = target.getHeight() > 0 ? target.getHeight() : dp(62);
+        target.setPivotX(w * 0.5f);
+        target.setPivotY(h * yRatio);
+    }
+
     private void startPetBreathAnim() {
         if (petBreathAnim != null) {
             petBreathAnim.cancel();
         }
         petBreathAnim = ValueAnimator.ofFloat(0f, 1f);
-        petBreathAnim.setDuration(1550);
+        petBreathAnim.setDuration(2200);
         petBreathAnim.setRepeatMode(ValueAnimator.REVERSE);
         petBreathAnim.setRepeatCount(ValueAnimator.INFINITE);
         petBreathAnim.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
             @Override
             public void onAnimationUpdate(ValueAnimator animation) {
-                if (petAvatarView != null && !isDraggingPet && !isExpanded) {
+                if (petAvatarView != null && !isDraggingPet && !isExpanded
+                        && (petActionAnim == null || !petActionAnim.isRunning())
+                        && (petRoamAnimator == null || !petRoamAnimator.isRunning())) {
+                    applyPetBottomPivot(petAvatarView, 0.88f);
                     float f = (float) animation.getAnimatedValue();
-                    petAvatarView.setTranslationY(-dp(5) * f);
-                    petAvatarView.setScaleX(1f + 0.03f * f);
-                    petAvatarView.setScaleY(1f + 0.04f * f);
-                    petAvatarView.setRotation(-2.2f + 4.4f * f);
+                    float s = (float) (0.5 - 0.5 * Math.cos(Math.PI * f));
+                    petAvatarView.setTranslationY(-dp(5) * 0.5f * s);
+                    // Q 弹果冻呼吸：吸气略挺拔、呼气微鼓肚
+                    petAvatarView.setScaleX(1.032f - 0.055f * s);
+                    petAvatarView.setScaleY(0.968f + 0.068f * s);
+                    petAvatarView.setRotation(-1.8f + 3.6f * s);
                 }
             }
         });
         petBreathAnim.start();
     }
 
-    private void playPetBounceAnim(String animType) {
+    private void playPetBounceAnim(final String animType) {
         if (petActionAnim != null) {
             petActionAnim.cancel();
         }
@@ -1705,71 +1785,227 @@ public class FloatAgentService extends Service {
         target.setRotation(0f);
         target.setScaleX(1f);
         target.setScaleY(1f);
+        target.setTranslationX(0f);
+        target.setTranslationY(0f);
+        boolean centerPivot = "slip".equals(animType) || "upside_down".equals(animType);
+        applyPetBottomPivot(target, centerPivot ? 0.5f : 0.88f);
 
-        if ("eat".equals(animType)) {
+        if ("eat".equals(animType) || "nibble".equals(animType)) {
+            final boolean isSneaky = "nibble".equals(animType);
             petActionAnim = ValueAnimator.ofFloat(0f, 1f);
-            petActionAnim.setDuration(420);
-            petActionAnim.setRepeatCount(4);
-            petActionAnim.setRepeatMode(ValueAnimator.REVERSE);
+            petActionAnim.setDuration(isSneaky ? 2200 : 1850);
             petActionAnim.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
                 @Override
                 public void onAnimationUpdate(ValueAnimator a) {
                     float f = (float) a.getAnimatedValue();
-                    target.setScaleY(1f + 0.08f * f);
-                    target.setScaleX(1f - 0.04f * f);
-                    target.setTranslationY(-dp(4) * f);
+                    float chew = (float) Math.sin(f * Math.PI * 10.0);
+                    float peek = isSneaky ? (float) Math.sin(f * Math.PI * 3.0) : 0f;
+                    target.setScaleX(1f + 0.075f * chew);
+                    target.setScaleY(1f - 0.065f * chew);
+                    target.setTranslationY(-dp(7) * 0.5f * Math.max(0f, -chew));
+                    target.setRotation((isSneaky ? 7f * peek : 3f * chew));
                 }
             });
         } else if ("walk".equals(animType)) {
-            petActionAnim = ValueAnimator.ofFloat(-1f, 1f);
-            petActionAnim.setDuration(520);
-            petActionAnim.setRepeatCount(5);
-            petActionAnim.setRepeatMode(ValueAnimator.REVERSE);
+            petActionAnim = ValueAnimator.ofFloat(0f, 1f);
+            petActionAnim.setDuration(2400);
             petActionAnim.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
                 @Override
                 public void onAnimationUpdate(ValueAnimator a) {
                     float f = (float) a.getAnimatedValue();
-                    target.setTranslationX(dp(6) * f);
-                    target.setTranslationY(-dp(3) * Math.abs(f));
-                    target.setRotation(5f * f);
+                    float step = (float) Math.sin(f * Math.PI * 6.0);
+                    float hop = Math.abs(step);
+                    target.setTranslationX(dp(5) * (float) Math.sin(f * Math.PI * 2.0));
+                    target.setTranslationY(-dp(4) * hop);
+                    target.setRotation(5.5f * step);
+                    target.setScaleY(0.95f + 0.08f * hop);
+                    target.setScaleX(1.05f - 0.06f * hop);
                 }
             });
         } else if ("dance".equals(animType)) {
-            petActionAnim = ValueAnimator.ofFloat(-1f, 1f);
-            petActionAnim.setDuration(360);
-            petActionAnim.setRepeatCount(7);
-            petActionAnim.setRepeatMode(ValueAnimator.REVERSE);
+            petActionAnim = ValueAnimator.ofFloat(0f, 1f);
+            petActionAnim.setDuration(2600);
             petActionAnim.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
                 @Override
                 public void onAnimationUpdate(ValueAnimator a) {
                     float f = (float) a.getAnimatedValue();
-                    target.setRotation(10f * f);
-                    target.setTranslationY(-dp(5) * Math.abs(f));
+                    float sway = (float) Math.sin(f * Math.PI * 6.0);
+                    float beat = Math.abs((float) Math.cos(f * Math.PI * 6.0));
+                    target.setRotation(11f * sway);
+                    target.setTranslationY(-dp(7) * beat);
+                    target.setTranslationX(dp(4) * sway);
+                    target.setScaleX(1.06f - 0.08f * beat);
+                    target.setScaleY(0.94f + 0.11f * beat);
+                }
+            });
+        } else if ("slip".equals(animType)) {
+            // 搞怪打滑：原地急刹翻跟头 360° 后轻微晃晕
+            petActionAnim = ValueAnimator.ofFloat(0f, 1f);
+            petActionAnim.setDuration(2300);
+            petActionAnim.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
+                @Override
+                public void onAnimationUpdate(ValueAnimator a) {
+                    float f = (float) a.getAnimatedValue();
+                    if (f < 0.62f) {
+                        float p = f / 0.62f;
+                        float eased = (float) (1.0 - Math.pow(1.0 - p, 2));
+                        target.setRotation(360f * eased);
+                        target.setTranslationY(-dp(12) * (float) Math.sin(p * Math.PI));
+                        target.setScaleX(1f + 0.10f * (float) Math.sin(p * Math.PI));
+                        target.setScaleY(1f - 0.08f * (float) Math.sin(p * Math.PI));
+                    } else {
+                        float wobble = (f - 0.62f) / 0.38f;
+                        target.setRotation(14f * (float) Math.sin(wobble * Math.PI * 4.0) * (1f - wobble));
+                        target.setTranslationY(0f);
+                    }
+                }
+            });
+        } else if ("upside_down".equals(animType)) {
+            // 搞怪倒立吐舌头：翻成 180° 倒挂摇摆再翻回来
+            petActionAnim = ValueAnimator.ofFloat(0f, 1f);
+            petActionAnim.setDuration(2800);
+            petActionAnim.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
+                @Override
+                public void onAnimationUpdate(ValueAnimator a) {
+                    float f = (float) a.getAnimatedValue();
+                    if (f < 0.22f) {
+                        float p = f / 0.22f;
+                        target.setRotation(180f * p);
+                        target.setScaleX(1f + 0.14f * p);
+                        target.setScaleY(1f + 0.14f * p);
+                    } else if (f < 0.78f) {
+                        float p = (f - 0.22f) / 0.56f;
+                        target.setRotation(180f + 12f * (float) Math.sin(p * Math.PI * 4.0));
+                        target.setTranslationY(-dp(4) * (float) Math.sin(p * Math.PI * 2.0));
+                        target.setScaleX(1.14f);
+                        target.setScaleY(1.14f);
+                    } else {
+                        float p = (f - 0.78f) / 0.22f;
+                        target.setRotation(180f * (1f - p));
+                        target.setScaleX(1.14f - 0.14f * p);
+                        target.setScaleY(1.14f - 0.14f * p);
+                    }
+                }
+            });
+        } else if ("bubble_pop".equals(animType)) {
+            // 吹泡泡膨胀然后“啪！”瞬间炸弹回
+            petActionAnim = ValueAnimator.ofFloat(0f, 1f);
+            petActionAnim.setDuration(2400);
+            petActionAnim.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
+                @Override
+                public void onAnimationUpdate(ValueAnimator a) {
+                    float f = (float) a.getAnimatedValue();
+                    if (f < 0.66f) {
+                        float p = f / 0.66f;
+                        float s = 1f + 0.26f * p;
+                        target.setScaleX(s);
+                        target.setScaleY(s);
+                        target.setRotation(3f * (float) Math.sin(p * Math.PI * 6.0));
+                    } else {
+                        float p = (f - 0.66f) / 0.34f;
+                        float jump = (float) Math.sin(p * Math.PI);
+                        target.setScaleX(0.86f + 0.14f * (1f - jump * 0.4f));
+                        target.setScaleY(1.12f * jump + (1f - jump));
+                        target.setTranslationY(-dp(11) * jump);
+                        target.setRotation(-12f * (float) Math.sin(p * Math.PI * 3.0));
+                    }
+                }
+            });
+        } else if ("bonk".equals(animType)) {
+            // 搞怪蓄力前冲撞屏幕再弹回来摇晃
+            petActionAnim = ValueAnimator.ofFloat(0f, 1f);
+            petActionAnim.setDuration(2100);
+            petActionAnim.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
+                @Override
+                public void onAnimationUpdate(ValueAnimator a) {
+                    float f = (float) a.getAnimatedValue();
+                    if (f < 0.32f) {
+                        float p = f / 0.32f;
+                        target.setTranslationX(-dp(8) * p);
+                        target.setRotation(-13f * p);
+                        target.setScaleX(1f - 0.10f * p);
+                        target.setScaleY(1f + 0.08f * p);
+                    } else if (f < 0.50f) {
+                        float p = (f - 0.32f) / 0.18f;
+                        target.setTranslationX(-dp(8) + dp(20) * p);
+                        target.setRotation(-13f + 27f * p);
+                        target.setScaleX(0.90f + 0.24f * p);
+                        target.setScaleY(1.08f - 0.18f * p);
+                    } else {
+                        float p = (f - 0.50f) / 0.50f;
+                        float damp = 1f - p;
+                        target.setTranslationX(dp(12) * damp * (float) Math.cos(p * Math.PI * 3.0));
+                        target.setRotation(12f * damp * (float) Math.sin(p * Math.PI * 5.0));
+                        target.setScaleX(1f);
+                        target.setScaleY(1f);
+                    }
+                }
+            });
+        } else if ("nap_startle".equals(animType)) {
+            // 打瞌睡慢慢往下掉头，然后猛地一激灵惊醒
+            petActionAnim = ValueAnimator.ofFloat(0f, 1f);
+            petActionAnim.setDuration(2500);
+            petActionAnim.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
+                @Override
+                public void onAnimationUpdate(ValueAnimator a) {
+                    float f = (float) a.getAnimatedValue();
+                    if (f < 0.72f) {
+                        float p = f / 0.72f;
+                        target.setRotation(15f * p);
+                        target.setTranslationY(dp(4) * p);
+                        target.setScaleY(1f - 0.08f * p);
+                        target.setScaleX(1f + 0.05f * p);
+                    } else {
+                        float p = (f - 0.72f) / 0.28f;
+                        float jolt = (float) Math.sin(p * Math.PI);
+                        target.setRotation(-8f * jolt);
+                        target.setTranslationY(-dp(9) * jolt);
+                        target.setScaleX(1f - 0.06f * jolt);
+                        target.setScaleY(1f + 0.10f * jolt);
+                    }
+                }
+            });
+        } else if ("curious".equals(animType)) {
+            // 歪头左右打量好奇宝宝
+            petActionAnim = ValueAnimator.ofFloat(0f, 1f);
+            petActionAnim.setDuration(2100);
+            petActionAnim.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
+                @Override
+                public void onAnimationUpdate(ValueAnimator a) {
+                    float f = (float) a.getAnimatedValue();
+                    float tilt = (float) Math.sin(f * Math.PI * 2.0);
+                    target.setRotation(14f * tilt);
+                    target.setScaleX(1f + 0.05f * Math.abs(tilt));
+                    target.setScaleY(1f + 0.04f * (1f - Math.abs(tilt)));
                 }
             });
         } else if ("shake".equals(animType)) {
             petActionAnim = ValueAnimator.ofFloat(-1f, 1f);
-            petActionAnim.setDuration(140);
+            petActionAnim.setDuration(150);
             petActionAnim.setRepeatCount(6);
             petActionAnim.setRepeatMode(ValueAnimator.REVERSE);
             petActionAnim.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
                 @Override
                 public void onAnimationUpdate(ValueAnimator a) {
                     float f = (float) a.getAnimatedValue();
-                    target.setRotation(12f * f);
+                    target.setRotation(11f * f);
+                    target.setScaleX(1f + 0.04f * Math.abs(f));
+                    target.setScaleY(1f - 0.04f * Math.abs(f));
                 }
             });
         } else {
+            // 默认柔和 Q 弹落地回弹
             petActionAnim = ValueAnimator.ofFloat(0f, 1f);
-            petActionAnim.setDuration(260);
-            petActionAnim.setRepeatCount(3);
-            petActionAnim.setRepeatMode(ValueAnimator.REVERSE);
+            petActionAnim.setDuration(1250);
             petActionAnim.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
                 @Override
                 public void onAnimationUpdate(ValueAnimator a) {
                     float f = (float) a.getAnimatedValue();
-                    target.setScaleX(1f + 0.1f * f);
-                    target.setScaleY(1f + 0.1f * f);
+                    float hop = Math.abs((float) Math.sin(f * Math.PI * 2.0));
+                    target.setTranslationY(-dp(8) * hop);
+                    target.setScaleX(1.06f - 0.10f * hop);
+                    target.setScaleY(0.94f + 0.12f * hop);
+                    target.setRotation(5f * (float) Math.sin(f * Math.PI * 2.0));
                 }
             });
         }
@@ -1781,6 +2017,7 @@ public class FloatAgentService extends Service {
                 target.setScaleY(1f);
                 target.setTranslationX(0f);
                 target.setTranslationY(0f);
+                applyPetBottomPivot(target, 0.88f);
             }
         });
         petActionAnim.start();
@@ -1900,7 +2137,7 @@ public class FloatAgentService extends Service {
         });
         panel.addView(subtitleBannerView);
 
-        // 3. 鲸鱼娘互动动作栏（点击自动退到悬浮窗外面表演给你看！）
+        // 3. 鲸鱼娘互动动作两排（4×2，点击自动退到悬浮窗外面表演给你看！）
         LinearLayout petActionRow = new LinearLayout(this);
         petActionRow.setOrientation(LinearLayout.HORIZONTAL);
         LinearLayout.LayoutParams actBarLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
@@ -1936,6 +2173,32 @@ public class FloatAgentService extends Service {
             }
         });
 
+        TextView mischiefBtn = createGridBtn("😈捣蛋");
+        mischiefBtn.setTextColor(Color.parseColor("#E9D5FF"));
+        setViewBg(mischiefBtn, createRoundRect("#3B0764", 8, "#A855F7", 1));
+        LinearLayout.LayoutParams misLp = (LinearLayout.LayoutParams) mischiefBtn.getLayoutParams();
+        misLp.rightMargin = 0;
+        mischiefBtn.setLayoutParams(misLp);
+        mischiefBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                collapsePanel();
+                triggerMischiefAction(true);
+            }
+        });
+
+        petActionRow.addView(feedBtn);
+        petActionRow.addView(patBtn);
+        petActionRow.addView(danceBtn);
+        petActionRow.addView(mischiefBtn);
+        panel.addView(petActionRow);
+
+        LinearLayout petActionRow2 = new LinearLayout(this);
+        petActionRow2.setOrientation(LinearLayout.HORIZONTAL);
+        LinearLayout.LayoutParams actBarLp2 = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        actBarLp2.topMargin = dp(5);
+        petActionRow2.setLayoutParams(actBarLp2);
+
         TextView singBtn = createGridBtn("🎤唱歌");
         singBtn.setTextColor(Color.parseColor("#F9A8D4"));
         setViewBg(singBtn, createRoundRect("#3B102E", 8, "#EC4899", 1));
@@ -1958,9 +2221,6 @@ public class FloatAgentService extends Service {
         });
 
         TextView memeBtn = createGridBtn("🫧热梗");
-        LinearLayout.LayoutParams memeLp = (LinearLayout.LayoutParams) memeBtn.getLayoutParams();
-        memeLp.rightMargin = 0;
-        memeBtn.setLayoutParams(memeLp);
         memeBtn.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -1969,13 +2229,24 @@ public class FloatAgentService extends Service {
             }
         });
 
-        petActionRow.addView(feedBtn);
-        petActionRow.addView(patBtn);
-        petActionRow.addView(danceBtn);
-        petActionRow.addView(singBtn);
-        petActionRow.addView(importSongBtn);
-        petActionRow.addView(memeBtn);
-        panel.addView(petActionRow);
+        TextView takeoutCheckBtn = createGridBtn("🛵查外卖");
+        takeoutCheckBtn.setTextColor(Color.parseColor("#FED7AA"));
+        setViewBg(takeoutCheckBtn, createRoundRect("#431407", 8, "#F97316", 1));
+        LinearLayout.LayoutParams tkBtnLp = (LinearLayout.LayoutParams) takeoutCheckBtn.getLayoutParams();
+        tkBtnLp.rightMargin = 0;
+        takeoutCheckBtn.setLayoutParams(tkBtnLp);
+        takeoutCheckBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                checkTakeoutOnScreenManual();
+            }
+        });
+
+        petActionRow2.addView(singBtn);
+        petActionRow2.addView(importSongBtn);
+        petActionRow2.addView(memeBtn);
+        petActionRow2.addView(takeoutCheckBtn);
+        panel.addView(petActionRow2);
 
         // 3b. 个性开关两行（3x2）：防误触 / 语音尾巴 / 外置互动 / 自由漫步 / 头顶气泡 / 透明歌词
         LinearLayout prefSwitchRow1 = new LinearLayout(this);
@@ -2104,8 +2375,9 @@ public class FloatAgentService extends Service {
         panel.addView(prefSwitchRow2);
         refreshPrefSwitchButtons();
 
-        // 4. QQ 音乐联动迷你卡片（实时歌词 + 切歌 + 点歌 + 透明歌词调节）
+        // 4. QQ 音乐联动迷你卡片 + 外卖订单实时同步卡片
         panel.addView(buildQqMusicCard());
+        panel.addView(buildTakeoutSyncCard());
 
         // 5. 主任务 / 语音输入舱 + 动态语音提示向导条
         LinearLayout inputRow = new LinearLayout(this);
@@ -2322,6 +2594,7 @@ public class FloatAgentService extends Service {
 
         refreshDynamicWidgets();
         refreshMusicUi();
+        refreshTakeoutUi();
         return panel;
     }
 
@@ -2348,7 +2621,7 @@ public class FloatAgentService extends Service {
         musicTitleView.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f));
 
         musicPermHintView = new TextView(this);
-        musicPermHintView.setText("同步进度权限");
+        musicPermHintView.setText("开通知同步歌词/外卖");
         musicPermHintView.setTextColor(Color.parseColor("#FDE68A"));
         musicPermHintView.setTextSize(10f);
         musicPermHintView.setPadding(dp(6), dp(2), dp(6), dp(2));
@@ -2356,7 +2629,7 @@ public class FloatAgentService extends Service {
         musicPermHintView.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                Toast.makeText(FloatAgentService.this, "开启「DeepSeek·星语」通知使用权即可实时同步 QQ 音乐歌词进度", Toast.LENGTH_LONG).show();
+                Toast.makeText(FloatAgentService.this, "开启「DeepSeek·星语」通知使用权即可实时同步 QQ 音乐歌词与外卖进度", Toast.LENGTH_LONG).show();
                 QqMusicListenerService.openNotificationListenerSettings(FloatAgentService.this);
             }
         });
@@ -2485,6 +2758,66 @@ public class FloatAgentService extends Service {
         musicSearchBox.addView(goPlayBtn);
         card.addView(musicSearchBox);
         return card;
+    }
+
+    private LinearLayout buildTakeoutSyncCard() {
+        takeoutCardBox = new LinearLayout(this);
+        takeoutCardBox.setOrientation(LinearLayout.VERTICAL);
+        takeoutCardBox.setPadding(dp(10), dp(7), dp(10), dp(7));
+        setViewBg(takeoutCardBox, createRoundRect("#2A1305", 12, "#F97316", 1));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.topMargin = dp(6);
+        takeoutCardBox.setLayoutParams(lp);
+        takeoutCardBox.setVisibility(View.GONE);
+
+        LinearLayout topRow = new LinearLayout(this);
+        topRow.setOrientation(LinearLayout.HORIZONTAL);
+        topRow.setGravity(Gravity.CENTER_VERTICAL);
+
+        takeoutTitleView = new TextView(this);
+        takeoutTitleView.setText("🛵 外卖进度实时同步中");
+        takeoutTitleView.setTextColor(Color.parseColor("#FED7AA"));
+        takeoutTitleView.setTextSize(11.5f);
+        takeoutTitleView.setTypeface(null, android.graphics.Typeface.BOLD);
+        takeoutTitleView.setSingleLine(true);
+        takeoutTitleView.setEllipsize(TextUtils.TruncateAt.END);
+        takeoutTitleView.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f));
+
+        TextView clearBtn = new TextView(this);
+        clearBtn.setText("✓已取餐");
+        clearBtn.setTextColor(Color.parseColor("#FDE68A"));
+        clearBtn.setTextSize(10f);
+        clearBtn.setPadding(dp(6), dp(2), dp(6), dp(2));
+        setViewBg(clearBtn, createRoundRect("#451A03", 8, "#FB923C", 1));
+        clearBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                takeoutPlatform = "";
+                takeoutStage = "";
+                takeoutTitle = "";
+                takeoutDetail = "";
+                takeoutUpdatedMs = 0L;
+                lastAnnouncedTakeoutKey = "";
+                refreshTakeoutUi();
+                refreshCollapsedPill();
+                Toast.makeText(FloatAgentService.this, "已清理当前外卖卡片，祝主人在饭点吃得香~ 🍚", Toast.LENGTH_SHORT).show();
+            }
+        });
+
+        topRow.addView(takeoutTitleView);
+        topRow.addView(clearBtn);
+        takeoutCardBox.addView(topRow);
+
+        takeoutDetailView = new TextView(this);
+        takeoutDetailView.setText("等待美团/饿了么/京东秒送订单推送…");
+        takeoutDetailView.setTextColor(Color.parseColor("#FFEDD5"));
+        takeoutDetailView.setTextSize(11f);
+        takeoutDetailView.setMaxLines(2);
+        takeoutDetailView.setEllipsize(TextUtils.TruncateAt.END);
+        takeoutDetailView.setPadding(0, dp(3), 0, 0);
+        takeoutCardBox.addView(takeoutDetailView);
+
+        return takeoutCardBox;
     }
 
     private LinearLayout buildVoiceGuideBanner() {
@@ -2743,7 +3076,11 @@ public class FloatAgentService extends Service {
         }
         if (petAvatarView != null) {
             petAvatarView.setTranslationY(0f);
+            petAvatarView.setTranslationX(0f);
+            petAvatarView.setRotation(0f);
             petAvatarView.setScaleX(1f);
+            petAvatarView.setScaleY(1f);
+            applyPetBottomPivot(petAvatarView, 0.88f);
         }
     }
 
@@ -2752,6 +3089,9 @@ public class FloatAgentService extends Service {
             return;
         }
         stopPetRoaming();
+        if (petActionAnim != null && petActionAnim.isRunning()) {
+            petActionAnim.cancel();
+        }
 
         final DisplayMetrics dm = getResources().getDisplayMetrics();
         int petW = (petBubbleContainer != null && petBubbleContainer.getWidth() > 0) ? petBubbleContainer.getWidth() : dp(96);
@@ -2765,28 +3105,37 @@ public class FloatAgentService extends Service {
         final int startX = layoutParams.x;
         final int startY = layoutParams.y;
 
-        // 全屏大范围随机选点（确保有一定位移跨度，不再局限在一个小角落）
-        int nextX = minX + petRandom.nextInt(Math.max(1, maxX - minX));
-        int nextY = minY + petRandom.nextInt(Math.max(1, maxY - minY));
-        if (Math.hypot(nextX - startX, nextY - startY) < dp(55)) {
-            nextX = (startX < dm.widthPixels / 2) ? maxX - petRandom.nextInt(dp(40)) : minX + petRandom.nextInt(dp(40));
-            nextY = (startY < dm.heightPixels / 2)
-                    ? Math.min(maxY, startY + dp(90) + petRandom.nextInt(dp(90)))
-                    : Math.max(minY, startY - dp(90) - petRandom.nextInt(dp(90)));
+        // 舒缓自然漫步：每次选取中短优雅步幅（75dp ~ 185dp），在全屏安全区里悠闲踱步而非瞬移乱窜
+        int stepDistMin = dp(75);
+        int stepDistMax = dp(185);
+        double angle = petRandom.nextDouble() * Math.PI * 2.0;
+        int distTarget = stepDistMin + petRandom.nextInt(Math.max(10, stepDistMax - stepDistMin));
+        int candX = Math.round((float) (startX + Math.cos(angle) * distTarget));
+        int candY = Math.round((float) (startY + Math.sin(angle) * distTarget));
+        if (candX < minX || candX > maxX) {
+            candX = Math.round((float) (startX - Math.cos(angle) * distTarget));
+        }
+        if (candY < minY || candY > maxY) {
+            candY = Math.round((float) (startY - Math.sin(angle) * distTarget));
         }
 
-        final int targetX = Math.max(minX, Math.min(nextX, maxX));
-        final int targetY = Math.max(minY, Math.min(nextY, maxY));
+        final int targetX = Math.max(minX, Math.min(candX, maxX));
+        final int targetY = Math.max(minY, Math.min(candY, maxY));
 
         // 依据走路方向自动转身（向左走面朝左，向右走面朝右）
+        final float dirSign = (targetX < startX) ? -1f : 1f;
+        final float arcLift = (petRandom.nextBoolean() ? 1f : -1f) * dp(10 + petRandom.nextInt(14));
         if (petAvatarView != null) {
-            petAvatarView.setScaleX(targetX < startX ? -1f : 1f);
+            applyPetBottomPivot(petAvatarView, 0.88f);
+            petAvatarView.setScaleX(dirSign);
         }
         setPetPoseDrawable(R.drawable.feiyu_walk);
         mainHandler.removeCallbacks(lifePoseResetRunnable);
 
         double dist = Math.hypot(targetX - startX, targetY - startY);
-        long durMs = Math.max(1500L, Math.min(3400L, Math.round(dist * 3.8)));
+        // 慢速悠闲散步：约 dist * 13 ms（最低 3800ms，最高 7400ms），彻底告别赶路瞬移感
+        long durMs = Math.max(3800L, Math.min(7400L, Math.round(dist * 13.0)));
+        final int strideCycles = Math.max(4, Math.min(8, (int) Math.round(dist / Math.max(1, dp(26)))));
 
         petRoamAnimator = ValueAnimator.ofFloat(0f, 1f);
         petRoamAnimator.setDuration(durMs);
@@ -2797,14 +3146,24 @@ public class FloatAgentService extends Service {
                     return;
                 }
                 float f = (float) animation.getAnimatedValue();
-                // 平滑缓动 + 轻快小碎步跳跃感
+                // 缓入缓出 + 轻微正弦弧线偏移（真实生命游走曲线而非直尺平移）
                 float smooth = (float) (0.5 - 0.5 * Math.cos(Math.PI * f));
-                layoutParams.x = Math.round(startX + (targetX - startX) * smooth);
-                layoutParams.y = Math.round(startY + (targetY - startY) * smooth);
+                float arcOffset = (float) Math.sin(Math.PI * f) * arcLift;
+                int rawX = Math.round(startX + (targetX - startX) * smooth);
+                int rawY = Math.round(startY + (targetY - startY) * smooth + arcOffset);
+                layoutParams.x = Math.max(minX, Math.min(rawX, maxX));
+                layoutParams.y = Math.max(minY, Math.min(rawY, maxY));
                 savedPillX = layoutParams.x;
                 savedPillY = layoutParams.y;
                 if (petAvatarView != null) {
-                    petAvatarView.setTranslationY((float) (-Math.abs(Math.sin(f * Math.PI * 5.0)) * dp(5)));
+                    applyPetBottomPivot(petAvatarView, 0.88f);
+                    float phase = (float) (f * Math.PI * strideCycles);
+                    float hop = Math.abs((float) Math.sin(phase));
+                    float sway = (float) Math.sin(phase);
+                    petAvatarView.setTranslationY(-hop * dp(9) * 0.5f);
+                    petAvatarView.setRotation(4.8f * sway);
+                    petAvatarView.setScaleX(dirSign * (1.035f - 0.06f * hop));
+                    petAvatarView.setScaleY(0.965f + 0.065f * hop);
                 }
                 try {
                     windowManager.updateViewLayout(floatRootView, layoutParams);
@@ -2815,12 +3174,21 @@ public class FloatAgentService extends Service {
             @Override
             public void onAnimationEnd(Animator animation) {
                 if (petAvatarView != null) {
-                    petAvatarView.setTranslationY(0f);
-                    petAvatarView.setScaleX(1f);
+                    petAvatarView.animate()
+                            .translationY(0f)
+                            .rotation(0f)
+                            .scaleX(1f)
+                            .scaleY(1f)
+                            .setDuration(260)
+                            .start();
                 }
                 if (!isExpanded && !isDraggingPet && "idle".equals(sCurrentStatus)) {
-                    setPetPoseDrawable(petRandom.nextBoolean() ? R.drawable.feiyu_happy : R.drawable.feiyu_idle);
-                    mainHandler.postDelayed(lifePoseResetRunnable, 2800);
+                    int endPose = (petRandom.nextInt(10) < 3) ? R.drawable.feiyu_derp : (petRandom.nextBoolean() ? R.drawable.feiyu_happy : R.drawable.feiyu_idle);
+                    setPetPoseDrawable(endPose);
+                    if (endPose == R.drawable.feiyu_derp) {
+                        playPetBounceAnim("curious");
+                    }
+                    mainHandler.postDelayed(lifePoseResetRunnable, 3400);
                 }
             }
         });
@@ -3026,10 +3394,47 @@ public class FloatAgentService extends Service {
         playWhaleVoice(
                 R.raw.feiyu_dizzy,
                 R.drawable.feiyu_dizzy,
-                "shake",
+                "slip",
                 "🌀 至于大肥鱼摔跤嘛，先得讨论鱼为什么会在陆地上…晃晕啦！",
                 true
         );
+    }
+
+    private void triggerMischiefAction(final boolean withSpeechBubble) {
+        final int mode = (withSpeechBubble ? mischiefIndex : petRandom.nextInt(6)) % 6;
+        if (withSpeechBubble) mischiefIndex++;
+
+        stopPetRoaming();
+        int[] voices = new int[]{
+                R.raw.feiyu_dizzy, R.raw.feiyu_not_fat, R.raw.feiyu_eat_rice_2,
+                R.raw.feiyu_pat_soft, R.raw.feiyu_slacking, R.raw.feiyu_refuse
+        };
+        int[] poses = new int[]{
+                R.drawable.feiyu_dizzy, R.drawable.feiyu_derp, R.drawable.feiyu_eating,
+                R.drawable.feiyu_beg, R.drawable.feiyu_sleepy, R.drawable.feiyu_derp
+        };
+        String[] anims = new String[]{
+                "slip", "upside_down", "nibble",
+                "bubble_pop", "nap_startle", "bonk"
+        };
+        String[] lines = new String[]{
+                "🌀 哎呀！谁把屏幕擦这么滑，鱼尾巴原地转圈劈叉了！",
+                "🙃 倒立看世界！咦，你的黑眼圈好像变浅了一点点呢 😜",
+                "🤫 咔哧咔哧…偷偷啃掉你屏幕上一点无聊和烦恼，不许说出去~",
+                "🫧 噗——本来想吹个超级大泡泡，结果啪一下吓自己一跳！",
+                "💤 呼……才没有偷睡！只是闭眼帮你偷偷加载快乐外挂 ⚡",
+                "😈 咚！蓄力冲撞屏幕汇报：前方挺硬，但撞走所有坏心情啦 💥"
+        };
+
+        if (withSpeechBubble) {
+            playWhaleVoice(voices[mode], poses[mode], anims[mode], lines[mode], true);
+        } else {
+            // 自主周期动作：悄悄做滑稽捣蛋表情和拟真动画，严守低频气泡规则不吵主人
+            mainHandler.removeCallbacks(lifePoseResetRunnable);
+            setPetPoseDrawable(poses[mode]);
+            playPetBounceAnim(anims[mode]);
+            mainHandler.postDelayed(lifePoseResetRunnable, 3600);
+        }
     }
 
     private void playCustomSongById(String songId) {
@@ -3117,6 +3522,15 @@ public class FloatAgentService extends Service {
         }
         if (t.contains("跳舞") || t.contains("跳个舞") || t.contains("摇尾巴")) {
             triggerDanceAction();
+            return true;
+        }
+        if (t.contains("捣蛋") || t.contains("搞怪") || t.contains("卖萌") || t.contains("整活") || t.contains("翻跟头")) {
+            collapsePanel();
+            triggerMischiefAction(true);
+            return true;
+        }
+        if (t.contains("查外卖") || t.contains("我的外卖") || t.contains("外卖到哪") || t.contains("同步外卖")) {
+            checkTakeoutOnScreenManual();
             return true;
         }
         if (t.contains("开启漫步") || t.contains("打开漫步") || t.contains("到处走") || t.contains("自由走动")) {
@@ -3279,6 +3693,89 @@ public class FloatAgentService extends Service {
         }, 420);
     }
 
+    private static boolean isValidNativeLyricLine(String s) {
+        if (s == null) return false;
+        String t = s.trim();
+        if (t.length() < 2 || t.length() > 75) return false;
+        if (t.matches("^\\d{1,2}:\\d{2}.*$")) return false;
+        if (t.contains("正在播放") || t.contains("点击打开") || t.contains("正在下载")
+                || t.contains("下载完成") || t.contains("桌面歌词") || t.contains("QQ音乐")) {
+            return false;
+        }
+        return true;
+    }
+
+    private void handleExternalNativeLyricFromService(String pkg, String rawPrimary, String rawSecondary) {
+        String p = rawPrimary != null ? rawPrimary.trim() : "";
+        String sec = rawSecondary != null ? rawSecondary.trim() : "";
+        if (!isValidNativeLyricLine(p)) return;
+
+        // 避免把歌手名原封不动当作歌词显示
+        if (!qqMusicArtist.isEmpty() && p.equalsIgnoreCase(qqMusicArtist)) return;
+
+        // 如果当前尚无歌名，且次级文本形如“歌名 - 歌手”，则先锁定曲目但不以高频歌词充当歌名
+        if (qqMusicTitle.isEmpty() && sec.contains(" - ")) {
+            String[] parts = sec.split(" - ", 2);
+            String guessTitle = parts[0].trim();
+            String guessArtist = parts.length > 1 ? parts[1].trim() : "";
+            if (!guessTitle.isEmpty()) {
+                handleMusicMetadataUpdate(pkg, guessTitle, guessArtist, true, 0L, 0L, false);
+            }
+        }
+        handleExternalNativeLyricLine(p);
+    }
+
+    private void handleExternalNativeLyricLine(String lyricLine) {
+        String clean = lyricLine != null ? lyricLine.replace('\n', ' ').trim() : "";
+        if (!isValidNativeLyricLine(clean)) return;
+        qqMusicPlaying = true;
+        qqMusicLastNativeLyricMs = System.currentTimeMillis();
+        if (!clean.equals(qqMusicCurrentLyric)) {
+            qqMusicCurrentLyric = clean;
+            alignLrcPositionByNativeLyric(clean);
+            refreshMusicUi();
+        }
+    }
+
+    private void alignLrcPositionByNativeLyric(String nativeLine) {
+        if (nativeLine == null || nativeLine.isEmpty()) return;
+        String normNative = nativeLine.toLowerCase(Locale.ROOT).replaceAll("[\\s\\p{Punct}，。！？、~]+", "");
+        if (normNative.length() < 2) return;
+        synchronized (qqMusicLyrics) {
+            if (qqMusicLyrics.isEmpty()) return;
+            long bestTime = -1L;
+            int bestScore = 0;
+            for (int i = 0; i < qqMusicLyrics.size(); i++) {
+                LyricLine item = qqMusicLyrics.get(i);
+                String normItem = item.text.toLowerCase(Locale.ROOT).replaceAll("[\\s\\p{Punct}，。！？、~]+", "");
+                if (normItem.isEmpty()) continue;
+                int score = 0;
+                if (normItem.equals(normNative)) score = 100;
+                else if (normItem.contains(normNative) || normNative.contains(normItem)) score = 70;
+                if (score > bestScore) {
+                    bestScore = score;
+                    bestTime = item.timeMs;
+                }
+            }
+            if (bestTime >= 0L && bestScore >= 70) {
+                qqMusicPosMs = bestTime;
+                qqMusicLastSyncMs = System.currentTimeMillis();
+            }
+        }
+    }
+
+    private static boolean looksLikeLyricSentenceInsteadOfTitle(String title, String artist) {
+        if (title == null) return false;
+        String t = title.trim();
+        if (t.isEmpty()) return false;
+        if (!artist.isEmpty()) return false;
+        if (t.length() >= 18) return true;
+        if (t.contains("，") || t.contains("。") || t.contains("！") || t.contains("？") || t.contains("~")) {
+            return true;
+        }
+        return false;
+    }
+
     private void handleMusicMetadataUpdate(
             String pkg,
             String title,
@@ -3292,6 +3789,31 @@ public class FloatAgentService extends Service {
         String cleanArtist = artist != null ? artist.trim() : "";
         if (cleanTitle.isEmpty()) return;
 
+        long nowSys = System.currentTimeMillis();
+
+        // 防“一句一搜索”硬护栏：非官方 MediaSession 来源时，如检测到歌词特征或短时高频换名，直接当原生同步歌词处理而不搜歌！
+        if (!exactSession && !qqMusicTitle.isEmpty()) {
+            boolean titleDiffers = !cleanTitle.equalsIgnoreCase(qqMusicTitle);
+            if (titleDiffers) {
+                if (nowSys - lastExternalTitleSwitchMs <= 6500L) {
+                    externalRapidSwitchCount++;
+                } else {
+                    externalRapidSwitchCount = 1;
+                }
+                lastExternalTitleSwitchMs = nowSys;
+
+                boolean hasRecentNativeLyric = (nowSys - qqMusicLastNativeLyricMs) < 16000L;
+                boolean hasOfficialPerm = QqMusicListenerService.isNotificationAccessEnabled(this);
+                if (hasRecentNativeLyric
+                        || (hasOfficialPerm && cleanArtist.isEmpty())
+                        || externalRapidSwitchCount >= 2
+                        || looksLikeLyricSentenceInsteadOfTitle(cleanTitle, cleanArtist)) {
+                    handleExternalNativeLyricLine(cleanTitle);
+                    return;
+                }
+            }
+        }
+
         boolean songChanged = !cleanTitle.equalsIgnoreCase(qqMusicTitle)
                 || (!cleanArtist.isEmpty() && !cleanArtist.equalsIgnoreCase(qqMusicArtist));
 
@@ -3301,12 +3823,21 @@ public class FloatAgentService extends Service {
             qqMusicArtist = cleanArtist;
         }
         qqMusicPlaying = playing;
-        if (exactSession || posMs > 0) {
-            qqMusicPosMs = posMs;
-            qqMusicLastSyncMs = System.currentTimeMillis();
-        } else if (songChanged) {
-            qqMusicPosMs = 0L;
-            qqMusicLastSyncMs = System.currentTimeMillis();
+        if (songChanged) {
+            qqMusicPosMs = Math.max(0L, posMs);
+            qqMusicLastSyncMs = nowSys;
+            qqMusicLastNativeLyricMs = 0L;
+            externalRapidSwitchCount = 0;
+        } else if (exactSession || posMs > 0) {
+            long predicted = qqMusicPosMs;
+            if (playing && qqMusicLastSyncMs > 0) {
+                predicted += Math.max(0L, nowSys - qqMusicLastSyncMs);
+            }
+            // 若当前时间偏差超过 1200ms 或暂停状态校准，才直接跳跃对齐，避免 650ms 轮询微差导致歌词抖动或回退
+            if (!playing || Math.abs(posMs - predicted) > 1200L) {
+                qqMusicPosMs = Math.max(0L, posMs);
+                qqMusicLastSyncMs = nowSys;
+            }
         }
         if (durMs > 0) {
             qqMusicDurationMs = durMs;
@@ -3314,7 +3845,7 @@ public class FloatAgentService extends Service {
 
         if (songChanged) {
             qqMusicLyrics.clear();
-            qqMusicCurrentLyric = "正在查找《" + cleanTitle + "》同步歌词…";
+            qqMusicCurrentLyric = "🎵 " + cleanTitle + (cleanArtist.isEmpty() ? "" : " - " + cleanArtist) + "（同步歌词中…）";
             fetchLyricsAsync(cleanTitle, cleanArtist);
         }
 
@@ -3390,11 +3921,15 @@ public class FloatAgentService extends Service {
     }
 
     private void parseLrcText(String lrc, List<LyricLine> out) {
-        Pattern p = Pattern.compile("\\[(\\d{1,2}):(\\d{2})(?:\\.(\\d{1,3}))?\\](.*)");
+        if (lrc == null || lrc.trim().isEmpty()) return;
+        Pattern tagPattern = Pattern.compile("\\[(\\d{1,3}):(\\d{2})(?:[\\.:](\\d{1,3}))?\\]");
         String[] lines = lrc.split("\\r?\\n");
         for (String line : lines) {
-            Matcher m = p.matcher(line.trim());
-            if (m.find()) {
+            String trimmed = line.trim();
+            if (trimmed.isEmpty()) continue;
+            Matcher m = tagPattern.matcher(trimmed);
+            List<Long> timestamps = new ArrayList<>();
+            while (m.find()) {
                 try {
                     long min = Long.parseLong(m.group(1));
                     long sec = Long.parseLong(m.group(2));
@@ -3405,11 +3940,15 @@ public class FloatAgentService extends Service {
                         else if (msStr.length() == 2) ms = Long.parseLong(msStr) * 10L;
                         else ms = Long.parseLong(msStr.substring(0, 3));
                     }
-                    String txt = m.group(4) != null ? m.group(4).trim() : "";
-                    if (!txt.isEmpty()) {
-                        out.add(new LyricLine(min * 60000L + sec * 1000L + ms, txt));
-                    }
+                    timestamps.add(min * 60000L + sec * 1000L + ms);
                 } catch (Exception ignored) {}
+            }
+            if (timestamps.isEmpty()) continue;
+            // 移除行内所有 [mm:ss.xxx] 等时间或元标签，保留纯净歌词内容，确保如 [00:56][02:34]副歌 全部正确进入时间轴
+            String cleanText = trimmed.replaceAll("\\[\\d{1,3}:\\d{2}(?:[\\.:]\\d{1,3})?\\]", "").trim();
+            if (cleanText.isEmpty()) continue;
+            for (Long ts : timestamps) {
+                out.add(new LyricLine(ts, cleanText));
             }
         }
         Collections.sort(out, new Comparator<LyricLine>() {
@@ -3458,6 +3997,10 @@ public class FloatAgentService extends Service {
 
     private void updateCurrentLyricFromClock() {
         long now = System.currentTimeMillis();
+        // 若过去 4.5 秒内刚接收到 QQ 音乐状态栏/桌面原生推送的实时歌词，优先保持原句完全同频不被本地推算覆写！
+        if (now - qqMusicLastNativeLyricMs < 4500L && !qqMusicCurrentLyric.isEmpty()) {
+            return;
+        }
         long effectivePos = qqMusicPosMs;
         if (qqMusicPlaying && qqMusicLastSyncMs > 0) {
             effectivePos += Math.max(0L, now - qqMusicLastSyncMs);
@@ -3505,6 +4048,143 @@ public class FloatAgentService extends Service {
         refreshCollapsedPill();
     }
 
+    // ========= 外卖进度实时同步与大肥鱼催餐互动 =========
+    private static String resolveTakeoutPlatform(String pkg, String text) {
+        String s = text != null ? text : "";
+        if ("com.sankuai.meituan".equals(pkg) || "com.sankuai.meituan.takeoutnew".equals(pkg) || s.contains("美团")) {
+            return "美团外卖";
+        }
+        if ("me.ele".equals(pkg) || s.contains("饿了么")) {
+            return "饿了么";
+        }
+        if ("com.jingdong.app.mall".equals(pkg) || "com.jingdong.pdj".equals(pkg) || s.contains("京东")) {
+            return "京东秒送";
+        }
+        if ("com.taobao.taobao".equals(pkg) || "com.wudaokou.hippo".equals(pkg) || s.contains("淘宝") || s.contains("盒马")) {
+            return "淘宝闪购/盒马";
+        }
+        return "外卖订单";
+    }
+
+    private static String classifyTakeoutStage(String combined) {
+        String s = combined != null ? combined : "";
+        if (s.contains("已送达") || s.contains("放入外卖柜") || s.contains("外卖柜") || s.contains("已签收") || s.contains("请及时取餐")) {
+            return "arrived";
+        }
+        if (s.contains("即将送达") || s.contains("距您") || s.contains("距离您")) {
+            return "arriving";
+        }
+        if (s.contains("正在为您配送") || s.contains("正在配送") || s.contains("配送中") || s.contains("骑手已取餐")) {
+            return "delivering";
+        }
+        if (s.contains("骑手已接单") || s.contains("赶往商家") || s.contains("正在备餐") || s.contains("已出餐") || s.contains("商家已接单")) {
+            return "preparing";
+        }
+        return "ordered";
+    }
+
+    private void handleExternalTakeoutUpdate(String pkg, String rawTitle, String rawDetail) {
+        String t = rawTitle != null ? rawTitle.trim() : "";
+        String d = rawDetail != null ? rawDetail.trim() : "";
+        String combined = (t + " " + d).trim();
+        if (combined.isEmpty()) return;
+
+        takeoutPlatform = resolveTakeoutPlatform(pkg, combined);
+        String newStage = classifyTakeoutStage(combined);
+        String stageEmoji;
+        String stageLabel;
+        int pose = R.drawable.feiyu_beg;
+        String anim = "bounce";
+        String fishReaction;
+
+        if ("arrived".equals(newStage)) {
+            stageEmoji = "🎉";
+            stageLabel = "已送达！快去取餐啦";
+            pose = R.drawable.feiyu_eating;
+            anim = "eat";
+            fishReaction = "🎉 叮咚！" + takeoutPlatform + "已送达啦！趁热开吃呀，分大肥鱼一口白米饭嘛 🍚";
+        } else if ("arriving".equals(newStage)) {
+            stageEmoji = "🛵💨";
+            stageLabel = "骑手逼近中";
+            pose = R.drawable.feiyu_walk;
+            anim = "walk";
+            fishReaction = "🛵💨 骑手快到啦（" + (t.isEmpty() ? d : t) + "），大肥鱼已经在门口流口水蹲守了 🤤";
+        } else if ("delivering".equals(newStage)) {
+            stageEmoji = "🛵";
+            stageLabel = "骑手配送中";
+            pose = R.drawable.feiyu_happy;
+            anim = "bounce";
+            fishReaction = "🛵 哇！" + takeoutPlatform + "骑手已取餐狂奔在路上了，再忍忍马上就能干饭~ 🍚";
+        } else if ("preparing".equals(newStage)) {
+            stageEmoji = "👨‍🍳";
+            stageLabel = "备餐/接单中";
+            pose = R.drawable.feiyu_beg;
+            anim = "nibble";
+            fishReaction = "👨‍🍳 发现" + takeoutPlatform + "正在备餐中！大肥鱼已备好小勺子一起等开饭 🤤";
+        } else {
+            stageEmoji = "📦";
+            stageLabel = "订单跟踪中";
+            pose = R.drawable.feiyu_focus;
+            anim = "curious";
+            fishReaction = "📦 已帮你同步" + takeoutPlatform + "状态，我会帮你盯着送达进度哒~";
+        }
+
+        takeoutStage = newStage;
+        takeoutTitle = stageEmoji + " " + takeoutPlatform + " · " + (t.isEmpty() ? stageLabel : t);
+        takeoutDetail = !d.isEmpty() ? d : stageLabel;
+        takeoutUpdatedMs = System.currentTimeMillis();
+
+        refreshTakeoutUi();
+        refreshCollapsedPill();
+
+        // 仅在阶段跃迁时冒泡欢迎/播报，同一配送阶段位置微调绝不反复弹窗吵人
+        String announceKey = takeoutPlatform + "::" + newStage;
+        if (!announceKey.equals(lastAnnouncedTakeoutKey)) {
+            lastAnnouncedTakeoutKey = announceKey;
+            if (!isExpanded && !isDraggingPet && "idle".equals(sCurrentStatus) && !isExternalMusicPlayingNow()) {
+                wakePetOpacity();
+                setPetPoseDrawable(pose);
+                playPetBounceAnim(anim);
+                showPetSubtitle(fishReaction, 5200);
+                mainHandler.removeCallbacks(lifePoseResetRunnable);
+                mainHandler.postDelayed(lifePoseResetRunnable, 4200);
+            }
+        }
+    }
+
+    private void refreshTakeoutUi() {
+        if (takeoutCardBox == null) return;
+        boolean active = !takeoutTitle.isEmpty() && (System.currentTimeMillis() - takeoutUpdatedMs) < 3 * 3600 * 1000L;
+        takeoutCardBox.setVisibility(active ? View.VISIBLE : View.GONE);
+        if (active) {
+            if (takeoutTitleView != null) takeoutTitleView.setText(takeoutTitle);
+            if (takeoutDetailView != null) takeoutDetailView.setText(takeoutDetail);
+        }
+    }
+
+    private void checkTakeoutOnScreenManual() {
+        AgentAccessibilityService a11y = AgentAccessibilityService.getInstance();
+        boolean scanned = a11y != null && a11y.scanCurrentTakeoutScreenNow();
+        if (scanned) {
+            refreshTakeoutUi();
+            Toast.makeText(this, "🛵 已同步当前页面外卖最新进度！", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        boolean hasActive = !takeoutTitle.isEmpty() && (System.currentTimeMillis() - takeoutUpdatedMs) < 3 * 3600 * 1000L;
+        if (hasActive) {
+            refreshTakeoutUi();
+            Toast.makeText(this, "🛵 当前外卖进度：" + takeoutTitle + " - " + takeoutDetail, Toast.LENGTH_LONG).show();
+        } else {
+            boolean notifGranted = QqMusicListenerService.isNotificationAccessEnabled(this);
+            if (!notifGranted) {
+                Toast.makeText(this, "开启「通知使用权」后，美团/饿了么/京东发通知就会自动同步外卖；也可先打开订单页再点「🛵查外卖」~", Toast.LENGTH_LONG).show();
+                QqMusicListenerService.openNotificationListenerSettings(this);
+            } else {
+                Toast.makeText(this, "🛵 暂未收到外卖通知：美团/饿了么有骑手或送达推送时将自动同步，或切到订单详情页后点此抓取！", Toast.LENGTH_LONG).show();
+            }
+        }
+    }
+
     private void refreshCollapsedPill() {
         if (statusPillView == null || statusTextView == null) return;
         if (!"idle".equals(sCurrentStatus) && !"stopped".equals(sCurrentStatus)) {
@@ -3528,6 +4208,12 @@ public class FloatAgentService extends Service {
                 statusTextView.setText("🎵 " + lyr);
                 return;
             }
+        }
+        // 若有近 45 分钟内的活跃外卖进度，在折叠态胶囊安静显示一条小巧外卖跟踪简报
+        if (!takeoutTitle.isEmpty() && (System.currentTimeMillis() - takeoutUpdatedMs) < 45 * 60 * 1000L) {
+            statusPillView.setVisibility(View.VISIBLE);
+            statusTextView.setText(takeoutTitle);
+            return;
         }
         statusPillView.setVisibility(View.GONE);
     }

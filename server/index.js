@@ -648,8 +648,8 @@ function extractAuthToken(req, parsedUrl = null) {
   return '';
 }
 
-const APP_LATEST_VERSION = '2.5.3';
-const APP_LATEST_VERSION_CODE = 150;
+const APP_LATEST_VERSION = '2.5.4';
+const APP_LATEST_VERSION_CODE = 151;
 const APP_OFFICIAL_CERT_SHA256 = '6fd05e32a3cabf327140129d866e55a342fe30daa3384c67aad4b3cbdd98a17b';
 const APP_UPDATE_TICKET_SECRET = crypto
   .createHash('sha256')
@@ -935,7 +935,7 @@ async function handleApi(req, res, pathname, parsedUrl) {
       latestVersion: APP_LATEST_VERSION,
       versionCode: APP_LATEST_VERSION_CODE,
       minSupportedVersion: '1.0.0',
-      releaseDate: '2026-11-25',
+      releaseDate: '2026-11-26',
       fileSize: (apkSizeBytes / (1024 * 1024)).toFixed(2) + ' MB',
       fileSizeBytes: apkSizeBytes,
       sha256: apkMeta.sha256 || '',
@@ -947,9 +947,9 @@ async function handleApi(req, res, pathname, parsedUrl) {
       forceUpdate,
       diffGenerations,
       changelog: [
-        '【透明头顶气泡 & 5-10分钟低频陪伴】大肥鱼头顶气泡背景改为纯透明无遮挡边框（高对比描边文字），主动吐槽天气或安慰话语改为每 5~10 分钟随机弹一条，绝不频繁刷屏',
-        '【气泡可自由关闭 & 3×2 清爽开关栏】面板开关行升级为双排 6 宫格，新增「💬头顶气泡:开/关」一键开启或彻底关闭头顶冒泡',
-        '【整合全屏漫步、真实歌声导入与QQ音乐精确点歌】融合全屏自由走动、导入手机真实歌曲、QQ音乐下移单曲点播，双端同步升级至 v2.5.3 (Build 150)'
+        '【QQ音乐歌词真同步 · 杜绝一句一搜索】拦截无 MediaSession 的状态栏/桌面歌词广播并直通同频显示，结合时间轴 LRC 自动对齐与网易云+LRCLIB双源互补，告别歌词逐句乱跳搜索',
+        '【大肥鱼动作去僵硬 & 慢速自然漫步 & 搞怪捣蛋】重做底重心果冻呼吸与踩地回弹，漫步放慢成自然弧线散步；新增外置「😈闹」与面板「😈捣蛋」6大整蛊微剧本（打滑翻滚/倒立鬼脸/吹泡泡炸开/偷吃算力/打盹惊醒/蓄力撞屏）',
+        '【外卖状态实时同步】后台通知与无障碍同步美团、饿了么、京东秒送、淘宝闪购等配送阶段（接单/取餐/逼近/送达），大肥鱼全程蹲守吐槽并支持面板「🛵查外卖」查看或一键已取餐清除，升级至 v2.5.4 (Build 151)'
       ]
     };
 
@@ -989,11 +989,14 @@ async function handleApi(req, res, pathname, parsedUrl) {
       return sendJson(res, 400, { ok: false, error: '缺少歌曲名参数 title' }, APP_VERSION_CORS_HEADERS);
     }
     const cleanTitle = rawTitle
-      .replace(/\s*[\(\[（【](?:live|伴奏|dj|cover|翻唱|纯音乐|remix|ver\.?|版)[^)\]）】]*[\)\]）】]/gi, '')
-      .replace(/\s+-\s+(?:live|dj|伴奏).*$/i, '')
+      .replace(/\s*[\(\[（【](?:live|伴奏|dj|cover|翻唱|纯音乐|remix|ver\.?|版|feat\.?|ft\.?|《[^》]*》)[^)\]）】]*[\)\]）】]/gi, '')
+      .replace(/\s+-\s+(?:live|dj|伴奏|cover|翻唱).*$/i, '')
       .trim() || rawTitle;
-    const cleanArtist = rawArtist.split(/[/,&、]/)[0].trim();
-    const cacheKey = `${cleanTitle.toLowerCase()}::${cleanArtist.toLowerCase()}`;
+    const cleanArtist = rawArtist
+      .split(/[/,&、·•|]/)[0]
+      .replace(/\s*[\(\[（【][^)\]）】]*[\)\]）】]/g, '')
+      .trim();
+    const cacheKey = `v2::${cleanTitle.toLowerCase()}::${cleanArtist.toLowerCase()}`;
 
     if (!global.__qqMusicLyricsCache) {
       global.__qqMusicLyricsCache = new Map();
@@ -1010,15 +1013,119 @@ async function handleApi(req, res, pathname, parsedUrl) {
       });
     }
 
-    const fetchLrcRecord = async () => {
-      const headers = { 'User-Agent': 'StarWhisperStudio/2.3.1' };
+    const normText = (s) => String(s || '')
+      .toLowerCase()
+      .replace(/[\s\-_·•'"`~!@#$%^&*()（）\[\]【】《》,.，。!！?？/\\]+/g, '');
+    const hasSyncedLrc = (lrc) => {
+      if (!lrc) return false;
+      const matches = String(lrc).match(/\[(?:\d{1,3}):(?:\d{2})(?:[.:]\d{1,3})?\]/g);
+      return Array.isArray(matches) && matches.length >= 2;
+    };
+    const stripLrcToPlain = (lrc) => String(lrc || '')
+      .split(/\r?\n/)
+      .map((line) => line.replace(/\[[^\]]*\]/g, '').trim())
+      .filter(Boolean)
+      .join('\n');
+    const scoreCandidate = (candTitle, candArtist) => {
+      const targetT = normText(cleanTitle);
+      const targetA = normText(cleanArtist);
+      const cT = normText(candTitle);
+      const cA = normText(candArtist);
+      let score = 0;
+      if (targetT && cT) {
+        if (cT === targetT) score += 60;
+        else if (cT.includes(targetT) || targetT.includes(cT)) score += 25;
+      }
+      if (targetA && cA) {
+        if (cA === targetA) score += 50;
+        else if (cA.includes(targetA) || targetA.includes(cA)) score += 22;
+      }
+      const lowerRawT = String(candTitle || '').toLowerCase();
+      const lowerOrigT = rawTitle.toLowerCase();
+      const noisyPattern = /(翻唱|原唱|cover|伴奏|消音|dj|remix|live|吉他|钢琴版|变速|降调|升调|铃声|片段|bgm)/i;
+      if (noisyPattern.test(lowerRawT) && !noisyPattern.test(lowerOrigT)) {
+        score -= 55;
+      }
+      return score;
+    };
+
+    const fetchFromNetease = async () => {
+      try {
+        const qStr = cleanArtist ? `${cleanTitle} ${cleanArtist}` : cleanTitle;
+        const headers = {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+          'Referer': 'https://music.163.com/'
+        };
+        const searchUrl = `https://music.163.com/api/search/get/web?s=${encodeURIComponent(qStr)}&type=1&offset=0&limit=8`;
+        const sr = await fetch(searchUrl, { headers, signal: AbortSignal.timeout(4500) });
+        if (!sr.ok) return null;
+        const sj = await sr.json();
+        const songs = Array.isArray(sj?.result?.songs) ? sj.result.songs : [];
+        if (songs.length === 0) return null;
+
+        const ranked = songs
+          .map((song) => {
+            const artistNames = Array.isArray(song.artists)
+              ? song.artists.map((a) => a && a.name).filter(Boolean).join('/')
+              : '';
+            return {
+              song,
+              artistNames,
+              score: scoreCandidate(song.name, artistNames)
+            };
+          })
+          .sort((a, b) => b.score - a.score)
+          .slice(0, 3);
+
+        for (const item of ranked) {
+          if (cleanArtist && item.score < 10) continue;
+          const sid = item.song?.id;
+          if (!sid) continue;
+          try {
+            const lrcUrl = `https://music.163.com/api/song/lyric?id=${encodeURIComponent(String(sid))}&lv=1&kv=1&tv=-1`;
+            const lr = await fetch(lrcUrl, { headers, signal: AbortSignal.timeout(4000) });
+            if (!lr.ok) continue;
+            const lj = await lr.json();
+            const rawLrc = String(lj?.lrc?.lyric || '').trim();
+            if (!rawLrc) continue;
+            const synced = hasSyncedLrc(rawLrc) ? rawLrc : '';
+            const plain = stripLrcToPlain(rawLrc);
+            if (!synced && !plain) continue;
+            return {
+              source: 'netease',
+              matchScore: item.score + (synced ? 30 : 0),
+              trackName: String(item.song.name || cleanTitle),
+              artistName: item.artistNames || cleanArtist,
+              duration: Math.round(Number(item.song.duration || 0) / 1000),
+              syncedLyrics: synced,
+              plainLyrics: plain
+            };
+          } catch {}
+        }
+      } catch {}
+      return null;
+    };
+
+    const fetchFromLrclib = async () => {
+      const headers = { 'User-Agent': 'StarWhisperStudio/2.5.4' };
       if (cleanArtist) {
         try {
           const u = `https://lrclib.net/api/get?track_name=${encodeURIComponent(cleanTitle)}&artist_name=${encodeURIComponent(cleanArtist)}`;
           const r = await fetch(u, { headers, signal: AbortSignal.timeout(4500) });
           if (r.ok) {
             const j = await r.json();
-            if (j && (j.syncedLyrics || j.plainLyrics)) return j;
+            if (j && (j.syncedLyrics || j.plainLyrics)) {
+              const synced = hasSyncedLrc(j.syncedLyrics) ? String(j.syncedLyrics) : '';
+              return {
+                source: 'lrclib',
+                matchScore: scoreCandidate(j.trackName || cleanTitle, j.artistName || cleanArtist) + (synced ? 30 : 0),
+                trackName: String(j.trackName || cleanTitle),
+                artistName: String(j.artistName || cleanArtist),
+                duration: Number(j.duration || 0),
+                syncedLyrics: synced,
+                plainLyrics: String(j.plainLyrics || stripLrcToPlain(j.syncedLyrics || ''))
+              };
+            }
           }
         } catch {}
       }
@@ -1029,18 +1136,49 @@ async function handleApi(req, res, pathname, parsedUrl) {
         if (r2.ok) {
           const arr = await r2.json();
           if (Array.isArray(arr) && arr.length > 0) {
-            const withSync = arr.find((x) => x && x.syncedLyrics);
-            return withSync || arr[0];
+            const ranked = arr
+              .filter((x) => x && (x.syncedLyrics || x.plainLyrics))
+              .map((x) => {
+                const synced = hasSyncedLrc(x.syncedLyrics) ? String(x.syncedLyrics) : '';
+                return {
+                  source: 'lrclib',
+                  matchScore: scoreCandidate(x.trackName, x.artistName) + (synced ? 30 : 0),
+                  trackName: String(x.trackName || cleanTitle),
+                  artistName: String(x.artistName || cleanArtist || ''),
+                  duration: Number(x.duration || 0),
+                  syncedLyrics: synced,
+                  plainLyrics: String(x.plainLyrics || stripLrcToPlain(x.syncedLyrics || ''))
+                };
+              })
+              .sort((a, b) => b.matchScore - a.matchScore);
+            if (ranked.length > 0) return ranked[0];
           }
         }
       } catch {}
       return null;
     };
 
+    const fetchLrcRecord = async () => {
+      const [neteaseRes, lrclibRes] = await Promise.all([
+        fetchFromNetease().catch(() => null),
+        fetchFromLrclib().catch(() => null)
+      ]);
+      const candidates = [neteaseRes, lrclibRes].filter(Boolean);
+      if (candidates.length === 0) return null;
+      candidates.sort((a, b) => {
+        const aSync = hasSyncedLrc(a.syncedLyrics) ? 1 : 0;
+        const bSync = hasSyncedLrc(b.syncedLyrics) ? 1 : 0;
+        if (aSync !== bSync) return bSync - aSync;
+        return (b.matchScore || 0) - (a.matchScore || 0);
+      });
+      return candidates[0];
+    };
+
     const rec = await fetchLrcRecord();
     const resultPayload = rec
       ? {
           ok: true,
+          source: String(rec.source || ''),
           trackName: String(rec.trackName || cleanTitle),
           artistName: String(rec.artistName || cleanArtist || ''),
           duration: Number(rec.duration || 0),
@@ -1049,6 +1187,7 @@ async function handleApi(req, res, pathname, parsedUrl) {
         }
       : {
           ok: false,
+          source: '',
           trackName: cleanTitle,
           artistName: cleanArtist,
           syncedLyrics: '',

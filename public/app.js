@@ -73,7 +73,7 @@
     hasMoreMessages: false,
     totalMessages: 0,
     oldestMessageId: 0,
-    appVersion: '2.5.3',
+    appVersion: '2.5.4',
     tourIndex: 0,
     tourActive: false,
     llmMode: localStorage.getItem('user_llm_mode') || 'local_antigravity',
@@ -485,7 +485,7 @@
   }
 
   function syncWebVersionBadges(verStr) {
-    const raw = String(verStr || state.appVersion || '2.5.3').trim().replace(/^v/i, '');
+    const raw = String(verStr || state.appVersion || '2.5.4').trim().replace(/^v/i, '');
     if (!raw) return;
     const vLabel = `v${raw}`;
     const isNativeApk = Boolean(
@@ -3732,7 +3732,7 @@
       tunnelProbe?.online ? '本机电脑 Antigravity 直连' : report.channels?.localCli?.transport === 'local_cli' ? '本机 CLI 就绪' : '电脑离线时自动回退'
     );
 
-    setTxt('adm-sys-meta', `v${sys.appVersion || '2.5.3'} · ${sys.platform || ''} · Node ${sys.nodeVersion || ''} · ${sys.cpuCores || 1} 核 (负载 ${sys.load1m ?? 0})`);
+    setTxt('adm-sys-meta', `v${sys.appVersion || '2.5.4'} · ${sys.platform || ''} · Node ${sys.nodeVersion || ''} · ${sys.cpuCores || 1} 核 (负载 ${sys.load1m ?? 0})`);
     setTxt('adm-stat-mem', `${sys.memUsedPct ?? 0}% (进程 ${sys.rssMb ?? 0} MB)`);
     setTxt('adm-stat-db', `${formatBytesCompact(dbInfo.dbSizeBytes)} / ${formatBytesCompact(dbInfo.walSizeBytes)}`);
     setTxt('adm-stat-uptime', formatUptimeCompact(sys.uptimeSec));
@@ -7341,7 +7341,7 @@
               state.totalMessages = Math.max(state.totalMessages + 2, state.messages.length);
             }
             syncActiveSessionToCache();
-            saveBootSnapshot();
+            scheduleSaveBootSnapshot();
             window.DeepSeekMonitorPlugin?.sync({
               settings: state.settings,
               messages: state.messages,
@@ -8064,7 +8064,7 @@
     }
 
     if (!fromCache) {
-      saveBootSnapshot();
+      scheduleSaveBootSnapshot();
     }
 
     // 离线超过 6 小时自动夜间做梦：弹出拆阅手札仪式
@@ -8143,18 +8143,41 @@
     const cached = !forceNetwork ? getSessionCache(sessionId) : null;
 
     if (cached) {
-      // 命中内存缓存：0ms 瞬开对话内容，随后在后台静默拉取最新状态对账
+      // 命中 L1 内存缓存：0ms 瞬开对话内容；若距上次同步不足 15 秒则跳过冗余网络对账
       await applySessionDetailPayload(sessionId, cached, { reqSeq, fromCache: true });
-      apiJson(`/api/sessions/${encodeURIComponent(sessionId)}?limit=60`)
-        .then((freshData) => {
-          if (reqSeq !== loadSessionSeq || state.activeSessionId !== sessionId) return;
-          applySessionDetailPayload(sessionId, freshData, { reqSeq, silentReconcile: true });
-        })
-        .catch(() => {});
+      if (Date.now() - (cached.cachedAt || 0) >= SESSION_RECONCILE_COOLDOWN_MS) {
+        fetchSessionDetailDeduped(sessionId, 60)
+          .then((freshData) => {
+            if (reqSeq !== loadSessionSeq || state.activeSessionId !== sessionId) return;
+            applySessionDetailPayload(sessionId, freshData, { reqSeq, silentReconcile: true });
+          })
+          .catch(() => {});
+      }
       return;
     }
 
-    if (isSwitching) {
+    // 未命中 L1 时尝试命中 L2 IndexedDB（如页面刚刷新后点击其他历史会话），实现 0ms 瞬开 + 后台静默对账
+    let l2Applied = false;
+    if (!forceNetwork && state.user?.id) {
+      try {
+        const l2Payload = await sessionIdbStore.get(state.user.id, sessionId);
+        if (reqSeq !== loadSessionSeq) return;
+        if (l2Payload && l2Payload.session) {
+          l2Applied = true;
+          setSessionCache(sessionId, l2Payload, { syncIdb: false });
+          await applySessionDetailPayload(sessionId, l2Payload, { reqSeq, fromCache: true });
+          fetchSessionDetailDeduped(sessionId, 60)
+            .then((freshData) => {
+              if (reqSeq !== loadSessionSeq || state.activeSessionId !== sessionId) return;
+              applySessionDetailPayload(sessionId, freshData, { reqSeq, silentReconcile: true });
+            })
+            .catch(() => {});
+          return;
+        }
+      } catch {}
+    }
+
+    if (isSwitching && !l2Applied) {
       state.activeSessionId = sessionId;
       renderSessionList();
       if (messagesContainer) {
@@ -8164,7 +8187,7 @@
 
     let data;
     try {
-      data = await apiJson(`/api/sessions/${encodeURIComponent(sessionId)}?limit=60`);
+      data = await fetchSessionDetailDeduped(sessionId, 60);
     } catch (err) {
       if (/未找到|不存在|404/i.test(err?.message || '')) {
         console.warn(`[Session] 会话 ${sessionId} 不存在，自动切换到有效会话`);
@@ -14268,8 +14291,31 @@
 
     setTimeout(() => {
       checkAnnouncementOnStartup();
-      checkLocalAntigravityStatus();
+      if (!state.antigravityStatus?.checked) {
+        checkLocalAntigravityStatus();
+      }
     }, 800);
+
+    // 浏览器空闲时低优先级预热侧栏前 2 个未打开的最近会话，让后续切屏 0ms 瞬开
+    const scheduleIdleWarmup = (fn) => {
+      if (typeof window.requestIdleCallback === 'function') {
+        window.requestIdleCallback(fn, { timeout: 3500 });
+      } else {
+        setTimeout(fn, 1400);
+      }
+    };
+    scheduleIdleWarmup(() => {
+      const isDsUi = state.uiMode === 'deepseek' || state.uiMode === 'phone-agent';
+      const candidates = (state.sessions || [])
+        .filter((s) =>
+          s.id !== state.activeSessionId &&
+          (isDsUi ? s.session_mode === 'deepseek_native' : s.session_mode !== 'deepseek_native')
+        )
+        .slice(0, 2);
+      for (const c of candidates) {
+        prefetchSessionDetail(c.id);
+      }
+    });
   }
 
   async function checkAnnouncementOnStartup() {

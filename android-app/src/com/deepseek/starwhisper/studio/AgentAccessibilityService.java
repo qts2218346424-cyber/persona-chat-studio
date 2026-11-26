@@ -22,11 +22,13 @@ import android.util.Log;
 import android.view.KeyEvent;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
+import android.view.accessibility.AccessibilityWindowInfo;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -88,6 +90,7 @@ public class AgentAccessibilityService extends AccessibilityService {
     private volatile boolean macroRunning = false;
     private final List<Runnable> pendingRunnables = new ArrayList<>();
     private volatile long lastMusicScanMs = 0L;
+    private volatile long lastTakeoutScanMs = 0L;
     private volatile int qqMusicOrderSeq = 0;
 
     public static AgentAccessibilityService getInstance() {
@@ -105,6 +108,26 @@ public class AgentAccessibilityService extends AccessibilityService {
         Log.i(TAG, "AgentAccessibilityService 已成功连接并在前台就绪");
     }
 
+    private static boolean isMusicPackage(String pkg) {
+        return "com.tencent.qqmusic".equals(pkg)
+                || "com.netease.cloudmusic".equals(pkg)
+                || "com.kugou.android".equals(pkg)
+                || "com.luna.music".equals(pkg)
+                || "cn.kuwo.player".equals(pkg);
+    }
+
+    private static boolean isDeliveryPackage(String pkg) {
+        return "com.sankuai.meituan".equals(pkg)
+                || "com.sankuai.meituan.takeoutnew".equals(pkg)
+                || "me.ele".equals(pkg)
+                || "com.jingdong.app.mall".equals(pkg)
+                || "com.jingdong.pdj".equals(pkg)
+                || "com.taobao.taobao".equals(pkg)
+                || "com.wudaokou.hippo".equals(pkg)
+                || "com.yek.android.kfc.activitys".equals(pkg)
+                || "com.mcdonalds.gma.cn".equals(pkg);
+    }
+
     @Override
     public void onAccessibilityEvent(AccessibilityEvent event) {
         if (event == null) return;
@@ -112,81 +135,326 @@ public class AgentAccessibilityService extends AccessibilityService {
             CharSequence pkgCs = event.getPackageName();
             if (pkgCs == null) return;
             String pkg = pkgCs.toString();
-            boolean isMusicApp = "com.tencent.qqmusic".equals(pkg)
-                    || "com.netease.cloudmusic".equals(pkg)
-                    || "com.kugou.android".equals(pkg)
-                    || "com.luna.music".equals(pkg);
-            if (!isMusicApp) return;
-
             int evType = event.getEventType();
-            if (evType == AccessibilityEvent.TYPE_NOTIFICATION_STATE_CHANGED) {
-                if (event.getParcelableData() instanceof Notification) {
-                    Notification n = (Notification) event.getParcelableData();
-                    if (n.extras != null) {
-                        CharSequence tCs = n.extras.getCharSequence(Notification.EXTRA_TITLE);
-                        CharSequence sCs = n.extras.getCharSequence(Notification.EXTRA_TEXT);
-                        String t = tCs != null ? tCs.toString().trim() : "";
-                        String s = sCs != null ? sCs.toString().trim() : "";
-                        if (!t.isEmpty()) {
-                            FloatAgentService.onExternalMusicNotification(pkg, t, s);
+
+            if (isMusicPackage(pkg)) {
+                if (evType == AccessibilityEvent.TYPE_NOTIFICATION_STATE_CHANGED) {
+                    if (event.getParcelableData() instanceof Notification) {
+                        Notification n = (Notification) event.getParcelableData();
+                        if (n.extras != null) {
+                            CharSequence tCs = n.extras.getCharSequence(Notification.EXTRA_TITLE);
+                            CharSequence sCs = n.extras.getCharSequence(Notification.EXTRA_TEXT);
+                            String t = tCs != null ? tCs.toString().trim() : "";
+                            String s = sCs != null ? sCs.toString().trim() : "";
+                            boolean hasMediaSession = n.extras.containsKey(Notification.EXTRA_MEDIA_SESSION)
+                                    || Notification.CATEGORY_TRANSPORT.equals(n.category);
+                            if (hasMediaSession) {
+                                if (!t.isEmpty()) {
+                                    FloatAgentService.onExternalMusicNotification(pkg, t, s);
+                                }
+                            } else {
+                                // 无 MediaSession 的通知是 QQ 音乐状态栏歌词广播，直接作为同步歌词显示，绝不触发换歌搜索！
+                                String lyric = !s.isEmpty() ? s : t;
+                                if (!lyric.isEmpty()) {
+                                    FloatAgentService.onExternalNativeLyric(pkg, lyric, t);
+                                }
+                            }
+                        }
+                    } else if (event.getText() != null && !event.getText().isEmpty()) {
+                        // 纯文本通知栏事件通常是状态栏逐句滚动歌词，直接直通到歌词显示，杜绝一句一搜索！
+                        String first = String.valueOf(event.getText().get(0)).trim();
+                        if (!first.isEmpty() && first.length() <= 80) {
+                            FloatAgentService.onExternalNativeLyric(pkg, first, "");
                         }
                     }
-                } else if (event.getText() != null && !event.getText().isEmpty()) {
-                    String first = String.valueOf(event.getText().get(0)).trim();
-                    if (!first.isEmpty() && first.length() <= 80) {
-                        FloatAgentService.onExternalMusicNotification(pkg, first, "");
+                } else if ((evType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
+                        || evType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED)
+                        && "com.tencent.qqmusic".equals(pkg)) {
+                    long now = System.currentTimeMillis();
+                    if (now - lastMusicScanMs >= 750L) {
+                        lastMusicScanMs = now;
+                        scanQqMusicPlayingUiHints();
                     }
                 }
-            } else if ((evType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
-                    || evType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED)
-                    && "com.tencent.qqmusic".equals(pkg)) {
-                long now = System.currentTimeMillis();
-                if (now - lastMusicScanMs >= 950L) {
-                    lastMusicScanMs = now;
-                    scanQqMusicPlayingUiHints();
+                return;
+            }
+
+            if (isDeliveryPackage(pkg)) {
+                if (evType == AccessibilityEvent.TYPE_NOTIFICATION_STATE_CHANGED) {
+                    if (event.getParcelableData() instanceof Notification) {
+                        Notification n = (Notification) event.getParcelableData();
+                        if (n.extras != null) {
+                            String t = safeCharSeq(n.extras.getCharSequence(Notification.EXTRA_TITLE));
+                            String s = safeCharSeq(n.extras.getCharSequence(Notification.EXTRA_TEXT));
+                            String big = safeCharSeq(n.extras.getCharSequence(Notification.EXTRA_BIG_TEXT));
+                            String detail = !big.isEmpty() ? big : s;
+                            if (isDeliveryProgressText(t + " " + detail)) {
+                                FloatAgentService.onExternalTakeoutUpdate(pkg, t, detail);
+                            }
+                        }
+                    } else if (event.getText() != null && !event.getText().isEmpty()) {
+                        String joined = "";
+                        for (int i = 0; i < event.getText().size(); i++) {
+                            joined += " " + String.valueOf(event.getText().get(i));
+                        }
+                        joined = joined.trim();
+                        if (isDeliveryProgressText(joined)) {
+                            FloatAgentService.onExternalTakeoutUpdate(pkg, "", joined);
+                        }
+                    }
+                } else if (evType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
+                        || evType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+                    long now = System.currentTimeMillis();
+                    if (now - lastTakeoutScanMs >= 1600L) {
+                        lastTakeoutScanMs = now;
+                        scanTakeoutOrderUi(pkg, false);
+                    }
                 }
             }
         } catch (Throwable ignored) {}
+    }
+
+    public boolean scanCurrentTakeoutScreenNow() {
+        try {
+            AccessibilityNodeInfo root = getRootInActiveWindow();
+            if (root == null) return false;
+            String pkg = root.getPackageName() != null ? root.getPackageName().toString() : "";
+            root.recycle();
+            return scanTakeoutOrderUi(pkg, true);
+        } catch (Throwable ignored) {
+            return false;
+        }
+    }
+
+    private boolean scanTakeoutOrderUi(String pkg, boolean forceScan) {
+        try {
+            AccessibilityNodeInfo root = getRootInActiveWindow();
+            if (root == null) return false;
+            if (!forceScan && root.getPackageName() != null) {
+                pkg = root.getPackageName().toString();
+            }
+            List<String> texts = new ArrayList<>();
+            collectVisibleTexts(root, texts, 0, 8, 80);
+            root.recycle();
+            if (texts.isEmpty()) return false;
+
+            String stageHint = "";
+            String etaHint = "";
+            String distHint = "";
+            String shopOrTitle = "";
+            for (String line : texts) {
+                if (stageHint.isEmpty() && isDeliveryProgressText(line) && line.length() <= 36) {
+                    stageHint = line;
+                }
+                if (etaHint.isEmpty() && (line.contains("预计") || line.contains("送达") || line.contains("分钟"))) {
+                    if (line.length() <= 32) etaHint = line;
+                }
+                if (distHint.isEmpty() && (line.contains("距您") || line.contains("距离您") || line.matches(".*\\d+\\s*(m|km|米|公里).*"))) {
+                    if (line.length() <= 28) distHint = line;
+                }
+                if (shopOrTitle.isEmpty() && line.length() >= 3 && line.length() <= 24
+                        && !isDeliveryProgressText(line)
+                        && (line.contains("店") || line.contains("外卖") || line.contains("饭") || line.contains("餐") || line.contains("茶") || line.contains("咖啡"))) {
+                    shopOrTitle = line;
+                }
+            }
+
+            if (stageHint.isEmpty()) return false;
+            StringBuilder detail = new StringBuilder();
+            if (!shopOrTitle.isEmpty()) detail.append(shopOrTitle).append(" · ");
+            detail.append(stageHint);
+            if (!distHint.isEmpty() && !stageHint.contains(distHint)) detail.append(" · ").append(distHint);
+            if (!etaHint.isEmpty() && !stageHint.contains(etaHint)) detail.append(" · ").append(etaHint);
+
+            FloatAgentService.onExternalTakeoutUpdate(pkg != null ? pkg : "", stageHint, detail.toString());
+            return true;
+        } catch (Throwable ignored) {
+            return false;
+        }
+    }
+
+    private static void collectVisibleTexts(AccessibilityNodeInfo node, List<String> out, int depth, int maxDepth, int maxItems) {
+        if (node == null || depth > maxDepth || out.size() >= maxItems) return;
+        if (node.isVisibleToUser()) {
+            CharSequence t = node.getText();
+            if (t != null) {
+                String s = t.toString().replace('\n', ' ').trim();
+                if (!s.isEmpty() && s.length() <= 60) {
+                    out.add(s);
+                }
+            }
+        }
+        int cnt = node.getChildCount();
+        for (int i = 0; i < cnt && out.size() < maxItems; i++) {
+            AccessibilityNodeInfo ch = node.getChild(i);
+            if (ch != null) {
+                collectVisibleTexts(ch, out, depth + 1, maxDepth, maxItems);
+                ch.recycle();
+            }
+        }
+    }
+
+    private static boolean isDeliveryProgressText(String s) {
+        if (s == null || s.isEmpty()) return false;
+        String[] kws = new String[]{
+                "骑手已接单", "骑手正在赶往", "骑手已取餐", "骑手正在配送", "正在为您配送",
+                "配送中", "商家已接单", "正在备餐", "已出餐", "距您", "距离您",
+                "预计送达", "预计今天", "即将送达", "已送达", "放入外卖柜", "外卖已送达"
+        };
+        for (String kw : kws) {
+            if (s.contains(kw)) return true;
+        }
+        return false;
+    }
+
+    private static String safeCharSeq(CharSequence cs) {
+        return cs != null ? cs.toString().trim() : "";
     }
 
     private void scanQqMusicPlayingUiHints() {
         try {
-            AccessibilityNodeInfo root = getRootInActiveWindow();
-            if (root == null) return;
-            List<String> lines = new ArrayList<>();
-            collectShortTextNodes(root, lines, 0, 28);
-            root.recycle();
-
-            String timeFound = "";
-            for (String item : lines) {
-                if (item.matches("^\\d{1,2}:\\d{2}$")) {
-                    timeFound = item;
-                    break;
+            DisplayMetrics dm = getResources().getDisplayMetrics();
+            // 1. 优先扫描 QQ 音乐独立悬浮窗（如桌面歌词窗口），存在即精准直通原歌词！
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                List<AccessibilityWindowInfo> windows = getWindows();
+                if (windows != null) {
+                    for (AccessibilityWindowInfo win : windows) {
+                        if (win == null || win.getType() == AccessibilityWindowInfo.TYPE_APPLICATION) continue;
+                        AccessibilityNodeInfo wRoot = win.getRoot();
+                        if (wRoot == null) continue;
+                        try {
+                            String wPkg = wRoot.getPackageName() != null ? wRoot.getPackageName().toString() : "";
+                            if ("com.tencent.qqmusic".equals(wPkg)) {
+                                List<String> lines = new ArrayList<>();
+                                collectVisibleTexts(wRoot, lines, 0, 5, 10);
+                                for (String l : lines) {
+                                    if (isCleanLyricCandidate(l)) {
+                                        FloatAgentService.onExternalNativeLyric("com.tencent.qqmusic", l, "");
+                                        break;
+                                    }
+                                }
+                            }
+                        } finally {
+                            wRoot.recycle();
+                        }
+                    }
                 }
             }
-            if (!timeFound.isEmpty()) {
-                FloatAgentService.onExternalMusicTimeHint(timeFound);
+
+            AccessibilityNodeInfo root = getRootInActiveWindow();
+            if (root == null) return;
+            int minTopY = Math.round(dm.heightPixels * 0.10f);
+            List<Integer> mmssList = new ArrayList<>();
+            collectPlayerTimeNodes(root, mmssList, 0, minTopY);
+
+            // 只有播放详情页同时包含「当前进度」和「歌曲总时长」（且 curSec <= totalSec、总长在 25秒~20分钟），才同步毫秒进度与选中高亮歌词
+            if (mmssList.size() >= 2) {
+                int t1 = mmssList.get(0);
+                int t2 = mmssList.get(1);
+                int curSec = Math.min(t1, t2);
+                int totalSec = Math.max(t1, t2);
+                if (totalSec >= 25 && totalSec <= 1200 && curSec <= totalSec) {
+                    int m = curSec / 60;
+                    int s = curSec % 60;
+                    FloatAgentService.onExternalMusicTimeHint(String.format(Locale.ROOT, "%02d:%02d", m, s));
+
+                    String selectedLyric = findSelectedPlayingLyric(root, 0, Math.round(dm.heightPixels * 0.18f), Math.round(dm.heightPixels * 0.78f));
+                    if (!selectedLyric.isEmpty()) {
+                        FloatAgentService.onExternalNativeLyric("com.tencent.qqmusic", selectedLyric, "");
+                    }
+                }
             }
+            root.recycle();
         } catch (Throwable ignored) {}
     }
 
-    private void collectShortTextNodes(AccessibilityNodeInfo node, List<String> out, int depth, int limit) {
-        if (node == null || depth > 8 || out.size() >= limit) return;
-        CharSequence t = node.getText();
-        if (t != null) {
-            String s = t.toString().trim();
-            if (!s.isEmpty() && s.length() <= 60) {
-                out.add(s);
+    private String findSelectedPlayingLyric(AccessibilityNodeInfo node, int depth, int minY, int maxY) {
+        if (node == null || depth > 9) return "";
+        if (node.isVisibleToUser() && node.isSelected()) {
+            CharSequence t = node.getText();
+            if (t != null) {
+                String s = t.toString().replace('\n', ' ').trim();
+                Rect r = new Rect();
+                node.getBoundsInScreen(r);
+                if (r.centerY() >= minY && r.centerY() <= maxY && isCleanLyricCandidate(s)) {
+                    return s;
+                }
             }
         }
         int cnt = node.getChildCount();
-        for (int i = 0; i < cnt && out.size() < limit; i++) {
+        for (int i = 0; i < cnt; i++) {
             AccessibilityNodeInfo child = node.getChild(i);
             if (child != null) {
-                collectShortTextNodes(child, out, depth + 1, limit);
+                String found = findSelectedPlayingLyric(child, depth + 1, minY, maxY);
+                child.recycle();
+                if (!found.isEmpty()) return found;
+            }
+        }
+        return "";
+    }
+
+    private static boolean isCleanLyricCandidate(String s) {
+        if (s == null) return false;
+        String t = s.trim();
+        if (t.length() < 2 || t.length() > 55) return false;
+        if (t.matches("^\\d{1,2}:\\d{2}.*$")) return false;
+        if (t.contains("QQ音乐") || t.contains("VIP") || t.contains("评论") || t.contains("推荐")
+                || t.contains("歌词") || t.contains("标准") || t.contains("音效") || t.contains("MV")) {
+            return false;
+        }
+        return true;
+    }
+
+    private void collectPlayerTimeNodes(AccessibilityNodeInfo node, List<Integer> outSec, int depth, int minTopY) {
+        if (node == null || depth > 9 || outSec.size() >= 4) return;
+        if (node.isVisibleToUser()) {
+            CharSequence t = node.getText();
+            if (t != null) {
+                String s = t.toString().trim();
+                if (!s.isEmpty() && s.length() <= 16) {
+                    Rect r = new Rect();
+                    node.getBoundsInScreen(r);
+                    if (r.centerY() >= minTopY) {
+                        if (s.matches("^\\d{1,2}:\\d{2}$")) {
+                            int sec = parseMmSsToSec(s);
+                            if (sec >= 0) outSec.add(sec);
+                        } else if (s.matches("^\\d{1,2}:\\d{2}\\s*/\\s*\\d{1,2}:\\d{2}$")) {
+                            String[] parts = s.split("/");
+                            if (parts.length == 2) {
+                                int a = parseMmSsToSec(parts[0].trim());
+                                int b = parseMmSsToSec(parts[1].trim());
+                                if (a >= 0 && b > 0) {
+                                    outSec.add(a);
+                                    outSec.add(b);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        int cnt = node.getChildCount();
+        for (int i = 0; i < cnt && outSec.size() < 4; i++) {
+            AccessibilityNodeInfo child = node.getChild(i);
+            if (child != null) {
+                collectPlayerTimeNodes(child, outSec, depth + 1, minTopY);
                 child.recycle();
             }
         }
+    }
+
+    private int parseMmSsToSec(String mmss) {
+        try {
+            String[] p = mmss.split(":");
+            if (p.length == 2) {
+                int m = Integer.parseInt(p[0].trim());
+                int s = Integer.parseInt(p[1].trim());
+                if (m >= 0 && s >= 0 && s < 60) {
+                    return m * 60 + s;
+                }
+            }
+        } catch (Exception ignored) {}
+        return -1;
     }
 
     @Override

@@ -129,6 +129,46 @@
   let synthStartedAt = 0;
   let activeObjectUrl = '';
 
+  // 客户端音频内存 LRU 热缓存（同一句对白同一声线二次点击 0ms 秒播，零网络请求）
+  const TTS_CLIENT_CACHE_MAX = 30;
+  const TTS_CLIENT_CACHE_MAX_BYTES = 12 * 1024 * 1024;
+  const clientTtsAudioCache = new Map();
+  let clientTtsCacheBytes = 0;
+  const inFlightTtsFetches = new Map();
+
+  function getClientTtsCache(key) {
+    const hit = clientTtsAudioCache.get(key);
+    if (!hit) return null;
+    clientTtsAudioCache.delete(key);
+    clientTtsAudioCache.set(key, hit);
+    return hit;
+  }
+
+  function setClientTtsCache(key, buffer, mimeType) {
+    if (!key || !buffer || buffer.byteLength <= 512 || buffer.byteLength > 4 * 1024 * 1024) return;
+    const prev = clientTtsAudioCache.get(key);
+    if (prev) {
+      clientTtsCacheBytes = Math.max(0, clientTtsCacheBytes - prev.size);
+      clientTtsAudioCache.delete(key);
+    }
+    while (
+      clientTtsAudioCache.size >= TTS_CLIENT_CACHE_MAX ||
+      (clientTtsCacheBytes + buffer.byteLength > TTS_CLIENT_CACHE_MAX_BYTES && clientTtsAudioCache.size > 0)
+    ) {
+      const oldestKey = clientTtsAudioCache.keys().next().value;
+      if (oldestKey === undefined) break;
+      const oldest = clientTtsAudioCache.get(oldestKey);
+      clientTtsAudioCache.delete(oldestKey);
+      if (oldest) clientTtsCacheBytes = Math.max(0, clientTtsCacheBytes - oldest.size);
+    }
+    clientTtsAudioCache.set(key, {
+      buffer,
+      mimeType: mimeType || 'audio/mpeg',
+      size: buffer.byteLength
+    });
+    clientTtsCacheBytes += buffer.byteLength;
+  }
+
   function getCurrentSpeakerLabel() {
     const raw =
       document.getElementById('topbar-name')?.textContent?.trim() ||
@@ -624,6 +664,14 @@
       if (ok) return;
     }
 
+    // 0.5 命中客户端 LRU 音频内存缓存：0ms 秒播
+    const ttsCacheKey = `${currentVoiceId}::${cleaned}`;
+    const cachedAudio = getClientTtsCache(ttsCacheKey);
+    if (cachedAudio) {
+      await playAudioBufferWithStudioEq(cachedAudio.buffer, meta, btnEl, cachedAudio.mimeType);
+      return;
+    }
+
     isSynthesizing = true;
     synthStartedAt = Date.now();
     const myAbort = new AbortController();
@@ -642,24 +690,38 @@
     showDynamicIslandTts(`${getCurrentSpeakerLabel()} · 合成声线中`, true);
 
     try {
-      const resp = await fetch('/api/tts/speak', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          text: cleaned,
-          voiceId: currentVoiceId,
-          sessionId: window.__activeSessionId || ''
-        }),
-        signal: myAbort.signal
-      });
+      let fetchTask = inFlightTtsFetches.get(ttsCacheKey);
+      if (!fetchTask) {
+        fetchTask = fetch('/api/tts/speak', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            text: cleaned,
+            voiceId: currentVoiceId,
+            sessionId: window.__activeSessionId || ''
+          }),
+          signal: myAbort.signal
+        })
+          .then(async (resp) => {
+            const ctype = resp.headers.get('content-type') || '';
+            if (resp.ok && ctype.includes('audio/')) {
+              const buf = await resp.arrayBuffer();
+              setClientTtsCache(ttsCacheKey, buf, ctype);
+              return { ok: true, buf, ctype };
+            }
+            return { ok: false };
+          })
+          .finally(() => {
+            inFlightTtsFetches.delete(ttsCacheKey);
+          });
+        inFlightTtsFetches.set(ttsCacheKey, fetchTask);
+      }
 
+      const result = await fetchTask;
       if (myAbort.signal.aborted) return;
       isSynthesizing = false;
-      const ctype = resp.headers.get('content-type') || '';
-      if (resp.ok && ctype.includes('audio/')) {
-        const buf = await resp.arrayBuffer();
-        if (myAbort.signal.aborted) return;
-        await playAudioBufferWithStudioEq(buf, meta, btnEl, ctype);
+      if (result && result.ok && result.buf) {
+        await playAudioBufferWithStudioEq(result.buf, meta, btnEl, result.ctype);
         return;
       }
     } catch (err) {

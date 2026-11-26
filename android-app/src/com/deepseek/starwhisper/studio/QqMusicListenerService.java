@@ -10,6 +10,7 @@ import android.media.session.MediaSessionManager;
 import android.media.session.PlaybackState;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.SystemClock;
 import android.provider.Settings;
 import android.service.notification.NotificationListenerService;
 import android.service.notification.StatusBarNotification;
@@ -22,7 +23,8 @@ import java.util.Set;
 
 /**
  * 可选通知与媒体会话监听服务：
- * - 开启系统「通知使用权」后，可毫秒级精准同步 QQ 音乐/网易云/酷狗的歌名、歌手、播放暂停状态与精确毫秒进度；
+ * - 开启系统「通知使用权」后，可毫秒级精准同步 QQ 音乐/网易云/酷狗的歌名、歌手、状态栏原生歌词与毫秒进度；
+ * - 同步拦截美团、饿了么、京东秒送、淘宝闪购等外卖实况与通知进度，实时同步给大肥鱼；
  * - 未开启时也不影响主功能，由 AgentAccessibilityService + 媒体按键自动兜底联动。
  */
 public class QqMusicListenerService extends NotificationListenerService {
@@ -32,6 +34,18 @@ public class QqMusicListenerService extends NotificationListenerService {
             "com.kugou.android",
             "com.luna.music",
             "cn.kuwo.player"
+    ));
+
+    private static final Set<String> DELIVERY_PKGS = new HashSet<>(Arrays.asList(
+            "com.sankuai.meituan",
+            "com.sankuai.meituan.takeoutnew",
+            "me.ele",
+            "com.jingdong.app.mall",
+            "com.jingdong.pdj",
+            "com.taobao.taobao",
+            "com.wudaokou.hippo",
+            "com.yek.android.kfc.activitys",
+            "com.mcdonalds.gma.cn"
     ));
 
     private static volatile QqMusicListenerService sInstance = null;
@@ -55,18 +69,56 @@ public class QqMusicListenerService extends NotificationListenerService {
     public void onNotificationPosted(StatusBarNotification sbn) {
         if (sbn == null) return;
         String pkg = sbn.getPackageName();
-        if (!MUSIC_PKGS.contains(pkg)) return;
+        if (pkg == null) return;
 
         Notification n = sbn.getNotification();
-        if (n != null && n.extras != null) {
-            Bundle ex = n.extras;
-            String title = safeStr(ex.getCharSequence(Notification.EXTRA_TITLE));
-            String text = safeStr(ex.getCharSequence(Notification.EXTRA_TEXT));
-            if (!title.isEmpty()) {
-                FloatAgentService.onExternalMusicNotification(pkg, title, text);
+        if (n == null) return;
+        Bundle ex = n.extras;
+        String title = ex != null ? safeStr(ex.getCharSequence(Notification.EXTRA_TITLE)) : "";
+        String text = ex != null ? safeStr(ex.getCharSequence(Notification.EXTRA_TEXT)) : "";
+        String subText = ex != null ? safeStr(ex.getCharSequence(Notification.EXTRA_SUB_TEXT)) : "";
+        String bigText = ex != null ? safeStr(ex.getCharSequence(Notification.EXTRA_BIG_TEXT)) : "";
+        String ticker = safeStr(n.tickerText);
+
+        if (MUSIC_PKGS.contains(pkg)) {
+            boolean hasMediaSession = (ex != null && ex.containsKey(Notification.EXTRA_MEDIA_SESSION))
+                    || Notification.CATEGORY_TRANSPORT.equals(n.category);
+            if (!hasMediaSession) {
+                // 不带 MediaSession 的音乐通知多为系统状态栏滚动歌词/桌面歌词广播，绝不当成新歌名触发逐句搜索！
+                String lyricCandidate = !text.isEmpty() ? text : (!ticker.isEmpty() ? ticker : title);
+                if (!lyricCandidate.isEmpty()) {
+                    FloatAgentService.onExternalNativeLyric(pkg, lyricCandidate, title);
+                }
+            } else {
+                if (!title.isEmpty()) {
+                    FloatAgentService.onExternalMusicNotification(pkg, title, text);
+                }
+                pollActiveMusicSession(this);
+            }
+            return;
+        }
+
+        // 外卖订单与实时配送状态同步
+        String combined = (title + " " + text + " " + subText + " " + bigText).trim();
+        if (DELIVERY_PKGS.contains(pkg) || isStrongDeliveryNotification(combined)) {
+            if (!combined.isEmpty() && isStrongDeliveryNotification(combined)) {
+                String detail = !bigText.isEmpty() ? bigText : (!text.isEmpty() ? text : subText);
+                FloatAgentService.onExternalTakeoutUpdate(pkg, title, detail);
             }
         }
-        pollActiveMusicSession(this);
+    }
+
+    private static boolean isStrongDeliveryNotification(String s) {
+        if (s == null || s.isEmpty()) return false;
+        String[] kws = new String[]{
+                "骑手", "外卖", "已接单", "备餐", "已出餐", "已取餐",
+                "正在为您配送", "正在配送", "配送中", "距您", "距离您",
+                "预计送达", "即将送达", "已送达", "放入外卖柜", "已放置", "商家已接单"
+        };
+        for (String kw : kws) {
+            if (s.contains(kw)) return true;
+        }
+        return false;
     }
 
     public static boolean isNotificationAccessEnabled(Context ctx) {
@@ -109,7 +161,20 @@ public class QqMusicListenerService extends NotificationListenerService {
             String artist = meta != null ? safeStr(meta.getString(MediaMetadata.METADATA_KEY_ARTIST)) : "";
             long durationMs = meta != null ? meta.getLong(MediaMetadata.METADATA_KEY_DURATION) : 0L;
             boolean playing = ps != null && ps.getState() == PlaybackState.STATE_PLAYING;
-            long positionMs = ps != null ? Math.max(0L, ps.getPosition()) : 0L;
+            long positionMs = 0L;
+            if (ps != null) {
+                positionMs = Math.max(0L, ps.getPosition());
+                if (playing) {
+                    long updTime = ps.getLastPositionUpdateTime();
+                    if (updTime > 0L) {
+                        long elapsed = SystemClock.elapsedRealtime() - updTime;
+                        if (elapsed > 0L && elapsed < 3600000L) {
+                            float spd = ps.getPlaybackSpeed() > 0.05f ? ps.getPlaybackSpeed() : 1.0f;
+                            positionMs += Math.round(elapsed * spd);
+                        }
+                    }
+                }
+            }
 
             if (!title.isEmpty()) {
                 FloatAgentService.onMediaSessionSnapshot(

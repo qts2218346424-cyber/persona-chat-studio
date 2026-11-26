@@ -194,10 +194,10 @@ const {{ db, getRawPlatformConfigInternal, updateAdminPlatformConfig, saveAdminA
 db.prepare("DELETE FROM personas WHERE id = \\x27persona_linqi\\x27").run();
 db.prepare("UPDATE site_announcements SET enabled = 0").run();
 saveAdminAnnouncement("admin", {{
-  title: "星语恋庭 v2.5.3 更新：大肥鱼头顶气泡改为透明背景+5~10分钟低频陪伴，新增气泡开关！",
-  content: "1. 【透明背景头顶气泡】：去掉实色背景框，改用纯透明背景与高清立体描边文字直接浮在肥鱼头顶，美观通透不遮屏。\\n2. 【5~10分钟低频冒泡 & 可自由关闭】：调整为每 5~10 分钟随机弹一条天气吐槽或暖心安慰，并在面板新增「💬头顶气泡:开/关」一键隐藏或开启。\\n3. 【整合全屏自由漫步 & 真实歌声导入 & QQ音乐单曲精准点播】：随身版升级至 v2.5.3 (Build 150)！",
+  title: "星语恋庭 v2.5.4 更新：歌词真同步不误搜、肥鱼慢漫步搞怪捣蛋 & 外卖实时同步！",
+  content: "1. 【QQ音乐歌词真同步 · 绝不一句一搜索】：自动辨别状态栏/桌面实时歌词，直接同频显示并用 LRC 反查校准时钟，叠加网易云+LRCLIB双源曲库。\\n2. 【大肥鱼去僵硬 & 慢速散步 & 搞怪捣蛋】：漫步速度放慢并加入弧线柔韧小碎步，外置「😈闹」与面板「😈捣蛋」支持翻跟头、倒立吐舌、吹泡泡、装睡惊醒等 6 大滑稽动作！\\n3. 【外卖配送实时同步】：支持美团、饿了么、京东秒送等外卖接单/取餐/逼近/送达自动同步到肥鱼卡片与折叠胶囊，随身版升级至 v2.5.4 (Build 151)！",
   enabled: true,
-  version: 150
+  version: 151
 }});
 db.prepare("UPDATE sessions SET companion_config = NULL").run();
 db.prepare("UPDATE user_settings SET value = \\x27demo\\x27 WHERE key = \\x27provider\\x27").run();

@@ -540,6 +540,23 @@ public class FloatAgentService extends Service {
         }
     }
 
+    public static void showAskUserPrompt(
+            final String title,
+            final String thought,
+            final String question,
+            final String optionsJson
+    ) {
+        final FloatAgentService instance = sInstance;
+        if (instance != null) {
+            instance.mainHandler.post(new Runnable() {
+                @Override
+                public void run() {
+                    instance.displayAskUserOverlay(title, thought, question, optionsJson);
+                }
+            });
+        }
+    }
+
     public static void dismissConfirmPrompt() {
         final FloatAgentService instance = sInstance;
         if (instance != null) {
@@ -733,6 +750,31 @@ public class FloatAgentService extends Service {
                 inst.expandPanel();
             }
         });
+    }
+
+    public static boolean bringSelfToFrontFromBridge(final Context ctx, final String toastTip) {
+        if (ctx == null) return false;
+        try {
+            final FloatAgentService inst = sInstance;
+            if (inst != null) {
+                inst.mainHandler.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        inst.collapsePanel();
+                        inst.applyStatusStyle("idle", "等你确认", false);
+                        if (toastTip != null && !toastTip.trim().isEmpty()) {
+                            Toast.makeText(inst, toastTip.trim(), Toast.LENGTH_SHORT).show();
+                        }
+                    }
+                });
+            }
+            Intent intent = new Intent(ctx, MainActivity.class);
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            ctx.startActivity(intent);
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     public static void openQuickTypingBarFromBridge(final Context ctx) {
@@ -6562,7 +6604,216 @@ public class FloatAgentService extends Service {
         } catch (Exception ignored) {}
     }
 
+    private LinearLayout askUserOverlayView;
+
+    private void displayAskUserOverlay(String title, String thought, String question, String optionsJson) {
+        if (windowManager == null) return;
+        hideConfirmBanner();
+        hideAskUserOverlay();
+        collapsePanel();
+
+        applyStatusStyle("confirming", "等你确认: " + (title != null ? title : "补充说明"), false);
+        setEdgeGlowState("confirming");
+        vibrateGentle(140);
+
+        DisplayMetrics dm = getResources().getDisplayMetrics();
+        int cardWidth = Math.min((int) (dm.widthPixels * 0.92f), dp(352));
+
+        askUserOverlayView = new LinearLayout(this);
+        askUserOverlayView.setOrientation(LinearLayout.VERTICAL);
+        askUserOverlayView.setPadding(dp(15), dp(13), dp(15), dp(13));
+        setViewBg(askUserOverlayView, createRoundRect("#F2111622", 20, "#4D6BFE", 1));
+
+        LinearLayout head = new LinearLayout(this);
+        head.setOrientation(LinearLayout.HORIZONTAL);
+        head.setGravity(Gravity.CENTER_VERTICAL);
+
+        ImageView whaleIc = new ImageView(this);
+        whaleIc.setImageResource(R.drawable.feiyu_idle);
+        whaleIc.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        LinearLayout.LayoutParams wiLp = new LinearLayout.LayoutParams(dp(24), dp(24));
+        wiLp.rightMargin = dp(7);
+        whaleIc.setLayoutParams(wiLp);
+
+        TextView titleTv = new TextView(this);
+        titleTv.setText(title != null && !title.trim().isEmpty() ? title.trim() : "dsh-Go 需要你确认");
+        titleTv.setTextColor(Color.parseColor("#F8FAFC"));
+        titleTv.setTextSize(13.5f);
+        titleTv.setTypeface(null, android.graphics.Typeface.BOLD);
+        titleTv.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f));
+
+        TextView backChatTv = new TextView(this);
+        backChatTv.setText("回聊天");
+        backChatTv.setTextColor(Color.parseColor("#93C5FD"));
+        backChatTv.setTextSize(11f);
+        backChatTv.setPadding(dp(8), dp(4), dp(8), dp(4));
+        setViewBg(backChatTv, createRoundRect("#1A3B82F6", 999, "#333B82F6", 1));
+        backChatTv.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                hideAskUserOverlay();
+                updateState("idle", "dsh-Go");
+                MainActivity.dispatchConfirmDecisionToWebView("__back_to_chat__");
+                bringMainActivityToFront(null, false);
+            }
+        });
+
+        head.addView(whaleIc);
+        head.addView(titleTv);
+        head.addView(backChatTv);
+        askUserOverlayView.addView(head);
+
+        if (thought != null && !thought.trim().isEmpty()) {
+            TextView thoughtTv = new TextView(this);
+            thoughtTv.setText("💭 " + thought.trim());
+            thoughtTv.setTextColor(Color.parseColor("#93C5FD"));
+            thoughtTv.setTextSize(11f);
+            thoughtTv.setPadding(dp(9), dp(6), dp(9), dp(6));
+            thoughtTv.setMaxLines(3);
+            thoughtTv.setEllipsize(TextUtils.TruncateAt.END);
+            setViewBg(thoughtTv, createRoundRect("#12FFFFFF", 10, "#1FFFFFFF", 1));
+            LinearLayout.LayoutParams thLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            thLp.topMargin = dp(8);
+            thoughtTv.setLayoutParams(thLp);
+            askUserOverlayView.addView(thoughtTv);
+        }
+
+        TextView qTv = new TextView(this);
+        qTv.setText(question != null && !question.trim().isEmpty() ? question.trim() : "请确认或补充接下来的操作说明");
+        qTv.setTextColor(Color.parseColor("#F1F5F9"));
+        qTv.setTextSize(13f);
+        qTv.setPadding(0, dp(9), 0, dp(8));
+        askUserOverlayView.addView(qTv);
+
+        try {
+            if (optionsJson != null && !optionsJson.trim().isEmpty()) {
+                JSONArray opts = new JSONArray(optionsJson);
+                if (opts.length() > 0) {
+                    LinearLayout optWrap = new LinearLayout(this);
+                    optWrap.setOrientation(LinearLayout.VERTICAL);
+                    LinearLayout.LayoutParams owLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                    owLp.bottomMargin = dp(8);
+                    optWrap.setLayoutParams(owLp);
+                    int maxOpts = Math.min(opts.length(), 4);
+                    for (int i = 0; i < maxOpts; i++) {
+                        final String optText = opts.optString(i, "").trim();
+                        if (optText.isEmpty()) continue;
+                        TextView optBtn = new TextView(this);
+                        optBtn.setText(optText);
+                        optBtn.setTextColor(Color.parseColor("#E0E7FF"));
+                        optBtn.setTextSize(12f);
+                        optBtn.setPadding(dp(11), dp(7), dp(11), dp(7));
+                        setViewBg(optBtn, createRoundRect("#244D6BFE", 10, "#554D6BFE", 1));
+                        LinearLayout.LayoutParams obLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                        if (i > 0) obLp.topMargin = dp(5);
+                        optBtn.setLayoutParams(obLp);
+                        optBtn.setOnClickListener(new View.OnClickListener() {
+                            @Override
+                            public void onClick(View v) {
+                                hideAskUserOverlay();
+                                updateState("thinking", "继续执行...");
+                                MainActivity.dispatchConfirmDecisionToWebView("reply:" + optText);
+                            }
+                        });
+                        optWrap.addView(optBtn);
+                    }
+                    askUserOverlayView.addView(optWrap);
+                }
+            }
+        } catch (Exception ignored) {}
+
+        LinearLayout inputRow = new LinearLayout(this);
+        inputRow.setOrientation(LinearLayout.HORIZONTAL);
+        inputRow.setGravity(Gravity.CENTER_VERTICAL);
+
+        final EditText replyEt = new EditText(this);
+        replyEt.setHint("直接输入答复或补充要求…");
+        replyEt.setHintTextColor(Color.parseColor("#64748B"));
+        replyEt.setTextColor(Color.WHITE);
+        replyEt.setTextSize(12f);
+        replyEt.setSingleLine(true);
+        replyEt.setImeOptions(EditorInfo.IME_ACTION_SEND);
+        replyEt.setPadding(dp(10), dp(7), dp(10), dp(7));
+        setViewBg(replyEt, createRoundRect("#161C2C", 10, "#334155", 1));
+        LinearLayout.LayoutParams etLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
+        etLp.rightMargin = dp(6);
+        replyEt.setLayoutParams(etLp);
+
+        TextView sendReplyBtn = createActionBtn("确认继续", "#4D6BFE", "#FFFFFF");
+        sendReplyBtn.setPadding(dp(11), dp(7), dp(11), dp(7));
+        LinearLayout.LayoutParams srLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        srLp.rightMargin = dp(5);
+        sendReplyBtn.setLayoutParams(srLp);
+
+        final Runnable submitReply = new Runnable() {
+            @Override
+            public void run() {
+                String txt = replyEt.getText() != null ? replyEt.getText().toString().trim() : "";
+                if (txt.isEmpty()) txt = "继续执行";
+                hideAskUserOverlay();
+                updateState("thinking", "继续执行...");
+                MainActivity.dispatchConfirmDecisionToWebView("reply:" + txt);
+            }
+        };
+        sendReplyBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                submitReply.run();
+            }
+        });
+        replyEt.setOnEditorActionListener(new TextView.OnEditorActionListener() {
+            @Override
+            public boolean onEditorAction(TextView v, int actionId, KeyEvent event) {
+                if (actionId == EditorInfo.IME_ACTION_SEND || actionId == EditorInfo.IME_ACTION_DONE) {
+                    submitReply.run();
+                    return true;
+                }
+                return false;
+            }
+        });
+
+        TextView cancelReplyBtn = createActionBtn("取消", "#334155", "#CBD5E1");
+        cancelReplyBtn.setPadding(dp(10), dp(7), dp(10), dp(7));
+        cancelReplyBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                hideAskUserOverlay();
+                updateState("idle", "dsh-Go");
+                MainActivity.dispatchConfirmDecisionToWebView("cancel");
+            }
+        });
+
+        inputRow.addView(replyEt);
+        inputRow.addView(sendReplyBtn);
+        inputRow.addView(cancelReplyBtn);
+        askUserOverlayView.addView(inputRow);
+
+        WindowManager.LayoutParams lp = new WindowManager.LayoutParams(
+                cardWidth,
+                WindowManager.LayoutParams.WRAP_CONTENT,
+                overlayWindowType(),
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+                PixelFormat.TRANSLUCENT
+        );
+        lp.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE;
+        lp.gravity = Gravity.CENTER;
+
+        try {
+            windowManager.addView(askUserOverlayView, lp);
+        } catch (Exception ignored) {}
+    }
+
+    private void hideAskUserOverlay() {
+        if (askUserOverlayView != null && windowManager != null) {
+            try {
+                windowManager.removeView(askUserOverlayView);
+            } catch (Exception ignored) {}
+            askUserOverlayView = null;
+        }
+    }
+
     private void hideConfirmBanner() {
+        hideAskUserOverlay();
         if (confirmBannerView != null && windowManager != null) {
             try {
                 windowManager.removeView(confirmBannerView);

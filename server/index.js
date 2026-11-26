@@ -656,8 +656,8 @@ function extractAuthToken(req, parsedUrl = null) {
   return '';
 }
 
-const APP_LATEST_VERSION = '2.7.0';
-const APP_LATEST_VERSION_CODE = 161;
+const APP_LATEST_VERSION = '2.7.1';
+const APP_LATEST_VERSION_CODE = 162;
 const APP_OFFICIAL_CERT_SHA256 = '6fd05e32a3cabf327140129d866e55a342fe30daa3384c67aad4b3cbdd98a17b';
 const APP_UPDATE_TICKET_SECRET = crypto
   .createHash('sha256')
@@ -956,7 +956,7 @@ async function handleApi(req, res, pathname, parsedUrl) {
       diffGenerations,
       changelog: [
         '【整套作业一口气连做不中断（Anti-Early-Done）】强化连续多题规划铁律并新增代码级防早退保护：检测到屏幕仍有“下一题”或题号进度未到最后一题时自动拦截提前结束，持续作答翻页直到整套题全部做完',
-        '【AI 操作固化 + 三模式物理隔离 + 悬浮窗焕新】新增 AI 操作学习固化与本地免 API 离线回放引擎；DeepSeek 聊天、星语剧场与手机辅助三模式 API 配置 100% 物理隔离且默认保持本地直连；全新美化手机辅助主页与 Android 三段式轻量悬浮窗，双端同步升级至 v2.7.0 (Build 161)'
+        '【透明思考 + 任务屏弹窗确认 + dsh-Go 深海鲸影 UI】手机辅助全面支持思考过程实时透明展示、自由对话问答；遇到模糊或不确定的操作优先以弹窗形式确认（执行中直接在第三方任务画面弹出悬浮确认窗）；本地引擎切换弹窗精准提供 DeepSeek API / 云端 API；新增大鲸鱼半透明主题背景，双端同步升级至 v2.7.1 (Build 162)'
       ]
     };
 
@@ -1687,8 +1687,9 @@ async function handleApi(req, res, pathname, parsedUrl) {
       '你的职责是根据用户的目标任务、当前手机屏幕快照（含元素 ref 编号）、上一步 ScreenVerdict 验证结果、用户中途插话以及历史步骤，输出“下一步唯一且精确”的动作指令。',
       `当前设备屏幕分辨率为 ${screenSize.width}x${screenSize.height}。`,
       '你只能输出一个严格合法的 JSON 对象（不要用 Markdown 代码块包裹，也不要附加前后任何解释文字），格式如下：',
-      '{"thought":"精炼中文推理(<=50字)","tool":"工具名","args":{},"summary":"面向用户的中文操作简述(<=28字)","risk":"read|write|sensitive","reply":"仅在 done 或 ask_user 时填写自然语言回复"}',
+      '{"thought":"清晰自然的中文思考推理(30~110字，简述看到了什么、分析判断与决策原因)","tool":"工具名","args":{},"summary":"面向用户的中文简述(<=28字)","risk":"read|write|sensitive","reply":"在 chat / done / ask_user 时填写自然友好的中文回复"}',
       '可用 tool 及对应 args 规范（dsh-Go PhoneToolCatalog）：',
+      '- chat: {"message":"无需操作手机，直接用自然友好的中文对话回答用户问题或讨论方案"}',
       '- phone_open: {"appName":"应用名称，优先参考已安装应用列表"}',
       '- phone_tap: {"ref":"元素编号如e12","snapshotId":"当前快照ID"}  （点击页面控件首选！）',
       '- phone_tap_xy: {"x":像素X,"y":像素Y}  （仅当控件树未暴露目标或自绘控件时使用）',
@@ -1699,9 +1700,11 @@ async function handleApi(req, res, pathname, parsedUrl) {
       '- phone_swipe: {"x1":起点X,"y1":起点Y,"x2":终点X,"y2":终点Y,"duration":320}',
       '- phone_key: {"key":"back|home|recents|notifications|quick_settings|enter|screenshot"}',
       '- phone_wait: {"ms":1000}',
-      '- ask_user: {"message":"需要用户手动输入支付密码/选择规格或确认的问题","reason":"sensitive_or_manual"}',
+      '- ask_user: {"message":"需要向用户追问澄清、确认选择或请求手动操作的清晰问题","reason":"clarify|confirm|sensitive|manual","options":["可选快捷选项1","可选快捷选项2"]}',
       '- done: {"message":"清晰自然的中文完成总结，汇报查到的信息或操作结果"}',
       '关键约束：',
+      '0. 自由对话优先识别：若用户是在打招呼、闲聊、询问原理/题目思路、讨论方案、询问你能做什么、或仅针对屏幕内容提问而无需点击/打开手机时，直接返回 tool="chat"，用 reply 给出完整有温度的回答，严禁瞎点手机！',
+      '0.5 模糊/不确定主动问清楚（关键！）：当用户指令缺少关键信息（如未指定发给谁/发什么内容/买哪款/选哪个规格、多选拿不准、当前界面有多个同名目标或即将执行重要提交/删除/付款）时，严禁瞎猜乱点！必须立即返回 tool="ask_user"，在 reply 中礼貌问清楚具体需求，并尽可能在 args.options 中提供 2~4 个简短清晰的快捷选项。',
       '1. 优先用 phone_open 打开目标应用；点击屏幕元素时优先使用 phone_tap 并携带准确 ref 与 snapshotId，避免盲猜坐标。',
       '2. 仔细检查 screenVerdict：若连续 2 步画面未变化（changed=false），严禁继续重复同一动作或 phone_wait，必须改用 phone_tap_xy / phone_scroll / phone_key(back) 或返回 ask_user 交还用户处理。',
       '3. 若同一屏幕上已同时清晰可见 2~3 个明确无歧义的连贯操作（例如学习答题时“先选中答案选项 + 再点击下一题/提交”），可在标准字段外额外附带 `"actions":[{"tool":"phone_tap","args":{"ref":"e10"}},{"tool":"phone_tap","args":{"ref":"e24"}}]`（最多 3 个同屏非敏感微动作），否则只输出单动作。',
@@ -1738,6 +1741,7 @@ async function handleApi(req, res, pathname, parsedUrl) {
       sensitiveReason,
       screenVerdict,
       interjections,
+      conversationMemory: Array.isArray(body.conversationMemory) ? body.conversationMemory.slice(-6) : [],
       recentHistory: historySteps.map((h) => ({
         step: h.step,
         tool: h.tool || h.action,
@@ -1818,6 +1822,7 @@ async function handleApi(req, res, pathname, parsedUrl) {
         phone_swipe: 'swipe',
         phone_key: 'key',
         phone_wait: 'wait',
+        chat: 'chat',
         done: 'done',
         ask_user: 'ask_user'
       };
@@ -1832,6 +1837,7 @@ async function handleApi(req, res, pathname, parsedUrl) {
         back: 'phone_key',
         recents: 'phone_key',
         wait: 'phone_wait',
+        chat: 'chat',
         done: 'done',
         ask_user: 'ask_user'
       };
@@ -1850,25 +1856,28 @@ async function handleApi(req, res, pathname, parsedUrl) {
       const riskText = `${obj?.summary || ''} ${args?.text || ''} ${obj?.thought || ''}`;
       let risk = String(obj?.risk || '').trim().toLowerCase();
       if (risk !== 'read' && risk !== 'write' && risk !== 'sensitive') {
-        risk = (obj?.needConfirm || highRiskKw.test(riskText)) ? 'sensitive' : (tool === 'phone_wait' || tool === 'done' || tool === 'ask_user' ? 'read' : 'write');
+        risk = (obj?.needConfirm || highRiskKw.test(riskText)) ? 'sensitive' : (tool === 'phone_wait' || tool === 'chat' || tool === 'done' || tool === 'ask_user' ? 'read' : 'write');
       }
-      if (tool !== 'done' && tool !== 'phone_wait' && tool !== 'ask_user' && highRiskKw.test(riskText)) {
+      if (tool !== 'chat' && tool !== 'done' && tool !== 'phone_wait' && tool !== 'ask_user' && highRiskKw.test(riskText)) {
         risk = 'sensitive';
       }
 
       const replyText = String(obj?.reply || args?.message || obj?.summary || '').trim();
-      if ((tool === 'done' || tool === 'ask_user') && replyText && !args.message) {
+      if ((tool === 'chat' || tool === 'done' || tool === 'ask_user') && replyText && !args.message) {
         args.message = replyText;
+      }
+      if (Array.isArray(args.options)) {
+        args.options = args.options.map((x) => String(x || '').trim()).filter(Boolean).slice(0, 4);
       }
 
       const rawActions = Array.isArray(obj?.actions) ? obj.actions.slice(0, 3) : [];
       const normalizedActions = [];
-      if (risk !== 'sensitive' && tool !== 'done' && tool !== 'ask_user' && tool !== 'phone_open') {
+      if (risk !== 'sensitive' && tool !== 'chat' && tool !== 'done' && tool !== 'ask_user' && tool !== 'phone_open') {
         for (const sub of rawActions) {
           if (!sub || typeof sub !== 'object') continue;
           const stRaw = String(sub.tool || sub.action || '').trim();
           const st = stRaw && toolToLegacy[stRaw] ? stRaw : (legacyToTool[stRaw] || '');
-          if (!st || st === 'done' || st === 'ask_user' || st === 'phone_open') continue;
+          if (!st || st === 'chat' || st === 'done' || st === 'ask_user' || st === 'phone_open') continue;
           const sArgs = (sub.args && typeof sub.args === 'object') ? { ...sub.args } : ((sub.params && typeof sub.params === 'object') ? { ...sub.params } : {});
           const sText = `${sub.summary || ''} ${sArgs?.text || ''}`;
           if (highRiskKw.test(sText)) continue;
@@ -1881,12 +1890,12 @@ async function handleApi(req, res, pathname, parsedUrl) {
       }
 
       return {
-        thought: String(obj?.thought || '已结合当前界面完成分析').slice(0, 180),
+        thought: String(obj?.thought || '已结合当前界面与任务上下文完成分析').slice(0, 320),
         tool,
         args,
         actions: normalizedActions.length >= 2 ? normalizedActions : undefined,
         risk,
-        reply: replyText.slice(0, 500),
+        reply: replyText.slice(0, 1600),
         action: legacyAction,
         params: args,
         summary: String(obj?.summary || `执行 ${tool}`).slice(0, 120),

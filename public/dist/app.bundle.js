@@ -5234,7 +5234,7 @@ lastInteractionAt: Date.now(),
 hasMoreMessages: false,
 totalMessages: 0,
 oldestMessageId: 0,
-appVersion: '2.7.0',
+appVersion: '2.7.1',
 tourIndex: 0,
 tourActive: false,
 llmMode: 'local_antigravity',
@@ -19673,8 +19673,8 @@ runCloneBtn.innerHTML = origHtml;
 })();
 ;
 (() => {
-const CURRENT_APK_VERSION = '2.7.0';
-const CURRENT_APK_CODE = 161;
+const CURRENT_APK_VERSION = '2.7.1';
+const CURRENT_APK_CODE = 162;
 const DEEPSEEK_API_KEYS_URL = 'https://platform.deepseek.com/api_keys';
 const PUBLIC_WEB_ORIGIN = 'https://star.claudexxb.online';
 const GITHUB_RELEASES_URL = 'https://github.com/qts2218346424-cyber/persona-chat-studio/releases';
@@ -19782,7 +19782,40 @@ let isAgentRunning = false;
 let queuedInterjections = [];
 let activeRunContext = null;
 let pendingTaskAfterA11y = '';
+let paChatMemory = [];
+let pendingAskContext = null;
 let latestUpdateInfo = null;
+function recordPaChatTurn(role, text) {
+const clean = String(text || '').trim();
+if (!clean) return;
+paChatMemory.push({ role: role === 'user' ? 'user' : 'assistant', text: clean.slice(0, 400), ts: Date.now() });
+if (paChatMemory.length > 10) paChatMemory = paChatMemory.slice(-10);
+}
+function updateComposerAskHint(activeAsk) {
+const inp = $('chat-input');
+if (!inp) return;
+if (!inp.dataset.paOrigPlaceholder) {
+inp.dataset.paOrigPlaceholder = inp.getAttribute('placeholder') || '';
+}
+if (activeAsk) {
+inp.setAttribute('placeholder', '直接回复上面的确认问题，我将继续执行…');
+} else if (document.getElementById('app-shell')?.dataset.uiMode === 'phone-agent') {
+inp.setAttribute('placeholder', '告诉我你想操作什么，或者直接和我聊天提问…');
+}
+}
+function isLikelyPureChat(text) {
+const clean = String(text || '').trim();
+if (!clean) return false;
+if (/^(?:你好|您好|hi|hello|在吗|早上好|中午好|晚上好|谢谢|多谢|辛苦了|再见|拜拜|哈哈|你是谁|你能干嘛|你能做什么|介绍一下你自己|怎么用|有什么功能)[！!？?。.～~]*$/i.test(clean)) {
+return true;
+}
+const hasActionVerb = /(?:打开|启动|进入|点击|点一下|按下|搜索|搜一下|查一下|发消息|发给|发送|回复|点外卖|下单|写作业|做作业|答题|刷题|刷视频|下一题|切回|回到|返回|锁屏|截屏|滑动|上滑|下滑|音量|静音|喂米饭|唱歌|播放)/.test(clean);
+if (hasActionVerb) return false;
+if (/(?:为什么|怎么回事|原理|是什么|是什么意思|怎么办|帮我解释|帮我分析|聊一聊|聊聊|讲个|觉得呢|好不好|是不是|能不能)[？?！!。]*$/.test(clean) || /[？?]$/.test(clean)) {
+return true;
+}
+return false;
+}
 let pendingNativeCheckResolve = null;
 let nativeCheckTimeoutId = null;
 let isDownloadingUpdate = false;
@@ -20201,6 +20234,9 @@ activeAbortController.abort();
 }
 emergencyStopRequested = true;
 paSessionNodes = [];
+paChatMemory = [];
+pendingAskContext = null;
+updateComposerAskHint(false);
 const container = $('messages-container');
 if (container) container.innerHTML = '';
 closeControlSheet();
@@ -21728,6 +21764,14 @@ bodyEl.className = 'msg-body';
 const card = document.createElement('div');
 card.className = 'pa-dsh-turn';
 card.innerHTML = `
+      <div class="pa-thinking-box is-thinking">
+        <div class="pa-thinking-head" role="button" tabindex="0" aria-expanded="true">
+          <span class="pa-thinking-dot" aria-hidden="true"></span>
+          <span class="pa-thinking-title">正在深度思考…</span>
+          <span class="pa-thinking-chevron" aria-hidden="true">▾</span>
+        </div>
+        <div class="pa-thinking-list"></div>
+      </div>
       <div class="pa-trace-accordion is-running">
         <div class="pa-trace-summary" role="button" tabindex="0" aria-expanded="true">
           <div class="pa-trace-sum-left">
@@ -21748,6 +21792,12 @@ card.innerHTML = `
       </div>
       <div class="pa-final-reply hidden"></div>
     `;
+const thinkingBox = card.querySelector('.pa-thinking-box');
+const thinkingHead = card.querySelector('.pa-thinking-head');
+thinkingHead?.addEventListener('click', () => {
+const collapsed = thinkingBox.classList.toggle('is-collapsed');
+thinkingHead.setAttribute('aria-expanded', String(!collapsed));
+});
 const accordion = card.querySelector('.pa-trace-accordion');
 const summaryEl = card.querySelector('.pa-trace-summary');
 summaryEl?.addEventListener('click', (e) => {
@@ -21765,6 +21815,10 @@ scrollChatToBottom();
 return {
 row,
 card,
+thinkingBox,
+thinkingHead,
+thinkingTitleEl: card.querySelector('.pa-thinking-title'),
+thinkingList: card.querySelector('.pa-thinking-list'),
 accordion,
 summaryEl,
 summaryTextEl: card.querySelector('.pa-trace-sum-text'),
@@ -21775,8 +21829,34 @@ fixSlot: card.querySelector('.pa-fix-slot'),
 stopBtn: card.querySelector('.pa-card-stop-btn'),
 finalReplyEl: card.querySelector('.pa-final-reply'),
 startedAt: Date.now(),
-stepCount: 0
+stepCount: 0,
+thoughtCount: 0
 };
+}
+function appendThoughtItem(cardCtx, stepLabel, thoughtText, reasoningText = '') {
+if (!cardCtx || !cardCtx.thinkingList) return;
+const cleanThought = String(thoughtText || '').trim();
+const cleanReason = String(reasoningText || '').trim();
+if (!cleanThought && !cleanReason) return;
+cardCtx.thoughtCount = (cardCtx.thoughtCount || 0) + 1;
+if (cardCtx.thinkingBox) cardCtx.thinkingBox.classList.remove('hidden');
+if (cardCtx.thinkingTitleEl) {
+cardCtx.thinkingTitleEl.textContent = `思考过程 · 第 ${cardCtx.thoughtCount} 步`;
+}
+const item = document.createElement('div');
+item.className = 'pa-thinking-item';
+item.innerHTML = `
+      <div class="pa-thinking-step-tag">${escapeHtml(stepLabel || `推理 ${cardCtx.thoughtCount}`)}</div>
+      <div class="pa-thinking-text">${escapeHtml(cleanThought || cleanReason.slice(0, 220))}</div>
+      ${cleanReason && cleanThought && cleanReason !== cleanThought
+? `<div class="pa-thinking-raw">${escapeHtml(cleanReason.slice(0, 500))}</div>`
+: ''}
+    `;
+cardCtx.thinkingList.appendChild(item);
+while (cardCtx.thinkingList.children.length > 20) {
+cardCtx.thinkingList.firstElementChild?.remove();
+}
+scrollChatToBottom();
 }
 function addStepItem(stepsList, stepNum, summary, thought, statusText, isError = false, toolName = 'step') {
 if (!stepsList) return null;
@@ -21834,16 +21914,28 @@ resEl.classList.toggle('is-error', Boolean(isError));
 }
 scrollChatToBottom();
 }
-function finalizeAgentTurn(cardCtx, { status = 'done', summaryTitle = '', replyText = '', handoverCb = null, recordedSteps = null, sourceTask = '', isSkillReplay = false }) {
+function finalizeAgentTurn(cardCtx, { status = 'done', summaryTitle = '', replyText = '', handoverCb = null, recordedSteps = null, sourceTask = '', isSkillReplay = false, isChatOnly = false }) {
 if (!cardCtx) return;
 const elapsedSec = ((Date.now() - (cardCtx.startedAt || Date.now())) / 1000).toFixed(1);
+if (cardCtx.thinkingBox) {
+cardCtx.thinkingBox.classList.remove('is-thinking');
+if ((cardCtx.thoughtCount || 0) === 0) {
+cardCtx.thinkingBox.classList.add('hidden');
+} else if (cardCtx.thinkingTitleEl) {
+cardCtx.thinkingTitleEl.textContent = `已完成思考（${cardCtx.thoughtCount} 步推理 · ${elapsedSec}s）`;
+}
+}
 const acc = cardCtx.accordion;
 if (acc) {
+if (isChatOnly) {
+acc.classList.add('hidden');
+} else {
 acc.classList.remove('is-running', 'is-done', 'is-error');
 acc.classList.add(status === 'error' ? 'is-error' : 'is-done');
 if (status === 'done' && cardCtx.stepCount > 0) {
 acc.classList.add('is-collapsed');
 cardCtx.summaryEl?.setAttribute('aria-expanded', 'false');
+}
 }
 }
 if (cardCtx.summaryTextEl && summaryTitle) {
@@ -21856,11 +21948,12 @@ if (cardCtx.stopBtn && !isNativeAutoSwiping()) {
 cardCtx.stopBtn.classList.add('hidden');
 }
 const validSteps = Array.isArray(recordedSteps) ? recordedSteps : [];
-const canSaveSkill = !isSkillReplay && validSteps.length >= 1;
+const canSaveSkill = !isSkillReplay && !isChatOnly && validSteps.length >= 1;
 if (cardCtx.finalReplyEl && (replyText || typeof handoverCb === 'function' || canSaveSkill)) {
 cardCtx.finalReplyEl.classList.remove('hidden');
+cardCtx.finalReplyEl.classList.toggle('pa-chat-reply', Boolean(isChatOnly));
 cardCtx.finalReplyEl.innerHTML = `
-        ${replyText ? `<div>${escapeHtml(replyText)}</div>` : ''}
+        ${replyText ? `<div class="pa-reply-prose">${escapeHtml(replyText).replace(/\n/g, '<br/>')}</div>` : ''}
         ${typeof handoverCb === 'function' ? `
           <div class="pa-handover-bar">
             <button type="button" class="pa-banner-btn pa-handover-resume-btn">我已完成，继续执行</button>
@@ -22018,12 +22111,15 @@ if (resumeBtn) resumeBtn.classList.remove('hidden');
 }
 };
 function askStepConfirmCard(confirmSlot, plan, signal, gateInfo = {}, snapshot = {}) {
-if (!confirmSlot) return Promise.resolve('allow');
 const b = getBridge();
 const hardSensitive = Boolean(gateInfo?.hardSensitive);
 const riskLevel = gateInfo?.riskLevel || 'write';
 const targetApp = snapshot?.appName || '';
-if (b && typeof b.requestSafetyConfirmation === 'function') {
+const isInExternalApp =
+isNativeApk() &&
+snapshot?.packageName &&
+snapshot.packageName !== 'com.deepseek.starwhisper.studio';
+if (isInExternalApp && b && typeof b.requestSafetyConfirmation === 'function') {
 try {
 b.requestSafetyConfirmation(
 plan.summary || '执行下一步操作',
@@ -22033,40 +22129,42 @@ targetApp,
 hardSensitive
 );
 } catch {}
-} else if (b && typeof b.requestUserConfirmation === 'function') {
-try {
-b.requestUserConfirmation(plan.summary || '执行下一步操作', formatActionCodeDesc(plan));
-} catch {}
 }
 return new Promise((resolve) => {
+document.getElementById('pa-center-confirm-modal')?.remove();
 const dismissNative = () => {
 if (b && typeof b.dismissUserConfirmation === 'function') {
 try { b.dismissUserConfirmation(); } catch {}
 }
 };
+const modal = document.createElement('div');
+modal.id = 'pa-center-confirm-modal';
+modal.className = 'pa-modal-backdrop';
 const finish = (decision) => {
 dismissNative();
 activeConfirmResolver = null;
+modal.remove();
 if (confirmSlot) confirmSlot.innerHTML = '';
 resolve(decision);
 };
 activeConfirmResolver = (decision) => {
 finish(decision);
 };
-confirmSlot.innerHTML = `
-        <div class="pa-confirm-card">
-          <div class="pa-confirm-title">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
-            </svg>
-            <span>${hardSensitive ? '高危安全拦截（密码 / 支付 / 验证码）' : 'dsh-Go 安全确认'}</span>
+modal.innerHTML = `
+        <div class="pa-modal-dialog" role="dialog" aria-modal="true" aria-label="dsh-Go 安全确认">
+          <div class="pa-modal-head">
+            <div class="pa-modal-badge ${hardSensitive ? 'is-danger' : 'is-warn'}">
+              ${hardSensitive ? '高危安全拦截（密码 / 支付 / 验证码）' : 'dsh-Go 操作确认'}
+            </div>
+            <button type="button" class="pa-sheet-close-btn" data-decision="cancel" aria-label="拒绝并关闭">✕</button>
           </div>
-          <div class="pa-action-box">
-            <div><strong>${escapeHtml(plan.summary || '执行下一步操作')}</strong></div>
-            <div style="margin-top:4px;">动作指令：<code>${escapeHtml(formatActionCodeDesc(plan))}</code></div>
-            ${snapshot?.sensitiveReason ? `<div style="margin-top:4px;color:#ef4444;font-size:11.5px;">提示：${escapeHtml(snapshot.sensitiveReason)}</div>` : ''}
+          <div class="pa-modal-body">
+            ${plan.thought ? `<div class="pa-modal-thought">💭 ${escapeHtml(plan.thought)}</div>` : ''}
+            <div class="pa-modal-title">${escapeHtml(plan.summary || '执行下一步操作')}</div>
+            <div class="pa-modal-code">动作指令：<code>${escapeHtml(formatActionCodeDesc(plan))}</code></div>
+            ${snapshot?.sensitiveReason ? `<div class="pa-modal-alert">${escapeHtml(snapshot.sensitiveReason)}</div>` : ''}
           </div>
-          <div class="pa-confirm-btns">
+          <div class="pa-modal-foot">
             <button type="button" class="pa-banner-btn" data-decision="allow">允许一次</button>
             ${hardSensitive
 ? `<button type="button" class="pa-banner-btn outline" data-decision="handover">我来手动操作</button>`
@@ -22079,10 +22177,12 @@ confirmSlot.innerHTML = `
           </div>
         </div>
       `;
-scrollChatToBottom();
-const onAbort = () => {
-finish('cancel');
-};
+if (!isInExternalApp || !b || typeof b.requestSafetyConfirmation !== 'function') {
+document.body.appendChild(modal);
+} else if (confirmSlot) {
+confirmSlot.innerHTML = `<div class="pa-confirm-hint-pill">已在当前任务画面弹出确认窗口，请直接点击确认…</div>`;
+}
+const onAbort = () => finish('cancel');
 if (signal) {
 if (signal.aborted) {
 onAbort();
@@ -22090,74 +22190,207 @@ return;
 }
 signal.addEventListener('abort', onAbort, { once: true });
 }
-confirmSlot.querySelectorAll('button[data-decision]').forEach((btn) => {
+modal.querySelectorAll('button[data-decision]').forEach((btn) => {
 btn.addEventListener('click', () => {
 if (signal) signal.removeEventListener('abort', onAbort);
-const d = btn.dataset.decision || 'cancel';
-finish(d);
+finish(btn.dataset.decision || 'cancel');
 });
 });
 });
 }
-function showInlineFixBox(fixSlot, planResp, { onRetryWithMode, onRetryStep }) {
-if (!fixSlot) return;
+function askUserClarifyPrompt({ title = 'dsh-Go 需要你确认', thought = '', question = '', options = [], signal = null, snapshot = {} } = {}) {
+const b = getBridge();
+const cleanOpts = Array.isArray(options) ? options.map((x) => String(x || '').trim()).filter(Boolean).slice(0, 4) : [];
+const isInExternalApp =
+isNativeApk() &&
+snapshot?.packageName &&
+snapshot.packageName !== 'com.deepseek.starwhisper.studio';
+const canNativeAskOverlay =
+isInExternalApp &&
+b &&
+typeof b.requestAskUserOverlay === 'function' &&
+(!b.hasOverlayPermission || b.hasOverlayPermission());
+if (canNativeAskOverlay) {
+return new Promise((resolve) => {
+const finish = (decision) => {
+activeConfirmResolver = null;
+if (typeof b.dismissUserConfirmation === 'function') {
+try { b.dismissUserConfirmation(); } catch {}
+}
+if (decision === '__back_to_chat__') {
+resolve({ mode: 'back_to_chat' });
+} else if (typeof decision === 'string' && decision.startsWith('reply:')) {
+resolve({ mode: 'reply', text: decision.slice(6).trim() });
+} else {
+resolve({ mode: 'cancel' });
+}
+};
+activeConfirmResolver = finish;
+try {
+b.requestAskUserOverlay(title, thought, question, JSON.stringify(cleanOpts));
+} catch {
+activeConfirmResolver = null;
+resolve({ mode: 'back_to_chat' });
+return;
+}
+if (signal) {
+if (signal.aborted) finish('cancel');
+else signal.addEventListener('abort', () => finish('cancel'), { once: true });
+}
+});
+}
+return new Promise((resolve) => {
+document.getElementById('pa-ask-clarify-modal')?.remove();
+const modal = document.createElement('div');
+modal.id = 'pa-ask-clarify-modal';
+modal.className = 'pa-modal-backdrop';
+const finish = (res) => {
+modal.remove();
+resolve(res);
+};
+modal.innerHTML = `
+        <div class="pa-modal-dialog" role="dialog" aria-modal="true" aria-label="${escapeHtml(title)}">
+          <div class="pa-modal-head">
+            <div class="pa-modal-badge is-info">${escapeHtml(title)}</div>
+            <button type="button" class="pa-sheet-close-btn" id="pa-ask-modal-close" aria-label="稍后在聊天框回复">✕</button>
+          </div>
+          <div class="pa-modal-body">
+            ${thought ? `<div class="pa-modal-thought">💭 ${escapeHtml(thought)}</div>` : ''}
+            <div class="pa-modal-question">${escapeHtml(question || '请补充或确认接下来的操作')}</div>
+            ${cleanOpts.length > 0 ? `
+              <div class="pa-modal-options">
+                ${cleanOpts.map((opt) => `<button type="button" class="pa-modal-opt-btn" data-opt="${escapeHtml(opt)}">${escapeHtml(opt)}</button>`).join('')}
+              </div>
+            ` : ''}
+            <div class="pa-modal-input-row">
+              <input type="text" id="pa-ask-modal-inp" class="pa-cfg-input" placeholder="直接输入你的答复或选择上方选项…" />
+              <button type="button" class="pa-banner-btn" id="pa-ask-modal-send">确认继续</button>
+            </div>
+          </div>
+          <div class="pa-modal-foot">
+            <button type="button" class="pa-banner-btn subtle" id="pa-ask-modal-cancel">取消本次任务</button>
+          </div>
+        </div>
+      `;
+document.body.appendChild(modal);
+modal.querySelectorAll('.pa-modal-opt-btn').forEach((btn) => {
+btn.addEventListener('click', () => {
+finish({ mode: 'reply', text: btn.getAttribute('data-opt') || '' });
+});
+});
+const inp = modal.querySelector('#pa-ask-modal-inp');
+const submitTxt = () => {
+const val = (inp?.value || '').trim();
+finish({ mode: 'reply', text: val || '继续执行' });
+};
+modal.querySelector('#pa-ask-modal-send')?.addEventListener('click', submitTxt);
+inp?.addEventListener('keydown', (e) => {
+if (e.key === 'Enter') {
+e.preventDefault();
+submitTxt();
+}
+});
+modal.querySelector('#pa-ask-modal-close')?.addEventListener('click', () => finish({ mode: 'back_to_chat' }));
+modal.querySelector('#pa-ask-modal-cancel')?.addEventListener('click', () => finish({ mode: 'cancel' }));
+setTimeout(() => inp?.focus(), 60);
+if (signal) {
+if (signal.aborted) finish({ mode: 'cancel' });
+else signal.addEventListener('abort', () => finish({ mode: 'cancel' }), { once: true });
+}
+});
+}
+function showInlineFixBox(fixSlot, planResp, { currentMode = '', onRetryWithMode, onRetryStep } = {}) {
+const modeNow = currentMode || getExecMode();
 const errCode = String(planResp?.code || '');
 const errMsg = String(planResp?.error || '当前规划请求异常');
 const isAuthIssue =
 errCode === 'NO_DIRECT_KEY' ||
 errCode === 'NO_API_KEY' ||
 /401|403|unauthorized|invalid.*key|authentication/i.test(errMsg);
-if (!isAuthIssue && typeof onRetryStep === 'function') {
-fixSlot.innerHTML = `
-        <div class="pa-inline-fix-box">
-          <div>${escapeHtml(errMsg)}（已保留前序步骤进度，可直接重试当前步）</div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-            <button type="button" class="pa-banner-btn pa-fix-retry-step-btn">重试当前步骤</button>
-            <button type="button" class="pa-banner-btn outline pa-fix-cloud-btn">改用云端 API</button>
-            <button type="button" class="pa-banner-btn subtle pa-fix-local-btn">切换本地免 API</button>
+const hasSavedDirectKey = Boolean(getDirectConfig().apiKey);
+const openSwitchModal = () => {
+document.getElementById('pa-engine-switch-modal')?.remove();
+const modal = document.createElement('div');
+modal.id = 'pa-engine-switch-modal';
+modal.className = 'pa-modal-backdrop';
+const needDirectKeyInput = modeNow === 'local' ? !hasSavedDirectKey : (modeNow === 'api_direct' && isAuthIssue);
+const showDirectSwitch = modeNow === 'local' || modeNow === 'api_cloud' || (modeNow === 'api_direct' && isAuthIssue);
+const showCloudSwitch = modeNow === 'local' || modeNow === 'api_direct';
+modal.innerHTML = `
+        <div class="pa-modal-dialog" role="dialog" aria-modal="true" aria-label="选择控屏执行引擎">
+          <div class="pa-modal-head">
+            <div class="pa-modal-badge is-warn">${modeNow === 'local' ? '超出本地免 API 指令范围' : '需要调整执行引擎'}</div>
+            <button type="button" class="pa-sheet-close-btn" id="pa-eng-modal-close" aria-label="关闭">✕</button>
+          </div>
+          <div class="pa-modal-body">
+            <div class="pa-modal-question">${escapeHtml(errMsg)}</div>
+            ${needDirectKeyInput ? `
+              <div class="pa-cfg-field" style="margin-top:6px;">
+                <label for="pa-eng-modal-key">手机辅助专属 DeepSeek API Key</label>
+                <input type="password" id="pa-eng-modal-key" class="pa-cfg-input" placeholder="粘贴 sk-... 密钥（仅存手机辅助沙盒）" autocomplete="off" />
+              </div>
+            ` : ''}
+          </div>
+          <div class="pa-modal-foot" style="flex-wrap:wrap;">
+            ${showDirectSwitch ? `
+              <button type="button" class="pa-banner-btn" id="pa-eng-modal-direct">
+                ${needDirectKeyInput ? '保存并切换 DeepSeek API 继续' : '切换 DeepSeek API 模式'}
+              </button>
+            ` : ''}
+            ${showCloudSwitch ? `
+              <button type="button" class="pa-banner-btn outline" id="pa-eng-modal-cloud">切换云端 API 模式</button>
+            ` : ''}
+            ${modeNow !== 'local' && !isAuthIssue && typeof onRetryStep === 'function' ? `
+              <button type="button" class="pa-banner-btn outline" id="pa-eng-modal-retry">重试当前步骤</button>
+            ` : ''}
+            <button type="button" class="pa-banner-btn subtle" id="pa-eng-modal-cancel">取消</button>
           </div>
         </div>
       `;
-scrollChatToBottom();
-fixSlot.querySelector('.pa-fix-retry-step-btn')?.addEventListener('click', () => {
-fixSlot.innerHTML = '';
-onRetryStep();
+document.body.appendChild(modal);
+const closeM = () => modal.remove();
+modal.querySelector('#pa-eng-modal-close')?.addEventListener('click', closeM);
+modal.querySelector('#pa-eng-modal-cancel')?.addEventListener('click', closeM);
+modal.addEventListener('click', (e) => {
+if (e.target === modal) closeM();
 });
-} else {
-fixSlot.innerHTML = `
-        <div class="pa-inline-fix-box">
-          <div>${escapeHtml(errMsg)}</div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-            <input type="password" class="pa-cfg-input pa-fix-key-inp" placeholder="输入手机辅助专属 DeepSeek API Key (sk-...)" style="flex:1 1 180px;height:32px;" />
-            <button type="button" class="pa-banner-btn pa-fix-save-btn">保存直连并继续</button>
-            <button type="button" class="pa-banner-btn outline pa-fix-cloud-btn">改用云端 API</button>
-            <button type="button" class="pa-banner-btn subtle pa-fix-local-btn">切换本地免 API</button>
-          </div>
-        </div>
-      `;
-scrollChatToBottom();
-fixSlot.querySelector('.pa-fix-save-btn')?.addEventListener('click', () => {
-const k = (fixSlot.querySelector('.pa-fix-key-inp')?.value || '').trim();
+modal.querySelector('#pa-eng-modal-direct')?.addEventListener('click', () => {
+if (needDirectKeyInput) {
+const k = (modal.querySelector('#pa-eng-modal-key')?.value || '').trim();
 if (!k) {
-showToast('请先填入有效的 sk- 密钥');
+showToast('请先输入有效的 sk- 密钥，或点击「切换云端 API 模式」');
+modal.querySelector('#pa-eng-modal-key')?.focus();
 return;
 }
 setDirectApiKey(k);
+}
 setExecMode('api_direct');
-fixSlot.innerHTML = '';
+closeM();
+if (fixSlot) fixSlot.innerHTML = '';
 if (typeof onRetryWithMode === 'function') onRetryWithMode('api_direct');
 });
-}
-fixSlot.querySelector('.pa-fix-cloud-btn')?.addEventListener('click', () => {
+modal.querySelector('#pa-eng-modal-cloud')?.addEventListener('click', () => {
 setExecMode('api_cloud');
-fixSlot.innerHTML = '';
+closeM();
+if (fixSlot) fixSlot.innerHTML = '';
 if (typeof onRetryWithMode === 'function') onRetryWithMode('api_cloud');
 });
-fixSlot.querySelector('.pa-fix-local-btn')?.addEventListener('click', () => {
-setExecMode('local');
-fixSlot.innerHTML = '';
-if (typeof onRetryWithMode === 'function') onRetryWithMode('local');
+modal.querySelector('#pa-eng-modal-retry')?.addEventListener('click', () => {
+closeM();
+if (fixSlot) fixSlot.innerHTML = '';
+if (typeof onRetryStep === 'function') onRetryStep();
 });
+};
+if (fixSlot) {
+fixSlot.innerHTML = `
+        <div class="pa-fix-compact-row">
+          <span>${escapeHtml(errMsg)}</span>
+          <button type="button" class="pa-learned-manage-btn pa-reopen-fix-modal-btn">选择切换引擎</button>
+        </div>
+      `;
+fixSlot.querySelector('.pa-reopen-fix-modal-btn')?.addEventListener('click', openSwitchModal);
+}
+openSwitchModal();
 }
 function getLastExternalAppInfo() {
 if (!isNativeApk()) return { packageName: '', appName: '' };
@@ -22171,20 +22404,22 @@ return { packageName: '', appName: '' };
 }
 function buildPlanningPromptMessages({ task, snapshot, history, screenSize, installedApps, screenVerdict, interjections, stepIndex, lastExternalApp }) {
 const sys = [
-'你是星语手机辅助代理（Phone Agent · dsh-Go 规划内核）。',
+'你是星语手机辅助代理（Phone Agent · dsh-Go 规划内核），既能与用户自然思考、自由对话解答问题，又能精准操控手机。',
 `屏幕分辨率: ${screenSize.width}x${screenSize.height}。`,
 '你必须仅返回一个合法 JSON 对象（不要用 Markdown 代码块包裹，也不要附加前后任何解释文字），字段定义：',
-'{"thought":"精炼中文推理(<=50字)","tool":"工具名","args":{},"summary":"面向用户的中文操作简述(<=28字)","risk":"read|write|sensitive","reply":"仅在 done 或 ask_user 时填写自然语言回复"}',
+'{"thought":"清晰自然的中文思考推理(30~110字，简述看到了什么、分析判断与决策原因)","tool":"工具名","args":{},"summary":"面向用户的中文简述(<=28字)","risk":"read|write|sensitive","reply":"在 chat / done / ask_user 时填写自然友好的中文回复"}',
 '可用 tool 与 args：',
-'phone_open:{"appName":"微信"} / phone_tap:{"ref":"e12","snapshotId":"snap_1"} / phone_tap_xy:{"x":540,"y":1200} / phone_double_tap:{"x":540,"y":1000} / phone_long_press:{"ref":"e12","duration":700} / phone_type:{"ref":"e8","text":"你好","clear":false,"submit":true} / phone_scroll:{"direction":"down|up|left|right","amount":0.65} / phone_swipe:{"x1":540,"y1":1600,"x2":540,"y2":600,"duration":320} / phone_key:{"key":"back|home|recents|notifications|quick_settings|enter|screenshot"} / phone_wait:{"ms":1000} / ask_user:{"message":"请手动输入密码或确认"} / done:{"message":"完成总结"}',
+'chat:{"message":"无需操作手机，直接用自然友好的中文对话回答用户问题或讨论方案"} / phone_open:{"appName":"微信"} / phone_tap:{"ref":"e12","snapshotId":"snap_1"} / phone_tap_xy:{"x":540,"y":1200} / phone_double_tap:{"x":540,"y":1000} / phone_long_press:{"ref":"e12","duration":700} / phone_type:{"ref":"e8","text":"你好","clear":false,"submit":true} / phone_scroll:{"direction":"down|up|left|right","amount":0.65} / phone_swipe:{"x1":540,"y1":1600,"x2":540,"y2":600,"duration":320} / phone_key:{"key":"back|home|recents|notifications|quick_settings|enter|screenshot"} / phone_wait:{"ms":1000} / ask_user:{"message":"需要向用户追问澄清、确认选择或请求手动操作的清晰问题","reason":"clarify|confirm|sensitive|manual","options":["推荐选项1","选项2"]} / done:{"message":"完成总结"}',
 '关键约束：',
+'0. 自由对话优先识别：若用户是在打招呼、闲聊、询问原理/题目思路、讨论方案、咨询你能做什么、或仅针对屏幕内容提问而无需点击/打开手机时，直接返回 tool="chat"，用 reply 给出完整有温度的回答，严禁瞎点手机！',
+'0.5 模糊/不确定主动问清楚（关键！）：当用户指令缺少关键信息（如未指定发给谁/发什么内容/买哪款/选哪个规格、多选拿不准、当前界面有多个同名目标或即将执行重要提交/删除/付款）时，严禁瞎猜乱点！必须立即返回 tool="ask_user"，在 reply 中礼貌问清楚具体需求，并尽可能在 args.options 中提供 2~4 个简短清晰的快捷选项。',
 '1. 优先用 phone_open 打开应用；点击屏幕元素首选 phone_tap 并携带 ref 与 snapshotId。',
 '2. 若 screenVerdict 显示连续 2 步画面未变化，禁止重复同一动作或 phone_wait，改用 phone_tap_xy / phone_scroll / phone_key(back) 或 ask_user。',
 '3. 若同一屏幕上已同时清晰可见 2~3 个明确无歧义的连贯操作（如学习答题“选中选项 + 点击下一题/提交”），可额外附带 `"actions":[{"tool":"phone_tap","args":{"ref":"e10"}},{"tool":"phone_tap","args":{"ref":"e24"}}]`（最多 3 个同屏非敏感微动作），否则只输出单动作。',
 '4. 严禁操作控制端自身（packageName="com.deepseek.starwhisper.studio"）或在其聊天框打字；用户说“继续写作业/继续答题”且未指定打开 DeepSeek 时，绝不要去打开 DeepSeek 应用，而是切回 lastExternalApp 或在当前学习软件中继续操作。',
 '5. screenTreeText 中每一行 `R1: ... | ...` 代表屏幕同一水平行的元素。做选择题时必须严格核对同一行的选项字母与右侧文字；带有 (sel) 或 (chk) 的表示已选中，若已选对直接点“下一题”，严禁张冠李戴选错行！',
 '6. 连续多题/多页任务铁律：当任务属于连续流程（如“写作业/继续写作业/答题/刷题/完成练习”）时，只要屏幕上还存在“下一题”按钮、或题号进度（如 3/5、12/20）未达最后且未出现“提交成功/练习完成/得分”页面，严禁做完一题就返回 done！必须持续作答并点击“下一题”，一口气把整套题全部做完，直到全部完成或出现最终交卷/结算页才返回 done（或需要人工确认最终交卷时返回 ask_user）。',
-'7. 若 interjections 非空，最高优先级立即响应用户中途插话指令。',
+'7. 若 interjections 非空，最高优先级立即响应用户中途插话或回复确认。',
 '8. 若 hasSensitiveField=true 或涉及付款/转账/下单/密码/验证码/删除/卸载/发消息，risk 必须为 "sensitive"，支付密码/验证码直接 ask_user 交还人工。'
 ].join('\n');
 const recentHistory = (history || []).slice(-6);
@@ -22209,6 +22444,7 @@ hasSensitiveField: Boolean(snapshot?.hasSensitiveField),
 sensitiveReason: snapshot?.sensitiveReason || '',
 screenVerdict: screenVerdict || null,
 interjections: interjections || [],
+conversationMemory: paChatMemory.slice(-6),
 recentHistory,
 screenTreeText: snapshot?.screenTreeText || ''
 };
@@ -22233,6 +22469,7 @@ phone_scroll: 'scroll',
 phone_swipe: 'swipe',
 phone_key: 'key',
 phone_wait: 'wait',
+chat: 'chat',
 done: 'done',
 ask_user: 'ask_user'
 };
@@ -22247,6 +22484,7 @@ home: 'phone_key',
 back: 'phone_key',
 recents: 'phone_key',
 wait: 'phone_wait',
+chat: 'chat',
 done: 'done',
 ask_user: 'ask_user'
 };
@@ -22262,19 +22500,22 @@ args.key = rawAction;
 const riskRaw = String(obj?.risk || '').trim().toLowerCase();
 const risk = riskRaw === 'read' || riskRaw === 'write' || riskRaw === 'sensitive'
 ? riskRaw
-: (obj?.needConfirm ? 'sensitive' : (tool === 'done' || tool === 'ask_user' || tool === 'phone_wait' ? 'read' : 'write'));
+: (obj?.needConfirm ? 'sensitive' : (tool === 'chat' || tool === 'done' || tool === 'ask_user' || tool === 'phone_wait' ? 'read' : 'write'));
 const reply = String(obj?.reply || args?.message || obj?.summary || '').trim();
-if ((tool === 'done' || tool === 'ask_user') && reply && !args.message) {
+if ((tool === 'chat' || tool === 'done' || tool === 'ask_user') && reply && !args.message) {
 args.message = reply;
+}
+if (Array.isArray(args.options)) {
+args.options = args.options.map((x) => String(x || '').trim()).filter(Boolean).slice(0, 4);
 }
 const rawActions = Array.isArray(obj?.actions) ? obj.actions.slice(0, 3) : [];
 const normalizedActions = [];
-if (risk !== 'sensitive' && tool !== 'done' && tool !== 'ask_user' && tool !== 'phone_open') {
+if (risk !== 'sensitive' && tool !== 'chat' && tool !== 'done' && tool !== 'ask_user' && tool !== 'phone_open') {
 for (const sub of rawActions) {
 if (!sub || typeof sub !== 'object') continue;
 const stRaw = String(sub.tool || sub.action || '').trim();
 const st = stRaw && toolToLegacy[stRaw] ? stRaw : (legacyToTool[stRaw] || '');
-if (!st || st === 'done' || st === 'ask_user' || st === 'phone_open') continue;
+if (!st || st === 'chat' || st === 'done' || st === 'ask_user' || st === 'phone_open') continue;
 const sArgs = (sub.args && typeof sub.args === 'object') ? { ...sub.args } : ((sub.params && typeof sub.params === 'object') ? { ...sub.params } : {});
 normalizedActions.push({
 tool: st,
@@ -22396,7 +22637,7 @@ const directBody = {
 model: modelToUse,
 messages: msgs,
 temperature: isReasoner ? 0.2 : 0.15,
-max_tokens: isReasoner ? 2048 : 512,
+max_tokens: isReasoner ? 2048 : 1024,
 stream: false
 };
 if (!isReasoner && (targetUrl.includes('deepseek.com') || /deepseek/i.test(modelToUse))) {
@@ -22438,12 +22679,14 @@ throw httpErr;
 const json = await directRes.json();
 const msgObj = json?.choices?.[0]?.message || {};
 const content = String(msgObj.content || '').trim();
+const rawReasoning = String(msgObj.reasoning_content || '').trim();
 try {
-return { plan: extractJsonFromText(content), model: modelToUse };
+const parsedPlan = extractJsonFromText(content);
+if (rawReasoning && !parsedPlan.reasoning) parsedPlan.reasoning = rawReasoning;
+return { plan: parsedPlan, model: modelToUse };
 } catch (parseErr) {
-const reasoning = String(msgObj.reasoning_content || '').trim();
-if (reasoning) {
-return { plan: extractJsonFromText(reasoning), model: modelToUse };
+if (rawReasoning) {
+return { plan: extractJsonFromText(rawReasoning), model: modelToUse };
 }
 throw parseErr;
 }
@@ -22942,6 +23185,7 @@ let finalStatus = 'done';
 let finalSummaryTitle = '';
 let finalReplyText = '';
 let handoverCb = null;
+let isChatOnlyTurn = false;
 try {
 const matchedSkill = !isResuming ? findMatchingLearnedSkill(taskText) : null;
 if (matchedSkill && (execMode === 'local' || /^skill:/i.test(String(taskText || '').trim()))) {
@@ -22958,6 +23202,13 @@ return;
 const matchedOffline = isSimpleBuiltInLocalCmd(taskText);
 const shouldTryFullLocal = !isResuming && execMode === 'local';
 if (shouldTryFullLocal) {
+if (isLikelyPureChat(taskText) && !matchedOffline) {
+const chatReply = '你好呀，我是 dsh-Go 手机辅助助手！目前处于「本地免 API」模式，可以直接帮你执行常用操作或已固化的本地技能；如果要和我自由深度对话、分析屏幕或执行跨应用多步任务，请在顶部控制台切换至 DeepSeek API 或云端 API。';
+appendThoughtItem(cardCtx, '本地对话', '识别为自然聊天或咨询提问，无需操控手机。');
+recordPaChatTurn('assistant', chatReply);
+finalizeAgentTurn(cardCtx, { status: 'done', replyText: chatReply, isChatOnly: true });
+return;
+}
 if (!native) {
 cardCtx.stepCount = 1;
 if (matchedOffline) {
@@ -22966,8 +23217,9 @@ addStepItem(cardCtx.stepsList, 1, taskText, '网页预览模拟执行', '模拟�
 finalSummaryTitle = `已完成本地口令演练 · ${taskText}`;
 finalReplyText = sim;
 } else {
-addStepItem(cardCtx.stepsList, 1, '超出固定离线口令范围', '建议切换至 DeepSeek API / 云端 API 进行多步识屏规划。', '未匹配', true, 'local.rule');
-showInlineFixBox(cardCtx.fixSlot, { error: '复杂多步任务需要大模型识屏规划，可切换至 API 引擎继续：' }, {
+addStepItem(cardCtx.stepsList, 1, '超出固定离线口令范围', '建议切换至 DeepSeek API 或云端 API 进行智能识屏规划。', '未匹配', true, 'local.rule');
+showInlineFixBox(cardCtx.fixSlot, { error: '该任务超出本地免 API 固定口令范围，请选择要切换的智能引擎继续：' }, {
+currentMode: 'local',
 onRetryWithMode: (nextMode) => runReActLoop(taskText, cardCtx, nextMode)
 });
 finalStatus = 'error';
@@ -22994,8 +23246,9 @@ syncStatus();
 return;
 }
 cardCtx.stepCount = 1;
-addStepItem(cardCtx.stepsList, 1, '本地离线口令未匹配', '可切换至 API 智能识屏规划执行复杂自然语言任务', '未匹配', true, 'local.rule');
-showInlineFixBox(cardCtx.fixSlot, { error: '该任务超出本地离线口令范围，是否切换为 API 智能识屏规划？' }, {
+addStepItem(cardCtx.stepsList, 1, '本地离线口令未匹配', '可切换至 DeepSeek API 或云端 API 执行复杂任务', '未匹配', true, 'local.rule');
+showInlineFixBox(cardCtx.fixSlot, { error: '该任务超出本地免 API 固定口令范围，请选择要切换的智能引擎继续：' }, {
+currentMode: 'local',
 onRetryWithMode: (nextMode) => runReActLoop(taskText, cardCtx, nextMode)
 });
 finalizeAgentTurn(cardCtx, { status: 'error', summaryTitle: '本地口令未匹配' });
@@ -23014,16 +23267,18 @@ let startStep = isResuming && Number(resumeOpts.startStep) > 0 ? Number(resumeOp
 let lastScreenVerdict = resumeOpts?.lastScreenVerdict || null;
 let noChangeStreak = 0;
 let earlyDoneIntercepts = 0;
-let autoContinueHint = '';
+let autoContinueHint = Array.isArray(resumeOpts?.initialInterjections)
+? resumeOpts.initialInterjections.join('；')
+: '';
 const isBatchContinuousTask =
 /(?:写作业|做作业|答题|做题|刷题|练习|测试|继续|接着|全部|整套|所有)/.test(taskText) &&
 !/(?:只做(?:这)?[一1]题|做完这[一1]题就停)/.test(taskText);
-const lastExtApp = native ? getLastExternalAppInfo() : { packageName: '', appName: '' };
-if (native && !isResuming) {
+const lastExtApp = native ? (resumeOpts?.lastExternalApp || getLastExternalAppInfo()) : { packageName: '', appName: '' };
+if (native && !isLikelyPureChat(taskText) && (!isResuming || resumeOpts?.returnToExternalFirst)) {
 const initSnap = readAndFormatSnapshot(false);
 const SELF_PKG = 'com.deepseek.starwhisper.studio';
 const explicitNewAppMatch = String(taskText || '').trim().match(/^(?:请|帮我)?(?:打开|启动|进入|打开一下|去|切到)\s*([^\s，。！？,!?]{2,12})/);
-const wantsReturnToPrev = !explicitNewAppMatch || /(?:继续|接着|回到|切回|写作业|答题|做题|下一题)/.test(taskText);
+const wantsReturnToPrev = Boolean(resumeOpts?.returnToExternalFirst) || !explicitNewAppMatch || /(?:继续|接着|回到|切回|写作业|答题|做题|下一题)/.test(taskText);
 if (initSnap.packageName === SELF_PKG && wantsReturnToPrev && (lastExtApp.packageName || typeof b.dispatchGlobalAction === 'function')) {
 const switchedOk = typeof b.returnToLastExternalApp === 'function'
 ? b.returnToLastExternalApp()
@@ -23107,16 +23362,18 @@ break;
 if (!planResp.ok || !planResp.plan) {
 updateStepResult(pendingStepEl, '规划失败', true);
 showInlineFixBox(cardCtx.fixSlot, planResp, {
+currentMode: execMode,
 onRetryWithMode: (nextMode) =>
 runReActLoop(
 taskText,
 cardCtx,
 nextMode,
-nextMode === 'local' ? null : { history, startStep: step, roundAutoApproved, lastScreenVerdict }
+nextMode === 'local' ? null : { history, recordedSteps, startStep: step, roundAutoApproved, lastScreenVerdict }
 ),
 onRetryStep: () =>
 runReActLoop(taskText, cardCtx, execMode, {
 history,
+recordedSteps,
 startStep: step,
 roundAutoApproved,
 lastScreenVerdict
@@ -23128,6 +23385,7 @@ break;
 }
 const plan = planResp.plan;
 const toolName = plan.tool || plan.action || 'step';
+appendThoughtItem(cardCtx, `第 ${step} 步`, plan.thought, plan.reasoning);
 const badgeEl = pendingStepEl?.querySelector('.pa-tool-badge');
 if (badgeEl) badgeEl.textContent = Array.isArray(plan.actions) && plan.actions.length >= 2 ? `${toolName}×${plan.actions.length}` : toolName;
 const descEl = pendingStepEl?.querySelector('.pa-step-desc');
@@ -23136,6 +23394,15 @@ const thoughtEl = pendingStepEl?.querySelector('.pa-step-thought');
 if (thoughtEl && plan.thought) thoughtEl.textContent = plan.thought;
 if (cardCtx.summaryTextEl) {
 cardCtx.summaryTextEl.textContent = `${toolName} · ${plan.summary || '执行中'}`;
+}
+if (toolName === 'chat') {
+const chatMsg = plan.reply || plan.args?.message || plan.summary || '好的，我在听。';
+recordPaChatTurn('assistant', chatMsg);
+isChatOnlyTurn = true;
+finalStatus = 'done';
+finalSummaryTitle = '对话完成';
+finalReplyText = chatMsg;
+break;
 }
 if (toolName === 'done') {
 const treeTxt = String(snapshot?.screenTreeText || '');
@@ -23158,6 +23425,7 @@ await sleep(160);
 continue;
 }
 const doneMsg = plan.reply || plan.args?.message || plan.summary || '全部任务步骤已顺利完成';
+recordPaChatTurn('assistant', doneMsg);
 updateStepResult(pendingStepEl, '已完成', false);
 appendNativeConsoleLog(`AI 任务完成: ${doneMsg}`);
 finalStatus = 'done';
@@ -23166,18 +23434,66 @@ finalReplyText = doneMsg;
 break;
 }
 if (toolName === 'ask_user') {
-const askMsg = plan.reply || plan.args?.message || plan.summary || '请手动完成当前页面操作后再继续';
-updateStepResult(pendingStepEl, '等待人工', false);
+const askMsg = plan.reply || plan.args?.message || plan.summary || '请确认或补充接下来的操作说明';
+const askOpts = Array.isArray(plan.args?.options) ? plan.args.options : [];
+updateStepResult(pendingStepEl, '等待确认', false);
+const askResult = await askUserClarifyPrompt({
+cardCtx,
+title: '需要你确认或补充',
+thought: plan.thought,
+question: askMsg,
+options: askOpts,
+signal,
+snapshot
+});
+if (askResult.mode === 'reply' && askResult.text) {
+appendUserMessageRow(askResult.text);
+recordPaChatTurn('user', askResult.text);
+autoContinueHint = `【用户已确认/补充】${askResult.text}`;
+updateStepResult(pendingStepEl, `已确认：${askResult.text.slice(0, 14)}`, false);
+history.push({
+step,
+tool: 'ask_user',
+summary: askMsg,
+result: `用户回复确认：${askResult.text}`
+});
+await sleep(180);
+continue;
+}
+if (askResult.mode === 'back_to_chat') {
+recordPaChatTurn('assistant', askMsg);
+pendingAskContext = {
+originalTask: taskText,
+askMessage: askMsg,
+history: [...history, { step, tool: 'ask_user', summary: askMsg, result: '等待用户在聊天框回复确认' }],
+recordedSteps,
+startStep: step + 1,
+execMode,
+roundAutoApproved,
+lastExternalApp: lastExtApp
+};
+updateComposerAskHint(true);
+if (native && b && typeof b.bringSelfToFront === 'function') {
+try { b.bringSelfToFront('有需要确认的问题，已为你切回星语聊天界面'); } catch {}
+}
 finalStatus = 'done';
-finalSummaryTitle = '等待你的手动操作';
-finalReplyText = askMsg;
+finalSummaryTitle = '等待你的确认答复';
+finalReplyText = `${askMsg}\n（你可以直接在下方输入框回复我，我将自动继续执行）`;
 handoverCb = () =>
 runReActLoop(taskText, cardCtx, execMode, {
 history: [...history, { step, tool: 'ask_user', summary: askMsg, result: '用户已手动处理' }],
+recordedSteps,
 startStep: step + 1,
 roundAutoApproved,
-lastScreenVerdict: null
+lastScreenVerdict: null,
+returnToExternalFirst: true,
+lastExternalApp: lastExtApp
 });
+break;
+}
+finalStatus = 'error';
+finalSummaryTitle = '用户已取消确认';
+finalReplyText = '已取消本次待确认操作。';
 break;
 }
 const actionQueue = Array.isArray(plan.actions) && plan.actions.length >= 2
@@ -23337,7 +23653,8 @@ summaryTitle: finalSummaryTitle || `已完成 ${cardCtx.stepCount || 0} 步控�
 replyText: finalReplyText,
 handoverCb,
 recordedSteps,
-sourceTask: taskText
+sourceTask: taskText,
+isChatOnly: isChatOnlyTurn
 });
 } finally {
 isAgentRunning = false;
@@ -23364,6 +23681,37 @@ if (skillIdMatch) {
 await executeLearnedSkillOffline(skillIdMatch[1]);
 return;
 }
+if (pendingAskContext && !isAgentRunning) {
+const ctx = pendingAskContext;
+pendingAskContext = null;
+updateComposerAskHint(false);
+appendUserMessageRow(clean);
+recordPaChatTurn('user', clean);
+if (/^(?:取消|算了|不用了|不用|停止|不做了)[！!。.]*$/.test(clean)) {
+const cancelCard = createAgentCardRow('取消任务', ctx.execMode || getExecMode());
+if (cancelCard) {
+finalizeAgentTurn(cancelCard, {
+status: 'done',
+replyText: '好的，已取消刚才的操作，随时告诉我新的需求~',
+isChatOnly: true
+});
+}
+return;
+}
+const resumeCard = createAgentCardRow(ctx.originalTask, ctx.execMode || getExecMode());
+if (!resumeCard) return;
+await runReActLoop(ctx.originalTask, resumeCard, ctx.execMode || getExecMode(), {
+history: [...(ctx.history || []), { step: ctx.startStep - 1, tool: 'user_reply', summary: '用户补充确认', result: clean }],
+recordedSteps: ctx.recordedSteps || [],
+startStep: ctx.startStep || 1,
+roundAutoApproved: ctx.roundAutoApproved,
+lastScreenVerdict: null,
+initialInterjections: [`【用户回复确认】${clean}`],
+returnToExternalFirst: true,
+lastExternalApp: ctx.lastExternalApp
+});
+return;
+}
 if (isAgentRunning) {
 queuedInterjections.push({ text: clean, priority: false });
 updateQueueBarUi();
@@ -23373,6 +23721,7 @@ return;
 }
 const mode = getExecMode();
 recordTaskHistory(clean, mode);
+recordPaChatTurn('user', clean);
 appendUserMessageRow(clean);
 if (isNativeApk() && mode !== 'local' && !getBridge()?.isAccessibilityEnabled?.()) {
 renderA11yGuideCard(clean);

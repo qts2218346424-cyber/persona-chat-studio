@@ -1203,6 +1203,11 @@ public class MainActivity extends Activity {
         }
 
         @JavascriptInterface
+        public boolean bringSelfToFront(String reason) {
+            return FloatAgentService.bringSelfToFrontFromBridge(MainActivity.this, reason);
+        }
+
+        @JavascriptInterface
         public String getQuickPhrasesJson() {
             return FloatAgentService.getQuickPhrasesJsonFromPrefs(MainActivity.this);
         }
@@ -1292,6 +1297,16 @@ public class MainActivity extends Activity {
                 @Override
                 public void run() {
                     FloatAgentService.showConfirmPrompt(summary, actionDesc, riskLevel, targetApp, hardSensitive);
+                }
+            });
+        }
+
+        @JavascriptInterface
+        public void requestAskUserOverlay(final String title, final String thought, final String question, final String optionsJson) {
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    FloatAgentService.showAskUserPrompt(title, thought, question, optionsJson);
                 }
             });
         }

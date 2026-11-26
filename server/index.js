@@ -452,30 +452,38 @@ function listPersonasForUser(userId) {
 }
 
 const BUILTIN_ANIME_AVATARS = [
-  { id: 'anime_shenxinghui', name: '沈星回 · 星穹占星师', url: '/assets/avatars/shenxinghui.jpg', category: 'male' },
-  { id: 'anime_luchen', name: '陆沉 · 暗夜执行官', url: '/assets/avatars/luchen.jpg', category: 'male' },
-  { id: 'anime_xieqingyan', name: '谢清晏 · 长安谋士', url: '/assets/avatars/xieqingyan.svg', category: 'ancient' },
-  { id: 'anime_jiangyubai', name: '江逾白 · 霜华剑尊', url: '/assets/avatars/jiangyubai.svg', category: 'ancient' },
-  { id: 'anime_jiran', name: '季燃 · 电竞少年', url: '/assets/avatars/jiran.svg', category: 'modern' },
-  { id: 'anime_guxiuyuan', name: '顾修远 · 都市家主', url: '/assets/avatars/guxiuyuan.svg', category: 'male' },
-  { id: 'anime_suwanqing', name: '苏晚晴 · 高冷御姐', url: '/assets/avatars/suwanqing.jpg', category: 'female' },
-  { id: 'anime_yunzhiyao', name: '云知遥 · 仙侠师姐', url: '/assets/avatars/yunzhiyao.svg', category: 'ancient' },
-  { id: 'anime_xia_ningmeng', name: '夏柠萌 · 元气甜妹', url: '/assets/avatars/xia_ningmeng.svg', category: 'female' },
-  { id: 'anime_yan_feiyu', name: '燕绯羽 · 魅惑歌姬', url: '/assets/avatars/yan_feiyu.svg', category: 'female' },
-  { id: 'anime_nagisa', name: '星野汐 · 樱花少女', url: '/assets/avatars/nagisa_sakura.svg', category: 'female' },
-  { id: 'anime_kyou', name: '藤井杏奈 · 元气班长', url: '/assets/avatars/kagaribi_kyou.svg', category: 'female' },
-  { id: 'anime_kotomi', name: '一之濑琴音 · 图书室少女', url: '/assets/avatars/ichinose_kotomi.svg', category: 'female' },
-  { id: 'anime_rin', name: '白石凛 · 观测者少年', url: '/assets/avatars/shiraishi_rin.svg', category: 'male' },
-  { id: 'anime_makise', name: '牧濑栖 · 天才研究员', url: '/assets/avatars/makise_sei.svg', category: 'female' },
-  { id: 'anime_mio', name: '朝雾澪 · 神社青梅', url: '/assets/avatars/asagiri_mio.svg', category: 'female' },
-  { id: 'anime_violet', name: '伊芙琳 · 代笔少女', url: '/assets/avatars/violet_eve.svg', category: 'female' },
-  { id: 'anime_hodgins', name: '霍金斯 · 绅士社长', url: '/assets/avatars/hodgins_landon.svg', category: 'male' },
-  { id: 'anime_shuer', name: '修尔 · 半精灵旅人', url: '/assets/avatars/frieren_shuer.svg', category: 'ancient' },
-  { id: 'anime_fer', name: '菲尔 · 少年剑士', url: '/assets/avatars/stark_fer.svg', category: 'ancient' },
-  { id: 'anime_char_linzhi', name: '林知夏 · 插画师室友', url: '/assets/avatars/char_linzhi.svg', category: 'modern' },
-  { id: 'anime_char_chenmo', name: '陈默 · 温柔程序员', url: '/assets/avatars/char_chenmo.svg', category: 'modern' },
-  { id: 'anime_char_shiyu', name: '诗语 · 邻家闺蜜', url: '/assets/avatars/char_shiyu.svg', category: 'modern' },
-  { id: 'anime_char_zhouyan', name: '周晏 · 阳光发小', url: '/assets/avatars/char_zhouyan.svg', category: 'modern' }
+  { id: 'user_cat_cream', name: '奶油布偶猫', url: '/assets/avatars/user_cat_cream.webp', category: 'aesthetic' },
+  { id: 'user_shiba_smile', name: '微笑柴犬', url: '/assets/avatars/user_shiba_smile.webp', category: 'aesthetic' },
+  { id: 'user_girl_minimal', name: '清冷氛围感少女', url: '/assets/avatars/user_girl_minimal.webp', category: 'aesthetic' },
+  { id: 'user_boy_minimal', name: '阳光白衬衫少年', url: '/assets/avatars/user_boy_minimal.webp', category: 'aesthetic' },
+  { id: 'user_cloud_sea', name: '暮色云海', url: '/assets/avatars/user_cloud_sea.webp', category: 'aesthetic' },
+  { id: 'user_coffee_desk', name: '午后咖啡书桌', url: '/assets/avatars/user_coffee_desk.webp', category: 'aesthetic' },
+  { id: 'user_star_moon', name: '静谧星月海', url: '/assets/avatars/user_star_moon.webp', category: 'aesthetic' },
+  { id: 'user_lotus_ink', name: '青绿水墨扁舟', url: '/assets/avatars/user_lotus_ink.webp', category: 'aesthetic' },
+  { id: 'anime_shenxinghui', name: '沈星回 · 星穹占星师', url: '/assets/avatars/shenxinghui.webp', category: 'male' },
+  { id: 'anime_luchen', name: '陆沉 · 暗夜执行官', url: '/assets/avatars/luchen.webp', category: 'male' },
+  { id: 'anime_xieqingyan', name: '谢清晏 · 长安谋士', url: '/assets/avatars/xieqingyan.webp', category: 'ancient' },
+  { id: 'anime_jiangyubai', name: '江逾白 · 霜华剑尊', url: '/assets/avatars/jiangyubai.webp', category: 'ancient' },
+  { id: 'anime_jiran', name: '季燃 · 电竞少年', url: '/assets/avatars/jiran.webp', category: 'modern' },
+  { id: 'anime_guxiuyuan', name: '顾修远 · 都市家主', url: '/assets/avatars/guxiuyuan.webp', category: 'male' },
+  { id: 'anime_suwanqing', name: '苏晚晴 · 高冷御姐', url: '/assets/avatars/suwanqing.webp', category: 'female' },
+  { id: 'anime_yunzhiyao', name: '云知遥 · 仙侠师姐', url: '/assets/avatars/yunzhiyao.webp', category: 'ancient' },
+  { id: 'anime_xia_ningmeng', name: '夏柠萌 · 元气甜妹', url: '/assets/avatars/xia_ningmeng.webp', category: 'female' },
+  { id: 'anime_yan_feiyu', name: '燕绯羽 · 魅惑歌姬', url: '/assets/avatars/yan_feiyu.webp', category: 'female' },
+  { id: 'anime_nagisa', name: '星野汐 · 樱花少女', url: '/assets/avatars/nagisa_sakura.webp', category: 'female' },
+  { id: 'anime_kyou', name: '藤井杏奈 · 元气班长', url: '/assets/avatars/kagaribi_kyou.webp', category: 'female' },
+  { id: 'anime_kotomi', name: '一之濑琴音 · 图书室少女', url: '/assets/avatars/ichinose_kotomi.webp', category: 'female' },
+  { id: 'anime_rin', name: '白石凛 · 观测者少年', url: '/assets/avatars/shiraishi_rin.webp', category: 'male' },
+  { id: 'anime_makise', name: '牧濑栖 · 天才研究员', url: '/assets/avatars/makise_sei.webp', category: 'female' },
+  { id: 'anime_mio', name: '朝雾澪 · 神社青梅', url: '/assets/avatars/asagiri_mio.webp', category: 'female' },
+  { id: 'anime_violet', name: '伊芙琳 · 代笔少女', url: '/assets/avatars/violet_eve.webp', category: 'female' },
+  { id: 'anime_hodgins', name: '霍金斯 · 绅士社长', url: '/assets/avatars/hodgins_landon.webp', category: 'male' },
+  { id: 'anime_shuer', name: '修尔 · 半精灵旅人', url: '/assets/avatars/frieren_shuer.webp', category: 'ancient' },
+  { id: 'anime_fer', name: '菲尔 · 少年剑士', url: '/assets/avatars/stark_fer.webp', category: 'ancient' },
+  { id: 'anime_char_linzhi', name: '林知夏 · 插画师室友', url: '/assets/avatars/char_linzhi.webp', category: 'modern' },
+  { id: 'anime_char_chenmo', name: '陈默 · 温柔程序员', url: '/assets/avatars/char_chenmo.webp', category: 'modern' },
+  { id: 'anime_char_shiyu', name: '诗语 · 邻家闺蜜', url: '/assets/avatars/char_shiyu.webp', category: 'modern' },
+  { id: 'anime_char_zhouyan', name: '周晏 · 阳光发小', url: '/assets/avatars/char_zhouyan.webp', category: 'modern' }
 ];
 
 function listSessionsForUser(userId) {
@@ -648,8 +656,8 @@ function extractAuthToken(req, parsedUrl = null) {
   return '';
 }
 
-const APP_LATEST_VERSION = '2.5.7';
-const APP_LATEST_VERSION_CODE = 154;
+const APP_LATEST_VERSION = '2.6.0';
+const APP_LATEST_VERSION_CODE = 155;
 const APP_OFFICIAL_CERT_SHA256 = '6fd05e32a3cabf327140129d866e55a342fe30daa3384c67aad4b3cbdd98a17b';
 const APP_UPDATE_TICKET_SECRET = crypto
   .createHash('sha256')
@@ -949,7 +957,7 @@ async function handleApi(req, res, pathname, parsedUrl) {
       changelog: [
         '【新增默认「经典 QQ 聊天」主题设置 & 8 套全端适配皮肤】支持在电脑端「外观与风格」、手机端「默认界面主题」与皮肤工坊一键切换经典 QQ 聊天默认风（#F2F3F5 洁净灰底 + 纯白逐句气泡 + #1677FF QQ 标志蓝气泡），跨 PC/手机端及剧场/DeepSeek 模式统一生效',
         '【彻底修复右侧系统指令/养成/记忆抽屉白底白字对比度失效】重塑 ui-polish-v2.css 与 light-dark 自适应高对比令牌体系，解决浅色白卡背景下「本对话专属剧情设定」「平行世界重逢」「清空专属设定」「选择文件」及表单标签惨白看不清问题（WCAG AA ≥ 4.5:1，按钮文字 > 12:1）',
-        '【集成歌词尾巴清理与脚底接触阴影 4 关键帧动作】双端同步升级至 v2.5.7 (Build 154)'
+        '【开源极简 UI 重构与 32 张高颜值头像焕新】双端同步升级至 v2.6.0 (Build 155)'
       ]
     };
 
@@ -2737,11 +2745,11 @@ async function handleApi(req, res, pathname, parsedUrl) {
     const defaultAvatar =
       cardMode === 'character'
         ? cleanGender === 'male'
-          ? '/assets/avatars/char_chenmo.svg'
-          : '/assets/avatars/char_linzhi.svg'
+          ? '/assets/avatars/char_chenmo.webp'
+          : '/assets/avatars/char_linzhi.webp'
         : cleanGender === 'male'
-        ? '/assets/avatars/shenxinghui.jpg'
-        : '/assets/avatars/xia_ningmeng.svg';
+        ? '/assets/avatars/shenxinghui.webp'
+        : '/assets/avatars/xia_ningmeng.webp';
     // 独立自建角色默认归入通用「心动角色全集」或「角色演绎」，防止误继承其他主题剧本的特定身份导致串戏
     const rawScriptId = String(body.script_id || (cardMode === 'character' ? 'script_character_mode' : 'script_classic')).trim();
     const isAdoptedScript = Boolean(

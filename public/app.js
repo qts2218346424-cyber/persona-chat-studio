@@ -2398,40 +2398,37 @@
   });
 
   window.__syncDefaultThemeRadios = (presetVal) => {
-    const curPreset = presetVal || (window.AppearanceSystem?.getCurrentSkin?.().preset) || 'qq-classic';
+    const curPreset = presetVal || (window.AppearanceSystem?.getCurrentSkin?.().preset) || 'minimal-studio';
     document.querySelectorAll('input[name="default-ui-theme"]').forEach((radio) => {
       radio.checked = radio.value === curPreset;
     });
     const defValEl = document.getElementById('mfs-default-theme-value');
     if (defValEl) {
       const defMap = {
+        'minimal-studio': '清透极简',
         'qq-classic': '经典 QQ 聊天',
-        default: '原生极客风格',
-        'obsidian-gold': '曜石流金剧场',
-        'mist-silk': '晨雾丝绸',
-        'sakura-dawn': '朝雾樱白',
-        'crimson-scroll': '绯红古卷',
-        'cyber-neon': '赛博霓虹',
-        'eink-paper': '极简墨水屏'
+        'warm-paper': '暖纸柔白',
+        'carbon-dark': '深邃碳黑'
       };
-      defValEl.textContent = defMap[curPreset] || '经典 QQ 聊天';
+      defValEl.textContent = defMap[curPreset] || '清透极简';
     }
   };
 
   document.querySelectorAll('input[name="default-ui-theme"]').forEach((radio) => {
     radio.addEventListener('change', (e) => {
-      const nextPreset = e.target.value || 'qq-classic';
+      const nextPreset = e.target.value || 'minimal-studio';
       if (window.AppearanceSystem?.applySkin) {
         const patch = nextPreset === 'qq-classic'
           ? { preset: 'qq-classic', bubbleStyle: 'im-bubble', accentColor: '' }
-          : { preset: nextPreset };
+          : { preset: nextPreset, bubbleStyle: 'soft', accentColor: '' };
         window.AppearanceSystem.applySkin(patch);
       }
       window.__syncDefaultThemeRadios(nextPreset);
       const tips = {
-        'qq-classic': '已设为「经典 QQ 聊天」默认风格（洁净灰底 · 纯白对话 · QQ 蓝气泡）',
-        default: '已切换回「原生极客风格」默认主题',
-        'obsidian-gold': '已切换为「曜石流金」暗夜剧场风格'
+        'minimal-studio': '已切换为「清透极简」默认主题（Lobe / Cherry 风格）',
+        'qq-classic': '已设为「经典 QQ 聊天」主题（洁净灰底 · 纯白对话 · QQ 蓝气泡）',
+        'warm-paper': '已切换为「暖纸柔白」护眼主题（Claude 纸感风格）',
+        'carbon-dark': '已切换为「深邃碳黑」暗夜主题'
       };
       showToast(tips[nextPreset] || '已更新默认界面主题');
     });
@@ -8660,7 +8657,7 @@
   cpBackstoryEl?.addEventListener('input', syncPersonaBackstoryCounter);
 
   function syncPersonaModalAvatarPreview() {
-    const avVal = document.getElementById('cp-avatar')?.value || '/assets/avatars/xia_ningmeng.svg';
+    const avVal = document.getElementById('cp-avatar')?.value || '/assets/avatars/xia_ningmeng.webp';
     const nameVal = document.getElementById('cp-name')?.value || '新角色';
     const box = document.getElementById('cp-avatar-preview');
     if (box) {
@@ -8721,15 +8718,15 @@
         const isMale = document.getElementById('cp-gender-male')?.checked;
         const isChar = document.getElementById('cp-mode-character')?.checked;
         avEl.value = isChar
-          ? isMale ? '/assets/avatars/char_chenmo.svg' : '/assets/avatars/char_linzhi.svg'
-          : isMale ? '/assets/avatars/shenxinghui.jpg' : '/assets/avatars/xia_ningmeng.svg';
+          ? isMale ? '/assets/avatars/char_chenmo.webp' : '/assets/avatars/char_linzhi.webp'
+          : isMale ? '/assets/avatars/shenxinghui.webp' : '/assets/avatars/xia_ningmeng.webp';
         syncPersonaModalAvatarPreview();
       }
     });
   });
   document.getElementById('cp-pick-avatar-btn')?.addEventListener('click', () => {
     const avEl = document.getElementById('cp-avatar');
-    const curVal = avEl?.value || '/assets/avatars/xia_ningmeng.svg';
+    const curVal = avEl?.value || '/assets/avatars/xia_ningmeng.webp';
     const curName = document.getElementById('cp-name')?.value || '新角色';
     window.AppearanceSystem?.openAvatarStudio?.({
       initialAvatar: curVal,
@@ -8759,7 +8756,7 @@
     const avEl = document.getElementById('cp-avatar');
     if (avEl) {
       delete avEl.dataset.userPicked;
-      avEl.value = targetCardMode === 'character' ? '/assets/avatars/char_linzhi.svg' : '/assets/avatars/xia_ningmeng.svg';
+      avEl.value = targetCardMode === 'character' ? '/assets/avatars/char_linzhi.webp' : '/assets/avatars/xia_ningmeng.webp';
     }
     const callNameEl = document.getElementById('cp-user-call-name');
     if (callNameEl) callNameEl.value = '';
@@ -8784,7 +8781,7 @@
     if (editIdEl) editIdEl.value = p.id;
     const avEl = document.getElementById('cp-avatar');
     if (avEl) {
-      avEl.value = p.avatar || '/assets/avatars/xia_ningmeng.svg';
+      avEl.value = p.avatar || '/assets/avatars/xia_ningmeng.webp';
       avEl.dataset.userPicked = '1';
     }
     const modeRadio = document.getElementById(p.card_mode === 'character' ? 'cp-mode-character' : 'cp-mode-script');
@@ -8897,7 +8894,7 @@
       card_mode: pickedCardMode,
       user_call_name: (document.getElementById('cp-user-call-name')?.value || '').trim(),
       gender: pickedGender,
-      avatar: document.getElementById('cp-avatar').value.trim() || '/assets/avatars/xia_ningmeng.svg',
+      avatar: document.getElementById('cp-avatar').value.trim() || '/assets/avatars/xia_ningmeng.webp',
       name: document.getElementById('cp-name').value.trim(),
       tagline: document.getElementById('cp-tagline').value.trim(),
       personality: document.getElementById('cp-personality').value.trim(),
@@ -8941,7 +8938,7 @@
     state.personas.unshift(res.persona);
     personaDialog.close();
     e.target.reset();
-    document.getElementById('cp-avatar').value = '/assets/avatars/xia_ningmeng.svg';
+    document.getElementById('cp-avatar').value = '/assets/avatars/xia_ningmeng.webp';
     syncPersonaBackstoryCounter();
     if (pickedCardMode === 'character') {
       state.theaterSubMode = 'character';
@@ -9461,14 +9458,10 @@
     if (window.AppearanceSystem?.getCurrentSkin) {
       const curSkin = window.AppearanceSystem.getCurrentSkin();
       const presetNames = {
+        'minimal-studio': '清透极简',
         'qq-classic': '经典 QQ 聊天',
-        default: '原生极客经典',
-        'obsidian-gold': '曜石流金',
-        'mist-silk': '晨雾丝绸',
-        'sakura-dawn': '朝雾樱白',
-        'crimson-scroll': '绯红古卷',
-        'cyber-neon': '赛博霓虹',
-        'eink-paper': '极简墨水屏'
+        'warm-paper': '暖纸柔白',
+        'carbon-dark': '深邃碳黑'
       };
       const bubbleNames = {
         soft: '柔光圆润',
@@ -9477,8 +9470,8 @@
         outline: '极简细框',
         letter: '复古信纸'
       };
-      const pName = presetNames[curSkin.preset] || '经典 QQ 聊天';
-      const bName = bubbleNames[curSkin.bubbleStyle] || '逐句分段';
+      const pName = presetNames[curSkin.preset] || '清透极简';
+      const bName = bubbleNames[curSkin.bubbleStyle] || '柔光圆润';
       if (skinVal) skinVal.textContent = `${pName} · ${bName}`;
       if (defThemeVal) defThemeVal.textContent = pName;
     }
@@ -9751,39 +9744,39 @@
       });
     });
 
-    // 2.4 移动端专属默认界面主题设置（一键设为经典 QQ 聊天默认风 / 原生极客风）
+    // 2.4 移动端专属默认界面主题设置
     document.getElementById('mfs-item-default-theme')?.addEventListener('click', () => {
-      const curPreset = (window.AppearanceSystem?.getCurrentSkin?.().preset) || 'qq-classic';
+      const curPreset = (window.AppearanceSystem?.getCurrentSkin?.().preset) || 'minimal-studio';
       openMfsSubSheet({
-        title: '💬 默认界面主题设置',
+        title: '默认界面主题设置',
         subtitle: '设置默认聊天界面显示风格与气泡效果，随时可一键切换',
         bodyHtml:
           renderMfsOptionListHtml(
             [
-              { id: 'qq-classic', title: '经典 QQ 聊天（默认推荐）', desc: '洁净浅灰画布 · 纯白逐句分段气泡 · QQ 标志天蓝己方气泡' },
-              { id: 'default', title: '原生极客风格', desc: '跟随当前模式默认配色与圆润卡面布局' },
-              { id: 'obsidian-gold', title: '曜石流金剧场', desc: '深邃暗夜质感 · 暖金镶边与沉浸叙事光晕' },
-              { id: 'mist-silk', title: '晨雾丝绸（柔光浅色）', desc: '温和莫兰迪浅暖调 · 高对比明快可读体验' }
+              { id: 'minimal-studio', title: '清透极简（默认推荐）', desc: 'Lobe / Cherry 风格 · 清爽高对比、呼吸感留白' },
+              { id: 'qq-classic', title: '经典 QQ 聊天', desc: '洁净浅灰画布 · 纯白逐句分段气泡 · QQ 蓝气泡' },
+              { id: 'warm-paper', title: '暖纸柔白护眼', desc: 'Claude 纸感 · 温润陶土棕、长时间阅读不刺眼' },
+              { id: 'carbon-dark', title: '深邃碳黑暗夜', desc: '高级暗夜碳黑 · 护眼冰蓝点缀' }
             ],
             curPreset
           ) +
           `
-          <div class="mfs-skin-promo-card" id="mfs-default-open-studio" style="margin-top: 14px; padding: 12px 14px; border-radius: 12px; background: linear-gradient(135deg, rgba(22, 119, 255, 0.12), rgba(59, 130, 246, 0.08)); border: 1px solid rgba(22, 119, 255, 0.28); display: flex; align-items: center; justify-content: space-between; cursor: pointer;">
+          <div class="mfs-skin-promo-card" id="mfs-default-open-studio" style="margin-top: 14px; padding: 12px 14px; border-radius: 12px; background: var(--accent-soft); border: 1px solid var(--accent-border); display: flex; align-items: center; justify-content: space-between; cursor: pointer;">
             <div>
-              <strong style="color: var(--text-primary); font-size: 13.5px; display: block; margin-bottom: 2px;">🎨 进入完整外观工坊（8套免费皮肤）</strong>
+              <strong style="color: var(--text-primary); font-size: 13.5px; display: block; margin-bottom: 2px;">打开外观与皮肤工坊</strong>
               <span style="font-size: 11.5px; color: var(--text-secondary);">支持壁纸上传、背景取色、毛玻璃与字体字号精细调节</span>
             </div>
-            <span style="color: #1677ff; font-weight: 700; font-size: 18px; margin-left: 8px;">›</span>
+            <span style="color: var(--accent); font-weight: 700; font-size: 18px; margin-left: 8px;">›</span>
           </div>
         `,
         onMount: ({ bodyEl, close }) => {
           bodyEl.querySelectorAll('.mfs-opt-item').forEach((btn) => {
             btn.addEventListener('click', () => {
-              const nextPreset = btn.dataset.optId || 'qq-classic';
+              const nextPreset = btn.dataset.optId || 'minimal-studio';
               if (window.AppearanceSystem?.applySkin) {
                 const patch = nextPreset === 'qq-classic'
                   ? { preset: 'qq-classic', bubbleStyle: 'im-bubble', accentColor: '' }
-                  : { preset: nextPreset };
+                  : { preset: nextPreset, bubbleStyle: 'soft', accentColor: '' };
                 window.AppearanceSystem.applySkin(patch);
               }
               window.__syncDefaultThemeRadios?.(nextPreset);

@@ -1,5 +1,5 @@
 /* ==========================================================================
-   Phone Agent 手机端 AI 辅助助理与 dsh-Go 规划循环模块 (v2.6.4)
+   Phone Agent 手机端 AI 辅助助理与 dsh-Go 规划循环模块 (v2.6.5)
    1. 高度还原 dsh-Go 控屏内核：snapshotId/ref 精准控屏、ScreenVerdict 非阻塞验证、
       三档 SafetyGate 安全确认 + App 白名单、执行中途随时插话/排队、无障碍内联引导
    2. 高度还原 dsh-Go 交互 UI：运行中流光胶囊 + 完成后自动折叠单行轨迹 + 自然语言回复
@@ -7,8 +7,8 @@
    ========================================================================== */
 
 (() => {
-  const CURRENT_APK_VERSION = '2.6.4';
-  const CURRENT_APK_CODE = 159;
+  const CURRENT_APK_VERSION = '2.6.5';
+  const CURRENT_APK_CODE = 160;
   const DEEPSEEK_API_KEYS_URL = 'https://platform.deepseek.com/api_keys';
   const PUBLIC_WEB_ORIGIN = 'https://star.claudexxb.online';
   const GITHUB_RELEASES_URL = 'https://github.com/qts2218346424-cyber/persona-chat-studio/releases';
@@ -2133,8 +2133,9 @@
       '3. 若同一屏幕上已同时清晰可见 2~3 个明确无歧义的连贯操作（如学习答题“选中选项 + 点击下一题/提交”），可额外附带 `"actions":[{"tool":"phone_tap","args":{"ref":"e10"}},{"tool":"phone_tap","args":{"ref":"e24"}}]`（最多 3 个同屏非敏感微动作），否则只输出单动作。',
       '4. 严禁操作控制端自身（packageName="com.deepseek.starwhisper.studio"）或在其聊天框打字；用户说“继续写作业/继续答题”且未指定打开 DeepSeek 时，绝不要去打开 DeepSeek 应用，而是切回 lastExternalApp 或在当前学习软件中继续操作。',
       '5. screenTreeText 中每一行 `R1: ... | ...` 代表屏幕同一水平行的元素。做选择题时必须严格核对同一行的选项字母与右侧文字；带有 (sel) 或 (chk) 的表示已选中，若已选对直接点“下一题”，严禁张冠李戴选错行！',
-      '6. 若 interjections 非空，最高优先级立即响应用户中途插话指令。',
-      '7. 若 hasSensitiveField=true 或涉及付款/转账/下单/密码/验证码/删除/卸载/发消息，risk 必须为 "sensitive"，支付密码/验证码直接 ask_user 交还人工。'
+      '6. 连续多题/多页任务铁律：当任务属于连续流程（如“写作业/继续写作业/答题/刷题/完成练习”）时，只要屏幕上还存在“下一题”按钮、或题号进度（如 3/5、12/20）未达最后且未出现“提交成功/练习完成/得分”页面，严禁做完一题就返回 done！必须持续作答并点击“下一题”，一口气把整套题全部做完，直到全部完成或出现最终交卷/结算页才返回 done（或需要人工确认最终交卷时返回 ask_user）。',
+      '7. 若 interjections 非空，最高优先级立即响应用户中途插话指令。',
+      '8. 若 hasSensitiveField=true 或涉及付款/转账/下单/密码/验证码/删除/卸载/发消息，risk 必须为 "sensitive"，支付密码/验证码直接 ask_user 交还人工。'
     ].join('\n');
 
     const recentHistory = (history || []).slice(-6);
@@ -3013,6 +3014,11 @@
       let startStep = isResuming && Number(resumeOpts.startStep) > 0 ? Number(resumeOpts.startStep) : 1;
       let lastScreenVerdict = resumeOpts?.lastScreenVerdict || null;
       let noChangeStreak = 0;
+      let earlyDoneIntercepts = 0;
+      let autoContinueHint = '';
+      const isBatchContinuousTask =
+        /(?:写作业|做作业|答题|做题|刷题|练习|测试|继续|接着|全部|整套|所有)/.test(taskText) &&
+        !/(?:只做(?:这)?[一1]题|做完这[一1]题就停)/.test(taskText);
 
       // 第 0 步自动跳回目标 App：在控制端自身下达“继续写作业/答题/接着操作”时，先自动切回上一个外部应用再拍屏规划
       const lastExtApp = native ? getLastExternalAppInfo() : { packageName: '', appName: '' };
@@ -3048,8 +3054,12 @@
           break;
         }
 
-        // 消费排队插话指令
+        // 消费排队插话指令与连续做题防早退提醒
         const turnInterjections = [];
+        if (autoContinueHint) {
+          turnInterjections.push(autoContinueHint);
+          autoContinueHint = '';
+        }
         while (queuedInterjections.length > 0) {
           const item = queuedInterjections.shift();
           if (item && item.text) turnInterjections.push(item.text);
@@ -3140,6 +3150,27 @@
         }
 
         if (toolName === 'done') {
+          const treeTxt = String(snapshot?.screenTreeText || '');
+          const progM = treeTxt.match(/(?:^|[^\d])(\d{1,3})\s*\/\s*(\d{1,3})(?:[^\d]|$)/);
+          const hasRemainingProgress = Boolean(progM && Number(progM[1]) < Number(progM[2]) && Number(progM[2]) <= 300);
+          const hasNextBtn = /(?:下一题|下1题|继续答题|下一道)/.test(treeTxt);
+          const isFinishedScreen = /(?:交卷成功|提交成功|已完成全部|答题报告|本次得分|成绩单|正确率|查看解析|再练一次)/.test(treeTxt);
+
+          if (native && isBatchContinuousTask && earlyDoneIntercepts < 8 && !isFinishedScreen && (hasNextBtn || hasRemainingProgress)) {
+            earlyDoneIntercepts += 1;
+            autoContinueHint = '【系统强提醒】检测到当前屏幕仍有未完成题目（存在“下一题”按钮或进度未到最后一题），严禁提前返回 done！请立刻作答当前屏幕题目（或若已选中正确答案则直接点击“下一题”），持续推进直到整套题全部做完。';
+            updateStepResult(pendingStepEl, '继续下一题', false);
+            history.push({
+              step,
+              tool: 'continue_next',
+              summary: '检测到未完成全部题目，自动继续作答下一题',
+              result: '已拦截提前结束，继续推进',
+              changed: false
+            });
+            await sleep(160);
+            continue;
+          }
+
           const doneMsg = plan.reply || plan.args?.message || plan.summary || '全部任务步骤已顺利完成';
           updateStepResult(pendingStepEl, '已完成', false);
           appendNativeConsoleLog(`AI 任务完成: ${doneMsg}`);
@@ -3280,6 +3311,9 @@
           noChangeStreak += 1;
         } else {
           noChangeStreak = 0;
+          if (verdict && verdict.changed) {
+            earlyDoneIntercepts = 0;
+          }
         }
         lastScreenVerdict = {
           ...verdict,

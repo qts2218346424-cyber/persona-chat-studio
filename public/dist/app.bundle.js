@@ -5225,7 +5225,7 @@ lastInteractionAt: Date.now(),
 hasMoreMessages: false,
 totalMessages: 0,
 oldestMessageId: 0,
-appVersion: '2.6.4',
+appVersion: '2.6.5',
 tourIndex: 0,
 tourActive: false,
 llmMode: localStorage.getItem('user_llm_mode') || 'local_antigravity',
@@ -5606,7 +5606,7 @@ return null;
 }
 }
 function syncWebVersionBadges(verStr) {
-const raw = String(verStr || state.appVersion || '2.6.4').trim().replace(/^v/i, '');
+const raw = String(verStr || state.appVersion || '2.6.5').trim().replace(/^v/i, '');
 if (!raw) return;
 const vLabel = `v${raw}`;
 const isNativeApk = Boolean(
@@ -8620,7 +8620,7 @@ setTxt(
 'adm-kpi-channel-sub',
 tunnelProbe?.online ? '本机电脑 Antigravity 直连' : report.channels?.localCli?.transport === 'local_cli' ? '本机 CLI 就绪' : '电脑离线时自动回退'
 );
-setTxt('adm-sys-meta', `v${sys.appVersion || '2.6.4'} · ${sys.platform || ''} · Node ${sys.nodeVersion || ''} · ${sys.cpuCores || 1} 核 (负载 ${sys.load1m ?? 0})`);
+setTxt('adm-sys-meta', `v${sys.appVersion || '2.6.5'} · ${sys.platform || ''} · Node ${sys.nodeVersion || ''} · ${sys.cpuCores || 1} 核 (负载 ${sys.load1m ?? 0})`);
 setTxt('adm-stat-mem', `${sys.memUsedPct ?? 0}% (进程 ${sys.rssMb ?? 0} MB)`);
 setTxt('adm-stat-db', `${formatBytesCompact(dbInfo.dbSizeBytes)} / ${formatBytesCompact(dbInfo.walSizeBytes)}`);
 setTxt('adm-stat-uptime', formatUptimeCompact(sys.uptimeSec));
@@ -19426,8 +19426,8 @@ runCloneBtn.innerHTML = origHtml;
 })();
 ;
 (() => {
-const CURRENT_APK_VERSION = '2.6.4';
-const CURRENT_APK_CODE = 159;
+const CURRENT_APK_VERSION = '2.6.5';
+const CURRENT_APK_CODE = 160;
 const DEEPSEEK_API_KEYS_URL = 'https://platform.deepseek.com/api_keys';
 const PUBLIC_WEB_ORIGIN = 'https://star.claudexxb.online';
 const GITHUB_RELEASES_URL = 'https://github.com/qts2218346424-cyber/persona-chat-studio/releases';
@@ -21387,8 +21387,9 @@ const sys = [
 '3. 若同一屏幕上已同时清晰可见 2~3 个明确无歧义的连贯操作（如学习答题“选中选项 + 点击下一题/提交”），可额外附带 `"actions":[{"tool":"phone_tap","args":{"ref":"e10"}},{"tool":"phone_tap","args":{"ref":"e24"}}]`（最多 3 个同屏非敏感微动作），否则只输出单动作。',
 '4. 严禁操作控制端自身（packageName="com.deepseek.starwhisper.studio"）或在其聊天框打字；用户说“继续写作业/继续答题”且未指定打开 DeepSeek 时，绝不要去打开 DeepSeek 应用，而是切回 lastExternalApp 或在当前学习软件中继续操作。',
 '5. screenTreeText 中每一行 `R1: ... | ...` 代表屏幕同一水平行的元素。做选择题时必须严格核对同一行的选项字母与右侧文字；带有 (sel) 或 (chk) 的表示已选中，若已选对直接点“下一题”，严禁张冠李戴选错行！',
-'6. 若 interjections 非空，最高优先级立即响应用户中途插话指令。',
-'7. 若 hasSensitiveField=true 或涉及付款/转账/下单/密码/验证码/删除/卸载/发消息，risk 必须为 "sensitive"，支付密码/验证码直接 ask_user 交还人工。'
+'6. 连续多题/多页任务铁律：当任务属于连续流程（如“写作业/继续写作业/答题/刷题/完成练习”）时，只要屏幕上还存在“下一题”按钮、或题号进度（如 3/5、12/20）未达最后且未出现“提交成功/练习完成/得分”页面，严禁做完一题就返回 done！必须持续作答并点击“下一题”，一口气把整套题全部做完，直到全部完成或出现最终交卷/结算页才返回 done（或需要人工确认最终交卷时返回 ask_user）。',
+'7. 若 interjections 非空，最高优先级立即响应用户中途插话指令。',
+'8. 若 hasSensitiveField=true 或涉及付款/转账/下单/密码/验证码/删除/卸载/发消息，risk 必须为 "sensitive"，支付密码/验证码直接 ask_user 交还人工。'
 ].join('\n');
 const recentHistory = (history || []).slice(-6);
 const lastHist = recentHistory.length ? recentHistory[recentHistory.length - 1] : null;
@@ -22203,6 +22204,11 @@ resumeOpts && typeof resumeOpts.roundAutoApproved === 'boolean'
 let startStep = isResuming && Number(resumeOpts.startStep) > 0 ? Number(resumeOpts.startStep) : 1;
 let lastScreenVerdict = resumeOpts?.lastScreenVerdict || null;
 let noChangeStreak = 0;
+let earlyDoneIntercepts = 0;
+let autoContinueHint = '';
+const isBatchContinuousTask =
+/(?:写作业|做作业|答题|做题|刷题|练习|测试|继续|接着|全部|整套|所有)/.test(taskText) &&
+!/(?:只做(?:这)?[一1]题|做完这[一1]题就停)/.test(taskText);
 const lastExtApp = native ? getLastExternalAppInfo() : { packageName: '', appName: '' };
 if (native && !isResuming) {
 const initSnap = readAndFormatSnapshot(false);
@@ -22235,6 +22241,10 @@ finalSummaryTitle = '已安全急停';
 break;
 }
 const turnInterjections = [];
+if (autoContinueHint) {
+turnInterjections.push(autoContinueHint);
+autoContinueHint = '';
+}
 while (queuedInterjections.length > 0) {
 const item = queuedInterjections.shift();
 if (item && item.text) turnInterjections.push(item.text);
@@ -22319,6 +22329,25 @@ if (cardCtx.summaryTextEl) {
 cardCtx.summaryTextEl.textContent = `${toolName} · ${plan.summary || '执行中'}`;
 }
 if (toolName === 'done') {
+const treeTxt = String(snapshot?.screenTreeText || '');
+const progM = treeTxt.match(/(?:^|[^\d])(\d{1,3})\s*\/\s*(\d{1,3})(?:[^\d]|$)/);
+const hasRemainingProgress = Boolean(progM && Number(progM[1]) < Number(progM[2]) && Number(progM[2]) <= 300);
+const hasNextBtn = /(?:下一题|下1题|继续答题|下一道)/.test(treeTxt);
+const isFinishedScreen = /(?:交卷成功|提交成功|已完成全部|答题报告|本次得分|成绩单|正确率|查看解析|再练一次)/.test(treeTxt);
+if (native && isBatchContinuousTask && earlyDoneIntercepts < 8 && !isFinishedScreen && (hasNextBtn || hasRemainingProgress)) {
+earlyDoneIntercepts += 1;
+autoContinueHint = '【系统强提醒】检测到当前屏幕仍有未完成题目（存在“下一题”按钮或进度未到最后一题），严禁提前返回 done！请立刻作答当前屏幕题目（或若已选中正确答案则直接点击“下一题”），持续推进直到整套题全部做完。';
+updateStepResult(pendingStepEl, '继续下一题', false);
+history.push({
+step,
+tool: 'continue_next',
+summary: '检测到未完成全部题目，自动继续作答下一题',
+result: '已拦截提前结束，继续推进',
+changed: false
+});
+await sleep(160);
+continue;
+}
 const doneMsg = plan.reply || plan.args?.message || plan.summary || '全部任务步骤已顺利完成';
 updateStepResult(pendingStepEl, '已完成', false);
 appendNativeConsoleLog(`AI 任务完成: ${doneMsg}`);
@@ -22448,6 +22477,9 @@ if (verdict && !verdict.changed && lastSubTool !== 'phone_wait') {
 noChangeStreak += 1;
 } else {
 noChangeStreak = 0;
+if (verdict && verdict.changed) {
+earlyDoneIntercepts = 0;
+}
 }
 lastScreenVerdict = {
 ...verdict,

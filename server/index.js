@@ -656,8 +656,8 @@ function extractAuthToken(req, parsedUrl = null) {
   return '';
 }
 
-const APP_LATEST_VERSION = '2.6.4';
-const APP_LATEST_VERSION_CODE = 159;
+const APP_LATEST_VERSION = '2.6.5';
+const APP_LATEST_VERSION_CODE = 160;
 const APP_OFFICIAL_CERT_SHA256 = '6fd05e32a3cabf327140129d866e55a342fe30daa3384c67aad4b3cbdd98a17b';
 const APP_UPDATE_TICKET_SECRET = crypto
   .createHash('sha256')
@@ -955,9 +955,8 @@ async function handleApi(req, res, pathname, parsedUrl) {
       forceUpdate,
       diffGenerations,
       changelog: [
-        '【自动切回目标 App + 物理防自套娃】发送“继续写作业/继续答题”时自动记忆并切回上一个外部学习/目标应用，代码级拦截对控制端自身的误点击或聊天框乱打字',
-        '【严格视觉行归组（杜绝把 D 看成 A）】重构无障碍节点排序与水平同行归组（R1: 选项字母 | 选项文字），并同步透传选中状态 (sel)/(chk)，彻底消除选项张冠李戴',
-        '【80 步长任务 + 下一题物理补点 + 事件驱动提速】单轮步数提升至 80 步并支持一键接力，WebView/大容器直接走 80ms 物理手势与 380ms 自动补点，双端同步升级至 v2.6.4 (Build 159)'
+        '【整套作业一口气连做不中断（Anti-Early-Done）】强化连续多题规划铁律并新增代码级防早退保护：检测到屏幕仍有“下一题”或题号进度未到最后一题时自动拦截提前结束，持续作答翻页直到整套题全部做完',
+        '【自动切回目标 App + 视觉同行归组】发送“继续写作业/答题”时自动记忆并切回上一个学习软件，严格水平行归组杜绝选项张冠李戴，支持 80 步长任务与 80ms 物理手势补点，双端同步升级至 v2.6.5 (Build 160)'
       ]
     };
 
@@ -1708,9 +1707,10 @@ async function handleApi(req, res, pathname, parsedUrl) {
       '3. 若同一屏幕上已同时清晰可见 2~3 个明确无歧义的连贯操作（例如学习答题时“先选中答案选项 + 再点击下一题/提交”），可在标准字段外额外附带 `"actions":[{"tool":"phone_tap","args":{"ref":"e10"}},{"tool":"phone_tap","args":{"ref":"e24"}}]`（最多 3 个同屏非敏感微动作），否则只输出单动作。',
       '4. 严禁操作控制端自身（packageName="com.deepseek.starwhisper.studio"）或在其聊天框打字；当用户说“继续写作业/继续答题”且未明确指定打开 DeepSeek 时，禁止打开 DeepSeek 应用，优先切回 lastExternalApp 或在目标学习软件内操作。',
       '5. screenTreeText 中每一行 `R1: ... | ...` 代表屏幕同一水平行的元素。做选择题时必须严格核对同一行的字母与右侧文字，带有 (sel) 或 (chk) 表示已选中，若已选对直接点“下一题”，严禁张冠李戴改错答案！',
-      '6. 若 interjections 非空（用户在执行中途插话或纠偏），必须最高优先级立即响应用户最新插话要求。',
-      '7. 若 hasSensitiveField=true（密码框/支付收银台/验证码）或即将执行付款、转账、下单、发红包、删除、卸载、发送对外消息/评论等高风险动作，必须将 risk 设为 "sensitive"；遇到支付密码/短信验证码/刷脸确认时，直接返回 ask_user 交还人类操作。',
-      '8. 若处于网页预览模式（无真实屏幕节点，screenNodes 为空且无 screenTreeText），可直接给出逻辑演示并在最后一步返回 done。'
+      '6. 连续多题/多页任务铁律：当任务属于连续流程（如“写作业/继续写作业/答题/刷题/完成练习”）时，只要屏幕上还存在“下一题”按钮、或题号进度（如 3/5、12/20）未达最后且未出现“提交成功/练习完成/得分”页面，严禁做完一题就返回 done！必须持续作答并点击“下一题”，一口气把整套题全部做完，直到全部完成或出现最终交卷/结算页才返回 done（或在需要人工确认最终交卷时返回 ask_user）。',
+      '7. 若 interjections 非空（用户在执行中途插话或纠偏），必须最高优先级立即响应用户最新插话要求。',
+      '8. 若 hasSensitiveField=true（密码框/支付收银台/验证码）或即将执行付款、转账、下单、发红包、删除、卸载、发送对外消息/评论等高风险动作，必须将 risk 设为 "sensitive"；遇到支付密码/短信验证码/刷脸确认时，直接返回 ask_user 交还人类操作。',
+      '9. 若处于网页预览模式（无真实屏幕节点，screenNodes 为空且无 screenTreeText），可直接给出逻辑演示并在最后一步返回 done。'
     ].join('\n');
 
     const compactNodes = screenNodes.map((n, idx) => ({

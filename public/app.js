@@ -73,7 +73,7 @@
     hasMoreMessages: false,
     totalMessages: 0,
     oldestMessageId: 0,
-    appVersion: '2.7.6',
+    appVersion: '2.7.7',
     tourIndex: 0,
     tourActive: false,
     llmMode: 'local_antigravity',
@@ -171,6 +171,48 @@
     };
   }
 
+  function syncDeepSeekMonitorForActiveScope({ forceBalanceRefresh = false, messages = null } = {}) {
+    try {
+      if (state.uiMode === 'phone-agent' && window.PhoneAgent && typeof window.PhoneAgent.syncStatus === 'function') {
+        window.PhoneAgent.syncStatus();
+        return;
+      }
+      const cfg = getModeApiConfig(getActiveChatScope());
+      const isOwnDeepSeek = cfg.channel === 'own_deepseek';
+      window.DeepSeekMonitorPlugin?.sync?.({
+        settings: {
+          provider: cfg.channel,
+          has_own_deepseek_key: Boolean(isOwnDeepSeek && cfg.ownKey),
+          own_deepseek_model: isOwnDeepSeek ? 'deepseek-v4.1-flash' : ''
+        },
+        ...(Array.isArray(messages) ? { messages } : {}),
+        forceBalanceRefresh: Boolean(forceBalanceRefresh && isOwnDeepSeek && cfg.ownKey)
+      });
+    } catch {}
+  }
+
+  async function readStreamChunksCompat(body, onChunk) {
+    if (!body) return;
+    if (typeof body.getReader === 'function') {
+      const reader = body.getReader();
+      try {
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          if (value) onChunk(value);
+        }
+      } finally {
+        try { reader.releaseLock(); } catch {}
+      }
+      return;
+    }
+    if (typeof body[Symbol.asyncIterator] === 'function') {
+      for await (const chunk of body) {
+        if (chunk) onChunk(chunk);
+      }
+    }
+  }
+
   function syncStateLlmModeFromScope(scopeInput) {
     const cfg = getModeApiConfig(scopeInput);
     const mode = cfg.channel === 'local_antigravity' ? 'local_antigravity' : 'api';
@@ -179,16 +221,9 @@
       state.activeSession.llm_mode = mode;
     }
     syncLlmModeUi();
-    try {
-      window.DeepSeekMonitorPlugin?.sync?.({
-        settings: {
-          provider: cfg.channel,
-          has_own_deepseek_key: Boolean(cfg.ownKey),
-          own_deepseek_model: 'deepseek-v4.1-flash'
-        },
-        forceBalanceRefresh: cfg.channel === 'own_deepseek' && Boolean(cfg.ownKey)
-      });
-    } catch {}
+    syncDeepSeekMonitorForActiveScope({
+      forceBalanceRefresh: cfg.channel === 'own_deepseek' && Boolean(cfg.ownKey)
+    });
     return cfg;
   }
 
@@ -7497,18 +7532,17 @@
             }
             syncActiveSessionToCache();
             scheduleSaveBootSnapshot();
-            window.DeepSeekMonitorPlugin?.sync({
-              settings: state.settings,
+            syncDeepSeekMonitorForActiveScope({
               messages: state.messages,
               forceBalanceRefresh: true
             });
             const turnUsage = finalAssistantMsg?.meta?.usage || payload?.usage || null;
             const activeScopeCfg = getModeApiConfig(originIsDsUi ? 'deepseek' : 'roleplay');
-            const isDeepSeekOfficialTurn = activeScopeCfg.channel === 'own_deepseek' || state.settings?.provider === 'own_deepseek';
-            if (turnUsage && isDeepSeekOfficialTurn && activeScopeCfg.channel !== 'custom_cloud') {
+            const isDeepSeekOfficialTurn = activeScopeCfg.channel === 'own_deepseek';
+            if (turnUsage && isDeepSeekOfficialTurn) {
               window.DeepSeekMonitorPlugin?.recordTurnUsage({
                 usage: turnUsage,
-                model: finalAssistantMsg?.meta?.model || payload?.model || state.settings?.own_deepseek_model || 'deepseek-v4.1-flash',
+                model: finalAssistantMsg?.meta?.model || payload?.model || 'deepseek-v4.1-flash',
                 source: originIsDsUi ? 'DeepSeek对话' : '剧场对话',
                 provider: 'own_deepseek'
               });
@@ -7531,15 +7565,15 @@
           }
       };
 
-      for await (const chunk of response.body) {
-        if (!isStillOriginSession()) break;
+      await readStreamChunksCompat(response.body, (chunk) => {
+        if (!isStillOriginSession()) return;
         buffer += decoder.decode(chunk, { stream: true });
         const events = buffer.split(/\r?\n\r?\n/);
         buffer = events.pop() || '';
         for (const rawBlock of events) {
           handleSseBlock(rawBlock);
         }
-      }
+      });
 
       if (isStillOriginSession()) {
         const tail = decoder.decode();
@@ -9835,8 +9869,18 @@
             <button type="button" class="mfs-sheet-btn-secondary ${chosenChannel === 'own_deepseek' ? 'is-active' : ''}" data-mfs-ch="own_deepseek" style="padding:8px 6px;font-size:12px;">DeepSeek API</button>
             <button type="button" class="mfs-sheet-btn-secondary ${chosenChannel === 'custom_cloud' ? 'is-active' : ''}" data-mfs-ch="custom_cloud" style="padding:8px 6px;font-size:12px;">云端自定义</button>
           </div>
-          <div id="mfs-ch-pane-local" class="${chosenChannel === 'local_antigravity' ? '' : 'hidden'}" style="padding:12px;border-radius:12px;background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.22);font-size:12.5px;line-height:1.55;">
-            <strong>当前已就绪 · 本地直连（默认）</strong><br/>无需填写任何 API Key，直接返回聊天即可开箱即用。
+          <div id="mfs-ch-pane-local" class="${chosenChannel === 'local_antigravity' ? '' : 'hidden'}">
+            <div style="padding:12px;border-radius:12px;background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.22);font-size:12.5px;line-height:1.55;margin-bottom:10px;">
+              <strong>当前已就绪 · 本地直连（默认零计费）</strong><br/>自动穿透云端服务器直连电脑 Antigravity 本地端口（免填 API Key 且不计算 Token）。
+            </div>
+            <div class="mfs-field-block" style="margin-bottom:6px;">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+                <label class="mfs-field-label" for="mfs-local-backend-url" style="margin:0;">App 本地/局域网端口（可选，留空自动连线上隧道）</label>
+                <button type="button" class="mfs-official-link-btn" id="mfs-local-port-test-btn" style="padding:2px 8px;font-size:11px;">检测端口</button>
+              </div>
+              <input type="url" class="mfs-sheet-input" id="mfs-local-backend-url" value="${escapeHtml(localStorage.getItem('star_app_local_backend_url') || '')}" placeholder="默认留空；如需局域网直连填 http://192.168.x.x:3000 或 http://127.0.0.1:3000" />
+              <div id="mfs-local-port-status" style="font-size:11.5px;color:var(--text-secondary);margin-top:4px;">默认自动连接 https://star.claudexxb.online（关联电脑 18765 隧道）</div>
+            </div>
           </div>
           <div id="mfs-ch-pane-own" class="${chosenChannel === 'own_deepseek' ? '' : 'hidden'}">
             <div class="mfs-field-block">
@@ -9952,6 +9996,43 @@
             bodyEl.querySelector('#mfs-ch-pane-cloud')?.classList.toggle('hidden', nextCh !== 'custom_cloud');
           };
           syncSheetChannel(chosenChannel);
+          const localPortInp = bodyEl.querySelector('#mfs-local-backend-url');
+          const localPortTestBtn = bodyEl.querySelector('#mfs-local-port-test-btn');
+          const localPortStatus = bodyEl.querySelector('#mfs-local-port-status');
+          localPortTestBtn?.addEventListener('click', async () => {
+            const rawV = (localPortInp?.value || '').trim();
+            let targetBase = 'https://star.claudexxb.online';
+            if (rawV) {
+              try {
+                const u = new URL(/^https?:\/\//i.test(rawV) ? rawV : `http://${rawV}`);
+                targetBase = u.origin;
+                if (localPortInp) localPortInp.value = targetBase;
+              } catch {
+                if (localPortStatus) localPortStatus.textContent = '地址格式无效，请输入如 http://192.168.1.5:3000';
+                return;
+              }
+            }
+            if (localPortStatus) localPortStatus.textContent = `正在检测 ${targetBase} 连通性…`;
+            if (localPortTestBtn) localPortTestBtn.disabled = true;
+            try {
+              const probeUrl = targetBase.endsWith(':18765') ? `${targetBase}/health` : `${targetBase}/api/antigravity/status`;
+              const r = await fetch(probeUrl, { cache: 'no-store' });
+              if (r.ok) {
+                const d = await r.json().catch(() => ({}));
+                if (localPortStatus) {
+                  localPortStatus.textContent = `✅ 连通正常：${d.version || d.name || d.engine || targetBase}`;
+                }
+              } else if (localPortStatus) {
+                localPortStatus.textContent = `⚠️ 服务返回 HTTP ${r.status}，请检查本地服务是否已启动`;
+              }
+            } catch (e) {
+              if (localPortStatus) {
+                localPortStatus.textContent = `❌ 无法连接 ${targetBase}（请确认同局域网或电脑服务已启动）`;
+              }
+            } finally {
+              if (localPortTestBtn) localPortTestBtn.disabled = false;
+            }
+          });
           bodyEl.querySelectorAll('[data-mfs-ch]').forEach((btn) => {
             btn.addEventListener('click', () => syncSheetChannel(btn.getAttribute('data-mfs-ch') || 'local_antigravity'));
           });
@@ -9963,6 +10044,17 @@
             eyeBtn.innerHTML = show ? eyeOffSvg : eyeOpenSvg;
           });
           const commitScope = (resetToLocal = false) => {
+            if (localPortInp) {
+              const rawLocalU = (localPortInp.value || '').trim();
+              try {
+                if (rawLocalU) {
+                  const u = new URL(/^https?:\/\//i.test(rawLocalU) ? rawLocalU : `http://${rawLocalU}`);
+                  localStorage.setItem('star_app_local_backend_url', u.origin);
+                } else {
+                  localStorage.removeItem('star_app_local_backend_url');
+                }
+              } catch {}
+            }
             const patch = resetToLocal
               ? { channel: 'local_antigravity' }
               : {
@@ -9974,6 +10066,9 @@
                 };
             const saved = saveModeApiConfig(scope, patch);
             syncStateLlmModeFromScope(scope);
+            if (saved.channel === 'local_antigravity') {
+              checkLocalAntigravityStatus();
+            }
             const keyVal = document.getElementById('mfs-apikey-value');
             if (keyVal) {
               keyVal.textContent = saved.channel === 'own_deepseek'
@@ -11146,8 +11241,7 @@
         }
         renderUserAndMembership();
         syncStateLlmModeFromScope(activeScope);
-        window.DeepSeekMonitorPlugin?.sync({
-          settings: state.settings,
+        syncDeepSeekMonitorForActiveScope({
           messages: state.messages,
           forceBalanceRefresh: true
         });
@@ -12777,6 +12871,7 @@
     }
 
     syncComposerEmptyState();
+    syncDeepSeekMonitorForActiveScope();
 
     // 仅在真正跨模式切换或显式要求重置时收起右栏，绝不在日常刷新会话时把用户已打开的右侧面板缩成 0 宽！
     if (resetRightDrawer || prevMode !== state.uiMode) {
@@ -13984,8 +14079,7 @@
     if (elMiss) elMiss.textContent = sumMiss;
     if (elReason) elReason.textContent = sumReason;
 
-    window.DeepSeekMonitorPlugin?.sync({
-      settings: state.settings,
+    syncDeepSeekMonitorForActiveScope({
       messages: state.messages,
       forceBalanceRefresh: false
     });
@@ -14384,13 +14478,18 @@
     };
 
     try {
+      const proScopeCfg = getModeApiConfig(isDsUi ? 'deepseek' : 'roleplay');
+      const proLlmMode = proScopeCfg.channel === 'local_antigravity' ? 'local_antigravity' : 'api';
+      const proOv = buildModeApiOverride(isDsUi ? 'deepseek' : 'roleplay');
       const response = await fetch('/api/chat/proactive', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           session_id: originSessionId,
           trigger_reason: triggerReason,
-          include_follow_ups: isShowFollowUpsEnabled()
+          include_follow_ups: isShowFollowUpsEnabled(),
+          llm_mode: proLlmMode,
+          mode_api_override: proOv
         }),
         signal: abortController.signal
       });
@@ -14483,15 +14582,15 @@
         }
       };
 
-      for await (const chunk of response.body) {
-        if (!isStillOriginSession()) break;
+      await readStreamChunksCompat(response.body, (chunk) => {
+        if (!isStillOriginSession()) return;
         buffer += decoder.decode(chunk, { stream: true });
         const events = buffer.split(/\r?\n\r?\n/);
         buffer = events.pop() || '';
         for (const rawBlock of events) {
           handleSseBlock(rawBlock);
         }
-      }
+      });
       if (isStillOriginSession()) {
         buffer += decoder.decode();
         if (buffer.trim() && !receivedDoneEvent) {

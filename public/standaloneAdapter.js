@@ -1164,6 +1164,70 @@
     }
   }
 
+  const REMOTE_DEFAULT_ORIGIN = 'https://star.claudexxb.online';
+  const LOCAL_BACKEND_URL_KEY = 'star_app_local_backend_url';
+  const LOCAL_BRIDGE_TOKEN_KEY = 'star_app_local_bridge_token';
+  const REMOTE_SESSION_MAP_KEY = 'star_remote_sess_map_v1';
+
+  function getRemoteBackendOrigin() {
+    try {
+      let raw = String(localStorage.getItem(LOCAL_BACKEND_URL_KEY) || '').trim();
+      if (raw) {
+        if (!/^https?:\/\//i.test(raw)) raw = `http://${raw}`;
+        const u = new URL(raw);
+        return u.origin;
+      }
+    } catch {}
+    return REMOTE_DEFAULT_ORIGIN;
+  }
+
+  function isBridgeGatewayOrigin(originUrl) {
+    try {
+      const u = new URL(originUrl);
+      return String(u.port || '') === '18765';
+    } catch {
+      return false;
+    }
+  }
+
+  function loadRemoteSessionMap() {
+    try {
+      const raw = localStorage.getItem(REMOTE_SESSION_MAP_KEY);
+      const obj = raw ? JSON.parse(raw) : {};
+      return obj && typeof obj === 'object' ? obj : {};
+    } catch {
+      return {};
+    }
+  }
+
+  function saveRemoteSessionMap(mapObj) {
+    try {
+      localStorage.setItem(REMOTE_SESSION_MAP_KEY, JSON.stringify(mapObj || {}));
+    } catch {}
+  }
+
+  async function readStreamBodyWithReader(body, onChunk) {
+    if (!body) return;
+    if (typeof body.getReader === 'function') {
+      const reader = body.getReader();
+      try {
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          if (value) onChunk(value);
+        }
+      } finally {
+        try { reader.releaseLock(); } catch {}
+      }
+      return;
+    }
+    if (typeof body[Symbol.asyncIterator] === 'function') {
+      for await (const ch of body) {
+        if (ch) onChunk(ch);
+      }
+    }
+  }
+
   function createSseStream(executor) {
     const encoder = new TextEncoder();
     const stream = new ReadableStream({
@@ -1184,6 +1248,274 @@
       status: 200,
       headers: { 'Content-Type': 'text/event-stream; charset=utf-8' }
     });
+  }
+
+  async function ensureRemoteAuthToken(origin, forceRefresh = false) {
+    const curTok = window.__starAuthStore?.getToken?.() || '';
+    if (!forceRefresh && curTok && curTok !== 'standalone_demo_token') {
+      return curTok;
+    }
+    let guestId = window.__starAuthStore?.getGuestUserId?.() || '';
+    if (!guestId) {
+      guestId = `apk_guest_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      window.__starAuthStore?.setGuestUserId?.(guestId);
+    }
+    const resp = await originalFetch(`${origin}/api/auth/demo-login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ guest_user_id: guestId }),
+      cache: 'no-store'
+    });
+    if (!resp.ok) {
+      throw new Error(`云端鉴权响应异常 (${resp.status})`);
+    }
+    const data = await resp.json();
+    if (!data?.token) {
+      throw new Error('未返回有效会话令牌');
+    }
+    window.__starAuthStore?.setToken?.(data.token, true);
+    if (data.user?.id) {
+      window.__starAuthStore?.setActiveUserId?.(data.user.id);
+    }
+    try {
+      if (window.AndroidAppBridge && typeof window.AndroidAppBridge.saveAuthCredentials === 'function' && data.user) {
+        window.AndroidAppBridge.saveAuthCredentials(data.token, JSON.stringify(data.user));
+      }
+    } catch {}
+    return data.token;
+  }
+
+  async function ensureRemoteSession(origin, token, localSess, forceNew = false) {
+    const mapKey = `${origin}|${String(token || '').slice(0, 12)}|${localSess.id}`;
+    const map = loadRemoteSessionMap();
+    if (!forceNew && map[mapKey]) {
+      return map[mapKey];
+    }
+    const createResp = await originalFetch(`${origin}/api/sessions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        persona_id: localSess.persona_id || 'persona_nagisa_sakura',
+        script_id: localSess.script_id || 'script_clannad',
+        session_mode: localSess.session_mode || 'roleplay',
+        ds_thinking: localSess.ds_thinking !== 0,
+        ds_search: localSess.ds_search === 1,
+        llm_mode: 'local_antigravity'
+      }),
+      cache: 'no-store'
+    });
+    if (!createResp.ok) {
+      const err = new Error(`创建远端会话失败 (${createResp.status})`);
+      err.status = createResp.status;
+      throw err;
+    }
+    const created = await createResp.json();
+    const remoteSid = created?.session_id;
+    if (!remoteSid) {
+      throw new Error('远端会话 ID 为空');
+    }
+    if (localSess.session_prompt || localSess.director_note || localSess.enable_inner_thought !== undefined) {
+      await originalFetch(`${origin}/api/sessions/${encodeURIComponent(remoteSid)}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          ...(localSess.session_prompt ? { session_prompt: localSess.session_prompt } : {}),
+          ...(localSess.director_note ? { director_note: localSess.director_note } : {}),
+          enable_inner_thought: localSess.enable_inner_thought !== 0
+        }),
+        cache: 'no-store'
+      }).catch(() => {});
+    }
+    map[mapKey] = remoteSid;
+    saveRemoteSessionMap(map);
+    return remoteSid;
+  }
+
+  async function tryStreamRemoteLocalAntigravity({
+    origin,
+    pathname,
+    sess,
+    sysPrompt,
+    normalizedHistory,
+    enableThink,
+    prefix,
+    bodyObj,
+    signal,
+    sendEvent
+  }) {
+    if (isBridgeGatewayOrigin(origin)) {
+      const bridgeTok = (() => {
+        try { return String(localStorage.getItem(LOCAL_BRIDGE_TOKEN_KEY) || '').trim(); } catch { return ''; }
+      })();
+      const bMsgs = [{ role: 'system', content: sysPrompt }, ...normalizedHistory];
+      if (prefix) bMsgs.push({ role: 'assistant', content: prefix, prefix: true });
+      const bHeaders = { 'Content-Type': 'application/json' };
+      if (bridgeTok) bHeaders.Authorization = `Bearer ${bridgeTok}`;
+      const bResp = await originalFetch(`${origin}/v1/chat/completions`, {
+        method: 'POST',
+        headers: bHeaders,
+        body: JSON.stringify({
+          model: 'agy-auto',
+          messages: bMsgs,
+          reasoning_effort: enableThink ? 'low' : 'none',
+          stream: true
+        }),
+        signal
+      });
+      if (!bResp.ok || !bResp.body) {
+        throw new Error(`本地桥接端口响应异常 (${bResp.status})`);
+      }
+      const bDec = new TextDecoder();
+      let bBuf = '';
+      let bR = '';
+      let bC = '';
+      await readStreamBodyWithReader(bResp.body, (ch) => {
+        bBuf += bDec.decode(ch, { stream: true });
+        const lines = bBuf.split(/\r?\n/);
+        bBuf = lines.pop() || '';
+        for (const raw of lines) {
+          const l = raw.trim();
+          if (!l.startsWith('data:')) continue;
+          const ds = l.slice(5).trim();
+          if (ds === '[DONE]') continue;
+          try {
+            const j = JSON.parse(ds);
+            const d = j.choices?.[0]?.delta || {};
+            if (d.reasoning_content) {
+              bR += d.reasoning_content;
+              sendEvent('reasoning', { delta: d.reasoning_content });
+            }
+            if (d.content) {
+              bC += d.content;
+              sendEvent('content', { delta: d.content });
+            }
+          } catch {}
+        }
+      });
+      return { ok: true, fullR: bR, fullC: bC, remoteMeta: { model: 'DeepSeek-V4.1-Flash', local_bridge: true } };
+    }
+
+    let token = await ensureRemoteAuthToken(origin, false);
+    const attemptStream = async (tok, forceNewSess) => {
+      const remoteSid = await ensureRemoteSession(origin, tok, sess, forceNewSess);
+      const reqPayload = pathname === '/api/chat/proactive'
+        ? {
+            session_id: remoteSid,
+            trigger_reason: bodyObj.trigger_reason || 'idle',
+            include_follow_ups: bodyObj.include_follow_ups !== false,
+            llm_mode: 'local_antigravity'
+          }
+        : {
+            session_id: remoteSid,
+            content: bodyObj.content || '',
+            regenerate: Boolean(bodyObj.regenerate),
+            edit_message_id: 0,
+            attachments: Array.isArray(bodyObj.attachments) ? bodyObj.attachments : [],
+            assistant_prefix: bodyObj.assistant_prefix || '',
+            include_follow_ups: bodyObj.include_follow_ups !== false,
+            llm_mode: 'local_antigravity',
+            local_model: bodyObj.local_model || 'DeepSeek-V4.1-Flash'
+          };
+      return originalFetch(`${origin}${pathname}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${tok}`
+        },
+        body: JSON.stringify(reqPayload),
+        signal
+      });
+    };
+
+    let resp;
+    try {
+      resp = await attemptStream(token, false);
+    } catch (e) {
+      if (e?.status === 401) {
+        token = await ensureRemoteAuthToken(origin, true);
+        resp = await attemptStream(token, true);
+      } else {
+        throw e;
+      }
+    }
+    if (resp.status === 401) {
+      token = await ensureRemoteAuthToken(origin, true);
+      resp = await attemptStream(token, true);
+    } else if (resp.status === 404) {
+      resp = await attemptStream(token, true);
+    }
+
+    if (!resp.ok || !resp.body) {
+      const errObj = await resp.json().catch(() => ({}));
+      const err = new Error(errObj.error || `本地直连服务响应异常 (${resp.status})`);
+      err.code = errObj.code || 'REMOTE_LOCAL_ERR';
+      throw err;
+    }
+
+    const dec = new TextDecoder();
+    let sseBuf = '';
+    let remoteR = '';
+    let remoteC = '';
+    let remoteDonePayload = null;
+    let remoteErr = null;
+
+    const handleBlock = (rawBlock) => {
+      const lines = rawBlock.split(/\r?\n/);
+      let evName = 'message';
+      let dataStr = '';
+      for (const ln of lines) {
+        if (ln.startsWith(':')) continue;
+        if (ln.startsWith('event:')) evName = ln.slice(6).trim();
+        else if (ln.startsWith('data:')) dataStr += ln.slice(5).trim();
+      }
+      if (!dataStr) return;
+      let payload;
+      try { payload = JSON.parse(dataStr); } catch { return; }
+      if (evName === 'reasoning') {
+        remoteR += payload.delta || '';
+        sendEvent('reasoning', payload);
+      } else if (evName === 'content') {
+        remoteC += payload.delta || '';
+        sendEvent('content', payload);
+      } else if (evName === 'done') {
+        remoteDonePayload = payload;
+      } else if (evName === 'error') {
+        remoteErr = new Error(payload.message || '本地直连推理中断');
+      } else if (evName !== 'message') {
+        sendEvent(evName, payload);
+      }
+    };
+
+    await readStreamBodyWithReader(resp.body, (ch) => {
+      sseBuf += dec.decode(ch, { stream: true });
+      const blocks = sseBuf.split(/\r?\n\r?\n/);
+      sseBuf = blocks.pop() || '';
+      for (const blk of blocks) {
+        handleBlock(blk);
+      }
+    });
+    const sseTail = dec.decode();
+    if (sseTail) sseBuf += sseTail;
+    if (sseBuf.trim()) {
+      for (const blk of sseBuf.split(/\r?\n\r?\n/)) {
+        handleBlock(blk);
+      }
+    }
+    if (remoteErr && !remoteC.trim()) {
+      throw remoteErr;
+    }
+    return {
+      ok: true,
+      fullR: remoteR,
+      fullC: remoteC,
+      remoteDonePayload
+    };
   }
 
   async function parseStandaloneAttachmentFile({ name = '未命名文件', mime = '', buf }) {
@@ -2521,8 +2853,69 @@
         let fullR = '';
         let fullC = '';
         let usage = null;
+        let remoteDonePayload = null;
         const enableThink = isNative ? sess.ds_thinking === 1 : sess.enable_inner_thought === 1;
         const prefix = String(bodyObj.assistant_prefix || '');
+
+        const memHint = (dbObj.memories[sid] || []).map((m) => `- ${m.content}`).join('\n');
+        const sessPromptHint = sess.session_prompt && sess.session_prompt.trim()
+          ? `\n【本对话专属独立设定】：\n${sess.session_prompt.trim()}\n`
+          : '';
+        const sysPrompt = isPure
+          ? [
+              '你是 DeepSeek，由深度求索（DeepSeek）研发的智能助手。请严格遵循正版 DeepSeek 官方回答格式与风格：',
+              sessPromptHint,
+              memHint ? `【当前对话已归档的独立记忆】：\n${memHint}` : '',
+              '1. 直击本质、拒绝寒暄套话：严禁使用“好的，没问题！”、“下面我将从以下几个方面展开”等机械开场白。面对知识、技术或分析类问题，首段直接用 1~3 句话给出核心结论或本质定义（关键定性词加粗），再展开细节。',
+              '2. 按需结构化：简短问候或简单事实用 1~3 个短段落平实作答；深度技术、推导与方案拆解使用 `### 一、...` 三级标题、`---` 水平分割线、`- **核心词**：具体说明` 列表，涉及选型对比时主动给出工整的 Markdown 表格。',
+              '3. 视觉克制：严禁在标题或列表前堆砌花哨 Emoji，严禁使用角色扮演星号动作，结尾干脆有力、不写机械客套收尾。',
+              enableThink
+                ? '4. 思考推理阶段请全程使用纯简体中文，采用正版 DeepSeek-R1 标志性的第一人称自然内省思维流推敲细节与边界条件。'
+                : '4. 直接输出干净规范的中文正式正文，不要输出 <think> 标签。'
+            ].filter(Boolean).join('\n')
+          : `你是「${p.name}」（性格：${p.personality}。背景：${p.backstory}。语风：${p.speaking_style}）。对话者称呼为「${dbObj.user.nickname}」。${sessPromptHint}${
+              memHint ? `\n【已知专属记忆】：\n${memHint}\n` : ''
+            }${
+              isNative
+                ? '请遵循正版 DeepSeek 极简纯文本质感：严禁泛滥使用 *星号动作描写* 与花哨 Emoji，分段简短克制，用自然真实的日常口吻对话并保持主动关怀。'
+                : isCharacterChat
+                ? `你正在与「${p.user_call_name || dbObj.user.nickname}」进行真实人类日常对话。铁律：\n1. 绝对禁止使用 *星号动作描写*、（括号旁白）或小说体叙述，只输出真人嘴巴里直接说出来的话；\n2. 像真人微信或面对面聊天一样自然简短（1~3 句，10~75 字左右），有真实情绪与接梗反应，不写八股作文；\n3. 有独立人格与生活节奏，绝不暴露 AI 身份。`
+                : '请以第一人称真实自然地扮演该角色。核心准则：\n1. 每一轮必须紧扣对方上一句话的具体内容、语气、情绪、提问、拒绝或肢体动作直接接招，严禁敷衍或自说自话；\n2. 严禁模板化八股（不要每轮硬凑环境描写，不要刻意追求固定字数，不要每轮结尾固定抛二选一反问）；\n3. 动作神态仅用 0~1 处简短贴合剧情的动作点缀，对话简短真挚有呼吸感。'
+            }`;
+
+        const winLimit = Math.max(12, Math.min(120, parseInt(dbObj.settings.sliding_window_turns || '48', 10) || 48));
+        const normalizedHistory = [];
+        const slicedMsgs = msgs.slice(-winLimit);
+        for (let mi = 0; mi < slicedMsgs.length; mi++) {
+          const m = slicedMsgs[mi];
+          const r = m.role === 'assistant' ? 'assistant' : 'user';
+          let c = String(m.content || '').trim();
+          if (r === 'user' && m.meta_json) {
+            try {
+              const parsedMeta = JSON.parse(m.meta_json) || {};
+              const atts = Array.isArray(parsedMeta.attachments) ? parsedMeta.attachments : [];
+              if (atts.length > 0) {
+                const isCurrentTurn = mi >= slicedMsgs.length - 2;
+                const attBlocks = atts.map((att, idx) => {
+                  if (att.is_image) {
+                    return `[用户上传图片 #${idx + 1}: ${att.name || 'image'}${att.dimensions ? ` (${att.dimensions})` : ''}] ${String(att.content || '').slice(0, 1200)}`;
+                  }
+                  const limit = isCurrentTurn ? 18000 : 1200;
+                  return `[用户上传附件 #${idx + 1}: ${att.name || 'file'} (${att.badge || 'FILE'})]\n${String(att.content || '').slice(0, limit)}`;
+                });
+                c = c ? `${c}\n\n${attBlocks.join('\n\n')}` : attBlocks.join('\n\n');
+              }
+            } catch {}
+          }
+          if (!c) continue;
+          if (normalizedHistory.length === 0 && r === 'assistant') continue;
+          const prev = normalizedHistory[normalizedHistory.length - 1];
+          if (prev && prev.role === r) {
+            prev.content += `\n\n${c}`;
+          } else {
+            normalizedHistory.push({ role: r, content: c });
+          }
+        }
 
         if (apiKey) {
           const rawOvUrl = modeApiOv?.provider === 'custom_cloud'
@@ -2536,65 +2929,6 @@
             model = enableThink ? 'deepseek-reasoner' : 'deepseek-chat';
           } else {
             model = (savedModel && savedModel !== 'deepseek-flash') ? savedModel : (enableThink ? 'deepseek-reasoner' : 'deepseek-chat');
-          }
-          const memHint = (dbObj.memories[sid] || []).map((m) => `- ${m.content}`).join('\n');
-          const sessPromptHint = sess.session_prompt && sess.session_prompt.trim()
-            ? `\n【本对话专属独立设定】：\n${sess.session_prompt.trim()}\n`
-            : '';
-          const sysPrompt = isPure
-            ? [
-                '你是 DeepSeek，由深度求索（DeepSeek）研发的智能助手。请严格遵循正版 DeepSeek 官方回答格式与风格：',
-                sessPromptHint,
-                memHint ? `【当前对话已归档的独立记忆】：\n${memHint}` : '',
-                '1. 直击本质、拒绝寒暄套话：严禁使用“好的，没问题！”、“下面我将从以下几个方面展开”等机械开场白。面对知识、技术或分析类问题，首段直接用 1~3 句话给出核心结论或本质定义（关键定性词加粗），再展开细节。',
-                '2. 按需结构化：简短问候或简单事实用 1~3 个短段落平实作答；深度技术、推导与方案拆解使用 `### 一、...` 三级标题、`---` 水平分割线、`- **核心词**：具体说明` 列表，涉及选型对比时主动给出工整的 Markdown 表格。',
-                '3. 视觉克制：严禁在标题或列表前堆砌花哨 Emoji，严禁使用角色扮演星号动作，结尾干脆有力、不写机械客套收尾。',
-                enableThink
-                  ? '4. 思考推理阶段请全程使用纯简体中文，采用正版 DeepSeek-R1 标志性的第一人称自然内省思维流推敲细节与边界条件。'
-                  : '4. 直接输出干净规范的中文正式正文，不要输出 <think> 标签。'
-              ].filter(Boolean).join('\n')
-            : `你是「${p.name}」（性格：${p.personality}。背景：${p.backstory}。语风：${p.speaking_style}）。对话者称呼为「${dbObj.user.nickname}」。${sessPromptHint}${
-                memHint ? `\n【已知专属记忆】：\n${memHint}\n` : ''
-              }${
-                isNative
-                  ? '请遵循正版 DeepSeek 极简纯文本质感：严禁泛滥使用 *星号动作描写* 与花哨 Emoji，分段简短克制，用自然真实的日常口吻对话并保持主动关怀。'
-                  : isCharacterChat
-                  ? `你正在与「${p.user_call_name || dbObj.user.nickname}」进行真实人类日常对话。铁律：\n1. 绝对禁止使用 *星号动作描写*、（括号旁白）或小说体叙述，只输出真人嘴巴里直接说出来的话；\n2. 像真人微信或面对面聊天一样自然简短（1~3 句，10~75 字左右），有真实情绪与接梗反应，不写八股作文；\n3. 有独立人格与生活节奏，绝不暴露 AI 身份。`
-                  : '请以第一人称真实自然地扮演该角色。核心准则：\n1. 每一轮必须紧扣对方上一句话的具体内容、语气、情绪、提问、拒绝或肢体动作直接接招，严禁敷衍或自说自话；\n2. 严禁模板化八股（不要每轮硬凑环境描写，不要刻意追求固定字数，不要每轮结尾固定抛二选一反问）；\n3. 动作神态仅用 0~1 处简短贴合剧情的动作点缀，对话简短真挚有呼吸感。'
-              }`;
-
-          const winLimit = Math.max(12, Math.min(120, parseInt(dbObj.settings.sliding_window_turns || '48', 10) || 48));
-          const normalizedHistory = [];
-          const slicedMsgs = msgs.slice(-winLimit);
-          for (let mi = 0; mi < slicedMsgs.length; mi++) {
-            const m = slicedMsgs[mi];
-            const r = m.role === 'assistant' ? 'assistant' : 'user';
-            let c = String(m.content || '').trim();
-            if (r === 'user' && m.meta_json) {
-              try {
-                const parsedMeta = JSON.parse(m.meta_json) || {};
-                const atts = Array.isArray(parsedMeta.attachments) ? parsedMeta.attachments : [];
-                if (atts.length > 0) {
-                  const isCurrentTurn = mi >= slicedMsgs.length - 2;
-                  const attBlocks = atts.map((att, idx) => {
-                    if (att.is_image) {
-                      return `[用户上传图片 #${idx + 1}: ${att.name || 'image'}${att.dimensions ? ` (${att.dimensions})` : ''}] ${String(att.content || '').slice(0, 1200)}`;
-                    }
-                    const limit = isCurrentTurn ? 18000 : 1200;
-                    return `[用户上传附件 #${idx + 1}: ${att.name || 'file'} (${att.badge || 'FILE'})]\n${String(att.content || '').slice(0, limit)}`;
-                  });
-                  c = c ? `${c}\n\n${attBlocks.join('\n\n')}` : attBlocks.join('\n\n');
-                }
-              } catch {}
-            }
-            if (!c) continue;
-            if (normalizedHistory.length === 0 && r === 'assistant') continue;
-            const prev = normalizedHistory[normalizedHistory.length - 1];
-            if (prev && prev.role === r) {
-              prev.content += `\n\n${c}`;
-            } else {
-              normalizedHistory.push({ role: r, content: c });
-            }
           }
           const payloadMsgs = [
             { role: 'system', content: sysPrompt },
@@ -2633,7 +2967,7 @@
               signal
             });
           } catch (netErr) {
-            throw new Error(`连接 DeepSeek 官方服务超时或网络失败: ${netErr.message}`);
+            throw new Error(`连接 API 服务超时或网络失败: ${netErr.message}`);
           }
           if (!resp.ok) {
             let detail = '';
@@ -2643,11 +2977,11 @@
             } catch {
               detail = await resp.text();
             }
-            throw new Error(`DeepSeek 接口异常 (${resp.status}): ${detail}`);
+            throw new Error(`API 接口异常 (${resp.status}): ${detail}`);
           }
           const dec = new TextDecoder();
           let buf = '';
-          for await (const ch of resp.body) {
+          await readStreamBodyWithReader(resp.body, (ch) => {
             buf += dec.decode(ch, { stream: true });
             const lines = buf.split(/\r?\n/);
             buf = lines.pop() || '';
@@ -2658,7 +2992,7 @@
               if (ds === '[DONE]') continue;
               try {
                 const j = JSON.parse(ds);
-                if (j.usage) {
+                if (j.usage && isOfficialDs) {
                   usage = {
                     prompt_cache_hit_tokens: j.usage.prompt_cache_hit_tokens ?? 0,
                     prompt_cache_miss_tokens: j.usage.prompt_cache_miss_tokens ?? (j.usage.prompt_tokens || 0),
@@ -2676,82 +3010,141 @@
                 }
               } catch {}
             }
+          });
+          const tailStr = dec.decode();
+          if (tailStr) {
+            for (const raw of (buf + tailStr).split(/\r?\n/)) {
+              const l = raw.trim();
+              if (!l.startsWith('data:')) continue;
+              const ds = l.slice(5).trim();
+              if (ds === '[DONE]') continue;
+              try {
+                const j = JSON.parse(ds);
+                const d = j.choices?.[0]?.delta || {};
+                if (d.reasoning_content) {
+                  fullR += d.reasoning_content;
+                  sendEvent('reasoning', { delta: d.reasoning_content });
+                }
+                if (d.content) {
+                  fullC += d.content;
+                  sendEvent('content', { delta: d.content });
+                }
+              } catch {}
+            }
           }
         } else {
-          let simR = '';
-          let simC = '';
-          if (isPure) {
-            const cleanQ = String(userText || '').trim();
-            const isGreet = /^(你好|您好|嗨|hi|hello|在吗|你是谁|你是什么模型|介绍一下你自己)[！!？?。.~～\s]*$/i.test(cleanQ);
-            const isMath = /数学|公式|积分|导数|方程|证明|正态分布|高斯/i.test(cleanQ);
-            const isHtml = /html|canvas|粒子|网页|svg|前端|动画/i.test(cleanQ);
-            const curAtts = Array.isArray(bodyObj.attachments) ? bodyObj.attachments : [];
-
-            if (curAtts.length > 0) {
-              const firstAtt = curAtts[0];
-              const previewText = String(firstAtt.content || '').trim().slice(0, 800);
-              simR = `已收到并解析用户上传的 ${curAtts.length} 份附件（首份：${firstAtt.name}，共 ${previewText.length} 字符摘录）。现在按结构化要点提炼并响应用户需求。`;
-              simC = `${prefix}已读取你上传的 **${curAtts.map((a) => a.name).join('、')}**。\n\n---\n\n### 提取内容概览\n\n${
-                firstAtt.is_image
-                  ? `- **图像信息**：${firstAtt.name}（${firstAtt.dimensions || '已压缩'}），当前未绑定云端视觉模型，填入个人 API Key 后可深入识图分析。`
-                  : `\`\`\`text\n${previewText || '（该文件暂无可提取纯文本内容）'}\n\`\`\``
-              }\n\n如需对以上文件内容做深度改写、翻译或对比，请在设置中填入 DeepSeek API Key 解锁云端满血模型，或直接告诉我要处理其中的哪一段。`;
-            } else if (isProactive) {
-              simR = `嗯，当前对话暂未继续输入，我可以用平实简洁的口吻打个招呼，提供几个清晰具体的切入方向。`;
-              simC = `你好，我是 **DeepSeek**。如果暂时还没定好从哪切入，可以直接从以下几个方向开始：\n\n- **代码编写与排错**：生成单文件 HTML/Canvas 交互页面、算法实现或排查报错堆栈；\n- **数理与逻辑推演**：逐步推导微积分/概率公式、分析系统架构选型权衡；\n- **文本提炼与起草**：拆解复杂概念对比、拟定技术方案或结构化报告。\n\n直接把你的问题发出来即可。`;
-            } else if (isGreet) {
-              simR = `用户在打招呼或询问我的身份：「${cleanQ}」。保持简洁真诚，用两小段自然回应即可，无需堆砌标题。`;
-              simC = `${prefix}你好！我是 **DeepSeek**，由深度求索（DeepSeek）研发的智能助手。\n\n无论是编程开发、数理逻辑推导、概念深度拆解，还是方案对比与文案写作，都可以直接把问题交给我。今天想先聊些什么？`;
-            } else if (isMath) {
-              simR = `用户希望推导数理公式：「${cleanQ.slice(0, 36)}」。先在开头直接给出标准高斯积分闭式解，再用极坐标换元分步严谨推导。`;
-              simC = `${prefix}无穷区间上的标准高斯积分闭式解为 $\\int_{-\\infty}^{+\\infty} e^{-x^2} dx = \\sqrt{\\pi}$，由此可得正态分布密度函数的归一化系数 $\\frac{1}{\\sqrt{2\\pi}\\sigma}$。\n\n---\n\n### 1. 升维构造二重积分\n\n设 $I = \\int_{-\\infty}^{+\\infty} e^{-x^2} dx$，将其平方转化为二维平面 $\\mathbb{R}^2$ 上的重积分并作极坐标变换 $dx\\,dy = r\\,dr\\,d\\theta$：\n\n$$I^2 = \\int_{0}^{2\\pi} d\\theta \\int_{0}^{+\\infty} r e^{-r^2} \\,dr = 2\\pi \\cdot \\frac{1}{2} \\left[ -e^{-r^2} \\right]_{0}^{+\\infty} = \\pi$$\n\n### 2. 推广至一般正态分布\n\n因 $I > 0$ 故 $I = \\sqrt{\\pi}$。令 $x = \\frac{t - \\mu}{\\sqrt{2}\\sigma}$（$\\sigma > 0$），代入即证：\n\n$$\\int_{-\\infty}^{+\\infty} \\frac{1}{\\sqrt{2\\pi}\\sigma} e^{-\\frac{(t - \\mu)^2}{2\\sigma^2}} \\,dt = 1$$`;
-            } else if (isHtml) {
-              simR = `用户希望生成一段可直接预览的前端代码：「${cleanQ.slice(0, 36)}」。采用原生 HTML5 Canvas 编写零依赖粒子引力场，并附上关键实现要点。`;
-              simC = `${prefix}下面基于原生 **HTML5 Canvas** 实现了一个单文件粒子引力交互页面，可点击代码块右上角 **「▶ 右侧预览」** 查看实时运行效果：\n\n\`\`\`html\n<!DOCTYPE html>\n<html lang="zh-CN">\n<head><meta charset="UTF-8"><style>html,body{margin:0;height:100%;background:#0b1020;overflow:hidden}canvas{display:block;width:100%;height:100%}</style></head>\n<body><canvas id="c"></canvas><script>\nconst c=document.getElementById('c'),x=c.getContext('2d');let w,h,m={x:-999,y:-999,on:false};\nconst rs=()=>{w=c.width=innerWidth;h=c.height=innerHeight};addEventListener('resize',rs);rs();\nconst ps=Array.from({length:75},()=>({x:Math.random()*w,y:Math.random()*h,vx:(Math.random()-.5)*1.4,vy:(Math.random()-.5)*1.4}));\naddEventListener('pointermove',e=>{m.x=e.clientX;m.y=e.clientY;m.on=true});\n(function loop(){x.fillStyle='rgba(11,16,32,0.25)';x.fillRect(0,0,w,h);\nfor(let i=0;i<ps.length;i++){const p=ps[i];if(m.on){const dx=m.x-p.x,dy=m.y-p.y,d=Math.hypot(dx,dy);if(d<170&&d>5){p.vx+=dx/d*.08;p.vy+=dy/d*.08}}\np.vx*=.99;p.vy*=.99;p.x=(p.x+p.vx+w)%w;p.y=(p.y+p.vy+h)%h;x.fillStyle='#60a5fa';x.beginPath();x.arc(p.x,p.y,2,0,7);x.fill();\nfor(let j=i+1;j<ps.length;j++){const q=ps[j],d=Math.hypot(p.x-q.x,p.y-q.y);if(d<105){x.strokeStyle=\`rgba(77,107,254,\${1-d/105})\`;x.beginPath();x.moveTo(p.x,p.y);x.lineTo(q.x,q.y);x.stroke()}}}\nrequestAnimationFrame(loop)})();\n</script></body></html>\n\`\`\`\n\n---\n\n### 核心实现说明\n\n- **阻尼收敛**：每次更新施加 \`0.99\` 速度衰减系数，避免向心引力导致粒子无限加速；\n- **渐隐连线**：距离小于 \`105px\` 的粒子按距离比例线性映射连线透明度。`;
-            } else {
-              simR = `嗯，用户问的是：「${cleanQ.slice(0, 44)}」。\n让我先拆解一下这个问题的核心：与其罗列宽泛套话，不如先在首段直接给出定性判断，再分底层逻辑与分步落地建议两层讲透。`;
-              simC = `${prefix}关于 **「${cleanQ.slice(0, 36)}${cleanQ.length > 36 ? '…' : ''}」**，核心判断是：**解决此类问题的关键在于先厘清核心约束边界，抓住决定上限的主干变量，再通过最小闭环验证逐步迭代**。\n\n---\n\n### 一、核心机制与关键矛盾\n\n- **区分表象与根因**：实际执行中常见的卡点往往不在于工具或方法本身不够复杂，而在于前置目标优先级（效率、成本或稳健性）尚未对齐。\n- **收敛关键路径**：优先锁定影响全局结果的 1~2 个核心环节集中突破，避免在边缘细节上过早分散资源。\n\n### 二、分步落地建议\n\n1. **建立最小验证闭环**：剥离非必要附加项，用最小可运行方案快速跑通主链路并获取真实数据反馈；\n2. **排查边界与异常情况**：针对极端输入或资源受限场景补充兜底策略，确保方案稳定性。\n\n如果你可以补充具体的应用场景或手头遇到的卡点细节，我可以帮你进一步细化针对性方案。（也可在设置中填入个人 DeepSeek \`sk-...\` 密钥直连云端满血模型。）`;
-            }
-          } else {
-            const curAtts = Array.isArray(bodyObj.attachments) ? bodyObj.attachments : [];
-            const rp = buildDemoRoleplayResponse({
-              persona: p,
-              nickname: dbObj.user.nickname,
-              userText,
-              isProactive,
-              attachments: curAtts
+          // App 端「本地直连模式」：优先实时直连本地端口 / 云端反向隧道底座（不计 Token），离线断网时再平滑降级兜底
+          let remoteSuccess = false;
+          let remoteErrNotice = '';
+          const targetOrigin = getRemoteBackendOrigin();
+          try {
+            const rRes = await tryStreamRemoteLocalAntigravity({
+              origin: targetOrigin,
+              pathname,
+              sess,
+              sysPrompt,
+              normalizedHistory,
+              enableThink,
+              prefix,
+              bodyObj,
+              signal,
+              sendEvent
             });
-            simR = rp.reasoning;
-            simC = prefix + rp.content;
+            if (rRes && rRes.ok && (rRes.fullC.trim() || rRes.fullR.trim())) {
+              remoteSuccess = true;
+              fullR = rRes.fullR || '';
+              fullC = rRes.fullC || '';
+              remoteDonePayload = rRes.remoteDonePayload || null;
+              usage = null; // 本地直连严格零计费
+            }
+          } catch (remoteErr) {
+            if (signal?.aborted) throw remoteErr;
+            remoteErrNotice = String(remoteErr?.message || '远端与本地直连端口暂未响应');
           }
 
-          if (enableThink && simR) {
-            for (let i = 0; i < simR.length; i += 3) {
-              const d = simR.slice(i, i + 3);
-              fullR += d;
-              sendEvent('reasoning', { delta: d });
-              await new Promise((r) => setTimeout(r, 15));
+          if (!remoteSuccess) {
+            let simR = '';
+            let simC = '';
+            if (isPure) {
+              const cleanQ = String(userText || '').trim();
+              const isGreet = /^(你好|您好|嗨|hi|hello|在吗|你是谁|你是什么模型|介绍一下你自己)[！!？?。.~～\s]*$/i.test(cleanQ);
+              const isMath = /数学|公式|积分|导数|方程|证明|正态分布|高斯/i.test(cleanQ);
+              const isHtml = /html|canvas|粒子|网页|svg|前端|动画/i.test(cleanQ);
+              const curAtts = Array.isArray(bodyObj.attachments) ? bodyObj.attachments : [];
+
+              if (curAtts.length > 0) {
+                const firstAtt = curAtts[0];
+                const previewText = String(firstAtt.content || '').trim().slice(0, 800);
+                simR = `已收到并解析用户上传的 ${curAtts.length} 份附件（首份：${firstAtt.name}，共 ${previewText.length} 字符摘录）。现在按结构化要点提炼并响应用户需求。`;
+                simC = `${prefix}已读取你上传的 **${curAtts.map((a) => a.name).join('、')}**。\n\n---\n\n### 提取内容概览\n\n${
+                  firstAtt.is_image
+                    ? `- **图像信息**：${firstAtt.name}（${firstAtt.dimensions || '已压缩'}），当前处于离线兜底环境。`
+                    : `\`\`\`text\n${previewText || '（该文件暂无可提取纯文本内容）'}\n\`\`\``
+                }`;
+              } else if (isProactive) {
+                simR = `嗯，当前对话暂未继续输入，我可以用平实简洁的口吻打个招呼，提供几个清晰具体的切入方向。`;
+                simC = `你好，我是 **DeepSeek**。如果暂时还没定好从哪切入，可以直接把你的问题发出来。`;
+              } else if (isGreet) {
+                simR = `用户在打招呼或询问我的身份：「${cleanQ}」。保持简洁真诚，自然回应即可。`;
+                simC = `${prefix}你好！我是 **DeepSeek**，今天想先聊些什么？`;
+              } else if (isMath) {
+                simR = `用户希望推导数理公式：「${cleanQ.slice(0, 36)}」。`;
+                simC = `${prefix}无穷区间上的标准高斯积分闭式解为 $\\int_{-\\infty}^{+\\infty} e^{-x^2} dx = \\sqrt{\\pi}$，由此可得正态分布密度函数的归一化系数 $\\frac{1}{\\sqrt{2\\pi}\\sigma}$。`;
+              } else if (isHtml) {
+                simR = `用户希望生成一段前端动画代码：「${cleanQ.slice(0, 36)}」。`;
+                simC = `${prefix}下面基于原生 **HTML5 Canvas** 实现了一个单文件粒子引力交互页面，可点击代码块右上角 **「▶ 右侧预览」** 查看实时运行效果：\n\n\`\`\`html\n<!DOCTYPE html>\n<html lang="zh-CN">\n<head><meta charset="UTF-8"><style>html,body{margin:0;height:100%;background:#0b1020;overflow:hidden}canvas{display:block;width:100%;height:100%}</style></head>\n<body><canvas id="c"></canvas><script>\nconst c=document.getElementById('c'),x=c.getContext('2d');let w,h,m={x:-999,y:-999,on:false};\nconst rs=()=>{w=c.width=innerWidth;h=c.height=innerHeight};addEventListener('resize',rs);rs();\nconst ps=Array.from({length:75},()=>({x:Math.random()*w,y:Math.random()*h,vx:(Math.random()-.5)*1.4,vy:(Math.random()-.5)*1.4}));\naddEventListener('pointermove',e=>{m.x=e.clientX;m.y=e.clientY;m.on=true});\n(function loop(){x.fillStyle='rgba(11,16,32,0.25)';x.fillRect(0,0,w,h);\nfor(let i=0;i<ps.length;i++){const p=ps[i];if(m.on){const dx=m.x-p.x,dy=m.y-p.y,d=Math.hypot(dx,dy);if(d<170&&d>5){p.vx+=dx/d*.08;p.vy+=dy/d*.08}}\np.vx*=.99;p.vy*=.99;p.x=(p.x+p.vx+w)%w;p.y=(p.y+p.vy+h)%h;x.fillStyle='#60a5fa';x.beginPath();x.arc(p.x,p.y,2,0,7);x.fill();\nfor(let j=i+1;j<ps.length;j++){const q=ps[j],d=Math.hypot(p.x-q.x,p.y-q.y);if(d<105){x.strokeStyle=\`rgba(77,107,254,\${1-d/105})\`;x.beginPath();x.moveTo(p.x,p.y);x.lineTo(q.x,q.y);x.stroke()}}}\nrequestAnimationFrame(loop)})();\n</script></body></html>\n\`\`\``;
+              } else {
+                simR = `当前未能连接至本地直连后端（${remoteErrNotice || targetOrigin}），已切换离线兜底回应。`;
+                simC = `${prefix}暂未连上本地直连后端（\`${targetOrigin}\`${remoteErrNotice ? `：${remoteErrNotice}` : ''}）。请检查手机联网或电脑端隧道服务是否已开启，或前往「设置 → 本地直连」检测端口；你也可以切换为 DeepSeek API / 云端自定义 API 继续对话。`;
+              }
+            } else {
+              const curAtts = Array.isArray(bodyObj.attachments) ? bodyObj.attachments : [];
+              const rp = buildDemoRoleplayResponse({
+                persona: p,
+                nickname: dbObj.user.nickname,
+                userText,
+                isProactive,
+                attachments: curAtts
+              });
+              simR = rp.reasoning;
+              simC = prefix + rp.content;
             }
+
+            if (enableThink && simR) {
+              for (let i = 0; i < simR.length; i += 3) {
+                const d = simR.slice(i, i + 3);
+                fullR += d;
+                sendEvent('reasoning', { delta: d });
+                await new Promise((r) => setTimeout(r, 15));
+              }
+            }
+            for (let i = 0; i < simC.length; i += 4) {
+              const d = simC.slice(i, i + 4);
+              fullC += d;
+              sendEvent('content', { delta: d });
+              await new Promise((r) => setTimeout(r, 14));
+            }
+            usage = null;
           }
-          for (let i = 0; i < simC.length; i += 4) {
-            const d = simC.slice(i, i + 4);
-            fullC += d;
-            sendEvent('content', { delta: d });
-            await new Promise((r) => setTimeout(r, 14));
-          }
-          usage = { prompt_cache_hit_tokens: 256, prompt_cache_miss_tokens: 64, reasoning_tokens: 48 };
         }
 
         const dur = Date.now() - t0;
         const wantFollowUps = bodyObj.include_follow_ups !== false;
-        let dynFollowUps = [];
-        if (wantFollowUps) {
+        let dynFollowUps = Array.isArray(remoteDonePayload?.meta?.follow_ups) ? remoteDonePayload.meta.follow_ups : [];
+        if (wantFollowUps && dynFollowUps.length === 0) {
           if (apiKey) {
-            const ep = resolveEndpoints(dbObj.settings.deepseek_base_url);
+            const rawOvUrl = modeApiOv?.provider === 'custom_cloud'
+              ? (modeApiOv.base_url || 'https://api.siliconflow.cn/v1/chat/completions')
+              : 'https://api.deepseek.com/v1/chat/completions';
+            const ep = resolveEndpoints(rawOvUrl);
+            const savedModel = String(modeApiOv?.model || '').trim();
+            const fuModel = ep.chatUrl.includes('deepseek.com')
+              ? 'deepseek-chat'
+              : ((savedModel && savedModel !== 'deepseek-flash') ? savedModel : 'deepseek-chat');
             dynFollowUps = await generateDynamicFollowUpsOnline({
               apiKey,
               baseUrl: ep.chatUrl,
-              model: (dbObj.settings.deepseek_model || 'deepseek-chat').trim(),
+              model: fuModel,
               isPure,
               persona: p,
               nickname: dbObj.user.nickname,
@@ -2908,51 +3301,107 @@
       const mergedHeaders = new Headers(init?.headers || {});
       if (standaloneActive) {
         const q = urlStr.includes('?') ? urlStr.slice(urlStr.indexOf('?')) : '';
-        return originalFetch(`https://star.claudexxb.online${pathname}${q}`, {
-          method: (init.method || 'GET').toUpperCase(),
-          headers: mergedHeaders,
-          cache: 'no-store',
-          signal: init.signal
-        });
+        const remoteBase = getRemoteBackendOrigin();
+        const verOrigin = isBridgeGatewayOrigin(remoteBase) ? REMOTE_DEFAULT_ORIGIN : remoteBase;
+        try {
+          const resp = await originalFetch(`${verOrigin}${pathname}${q}`, {
+            method: (init.method || 'GET').toUpperCase(),
+            headers: mergedHeaders,
+            cache: 'no-store',
+            signal: init.signal
+          });
+          if (resp.ok || verOrigin === REMOTE_DEFAULT_ORIGIN) return resp;
+        } catch (err) {
+          if (verOrigin !== REMOTE_DEFAULT_ORIGIN) {
+            return originalFetch(`${REMOTE_DEFAULT_ORIGIN}${pathname}${q}`, {
+              method: (init.method || 'GET').toUpperCase(),
+              headers: mergedHeaders,
+              cache: 'no-store',
+              signal: init.signal
+            });
+          }
+          throw err;
+        }
       }
       return originalFetch(input, { ...init, headers: mergedHeaders, cache: 'no-store' });
     }
 
-    if (standaloneActive && (pathname.startsWith('/api/auth/') || pathname === '/api/announcement' || pathname === '/api/phone-agent/plan' || pathname === '/api/deepseek/check-balance' || pathname === '/api/cloud/models')) {
+    if (standaloneActive && (pathname.startsWith('/api/auth/') || pathname === '/api/announcement' || pathname === '/api/antigravity/status' || pathname === '/api/phone-agent/plan' || pathname === '/api/deepseek/check-balance' || pathname === '/api/cloud/models')) {
       try {
-        const remoteUrl = `https://star.claudexxb.online${pathname}${urlStr.includes('?') ? urlStr.slice(urlStr.indexOf('?')) : ''}`;
+        const remoteBase = getRemoteBackendOrigin();
+        const q = urlStr.includes('?') ? urlStr.slice(urlStr.indexOf('?')) : '';
         const mergedHeaders = new Headers(init?.headers || {});
-        const tok = window.__starAuthStore?.getToken();
-        if (tok && !mergedHeaders.has('Authorization')) {
+        const tok = window.__starAuthStore?.getToken?.();
+        if (tok && tok !== 'standalone_demo_token' && !mergedHeaders.has('Authorization')) {
           mergedHeaders.set('Authorization', `Bearer ${tok}`);
         }
-        const resp = await originalFetch(remoteUrl, {
-          ...init,
-          headers: mergedHeaders,
-          cache: 'no-store'
-        });
-        if (pathname === '/api/phone-agent/plan' || pathname === '/api/deepseek/check-balance' || pathname === '/api/cloud/models') {
-          return resp;
+        const activeUserId = window.__starAuthStore?.getActiveUserId?.() || '';
+        if (activeUserId && !pathname.startsWith('/api/auth/') && !mergedHeaders.has('X-Expected-User-Id')) {
+          mergedHeaders.set('X-Expected-User-Id', String(activeUserId));
         }
-        if (resp.ok) {
-          const clone = resp.clone();
-          const data = await clone.json().catch(() => null);
-          if (data && data.user) {
-            const dbObj = loadLocalDb();
-            dbObj.user = Object.assign(dbObj.user || {}, data.user);
-            if (data.user.nickname) dbObj.user.nickname = data.user.nickname;
-            saveLocalDb(dbObj);
-            if (data.token) {
-              window.__starAuthStore?.setToken(data.token, true);
+
+        if (pathname === '/api/antigravity/status' && isBridgeGatewayOrigin(remoteBase)) {
+          const healthResp = await originalFetch(`${remoteBase}/health`, {
+            method: 'GET',
+            cache: 'no-store',
+            signal: init.signal
+          });
+          if (healthResp.ok) {
+            const hData = await healthResp.json().catch(() => ({}));
+            return new Response(JSON.stringify({
+              available: hData?.available !== false,
+              transport: 'direct_local_port_18765',
+              provider: 'local_antigravity',
+              name: '本机 Antigravity 网关直连',
+              version: 'DeepSeek-V4.1-Flash (18765 端口)',
+              defaultModel: 'DeepSeek-V4.1-Flash',
+              models: [{ id: 'DeepSeek-V4.1-Flash', name: 'DeepSeek-V4.1-Flash · 深度思考' }]
+            }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+          }
+        } else {
+          const isCloudOnlyPath = pathname === '/api/phone-agent/plan' || pathname === '/api/deepseek/check-balance' || pathname === '/api/cloud/models';
+          const targetOrigin = isBridgeGatewayOrigin(remoteBase)
+            ? REMOTE_DEFAULT_ORIGIN
+            : remoteBase;
+          let resp = await originalFetch(`${targetOrigin}${pathname}${q}`, {
+            ...init,
+            headers: mergedHeaders,
+            cache: 'no-store'
+          }).catch(async (err) => {
+            if (isCloudOnlyPath && targetOrigin !== REMOTE_DEFAULT_ORIGIN) {
+              return originalFetch(`${REMOTE_DEFAULT_ORIGIN}${pathname}${q}`, {
+                ...init,
+                headers: mergedHeaders,
+                cache: 'no-store'
+              });
             }
-            if (window.AndroidAppBridge && typeof window.AndroidAppBridge.saveAuthCredentials === 'function') {
-              window.AndroidAppBridge.saveAuthCredentials(data.token || tok || '', JSON.stringify(data.user));
+            throw err;
+          });
+          if (isCloudOnlyPath || pathname === '/api/antigravity/status') {
+            if (resp && (resp.ok || isCloudOnlyPath)) {
+              return resp;
             }
           }
-          return resp;
+          if (resp && resp.ok) {
+            const clone = resp.clone();
+            const data = await clone.json().catch(() => null);
+            if (data && data.user) {
+              const dbObj = loadLocalDb();
+              dbObj.user = Object.assign(dbObj.user || {}, data.user);
+              if (data.user.nickname) dbObj.user.nickname = data.user.nickname;
+              saveLocalDb(dbObj);
+              if (data.token) {
+                window.__starAuthStore?.setToken(data.token, true);
+              }
+              if (window.AndroidAppBridge && typeof window.AndroidAppBridge.saveAuthCredentials === 'function') {
+                window.AndroidAppBridge.saveAuthCredentials(data.token || tok || '', JSON.stringify(data.user));
+              }
+            }
+            return resp;
+          }
         }
       } catch (e) {
-        // 网络不可达时平滑回退至本地单机模式
+        // 网络或本地端口不可达时平滑回退至本地单机引擎
       }
     }
 
@@ -2997,5 +3446,14 @@
       rawBody: init?.body,
       headers: init?.headers
     });
+  };
+
+  window.__STAR_STANDALONE_HOOKS__ = {
+    getRemoteBackendOrigin,
+    isBridgeGatewayOrigin,
+    readStreamBodyWithReader,
+    ensureRemoteAuthToken,
+    ensureRemoteSession,
+    tryStreamRemoteLocalAntigravity
   };
 })();

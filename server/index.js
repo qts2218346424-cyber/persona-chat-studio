@@ -270,7 +270,11 @@ function sanitizeCustomImageInput(rawImg) {
 }
 
 function compressAndSendJsonBuf(res, statusCode, rawBuf, headers) {
-  const hasExplicitEncoding = Object.keys(headers).some(
+  const mergedHeaders = {
+    ...(res._apiCorsHeaders || {}),
+    ...headers
+  };
+  const hasExplicitEncoding = Object.keys(mergedHeaders).some(
     (k) => k.toLowerCase() === 'content-encoding'
   );
   let outBuf = rawBuf;
@@ -280,14 +284,14 @@ function compressAndSendJsonBuf(res, statusCode, rawBuf, headers) {
       outBuf = zlib.brotliCompressSync(rawBuf, {
         params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 4 }
       });
-      headers['Content-Encoding'] = 'br';
+      mergedHeaders['Content-Encoding'] = 'br';
     } else if (/\bgzip\b/i.test(acceptEncoding)) {
       outBuf = zlib.gzipSync(rawBuf, { level: 6 });
-      headers['Content-Encoding'] = 'gzip';
+      mergedHeaders['Content-Encoding'] = 'gzip';
     }
   }
-  headers['Content-Length'] = outBuf.length;
-  res.writeHead(statusCode, headers);
+  mergedHeaders['Content-Length'] = outBuf.length;
+  res.writeHead(statusCode, mergedHeaders);
   if (res._reqMethod === 'HEAD') {
     res.end();
     return;
@@ -302,6 +306,7 @@ function sendJson(res, statusCode, payload, extraHeaders = {}) {
     'Cache-Control': 'no-store',
     'Vary': 'Accept-Encoding',
     ...SECURITY_HEADERS,
+    ...(res._apiCorsHeaders || {}),
     ...extraHeaders
   };
   compressAndSendJsonBuf(res, statusCode, rawBuf, headers);
@@ -333,6 +338,7 @@ function sendJsonCached(
     'Cache-Control': cacheControl,
     'Vary': vary,
     ...SECURITY_HEADERS,
+    ...(res._apiCorsHeaders || {}),
     ...extraHeaders
   };
 
@@ -656,8 +662,8 @@ function extractAuthToken(req, parsedUrl = null) {
   return '';
 }
 
-const APP_LATEST_VERSION = '2.7.6';
-const APP_LATEST_VERSION_CODE = 167;
+const APP_LATEST_VERSION = '2.7.7';
+const APP_LATEST_VERSION_CODE = 168;
 const APP_OFFICIAL_CERT_SHA256 = '6fd05e32a3cabf327140129d866e55a342fe30daa3384c67aad4b3cbdd98a17b';
 const APP_UPDATE_TICKET_SECRET = crypto
   .createHash('sha256')
@@ -752,6 +758,13 @@ const VOICE_CORS_HEADERS = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Expected-User-Id',
   'Access-Control-Expose-Headers': 'X-Voice-Id, X-Tts-Engine'
+};
+
+const APP_API_CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Expected-User-Id, Range, X-Requested-With, If-None-Match, X-File-Name, X-File-Mime',
+  'Access-Control-Expose-Headers': 'Content-Length, Content-Range, Content-Disposition, X-APK-SHA256, ETag, X-Voice-Id, X-Tts-Engine'
 };
 
 const voiceGuestHits = new Map();
@@ -891,6 +904,15 @@ async function handleVoiceApi(req, res, pathname, currentUser) {
 
 async function handleApi(req, res, pathname, parsedUrl) {
   const method = req.method || 'GET';
+  res._apiCorsHeaders = APP_API_CORS_HEADERS;
+  if (method === 'OPTIONS') {
+    res.writeHead(204, {
+      ...APP_API_CORS_HEADERS,
+      ...SECURITY_HEADERS
+    });
+    res.end();
+    return;
+  }
   const currentToken = extractAuthToken(req, parsedUrl);
   const currentUser = getUserByToken(currentToken);
 
@@ -955,6 +977,7 @@ async function handleApi(req, res, pathname, parsedUrl) {
       forceUpdate,
       diffGenerations,
       changelog: [
+        '【本地直连彻底免计费 + App 端直连/本地端口跨源聊天全面修复（v2.7.7）】严格隔离本地直连通道（local_antigravity）与 DeepSeek 计费监控插件：本地直连与离线兜底均不计算 Token/费用且不展示额度胶囊；服务端与本机 Bridge 网关（18765）全面放开跨源预检与 Bearer 鉴权头，App 端独立适配层接入远程主干与「手机设置-本地直连自定义后端端口」双向直连并兼容 Android WebView SSE 流式读取。',
         '【DeepSeek 官方直连免填地址 + 云端 API 独立配置密钥地址与模型拉取（v2.7.6）】DeepSeek API 模式精简为官方直连，只需填 Key 并默认使用 deepseek-v4.1-flash 无需填接口地址；云端 API 抽屉新增「服务商预设 + 接口地址 Base URL + 云端 API Key + 自动/手动拉取可用模型 + 测试保存」完整能力',
         '【修复手机辅助默认模型分离与自动迁移（v2.7.5）】严格隔离 DeepSeek API 与云端 API 表单面板，DeepSeek API 自动迁移并默认锁定 deepseek-v4.1-flash；云端 API 恢复“云端智能默认（自动拉取适配）”并随打开/切换实时从 /v1/models 自动拉取可用模型列表，不再错把 V4.1 Flash 覆盖给云端 API',
         '【卡顿主动问询防循环 + 新手指引 + 本地强对话 + V4.1 Flash 默认与计费监测（v2.7.4）】DeepSeek API 默认使用 V4.1 Flash；云端 API 支持下拉选模型；新增实时 Token/费用/余额计费插件；遇连续2步卡顿/报错/往返循环时主动弹窗请用户给指示；新增3步交互式无障碍与悬浮窗新手指引向导',
@@ -2153,7 +2176,7 @@ async function handleApi(req, res, pathname, parsedUrl) {
               { role: 'user', content: preUserMsg }
             ],
             temperature: 0.2,
-            max_tokens: 512,
+            max_tokens: 320,
             stream: false
           };
           if (cand.url.includes('deepseek.com')) {
@@ -2163,7 +2186,7 @@ async function handleApi(req, res, pathname, parsedUrl) {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', ...cand.headers },
             body: JSON.stringify(payload),
-            signal: AbortSignal.timeout(10000)
+            signal: AbortSignal.timeout(6000)
           });
           if (!resp.ok) {
             const errTxt = await resp.text().catch(() => '');
@@ -2183,38 +2206,37 @@ async function handleApi(req, res, pathname, parsedUrl) {
     }
 
     const sysPrompt = [
-      '你是星语手机辅助代理（Phone Agent · dsh-Go 规划内核）。',
-      '你的职责是根据用户的目标任务、当前手机屏幕快照（含元素 ref 编号）、上一步 ScreenVerdict 验证结果、用户中途插话以及历史步骤，输出“下一步唯一且精确”的动作指令。',
-      `当前设备屏幕分辨率为 ${screenSize.width}x${screenSize.height}。`,
-      '你只能输出一个严格合法的 JSON 对象（不要用 Markdown 代码块包裹，也不要附加前后任何解释文字），格式如下：',
-      '{"thought":"清晰自然的中文思考推理(30~110字，简述看到了什么、分析判断与决策原因)","tool":"工具名","args":{},"summary":"面向用户的中文简述(<=28字)","risk":"read|write|sensitive","reply":"在 chat / done / ask_user 时填写自然友好的中文回复"}',
-      '可用 tool 及对应 args 规范（dsh-Go PhoneToolCatalog）：',
-      '- chat: {"message":"无需操作手机，直接用自然友好的中文对话回答用户问题或讨论方案"}',
-      '- phone_open: {"appName":"应用名称，优先参考已安装应用列表"}',
-      '- phone_tap: {"ref":"元素编号如e12","snapshotId":"当前快照ID"}  （点击页面控件首选！）',
-      '- phone_tap_xy: {"x":像素X,"y":像素Y}  （仅当控件树未暴露目标或自绘控件时使用）',
-      '- phone_double_tap: {"x":像素X,"y":像素Y}',
-      '- phone_long_press: {"ref":"e12","duration":700} 或 {"x":像素X,"y":像素Y,"duration":700}',
-      '- phone_type: {"ref":"可选输入框ref","text":"要输入的文本","clear":false,"submit":true}',
+      '你是星语手机辅助代理（Phone Agent · dsh-Go 规划内核），需结合目标任务、屏幕快照(ref)、ScreenVerdict 与历史步骤输出唯一精确的下一步动作。',
+      `屏幕分辨率: ${screenSize.width}x${screenSize.height}。`,
+      '仅输出严格合法 JSON（禁止 Markdown 代码块或多余文字），将 tool 与 args 放在最前面以加速响应：',
+      '{"tool":"工具名","args":{},"thought":"简短中文判断(<=30字)","summary":"简述(<=16字)","risk":"read|write|sensitive","reply":"chat/done/ask_user时的中文回复"}',
+      '可用 tool 及 args：',
+      '- chat: {"message":"无需操作手机，直接对话回答"}',
+      '- phone_open: {"appName":"应用名称"}',
+      '- phone_tap: {"ref":"e12","snapshotId":"当前快照ID"}  （首选控件点击）',
+      '- phone_tap_xy: {"x":X,"y":Y}  （仅无控件/自绘控件使用）',
+      '- phone_double_tap: {"x":X,"y":Y}',
+      '- phone_long_press: {"ref":"e12","duration":650} 或 {"x":X,"y":Y,"duration":650}',
+      '- phone_type: {"ref":"输入框ref","text":"文本","clear":false,"submit":true}',
       '- phone_scroll: {"direction":"down|up|left|right","amount":0.65}',
-      '- phone_swipe: {"x1":起点X,"y1":起点Y,"x2":终点X,"y2":终点Y,"duration":320}',
+      '- phone_swipe: {"x1":X1,"y1":Y1,"x2":X2,"y2":Y2,"duration":240}',
       '- phone_key: {"key":"back|home|recents|notifications|quick_settings|enter|screenshot"}',
-      '- phone_wait: {"ms":1000}',
-      '- ask_user: {"message":"需要向用户追问澄清、确认选择或请求手动操作的清晰问题","reason":"clarify|confirm|sensitive|manual","options":["可选快捷选项1","可选快捷选项2"]}',
-      '- done: {"message":"清晰自然的中文完成总结，汇报查到的信息或操作结果"}',
-      '关键约束：',
-      '0. 自由对话优先识别：若用户是在打招呼、闲聊、询问原理/题目思路、讨论方案、询问你能做什么、或仅针对屏幕内容提问而无需点击/打开手机时，直接返回 tool="chat"，用 reply 给出完整有温度的回答，严禁瞎点手机！',
-      '0.5 模糊/不确定主动问清楚（关键！）：当用户指令缺少关键信息（如未指定发给谁/发什么内容/买哪款/选哪个规格、多选拿不准、当前界面有多个同名目标或即将执行重要提交/删除/付款）时，严禁瞎猜乱点！必须立即返回 tool="ask_user"，在 reply 中礼貌问清楚具体需求，并尽可能在 args.options 中提供 2~4 个简短清晰的快捷选项。',
-      '1. 优先用 phone_open 打开目标应用；点击屏幕元素时优先使用 phone_tap 并携带准确 ref 与 snapshotId，避免盲猜坐标。',
-      '2. 防卡死与防死循环铁律：严禁连续 2 步返回 phone_wait！仔细检查 screenVerdict 与 loopDiagnostics：若 noChangeStreak >= 1 或 errorStreak >= 1，必须立即更换完全不同的控件/坐标/路径，禁止死磕同一个操作；若 blockedActions 非空，严禁再输出列表中已失效的动作；若 oscillationDetected=true 或无法把握下一步，优先返回 ask_user 主动向用户请示指示。',
-      '2.5 遮挡弹窗清理：若页面被开屏广告、版本更新、权限引导或好评弹窗遮挡，优先点击“跳过/取消/以后再说/暂不更新/知道了/关闭”等按钮清理遮挡后再继续主任务。',
-      '3. 若同一屏幕上已同时清晰可见 2~3 个明确无歧义的连贯操作（例如学习答题时“先选中答案选项 + 再点击下一题/提交”），可在标准字段外额外附带 `"actions":[{"tool":"phone_tap","args":{"ref":"e10"}},{"tool":"phone_tap","args":{"ref":"e24"}}]`（最多 3 个同屏非敏感微动作），否则只输出单动作。',
-      '4. 严禁操作控制端自身（packageName="com.deepseek.starwhisper.studio"）或在其聊天框打字；当用户说“继续写作业/继续答题”且未明确指定打开 DeepSeek 时，禁止打开 DeepSeek 应用，优先切回 lastExternalApp 或在目标学习软件内操作。',
-      '5. screenTreeText 中每一行 `R1: ... | ...` 代表屏幕同一水平行的元素。做选择题时必须严格核对同一行的字母与右侧文字，带有 (sel) 或 (chk) 表示已选中，若已选对直接点“下一题”，严禁张冠李戴改错答案！',
-      '6. 连续多题/多页任务铁律：当任务属于连续流程（如“写作业/继续写作业/答题/刷题/完成练习”）时，只要屏幕上还存在“下一题”按钮、或题号进度（如 3/5、12/20）未达最后且未出现“提交成功/练习完成/得分”页面，严禁做完一题就返回 done！必须持续作答并点击“下一题”，一口气把整套题全部做完，直到全部完成或出现最终交卷/结算页才返回 done（或在需要人工确认最终交卷时返回 ask_user）。',
-      '7. 若 interjections 非空（用户在执行中途插话或纠偏），必须最高优先级立即响应用户最新插话要求。',
-      '8. 若 hasSensitiveField=true（密码框/支付收银台/验证码）或即将执行付款、转账、下单、发红包、删除、卸载、发送对外消息/评论等高风险动作，必须将 risk 设为 "sensitive"；遇到支付密码/短信验证码/刷脸确认时，直接返回 ask_user 交还人类操作。',
-      '9. 若处于网页预览模式（无真实屏幕节点，screenNodes 为空且无 screenTreeText），可直接给出逻辑演示并在最后一步返回 done。'
+      '- phone_wait: {"ms":600}',
+      '- ask_user: {"message":"向用户确认/追问的问题","reason":"clarify|confirm|sensitive|manual","options":["选项1","选项2"]}',
+      '- done: {"message":"中文完成总结"}',
+      '关键规则：',
+      '0. 闲聊/提问/只读屏幕问答直接返回 tool="chat"，严禁瞎点。',
+      '0.5 缺收件人/内容/规格等关键参数或重要提交/删除/付款时，严禁瞎猜，立即返回 ask_user 并给 2~4 个快捷 options。',
+      '1. 打开应用首选 phone_open；点控件首选 phone_tap(ref, snapshotId)。',
+      '2. 防卡死铁律：严禁连续 2 步 phone_wait；若 noChangeStreak>=1、errorStreak>=1 或 blockedActions 非空，必须立刻换控件/坐标/路径，禁止重复失效动作；oscillationDetected=true 时立即换路、back 或 ask_user。',
+      '2.5 遇开屏广告/更新/权限弹窗，优先点击跳过/关闭/以后再说清理。',
+      '3. 同屏明确无歧义的 2~3 个连贯非敏感微动作（如先选答案再点下一题）可附带 `"actions":[{"tool":"phone_tap","args":{"ref":"e10"}},{"tool":"phone_tap","args":{"ref":"e24"}}]`。',
+      '4. 严禁操作控制端自身(packageName="com.deepseek.starwhisper.studio")；说“继续写作业/答题”且未提 DeepSeek 时切回 lastExternalApp。',
+      '5. screenTreeText 每行 `R1: ... | ...` 为同一水平行；做题须核对同行字母与文字，带 (sel)/(chk) 表示已选中，已选对直接点“下一题”。',
+      '6. 连续做题/多页任务只要还有“下一题”或题号未达最后且未出现得分/提交成功页，严禁提前 done，须连贯做完。',
+      '7. interjections 非空时最高优先级响应用户插话。',
+      '8. hasSensitiveField=true 或付款/转账/下单/删除/密码/验证码设 risk="sensitive"，密码/验证码/刷脸直接 ask_user 交还人工。',
+      '9. 无真实节点(网页预览)直接推演并在最后返回 done。'
     ].join('\n');
 
     const compactNodes = screenNodes.map((n, idx) => ({
@@ -2231,10 +2253,11 @@ async function handleApi(req, res, pathname, parsedUrl) {
     }));
 
     const userPayload = {
+      selfPackageName: 'com.deepseek.starwhisper.studio',
+      installedAppsPreview: installedApps.map((a) => (typeof a === 'string' ? a : a.name)).slice(0, 40),
+      lastExternalApp: body.lastExternalApp && typeof body.lastExternalApp === 'object' ? body.lastExternalApp : null,
       task,
       stepIndex: Number(body.stepIndex) > 0 ? Number(body.stepIndex) : historySteps.length + 1,
-      selfPackageName: 'com.deepseek.starwhisper.studio',
-      lastExternalApp: body.lastExternalApp && typeof body.lastExternalApp === 'object' ? body.lastExternalApp : null,
       snapshotId,
       foregroundApp,
       packageName,
@@ -2243,17 +2266,15 @@ async function handleApi(req, res, pathname, parsedUrl) {
       screenVerdict,
       loopDiagnostics,
       interjections,
-      conversationMemory: Array.isArray(body.conversationMemory) ? body.conversationMemory.slice(-6) : [],
-      recentHistory: historySteps.map((h) => ({
+      conversationMemory: Array.isArray(body.conversationMemory) ? body.conversationMemory.slice(-4) : [],
+      recentHistory: historySteps.slice(-6).map((h) => ({
         step: h.step,
         tool: h.tool || h.action,
         args: h.argsSummary || '',
-        summary: h.summary,
         result: h.result,
         changed: h.changed === undefined ? null : Boolean(h.changed),
         page: h.page || ''
-      })),
-      installedAppsPreview: installedApps.map((a) => (typeof a === 'string' ? a : a.name)).slice(0, 40)
+      }))
     };
     if (screenTreeText) {
       userPayload.screenTreeText = screenTreeText;
@@ -2365,12 +2386,12 @@ async function handleApi(req, res, pathname, parsedUrl) {
             headers: { 'Content-Type': 'application/json', ...cand.headers },
             body: JSON.stringify({
               model: cand.model,
-              max_tokens: 1024,
+              max_tokens: 450,
               temperature: 0.15,
               system: sysPrompt,
               messages: [{ role: 'user', content: userMsg }]
             }),
-            signal: AbortSignal.timeout(25000)
+            signal: AbortSignal.timeout(16000)
           });
           if (!resp.ok) {
             lastErr = `上游网关 (${resp.status})`;
@@ -2397,7 +2418,7 @@ async function handleApi(req, res, pathname, parsedUrl) {
             model: modelToUse,
             messages: msgs,
             temperature: useReasoner ? 0.2 : 0.15,
-            max_tokens: useReasoner ? 2048 : 1024,
+            max_tokens: useReasoner ? 2048 : 450,
             stream: false
           };
           if (allowJsonFormat && !useReasoner && cand.url.includes('deepseek.com')) {
@@ -2407,7 +2428,7 @@ async function handleApi(req, res, pathname, parsedUrl) {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', ...cand.headers },
             body: JSON.stringify(payload),
-            signal: AbortSignal.timeout(20000)
+            signal: AbortSignal.timeout(14000)
           });
           if (!resp.ok) {
             const errTxt = await resp.text().catch(() => '');
@@ -5382,7 +5403,8 @@ async function handleApi(req, res, pathname, parsedUrl) {
       'Cache-Control': 'no-cache, no-transform',
       Connection: 'keep-alive',
       'X-Accel-Buffering': 'no',
-      ...SECURITY_HEADERS
+      ...SECURITY_HEADERS,
+      ...(res._apiCorsHeaders || {})
     });
 
     const sendEvent = (event, data) => {
@@ -5939,7 +5961,8 @@ async function handleApi(req, res, pathname, parsedUrl) {
       'Cache-Control': 'no-cache, no-transform',
       Connection: 'keep-alive',
       'X-Accel-Buffering': 'no',
-      ...SECURITY_HEADERS
+      ...SECURITY_HEADERS,
+      ...(res._apiCorsHeaders || {})
     });
 
     const sendEvent = (event, data) => {

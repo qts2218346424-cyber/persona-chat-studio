@@ -648,7 +648,11 @@
 
   function recordTurnUsage({ usage, model = '', source = '对话', apiKey = '', baseUrl = '', provider = '' } = {}) {
     if (!usage || typeof usage !== 'object') return null;
-    if (provider === 'custom_cloud' || provider === 'api_cloud' || provider === 'local' || provider === 'local_antigravity') {
+    const cleanProv = String(provider || '').trim().toLowerCase();
+    if (cleanProv === 'custom_cloud' || cleanProv === 'api_cloud' || cleanProv === 'local' || cleanProv === 'local_antigravity' || cleanProv === 'demo') {
+      return null;
+    }
+    if (!monitorState.enabled && cleanProv !== 'own_deepseek') {
       return null;
     }
     const lowerBase = String(baseUrl || '').trim().toLowerCase();
@@ -751,11 +755,15 @@
     }
   }
 
-  function syncFromHost({ settings, messages, forceBalanceRefresh = false } = {}) {
-    const isUsingDeepSeek = Boolean(settings && settings.provider === 'own_deepseek');
+  function syncFromHost({ scopeProvider, settings, messages, forceBalanceRefresh = false } = {}) {
+    const prov = String(scopeProvider || settings?.provider || '').trim().toLowerCase();
+    const isUsingDeepSeek = prov === 'own_deepseek';
     const prevEnabled = monitorState.enabled;
     monitorState.enabled = isUsingDeepSeek;
-    if (settings?.own_deepseek_model) {
+    if (!isUsingDeepSeek) {
+      monitorState.phoneAgentAuth = { apiKey: '', baseUrl: '', execMode: '' };
+    }
+    if (isUsingDeepSeek && settings?.own_deepseek_model) {
       monitorState.model = settings.own_deepseek_model;
     }
     monitorState.providerLabel = 'DeepSeek 官方 API';

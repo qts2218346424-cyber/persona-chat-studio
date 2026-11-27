@@ -13,6 +13,8 @@ import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.provider.OpenableColumns;
 import android.provider.Settings;
 import android.util.DisplayMetrics;
@@ -35,15 +37,27 @@ import android.widget.Toast;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.zip.GZIPInputStream;
 
 /**
  * DeepSeek 原生极简模式 × 星语恋庭双模 Android 原生宿主容器
@@ -70,6 +84,11 @@ public class MainActivity extends Activity {
     private long lastBackPressMs = 0L;
     private String pendingAgentTaskFromFloat = null;
     private boolean webPageReady = false;
+    private final ExecutorService httpExecutor = Executors.newFixedThreadPool(4);
+    private final Handler nativeTimerHandler = new Handler(Looper.getMainLooper());
+    private final ConcurrentHashMap<String, Runnable> pendingSleepRunnables = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, HttpURLConnection> activeHttpConnections = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, AtomicBoolean> cancelledHttpReqs = new ConcurrentHashMap<>();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -761,9 +780,140 @@ public class MainActivity extends Activity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        try {
+            nativeTimerHandler.removeCallbacksAndMessages(null);
+            pendingSleepRunnables.clear();
+            for (AtomicBoolean flag : cancelledHttpReqs.values()) {
+                flag.set(true);
+            }
+            for (HttpURLConnection conn : activeHttpConnections.values()) {
+                try { conn.disconnect(); } catch (Exception ignored) {}
+            }
+            activeHttpConnections.clear();
+            cancelledHttpReqs.clear();
+            httpExecutor.shutdownNow();
+        } catch (Exception ignored) {}
         if (sInstance == this) {
             sInstance = null;
         }
+    }
+
+    private void dispatchNativeJsCallback(final String fnName, final String reqId, final String payloadJson) {
+        if (webView == null) return;
+        final String qId = JSONObject.quote(reqId != null ? reqId : "");
+        final String qPayload = JSONObject.quote(payloadJson != null ? payloadJson : "{}")
+                .replace("\u2028", "\\u2028")
+                .replace("\u2029", "\\u2029");
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                if (webView != null) {
+                    webView.evaluateJavascript(
+                            "if(window." + fnName + "){window." + fnName + "(" + qId + "," + qPayload + ");}",
+                            null
+                    );
+                }
+            }
+        });
+    }
+
+    private void executeNativeHttpPost(
+            final String reqId,
+            final String urlStr,
+            final String headersJson,
+            final String bodyStr,
+            final int timeoutMs
+    ) {
+        final AtomicBoolean cancelled = new AtomicBoolean(false);
+        cancelledHttpReqs.put(reqId, cancelled);
+        httpExecutor.execute(new Runnable() {
+            @Override
+            public void run() {
+                HttpURLConnection conn = null;
+                try {
+                    if (cancelled.get()) return;
+                    URL url = new URL(urlStr);
+                    conn = (HttpURLConnection) url.openConnection();
+                    activeHttpConnections.put(reqId, conn);
+
+                    int safeTimeout = Math.max(3000, Math.min(timeoutMs > 0 ? timeoutMs : 12000, 30000));
+                    conn.setRequestMethod("POST");
+                    conn.setConnectTimeout(Math.min(safeTimeout, 8000));
+                    conn.setReadTimeout(safeTimeout);
+                    conn.setDoInput(true);
+                    conn.setDoOutput(true);
+                    conn.setUseCaches(false);
+                    conn.setRequestProperty("Accept", "application/json");
+                    conn.setRequestProperty("Accept-Encoding", "gzip");
+                    conn.setRequestProperty("Connection", "keep-alive");
+                    conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
+
+                    if (headersJson != null && !headersJson.trim().isEmpty()) {
+                        try {
+                            JSONObject hdrObj = new JSONObject(headersJson);
+                            Iterator<String> keys = hdrObj.keys();
+                            while (keys.hasNext()) {
+                                String k = keys.next();
+                                String v = hdrObj.optString(k, "");
+                                if (k != null && !k.isEmpty() && v != null) {
+                                    conn.setRequestProperty(k, v);
+                                }
+                            }
+                        } catch (Exception ignored) {}
+                    }
+
+                    byte[] payloadBytes = (bodyStr != null ? bodyStr : "{}").getBytes(StandardCharsets.UTF_8);
+                    conn.setFixedLengthStreamingMode(payloadBytes.length);
+                    try (OutputStream os = conn.getOutputStream()) {
+                        os.write(payloadBytes);
+                        os.flush();
+                    }
+
+                    if (cancelled.get()) return;
+                    int status = conn.getResponseCode();
+                    InputStream rawStream = (status >= 200 && status < 400) ? conn.getInputStream() : conn.getErrorStream();
+                    StringBuilder sb = new StringBuilder();
+                    if (rawStream != null) {
+                        String encoding = conn.getContentEncoding();
+                        InputStream decodedStream = (encoding != null && encoding.toLowerCase(Locale.ROOT).contains("gzip"))
+                                ? new GZIPInputStream(rawStream)
+                                : rawStream;
+                        try (BufferedReader br = new BufferedReader(new InputStreamReader(decodedStream, StandardCharsets.UTF_8))) {
+                            char[] buf = new char[4096];
+                            int len;
+                            while ((len = br.read(buf)) != -1) {
+                                if (cancelled.get()) return;
+                                sb.append(buf, 0, len);
+                            }
+                        }
+                    }
+
+                    if (cancelled.get()) return;
+                    JSONObject out = new JSONObject();
+                    out.put("ok", status >= 200 && status < 300);
+                    out.put("status", status);
+                    out.put("body", sb.toString());
+                    dispatchNativeJsCallback("__onNativeHttpResult", reqId, out.toString());
+                } catch (Throwable err) {
+                    if (!cancelled.get()) {
+                        try {
+                            JSONObject out = new JSONObject();
+                            out.put("ok", false);
+                            out.put("status", 0);
+                            out.put("body", "");
+                            out.put("error", err.getMessage() != null ? err.getMessage() : err.getClass().getSimpleName());
+                            dispatchNativeJsCallback("__onNativeHttpResult", reqId, out.toString());
+                        } catch (Exception ignored) {}
+                    }
+                } finally {
+                    activeHttpConnections.remove(reqId);
+                    cancelledHttpReqs.remove(reqId);
+                    if (conn != null) {
+                        try { conn.disconnect(); } catch (Exception ignored) {}
+                    }
+                }
+            }
+        });
     }
 
     public final class NativeBridge {
@@ -1414,6 +1564,123 @@ public class MainActivity extends Activity {
             AgentAccessibilityService service = AgentAccessibilityService.getInstance();
             if (service == null) return false;
             return service.scrollDirection(direction, ratio);
+        }
+
+        @JavascriptInterface
+        public String getTopPackageFast() {
+            AgentAccessibilityService service = AgentAccessibilityService.getInstance();
+            if (service == null) return "";
+            return service.getCurrentPackageFast();
+        }
+
+        @JavascriptInterface
+        public void waitForScreenVerdictAsync(
+                final String reqId,
+                final String beforePkg,
+                final String beforeSig,
+                final int beforeSeq,
+                final String toolName,
+                final int maxWaitMs
+        ) {
+            if (reqId == null || reqId.isEmpty()) return;
+            final AgentAccessibilityService service = AgentAccessibilityService.getInstance();
+            if (service == null) {
+                dispatchNativeJsCallback(
+                        "__onNativeVerdictResult",
+                        reqId,
+                        "{\"changed\":true,\"fromApp\":\"\",\"toApp\":\"\",\"elapsedMs\":0,\"prefetchedSnapshot\":null}"
+                );
+                return;
+            }
+            service.waitForScreenChangeAndSnapshotAsync(
+                    reqId,
+                    beforePkg,
+                    beforeSig,
+                    beforeSeq,
+                    toolName,
+                    maxWaitMs,
+                    new AgentAccessibilityService.VerdictCallback() {
+                        @Override
+                        public void onComplete(String resultJson) {
+                            dispatchNativeJsCallback("__onNativeVerdictResult", reqId, resultJson);
+                        }
+                    }
+            );
+        }
+
+        @JavascriptInterface
+        public void cancelWaitForScreenVerdict(String reqId) {
+            AgentAccessibilityService service = AgentAccessibilityService.getInstance();
+            if (service != null) {
+                service.cancelWaitForScreenChange(reqId);
+            }
+        }
+
+        @JavascriptInterface
+        public void nativeSleepAsync(final String reqId, int delayMs) {
+            if (reqId == null || reqId.isEmpty()) return;
+            final int safeMs = Math.max(0, Math.min(delayMs, 30000));
+            Runnable old = pendingSleepRunnables.remove(reqId);
+            if (old != null) {
+                nativeTimerHandler.removeCallbacks(old);
+            }
+            Runnable task = new Runnable() {
+                @Override
+                public void run() {
+                    pendingSleepRunnables.remove(reqId);
+                    dispatchNativeJsCallback("__onNativeSleepDone", reqId, "{\"ok\":true}");
+                }
+            };
+            pendingSleepRunnables.put(reqId, task);
+            nativeTimerHandler.postDelayed(task, safeMs);
+        }
+
+        @JavascriptInterface
+        public void cancelNativeSleep(String reqId) {
+            if (reqId == null || reqId.isEmpty()) return;
+            Runnable task = pendingSleepRunnables.remove(reqId);
+            if (task != null) {
+                nativeTimerHandler.removeCallbacks(task);
+            }
+        }
+
+        @JavascriptInterface
+        public void nativeHttpPostAsync(
+                String reqId,
+                String urlStr,
+                String headersJson,
+                String bodyStr,
+                int timeoutMs
+        ) {
+            if (reqId == null || reqId.isEmpty() || urlStr == null || urlStr.trim().isEmpty()) {
+                if (reqId != null && !reqId.isEmpty()) {
+                    dispatchNativeJsCallback(
+                            "__onNativeHttpResult",
+                            reqId,
+                            "{\"ok\":false,\"status\":0,\"body\":\"\",\"error\":\"无效的请求参数\"}"
+                    );
+                }
+                return;
+            }
+            executeNativeHttpPost(reqId, urlStr.trim(), headersJson, bodyStr, timeoutMs);
+        }
+
+        @JavascriptInterface
+        public void cancelNativeHttp(String reqId) {
+            if (reqId == null || reqId.isEmpty()) return;
+            AtomicBoolean flag = cancelledHttpReqs.get(reqId);
+            if (flag != null) {
+                flag.set(true);
+            }
+            final HttpURLConnection conn = activeHttpConnections.remove(reqId);
+            if (conn != null) {
+                httpExecutor.execute(new Runnable() {
+                    @Override
+                    public void run() {
+                        try { conn.disconnect(); } catch (Exception ignored) {}
+                    }
+                });
+            }
         }
 
         @JavascriptInterface

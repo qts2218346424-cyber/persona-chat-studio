@@ -1114,6 +1114,64 @@ balanceUrl: 'https://api.deepseek.com/user/balance'
 };
 }
 }
+const REMOTE_DEFAULT_ORIGIN = 'https://star.claudexxb.online';
+const LOCAL_BACKEND_URL_KEY = 'star_app_local_backend_url';
+const LOCAL_BRIDGE_TOKEN_KEY = 'star_app_local_bridge_token';
+const REMOTE_SESSION_MAP_KEY = 'star_remote_sess_map_v1';
+function getRemoteBackendOrigin() {
+try {
+let raw = String(localStorage.getItem(LOCAL_BACKEND_URL_KEY) || '').trim();
+if (raw) {
+if (!/^https?:\/\//i.test(raw)) raw = `http://${raw}`;
+const u = new URL(raw);
+return u.origin;
+}
+} catch {}
+return REMOTE_DEFAULT_ORIGIN;
+}
+function isBridgeGatewayOrigin(originUrl) {
+try {
+const u = new URL(originUrl);
+return String(u.port || '') === '18765';
+} catch {
+return false;
+}
+}
+function loadRemoteSessionMap() {
+try {
+const raw = localStorage.getItem(REMOTE_SESSION_MAP_KEY);
+const obj = raw ? JSON.parse(raw) : {};
+return obj && typeof obj === 'object' ? obj : {};
+} catch {
+return {};
+}
+}
+function saveRemoteSessionMap(mapObj) {
+try {
+localStorage.setItem(REMOTE_SESSION_MAP_KEY, JSON.stringify(mapObj || {}));
+} catch {}
+}
+async function readStreamBodyWithReader(body, onChunk) {
+if (!body) return;
+if (typeof body.getReader === 'function') {
+const reader = body.getReader();
+try {
+while (true) {
+const { value, done } = await reader.read();
+if (done) break;
+if (value) onChunk(value);
+}
+} finally {
+try { reader.releaseLock(); } catch {}
+}
+return;
+}
+if (typeof body[Symbol.asyncIterator] === 'function') {
+for await (const ch of body) {
+if (ch) onChunk(ch);
+}
+}
+}
 function createSseStream(executor) {
 const encoder = new TextEncoder();
 const stream = new ReadableStream({
@@ -1134,6 +1192,265 @@ return new Response(stream, {
 status: 200,
 headers: { 'Content-Type': 'text/event-stream; charset=utf-8' }
 });
+}
+async function ensureRemoteAuthToken(origin, forceRefresh = false) {
+const curTok = window.__starAuthStore?.getToken?.() || '';
+if (!forceRefresh && curTok && curTok !== 'standalone_demo_token') {
+return curTok;
+}
+let guestId = window.__starAuthStore?.getGuestUserId?.() || '';
+if (!guestId) {
+guestId = `apk_guest_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+window.__starAuthStore?.setGuestUserId?.(guestId);
+}
+const resp = await originalFetch(`${origin}/api/auth/demo-login`, {
+method: 'POST',
+headers: { 'Content-Type': 'application/json' },
+body: JSON.stringify({ guest_user_id: guestId }),
+cache: 'no-store'
+});
+if (!resp.ok) {
+throw new Error(`云端鉴权响应异常 (${resp.status})`);
+}
+const data = await resp.json();
+if (!data?.token) {
+throw new Error('未返回有效会话令牌');
+}
+window.__starAuthStore?.setToken?.(data.token, true);
+if (data.user?.id) {
+window.__starAuthStore?.setActiveUserId?.(data.user.id);
+}
+try {
+if (window.AndroidAppBridge && typeof window.AndroidAppBridge.saveAuthCredentials === 'function' && data.user) {
+window.AndroidAppBridge.saveAuthCredentials(data.token, JSON.stringify(data.user));
+}
+} catch {}
+return data.token;
+}
+async function ensureRemoteSession(origin, token, localSess, forceNew = false) {
+const mapKey = `${origin}|${String(token || '').slice(0, 12)}|${localSess.id}`;
+const map = loadRemoteSessionMap();
+if (!forceNew && map[mapKey]) {
+return map[mapKey];
+}
+const createResp = await originalFetch(`${origin}/api/sessions`, {
+method: 'POST',
+headers: {
+'Content-Type': 'application/json',
+Authorization: `Bearer ${token}`
+},
+body: JSON.stringify({
+persona_id: localSess.persona_id || 'persona_nagisa_sakura',
+script_id: localSess.script_id || 'script_clannad',
+session_mode: localSess.session_mode || 'roleplay',
+ds_thinking: localSess.ds_thinking !== 0,
+ds_search: localSess.ds_search === 1,
+llm_mode: 'local_antigravity'
+}),
+cache: 'no-store'
+});
+if (!createResp.ok) {
+const err = new Error(`创建远端会话失败 (${createResp.status})`);
+err.status = createResp.status;
+throw err;
+}
+const created = await createResp.json();
+const remoteSid = created?.session_id;
+if (!remoteSid) {
+throw new Error('远端会话 ID 为空');
+}
+if (localSess.session_prompt || localSess.director_note || localSess.enable_inner_thought !== undefined) {
+await originalFetch(`${origin}/api/sessions/${encodeURIComponent(remoteSid)}`, {
+method: 'PATCH',
+headers: {
+'Content-Type': 'application/json',
+Authorization: `Bearer ${token}`
+},
+body: JSON.stringify({
+...(localSess.session_prompt ? { session_prompt: localSess.session_prompt } : {}),
+...(localSess.director_note ? { director_note: localSess.director_note } : {}),
+enable_inner_thought: localSess.enable_inner_thought !== 0
+}),
+cache: 'no-store'
+}).catch(() => {});
+}
+map[mapKey] = remoteSid;
+saveRemoteSessionMap(map);
+return remoteSid;
+}
+async function tryStreamRemoteLocalAntigravity({
+origin,
+pathname,
+sess,
+sysPrompt,
+normalizedHistory,
+enableThink,
+prefix,
+bodyObj,
+signal,
+sendEvent
+}) {
+if (isBridgeGatewayOrigin(origin)) {
+const bridgeTok = (() => {
+try { return String(localStorage.getItem(LOCAL_BRIDGE_TOKEN_KEY) || '').trim(); } catch { return ''; }
+})();
+const bMsgs = [{ role: 'system', content: sysPrompt }, ...normalizedHistory];
+if (prefix) bMsgs.push({ role: 'assistant', content: prefix, prefix: true });
+const bHeaders = { 'Content-Type': 'application/json' };
+if (bridgeTok) bHeaders.Authorization = `Bearer ${bridgeTok}`;
+const bResp = await originalFetch(`${origin}/v1/chat/completions`, {
+method: 'POST',
+headers: bHeaders,
+body: JSON.stringify({
+model: 'agy-auto',
+messages: bMsgs,
+reasoning_effort: enableThink ? 'low' : 'none',
+stream: true
+}),
+signal
+});
+if (!bResp.ok || !bResp.body) {
+throw new Error(`本地桥接端口响应异常 (${bResp.status})`);
+}
+const bDec = new TextDecoder();
+let bBuf = '';
+let bR = '';
+let bC = '';
+await readStreamBodyWithReader(bResp.body, (ch) => {
+bBuf += bDec.decode(ch, { stream: true });
+const lines = bBuf.split(/\r?\n/);
+bBuf = lines.pop() || '';
+for (const raw of lines) {
+const l = raw.trim();
+if (!l.startsWith('data:')) continue;
+const ds = l.slice(5).trim();
+if (ds === '[DONE]') continue;
+try {
+const j = JSON.parse(ds);
+const d = j.choices?.[0]?.delta || {};
+if (d.reasoning_content) {
+bR += d.reasoning_content;
+sendEvent('reasoning', { delta: d.reasoning_content });
+}
+if (d.content) {
+bC += d.content;
+sendEvent('content', { delta: d.content });
+}
+} catch {}
+}
+});
+return { ok: true, fullR: bR, fullC: bC, remoteMeta: { model: 'DeepSeek-V4.1-Flash', local_bridge: true } };
+}
+let token = await ensureRemoteAuthToken(origin, false);
+const attemptStream = async (tok, forceNewSess) => {
+const remoteSid = await ensureRemoteSession(origin, tok, sess, forceNewSess);
+const reqPayload = pathname === '/api/chat/proactive'
+? {
+session_id: remoteSid,
+trigger_reason: bodyObj.trigger_reason || 'idle',
+include_follow_ups: bodyObj.include_follow_ups !== false,
+llm_mode: 'local_antigravity'
+}
+: {
+session_id: remoteSid,
+content: bodyObj.content || '',
+regenerate: Boolean(bodyObj.regenerate),
+edit_message_id: 0,
+attachments: Array.isArray(bodyObj.attachments) ? bodyObj.attachments : [],
+assistant_prefix: bodyObj.assistant_prefix || '',
+include_follow_ups: bodyObj.include_follow_ups !== false,
+llm_mode: 'local_antigravity',
+local_model: bodyObj.local_model || 'DeepSeek-V4.1-Flash'
+};
+return originalFetch(`${origin}${pathname}`, {
+method: 'POST',
+headers: {
+'Content-Type': 'application/json',
+Authorization: `Bearer ${tok}`
+},
+body: JSON.stringify(reqPayload),
+signal
+});
+};
+let resp;
+try {
+resp = await attemptStream(token, false);
+} catch (e) {
+if (e?.status === 401) {
+token = await ensureRemoteAuthToken(origin, true);
+resp = await attemptStream(token, true);
+} else {
+throw e;
+}
+}
+if (resp.status === 401) {
+token = await ensureRemoteAuthToken(origin, true);
+resp = await attemptStream(token, true);
+} else if (resp.status === 404) {
+resp = await attemptStream(token, true);
+}
+if (!resp.ok || !resp.body) {
+const errObj = await resp.json().catch(() => ({}));
+const err = new Error(errObj.error || `本地直连服务响应异常 (${resp.status})`);
+err.code = errObj.code || 'REMOTE_LOCAL_ERR';
+throw err;
+}
+const dec = new TextDecoder();
+let sseBuf = '';
+let remoteR = '';
+let remoteC = '';
+let remoteDonePayload = null;
+let remoteErr = null;
+const handleBlock = (rawBlock) => {
+const lines = rawBlock.split(/\r?\n/);
+let evName = 'message';
+let dataStr = '';
+for (const ln of lines) {
+if (ln.startsWith(':')) continue;
+if (ln.startsWith('event:')) evName = ln.slice(6).trim();
+else if (ln.startsWith('data:')) dataStr += ln.slice(5).trim();
+}
+if (!dataStr) return;
+let payload;
+try { payload = JSON.parse(dataStr); } catch { return; }
+if (evName === 'reasoning') {
+remoteR += payload.delta || '';
+sendEvent('reasoning', payload);
+} else if (evName === 'content') {
+remoteC += payload.delta || '';
+sendEvent('content', payload);
+} else if (evName === 'done') {
+remoteDonePayload = payload;
+} else if (evName === 'error') {
+remoteErr = new Error(payload.message || '本地直连推理中断');
+} else if (evName !== 'message') {
+sendEvent(evName, payload);
+}
+};
+await readStreamBodyWithReader(resp.body, (ch) => {
+sseBuf += dec.decode(ch, { stream: true });
+const blocks = sseBuf.split(/\r?\n\r?\n/);
+sseBuf = blocks.pop() || '';
+for (const blk of blocks) {
+handleBlock(blk);
+}
+});
+const sseTail = dec.decode();
+if (sseTail) sseBuf += sseTail;
+if (sseBuf.trim()) {
+for (const blk of sseBuf.split(/\r?\n\r?\n/)) {
+handleBlock(blk);
+}
+}
+if (remoteErr && !remoteC.trim()) {
+throw remoteErr;
+}
+return {
+ok: true,
+fullR: remoteR,
+fullC: remoteC,
+remoteDonePayload
+};
 }
 async function parseStandaloneAttachmentFile({ name = '未命名文件', mime = '', buf }) {
 const bytes = buf ? new Uint8Array(buf) : new Uint8Array(0);
@@ -2414,21 +2731,9 @@ const t0 = Date.now();
 let fullR = '';
 let fullC = '';
 let usage = null;
+let remoteDonePayload = null;
 const enableThink = isNative ? sess.ds_thinking === 1 : sess.enable_inner_thought === 1;
 const prefix = String(bodyObj.assistant_prefix || '');
-if (apiKey) {
-const rawOvUrl = modeApiOv?.provider === 'custom_cloud'
-? (modeApiOv.base_url || 'https://api.siliconflow.cn/v1/chat/completions')
-: 'https://api.deepseek.com/v1/chat/completions';
-const ep = resolveEndpoints(rawOvUrl);
-const isOfficialDs = ep.chatUrl.includes('deepseek.com');
-const savedModel = String(modeApiOv?.model || '').trim();
-let model = 'deepseek-chat';
-if (isOfficialDs) {
-model = enableThink ? 'deepseek-reasoner' : 'deepseek-chat';
-} else {
-model = (savedModel && savedModel !== 'deepseek-flash') ? savedModel : (enableThink ? 'deepseek-reasoner' : 'deepseek-chat');
-}
 const memHint = (dbObj.memories[sid] || []).map((m) => `- ${m.content}`).join('\n');
 const sessPromptHint = sess.session_prompt && sess.session_prompt.trim()
 ? `\n【本对话专属独立设定】：\n${sess.session_prompt.trim()}\n`
@@ -2487,6 +2792,19 @@ prev.content += `\n\n${c}`;
 normalizedHistory.push({ role: r, content: c });
 }
 }
+if (apiKey) {
+const rawOvUrl = modeApiOv?.provider === 'custom_cloud'
+? (modeApiOv.base_url || 'https://api.siliconflow.cn/v1/chat/completions')
+: 'https://api.deepseek.com/v1/chat/completions';
+const ep = resolveEndpoints(rawOvUrl);
+const isOfficialDs = ep.chatUrl.includes('deepseek.com');
+const savedModel = String(modeApiOv?.model || '').trim();
+let model = 'deepseek-chat';
+if (isOfficialDs) {
+model = enableThink ? 'deepseek-reasoner' : 'deepseek-chat';
+} else {
+model = (savedModel && savedModel !== 'deepseek-flash') ? savedModel : (enableThink ? 'deepseek-reasoner' : 'deepseek-chat');
+}
 const payloadMsgs = [
 { role: 'system', content: sysPrompt },
 ...normalizedHistory
@@ -2522,7 +2840,7 @@ body: JSON.stringify(reqBody),
 signal
 });
 } catch (netErr) {
-throw new Error(`连接 DeepSeek 官方服务超时或网络失败: ${netErr.message}`);
+throw new Error(`连接 API 服务超时或网络失败: ${netErr.message}`);
 }
 if (!resp.ok) {
 let detail = '';
@@ -2532,11 +2850,11 @@ detail = ej.error?.message || JSON.stringify(ej);
 } catch {
 detail = await resp.text();
 }
-throw new Error(`DeepSeek 接口异常 (${resp.status}): ${detail}`);
+throw new Error(`API 接口异常 (${resp.status}): ${detail}`);
 }
 const dec = new TextDecoder();
 let buf = '';
-for await (const ch of resp.body) {
+await readStreamBodyWithReader(resp.body, (ch) => {
 buf += dec.decode(ch, { stream: true });
 const lines = buf.split(/\r?\n/);
 buf = lines.pop() || '';
@@ -2547,7 +2865,7 @@ const ds = l.slice(5).trim();
 if (ds === '[DONE]') continue;
 try {
 const j = JSON.parse(ds);
-if (j.usage) {
+if (j.usage && isOfficialDs) {
 usage = {
 prompt_cache_hit_tokens: j.usage.prompt_cache_hit_tokens ?? 0,
 prompt_cache_miss_tokens: j.usage.prompt_cache_miss_tokens ?? (j.usage.prompt_tokens || 0),
@@ -2565,8 +2883,57 @@ sendEvent('content', { delta: d.content });
 }
 } catch {}
 }
+});
+const tailStr = dec.decode();
+if (tailStr) {
+for (const raw of (buf + tailStr).split(/\r?\n/)) {
+const l = raw.trim();
+if (!l.startsWith('data:')) continue;
+const ds = l.slice(5).trim();
+if (ds === '[DONE]') continue;
+try {
+const j = JSON.parse(ds);
+const d = j.choices?.[0]?.delta || {};
+if (d.reasoning_content) {
+fullR += d.reasoning_content;
+sendEvent('reasoning', { delta: d.reasoning_content });
+}
+if (d.content) {
+fullC += d.content;
+sendEvent('content', { delta: d.content });
+}
+} catch {}
+}
 }
 } else {
+let remoteSuccess = false;
+let remoteErrNotice = '';
+const targetOrigin = getRemoteBackendOrigin();
+try {
+const rRes = await tryStreamRemoteLocalAntigravity({
+origin: targetOrigin,
+pathname,
+sess,
+sysPrompt,
+normalizedHistory,
+enableThink,
+prefix,
+bodyObj,
+signal,
+sendEvent
+});
+if (rRes && rRes.ok && (rRes.fullC.trim() || rRes.fullR.trim())) {
+remoteSuccess = true;
+fullR = rRes.fullR || '';
+fullC = rRes.fullC || '';
+remoteDonePayload = rRes.remoteDonePayload || null;
+usage = null;
+}
+} catch (remoteErr) {
+if (signal?.aborted) throw remoteErr;
+remoteErrNotice = String(remoteErr?.message || '远端与本地直连端口暂未响应');
+}
+if (!remoteSuccess) {
 let simR = '';
 let simC = '';
 if (isPure) {
@@ -2581,24 +2948,24 @@ const previewText = String(firstAtt.content || '').trim().slice(0, 800);
 simR = `已收到并解析用户上传的 ${curAtts.length} 份附件（首份：${firstAtt.name}，共 ${previewText.length} 字符摘录）。现在按结构化要点提炼并响应用户需求。`;
 simC = `${prefix}已读取你上传的 **${curAtts.map((a) => a.name).join('、')}**。\n\n---\n\n### 提取内容概览\n\n${
 firstAtt.is_image
-? `- **图像信息**：${firstAtt.name}（${firstAtt.dimensions || '已压缩'}），当前未绑定云端视觉模型，填入个人 API Key 后可深入识图分析。`
+? `- **图像信息**：${firstAtt.name}（${firstAtt.dimensions || '已压缩'}），当前处于离线兜底环境。`
 : `\`\`\`text\n${previewText || '（该文件暂无可提取纯文本内容）'}\n\`\`\``
-}\n\n如需对以上文件内容做深度改写、翻译或对比，请在设置中填入 DeepSeek API Key 解锁云端满血模型，或直接告诉我要处理其中的哪一段。`;
+}`;
 } else if (isProactive) {
 simR = `嗯，当前对话暂未继续输入，我可以用平实简洁的口吻打个招呼，提供几个清晰具体的切入方向。`;
-simC = `你好，我是 **DeepSeek**。如果暂时还没定好从哪切入，可以直接从以下几个方向开始：\n\n- **代码编写与排错**：生成单文件 HTML/Canvas 交互页面、算法实现或排查报错堆栈；\n- **数理与逻辑推演**：逐步推导微积分/概率公式、分析系统架构选型权衡；\n- **文本提炼与起草**：拆解复杂概念对比、拟定技术方案或结构化报告。\n\n直接把你的问题发出来即可。`;
+simC = `你好，我是 **DeepSeek**。如果暂时还没定好从哪切入，可以直接把你的问题发出来。`;
 } else if (isGreet) {
-simR = `用户在打招呼或询问我的身份：「${cleanQ}」。保持简洁真诚，用两小段自然回应即可，无需堆砌标题。`;
-simC = `${prefix}你好！我是 **DeepSeek**，由深度求索（DeepSeek）研发的智能助手。\n\n无论是编程开发、数理逻辑推导、概念深度拆解，还是方案对比与文案写作，都可以直接把问题交给我。今天想先聊些什么？`;
+simR = `用户在打招呼或询问我的身份：「${cleanQ}」。保持简洁真诚，自然回应即可。`;
+simC = `${prefix}你好！我是 **DeepSeek**，今天想先聊些什么？`;
 } else if (isMath) {
-simR = `用户希望推导数理公式：「${cleanQ.slice(0, 36)}」。先在开头直接给出标准高斯积分闭式解，再用极坐标换元分步严谨推导。`;
-simC = `${prefix}无穷区间上的标准高斯积分闭式解为 $\\int_{-\\infty}^{+\\infty} e^{-x^2} dx = \\sqrt{\\pi}$，由此可得正态分布密度函数的归一化系数 $\\frac{1}{\\sqrt{2\\pi}\\sigma}$。\n\n---\n\n### 1. 升维构造二重积分\n\n设 $I = \\int_{-\\infty}^{+\\infty} e^{-x^2} dx$，将其平方转化为二维平面 $\\mathbb{R}^2$ 上的重积分并作极坐标变换 $dx\\,dy = r\\,dr\\,d\\theta$：\n\n$$I^2 = \\int_{0}^{2\\pi} d\\theta \\int_{0}^{+\\infty} r e^{-r^2} \\,dr = 2\\pi \\cdot \\frac{1}{2} \\left[ -e^{-r^2} \\right]_{0}^{+\\infty} = \\pi$$\n\n### 2. 推广至一般正态分布\n\n因 $I > 0$ 故 $I = \\sqrt{\\pi}$。令 $x = \\frac{t - \\mu}{\\sqrt{2}\\sigma}$（$\\sigma > 0$），代入即证：\n\n$$\\int_{-\\infty}^{+\\infty} \\frac{1}{\\sqrt{2\\pi}\\sigma} e^{-\\frac{(t - \\mu)^2}{2\\sigma^2}} \\,dt = 1$$`;
+simR = `用户希望推导数理公式：「${cleanQ.slice(0, 36)}」。`;
+simC = `${prefix}无穷区间上的标准高斯积分闭式解为 $\\int_{-\\infty}^{+\\infty} e^{-x^2} dx = \\sqrt{\\pi}$，由此可得正态分布密度函数的归一化系数 $\\frac{1}{\\sqrt{2\\pi}\\sigma}$。`;
 } else if (isHtml) {
-simR = `用户希望生成一段可直接预览的前端代码：「${cleanQ.slice(0, 36)}」。采用原生 HTML5 Canvas 编写零依赖粒子引力场，并附上关键实现要点。`;
-simC = `${prefix}下面基于原生 **HTML5 Canvas** 实现了一个单文件粒子引力交互页面，可点击代码块右上角 **「▶ 右侧预览」** 查看实时运行效果：\n\n\`\`\`html\n<!DOCTYPE html>\n<html lang="zh-CN">\n<head><meta charset="UTF-8"><style>html,body{margin:0;height:100%;background:#0b1020;overflow:hidden}canvas{display:block;width:100%;height:100%}</style></head>\n<body><canvas id="c"></canvas><script>\nconst c=document.getElementById('c'),x=c.getContext('2d');let w,h,m={x:-999,y:-999,on:false};\nconst rs=()=>{w=c.width=innerWidth;h=c.height=innerHeight};addEventListener('resize',rs);rs();\nconst ps=Array.from({length:75},()=>({x:Math.random()*w,y:Math.random()*h,vx:(Math.random()-.5)*1.4,vy:(Math.random()-.5)*1.4}));\naddEventListener('pointermove',e=>{m.x=e.clientX;m.y=e.clientY;m.on=true});\n(function loop(){x.fillStyle='rgba(11,16,32,0.25)';x.fillRect(0,0,w,h);\nfor(let i=0;i<ps.length;i++){const p=ps[i];if(m.on){const dx=m.x-p.x,dy=m.y-p.y,d=Math.hypot(dx,dy);if(d<170&&d>5){p.vx+=dx/d*.08;p.vy+=dy/d*.08}}\np.vx*=.99;p.vy*=.99;p.x=(p.x+p.vx+w)%w;p.y=(p.y+p.vy+h)%h;x.fillStyle='#60a5fa';x.beginPath();x.arc(p.x,p.y,2,0,7);x.fill();\nfor(let j=i+1;j<ps.length;j++){const q=ps[j],d=Math.hypot(p.x-q.x,p.y-q.y);if(d<105){x.strokeStyle=\`rgba(77,107,254,\${1-d/105})\`;x.beginPath();x.moveTo(p.x,p.y);x.lineTo(q.x,q.y);x.stroke()}}}\nrequestAnimationFrame(loop)})();\n</script></body></html>\n\`\`\`\n\n---\n\n### 核心实现说明\n\n- **阻尼收敛**：每次更新施加 \`0.99\` 速度衰减系数，避免向心引力导致粒子无限加速；\n- **渐隐连线**：距离小于 \`105px\` 的粒子按距离比例线性映射连线透明度。`;
+simR = `用户希望生成一段前端动画代码：「${cleanQ.slice(0, 36)}」。`;
+simC = `${prefix}下面基于原生 **HTML5 Canvas** 实现了一个单文件粒子引力交互页面，可点击代码块右上角 **「▶ 右侧预览」** 查看实时运行效果：\n\n\`\`\`html\n<!DOCTYPE html>\n<html lang="zh-CN">\n<head><meta charset="UTF-8"><style>html,body{margin:0;height:100%;background:#0b1020;overflow:hidden}canvas{display:block;width:100%;height:100%}</style></head>\n<body><canvas id="c"></canvas><script>\nconst c=document.getElementById('c'),x=c.getContext('2d');let w,h,m={x:-999,y:-999,on:false};\nconst rs=()=>{w=c.width=innerWidth;h=c.height=innerHeight};addEventListener('resize',rs);rs();\nconst ps=Array.from({length:75},()=>({x:Math.random()*w,y:Math.random()*h,vx:(Math.random()-.5)*1.4,vy:(Math.random()-.5)*1.4}));\naddEventListener('pointermove',e=>{m.x=e.clientX;m.y=e.clientY;m.on=true});\n(function loop(){x.fillStyle='rgba(11,16,32,0.25)';x.fillRect(0,0,w,h);\nfor(let i=0;i<ps.length;i++){const p=ps[i];if(m.on){const dx=m.x-p.x,dy=m.y-p.y,d=Math.hypot(dx,dy);if(d<170&&d>5){p.vx+=dx/d*.08;p.vy+=dy/d*.08}}\np.vx*=.99;p.vy*=.99;p.x=(p.x+p.vx+w)%w;p.y=(p.y+p.vy+h)%h;x.fillStyle='#60a5fa';x.beginPath();x.arc(p.x,p.y,2,0,7);x.fill();\nfor(let j=i+1;j<ps.length;j++){const q=ps[j],d=Math.hypot(p.x-q.x,p.y-q.y);if(d<105){x.strokeStyle=\`rgba(77,107,254,\${1-d/105})\`;x.beginPath();x.moveTo(p.x,p.y);x.lineTo(q.x,q.y);x.stroke()}}}\nrequestAnimationFrame(loop)})();\n</script></body></html>\n\`\`\``;
 } else {
-simR = `嗯，用户问的是：「${cleanQ.slice(0, 44)}」。\n让我先拆解一下这个问题的核心：与其罗列宽泛套话，不如先在首段直接给出定性判断，再分底层逻辑与分步落地建议两层讲透。`;
-simC = `${prefix}关于 **「${cleanQ.slice(0, 36)}${cleanQ.length > 36 ? '…' : ''}」**，核心判断是：**解决此类问题的关键在于先厘清核心约束边界，抓住决定上限的主干变量，再通过最小闭环验证逐步迭代**。\n\n---\n\n### 一、核心机制与关键矛盾\n\n- **区分表象与根因**：实际执行中常见的卡点往往不在于工具或方法本身不够复杂，而在于前置目标优先级（效率、成本或稳健性）尚未对齐。\n- **收敛关键路径**：优先锁定影响全局结果的 1~2 个核心环节集中突破，避免在边缘细节上过早分散资源。\n\n### 二、分步落地建议\n\n1. **建立最小验证闭环**：剥离非必要附加项，用最小可运行方案快速跑通主链路并获取真实数据反馈；\n2. **排查边界与异常情况**：针对极端输入或资源受限场景补充兜底策略，确保方案稳定性。\n\n如果你可以补充具体的应用场景或手头遇到的卡点细节，我可以帮你进一步细化针对性方案。（也可在设置中填入个人 DeepSeek \`sk-...\` 密钥直连云端满血模型。）`;
+simR = `当前未能连接至本地直连后端（${remoteErrNotice || targetOrigin}），已切换离线兜底回应。`;
+simC = `${prefix}暂未连上本地直连后端（\`${targetOrigin}\`${remoteErrNotice ? `：${remoteErrNotice}` : ''}）。请检查手机联网或电脑端隧道服务是否已开启，或前往「设置 → 本地直连」检测端口；你也可以切换为 DeepSeek API / 云端自定义 API 继续对话。`;
 }
 } else {
 const curAtts = Array.isArray(bodyObj.attachments) ? bodyObj.attachments : [];
@@ -2626,18 +2993,26 @@ fullC += d;
 sendEvent('content', { delta: d });
 await new Promise((r) => setTimeout(r, 14));
 }
-usage = { prompt_cache_hit_tokens: 256, prompt_cache_miss_tokens: 64, reasoning_tokens: 48 };
+usage = null;
+}
 }
 const dur = Date.now() - t0;
 const wantFollowUps = bodyObj.include_follow_ups !== false;
-let dynFollowUps = [];
-if (wantFollowUps) {
+let dynFollowUps = Array.isArray(remoteDonePayload?.meta?.follow_ups) ? remoteDonePayload.meta.follow_ups : [];
+if (wantFollowUps && dynFollowUps.length === 0) {
 if (apiKey) {
-const ep = resolveEndpoints(dbObj.settings.deepseek_base_url);
+const rawOvUrl = modeApiOv?.provider === 'custom_cloud'
+? (modeApiOv.base_url || 'https://api.siliconflow.cn/v1/chat/completions')
+: 'https://api.deepseek.com/v1/chat/completions';
+const ep = resolveEndpoints(rawOvUrl);
+const savedModel = String(modeApiOv?.model || '').trim();
+const fuModel = ep.chatUrl.includes('deepseek.com')
+? 'deepseek-chat'
+: ((savedModel && savedModel !== 'deepseek-flash') ? savedModel : 'deepseek-chat');
 dynFollowUps = await generateDynamicFollowUpsOnline({
 apiKey,
 baseUrl: ep.chatUrl,
-model: (dbObj.settings.deepseek_model || 'deepseek-chat').trim(),
+model: fuModel,
 isPure,
 persona: p,
 nickname: dbObj.user.nickname,
@@ -2787,32 +3162,86 @@ if (pathname === '/api/app-version' || pathname === '/api/version') {
 const mergedHeaders = new Headers(init?.headers || {});
 if (standaloneActive) {
 const q = urlStr.includes('?') ? urlStr.slice(urlStr.indexOf('?')) : '';
-return originalFetch(`https://star.claudexxb.online${pathname}${q}`, {
+const remoteBase = getRemoteBackendOrigin();
+const verOrigin = isBridgeGatewayOrigin(remoteBase) ? REMOTE_DEFAULT_ORIGIN : remoteBase;
+try {
+const resp = await originalFetch(`${verOrigin}${pathname}${q}`, {
+method: (init.method || 'GET').toUpperCase(),
+headers: mergedHeaders,
+cache: 'no-store',
+signal: init.signal
+});
+if (resp.ok || verOrigin === REMOTE_DEFAULT_ORIGIN) return resp;
+} catch (err) {
+if (verOrigin !== REMOTE_DEFAULT_ORIGIN) {
+return originalFetch(`${REMOTE_DEFAULT_ORIGIN}${pathname}${q}`, {
 method: (init.method || 'GET').toUpperCase(),
 headers: mergedHeaders,
 cache: 'no-store',
 signal: init.signal
 });
 }
+throw err;
+}
+}
 return originalFetch(input, { ...init, headers: mergedHeaders, cache: 'no-store' });
 }
-if (standaloneActive && (pathname.startsWith('/api/auth/') || pathname === '/api/announcement' || pathname === '/api/phone-agent/plan' || pathname === '/api/deepseek/check-balance' || pathname === '/api/cloud/models')) {
+if (standaloneActive && (pathname.startsWith('/api/auth/') || pathname === '/api/announcement' || pathname === '/api/antigravity/status' || pathname === '/api/phone-agent/plan' || pathname === '/api/deepseek/check-balance' || pathname === '/api/cloud/models')) {
 try {
-const remoteUrl = `https://star.claudexxb.online${pathname}${urlStr.includes('?') ? urlStr.slice(urlStr.indexOf('?')) : ''}`;
+const remoteBase = getRemoteBackendOrigin();
+const q = urlStr.includes('?') ? urlStr.slice(urlStr.indexOf('?')) : '';
 const mergedHeaders = new Headers(init?.headers || {});
-const tok = window.__starAuthStore?.getToken();
-if (tok && !mergedHeaders.has('Authorization')) {
+const tok = window.__starAuthStore?.getToken?.();
+if (tok && tok !== 'standalone_demo_token' && !mergedHeaders.has('Authorization')) {
 mergedHeaders.set('Authorization', `Bearer ${tok}`);
 }
-const resp = await originalFetch(remoteUrl, {
+const activeUserId = window.__starAuthStore?.getActiveUserId?.() || '';
+if (activeUserId && !pathname.startsWith('/api/auth/') && !mergedHeaders.has('X-Expected-User-Id')) {
+mergedHeaders.set('X-Expected-User-Id', String(activeUserId));
+}
+if (pathname === '/api/antigravity/status' && isBridgeGatewayOrigin(remoteBase)) {
+const healthResp = await originalFetch(`${remoteBase}/health`, {
+method: 'GET',
+cache: 'no-store',
+signal: init.signal
+});
+if (healthResp.ok) {
+const hData = await healthResp.json().catch(() => ({}));
+return new Response(JSON.stringify({
+available: hData?.available !== false,
+transport: 'direct_local_port_18765',
+provider: 'local_antigravity',
+name: '本机 Antigravity 网关直连',
+version: 'DeepSeek-V4.1-Flash (18765 端口)',
+defaultModel: 'DeepSeek-V4.1-Flash',
+models: [{ id: 'DeepSeek-V4.1-Flash', name: 'DeepSeek-V4.1-Flash · 深度思考' }]
+}), { status: 200, headers: { 'Content-Type': 'application/json' } });
+}
+} else {
+const isCloudOnlyPath = pathname === '/api/phone-agent/plan' || pathname === '/api/deepseek/check-balance' || pathname === '/api/cloud/models';
+const targetOrigin = isBridgeGatewayOrigin(remoteBase)
+? REMOTE_DEFAULT_ORIGIN
+: remoteBase;
+let resp = await originalFetch(`${targetOrigin}${pathname}${q}`, {
+...init,
+headers: mergedHeaders,
+cache: 'no-store'
+}).catch(async (err) => {
+if (isCloudOnlyPath && targetOrigin !== REMOTE_DEFAULT_ORIGIN) {
+return originalFetch(`${REMOTE_DEFAULT_ORIGIN}${pathname}${q}`, {
 ...init,
 headers: mergedHeaders,
 cache: 'no-store'
 });
-if (pathname === '/api/phone-agent/plan' || pathname === '/api/deepseek/check-balance' || pathname === '/api/cloud/models') {
+}
+throw err;
+});
+if (isCloudOnlyPath || pathname === '/api/antigravity/status') {
+if (resp && (resp.ok || isCloudOnlyPath)) {
 return resp;
 }
-if (resp.ok) {
+}
+if (resp && resp.ok) {
 const clone = resp.clone();
 const data = await clone.json().catch(() => null);
 if (data && data.user) {
@@ -2828,6 +3257,7 @@ window.AndroidAppBridge.saveAuthCredentials(data.token || tok || '', JSON.string
 }
 }
 return resp;
+}
 }
 } catch (e) {
 }
@@ -2869,6 +3299,14 @@ return handleStandaloneApi(pathname, (init.method || 'GET').toUpperCase(), bodyO
 rawBody: init?.body,
 headers: init?.headers
 });
+};
+window.__STAR_STANDALONE_HOOKS__ = {
+getRemoteBackendOrigin,
+isBridgeGatewayOrigin,
+readStreamBodyWithReader,
+ensureRemoteAuthToken,
+ensureRemoteSession,
+tryStreamRemoteLocalAntigravity
 };
 })();
 ;
@@ -3878,7 +4316,11 @@ return `<div class="oss-mon-rec-row"><span>${tm} · ${r.source || '对话'}</spa
 }
 function recordTurnUsage({ usage, model = '', source = '对话', apiKey = '', baseUrl = '', provider = '' } = {}) {
 if (!usage || typeof usage !== 'object') return null;
-if (provider === 'custom_cloud' || provider === 'api_cloud' || provider === 'local' || provider === 'local_antigravity') {
+const cleanProv = String(provider || '').trim().toLowerCase();
+if (cleanProv === 'custom_cloud' || cleanProv === 'api_cloud' || cleanProv === 'local' || cleanProv === 'local_antigravity' || cleanProv === 'demo') {
+return null;
+}
+if (!monitorState.enabled && cleanProv !== 'own_deepseek') {
 return null;
 }
 const lowerBase = String(baseUrl || '').trim().toLowerCase();
@@ -3972,11 +4414,15 @@ if (refreshBtn) refreshBtn.textContent = '刷新余额';
 renderMonitorUi();
 }
 }
-function syncFromHost({ settings, messages, forceBalanceRefresh = false } = {}) {
-const isUsingDeepSeek = Boolean(settings && settings.provider === 'own_deepseek');
+function syncFromHost({ scopeProvider, settings, messages, forceBalanceRefresh = false } = {}) {
+const prov = String(scopeProvider || settings?.provider || '').trim().toLowerCase();
+const isUsingDeepSeek = prov === 'own_deepseek';
 const prevEnabled = monitorState.enabled;
 monitorState.enabled = isUsingDeepSeek;
-if (settings?.own_deepseek_model) {
+if (!isUsingDeepSeek) {
+monitorState.phoneAgentAuth = { apiKey: '', baseUrl: '', execMode: '' };
+}
+if (isUsingDeepSeek && settings?.own_deepseek_model) {
 monitorState.model = settings.own_deepseek_model;
 }
 monitorState.providerLabel = 'DeepSeek 官方 API';
@@ -5553,7 +5999,7 @@ lastInteractionAt: Date.now(),
 hasMoreMessages: false,
 totalMessages: 0,
 oldestMessageId: 0,
-appVersion: '2.7.6',
+appVersion: '2.7.7',
 tourIndex: 0,
 tourActive: false,
 llmMode: 'local_antigravity',
@@ -5644,6 +6090,46 @@ base_url: 'https://api.deepseek.com/v1/chat/completions',
 model: 'deepseek-flash'
 };
 }
+function syncDeepSeekMonitorForActiveScope({ forceBalanceRefresh = false, messages = null } = {}) {
+try {
+if (state.uiMode === 'phone-agent' && window.PhoneAgent && typeof window.PhoneAgent.syncStatus === 'function') {
+window.PhoneAgent.syncStatus();
+return;
+}
+const cfg = getModeApiConfig(getActiveChatScope());
+const isOwnDeepSeek = cfg.channel === 'own_deepseek';
+window.DeepSeekMonitorPlugin?.sync?.({
+settings: {
+provider: cfg.channel,
+has_own_deepseek_key: Boolean(isOwnDeepSeek && cfg.ownKey),
+own_deepseek_model: isOwnDeepSeek ? 'deepseek-v4.1-flash' : ''
+},
+...(Array.isArray(messages) ? { messages } : {}),
+forceBalanceRefresh: Boolean(forceBalanceRefresh && isOwnDeepSeek && cfg.ownKey)
+});
+} catch {}
+}
+async function readStreamChunksCompat(body, onChunk) {
+if (!body) return;
+if (typeof body.getReader === 'function') {
+const reader = body.getReader();
+try {
+while (true) {
+const { value, done } = await reader.read();
+if (done) break;
+if (value) onChunk(value);
+}
+} finally {
+try { reader.releaseLock(); } catch {}
+}
+return;
+}
+if (typeof body[Symbol.asyncIterator] === 'function') {
+for await (const chunk of body) {
+if (chunk) onChunk(chunk);
+}
+}
+}
 function syncStateLlmModeFromScope(scopeInput) {
 const cfg = getModeApiConfig(scopeInput);
 const mode = cfg.channel === 'local_antigravity' ? 'local_antigravity' : 'api';
@@ -5652,16 +6138,9 @@ if (state.activeSession) {
 state.activeSession.llm_mode = mode;
 }
 syncLlmModeUi();
-try {
-window.DeepSeekMonitorPlugin?.sync?.({
-settings: {
-provider: cfg.channel,
-has_own_deepseek_key: Boolean(cfg.ownKey),
-own_deepseek_model: 'deepseek-v4.1-flash'
-},
+syncDeepSeekMonitorForActiveScope({
 forceBalanceRefresh: cfg.channel === 'own_deepseek' && Boolean(cfg.ownKey)
 });
-} catch {}
 return cfg;
 }
 state.llmMode = getModeApiConfig('deepseek').channel === 'local_antigravity' ? 'local_antigravity' : 'api';
@@ -12374,18 +12853,17 @@ state.totalMessages = Math.max(state.totalMessages + 2, state.messages.length);
 }
 syncActiveSessionToCache();
 scheduleSaveBootSnapshot();
-window.DeepSeekMonitorPlugin?.sync({
-settings: state.settings,
+syncDeepSeekMonitorForActiveScope({
 messages: state.messages,
 forceBalanceRefresh: true
 });
 const turnUsage = finalAssistantMsg?.meta?.usage || payload?.usage || null;
 const activeScopeCfg = getModeApiConfig(originIsDsUi ? 'deepseek' : 'roleplay');
-const isDeepSeekOfficialTurn = activeScopeCfg.channel === 'own_deepseek' || state.settings?.provider === 'own_deepseek';
-if (turnUsage && isDeepSeekOfficialTurn && activeScopeCfg.channel !== 'custom_cloud') {
+const isDeepSeekOfficialTurn = activeScopeCfg.channel === 'own_deepseek';
+if (turnUsage && isDeepSeekOfficialTurn) {
 window.DeepSeekMonitorPlugin?.recordTurnUsage({
 usage: turnUsage,
-model: finalAssistantMsg?.meta?.model || payload?.model || state.settings?.own_deepseek_model || 'deepseek-v4.1-flash',
+model: finalAssistantMsg?.meta?.model || payload?.model || 'deepseek-v4.1-flash',
 source: originIsDsUi ? 'DeepSeek对话' : '剧场对话',
 provider: 'own_deepseek'
 });
@@ -12406,15 +12884,15 @@ window.playCompanionNeuralTts(accContent, null);
 throw new Error(payload.message || '流式推演中断');
 }
 };
-for await (const chunk of response.body) {
-if (!isStillOriginSession()) break;
+await readStreamChunksCompat(response.body, (chunk) => {
+if (!isStillOriginSession()) return;
 buffer += decoder.decode(chunk, { stream: true });
 const events = buffer.split(/\r?\n\r?\n/);
 buffer = events.pop() || '';
 for (const rawBlock of events) {
 handleSseBlock(rawBlock);
 }
-}
+});
 if (isStillOriginSession()) {
 const tail = decoder.decode();
 if (tail) buffer += tail;
@@ -14513,8 +14991,18 @@ bodyHtml: `
             <button type="button" class="mfs-sheet-btn-secondary ${chosenChannel === 'own_deepseek' ? 'is-active' : ''}" data-mfs-ch="own_deepseek" style="padding:8px 6px;font-size:12px;">DeepSeek API</button>
             <button type="button" class="mfs-sheet-btn-secondary ${chosenChannel === 'custom_cloud' ? 'is-active' : ''}" data-mfs-ch="custom_cloud" style="padding:8px 6px;font-size:12px;">云端自定义</button>
           </div>
-          <div id="mfs-ch-pane-local" class="${chosenChannel === 'local_antigravity' ? '' : 'hidden'}" style="padding:12px;border-radius:12px;background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.22);font-size:12.5px;line-height:1.55;">
-            <strong>当前已就绪 · 本地直连（默认）</strong><br/>无需填写任何 API Key，直接返回聊天即可开箱即用。
+          <div id="mfs-ch-pane-local" class="${chosenChannel === 'local_antigravity' ? '' : 'hidden'}">
+            <div style="padding:12px;border-radius:12px;background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.22);font-size:12.5px;line-height:1.55;margin-bottom:10px;">
+              <strong>当前已就绪 · 本地直连（默认零计费）</strong><br/>自动穿透云端服务器直连电脑 Antigravity 本地端口（免填 API Key 且不计算 Token）。
+            </div>
+            <div class="mfs-field-block" style="margin-bottom:6px;">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+                <label class="mfs-field-label" for="mfs-local-backend-url" style="margin:0;">App 本地/局域网端口（可选，留空自动连线上隧道）</label>
+                <button type="button" class="mfs-official-link-btn" id="mfs-local-port-test-btn" style="padding:2px 8px;font-size:11px;">检测端口</button>
+              </div>
+              <input type="url" class="mfs-sheet-input" id="mfs-local-backend-url" value="${escapeHtml(localStorage.getItem('star_app_local_backend_url') || '')}" placeholder="默认留空；如需局域网直连填 http://192.168.x.x:3000 或 http://127.0.0.1:3000" />
+              <div id="mfs-local-port-status" style="font-size:11.5px;color:var(--text-secondary);margin-top:4px;">默认自动连接 https://star.claudexxb.online（关联电脑 18765 隧道）</div>
+            </div>
           </div>
           <div id="mfs-ch-pane-own" class="${chosenChannel === 'own_deepseek' ? '' : 'hidden'}">
             <div class="mfs-field-block">
@@ -14629,6 +15117,43 @@ bodyEl.querySelector('#mfs-ch-pane-own')?.classList.toggle('hidden', nextCh !== 
 bodyEl.querySelector('#mfs-ch-pane-cloud')?.classList.toggle('hidden', nextCh !== 'custom_cloud');
 };
 syncSheetChannel(chosenChannel);
+const localPortInp = bodyEl.querySelector('#mfs-local-backend-url');
+const localPortTestBtn = bodyEl.querySelector('#mfs-local-port-test-btn');
+const localPortStatus = bodyEl.querySelector('#mfs-local-port-status');
+localPortTestBtn?.addEventListener('click', async () => {
+const rawV = (localPortInp?.value || '').trim();
+let targetBase = 'https://star.claudexxb.online';
+if (rawV) {
+try {
+const u = new URL(/^https?:\/\//i.test(rawV) ? rawV : `http://${rawV}`);
+targetBase = u.origin;
+if (localPortInp) localPortInp.value = targetBase;
+} catch {
+if (localPortStatus) localPortStatus.textContent = '地址格式无效，请输入如 http://192.168.1.5:3000';
+return;
+}
+}
+if (localPortStatus) localPortStatus.textContent = `正在检测 ${targetBase} 连通性…`;
+if (localPortTestBtn) localPortTestBtn.disabled = true;
+try {
+const probeUrl = targetBase.endsWith(':18765') ? `${targetBase}/health` : `${targetBase}/api/antigravity/status`;
+const r = await fetch(probeUrl, { cache: 'no-store' });
+if (r.ok) {
+const d = await r.json().catch(() => ({}));
+if (localPortStatus) {
+localPortStatus.textContent = `✅ 连通正常：${d.version || d.name || d.engine || targetBase}`;
+}
+} else if (localPortStatus) {
+localPortStatus.textContent = `⚠️ 服务返回 HTTP ${r.status}，请检查本地服务是否已启动`;
+}
+} catch (e) {
+if (localPortStatus) {
+localPortStatus.textContent = `❌ 无法连接 ${targetBase}（请确认同局域网或电脑服务已启动）`;
+}
+} finally {
+if (localPortTestBtn) localPortTestBtn.disabled = false;
+}
+});
 bodyEl.querySelectorAll('[data-mfs-ch]').forEach((btn) => {
 btn.addEventListener('click', () => syncSheetChannel(btn.getAttribute('data-mfs-ch') || 'local_antigravity'));
 });
@@ -14640,6 +15165,17 @@ inp.type = show ? 'text' : 'password';
 eyeBtn.innerHTML = show ? eyeOffSvg : eyeOpenSvg;
 });
 const commitScope = (resetToLocal = false) => {
+if (localPortInp) {
+const rawLocalU = (localPortInp.value || '').trim();
+try {
+if (rawLocalU) {
+const u = new URL(/^https?:\/\//i.test(rawLocalU) ? rawLocalU : `http://${rawLocalU}`);
+localStorage.setItem('star_app_local_backend_url', u.origin);
+} else {
+localStorage.removeItem('star_app_local_backend_url');
+}
+} catch {}
+}
 const patch = resetToLocal
 ? { channel: 'local_antigravity' }
 : {
@@ -14651,6 +15187,9 @@ cloudKey: (cloudKeyInp?.value || '').trim()
 };
 const saved = saveModeApiConfig(scope, patch);
 syncStateLlmModeFromScope(scope);
+if (saved.channel === 'local_antigravity') {
+checkLocalAntigravityStatus();
+}
 const keyVal = document.getElementById('mfs-apikey-value');
 if (keyVal) {
 keyVal.textContent = saved.channel === 'own_deepseek'
@@ -15721,8 +16260,7 @@ console.warn('[Settings] 活跃会话状态同步跳过（不阻断全局设置�
 }
 renderUserAndMembership();
 syncStateLlmModeFromScope(activeScope);
-window.DeepSeekMonitorPlugin?.sync({
-settings: state.settings,
+syncDeepSeekMonitorForActiveScope({
 messages: state.messages,
 forceBalanceRefresh: true
 });
@@ -17211,6 +17749,7 @@ rollingSummaryInput.placeholder = isDs
 : '聊多了之后会自动总结前情，也可以随时点右上角「一键总结前情」或自己修改…';
 }
 syncComposerEmptyState();
+syncDeepSeekMonitorForActiveScope();
 if (resetRightDrawer || prevMode !== state.uiMode) {
 setRightPanelCollapsed(true, false);
 }
@@ -18318,8 +18857,7 @@ const elReason = document.getElementById('val-ds-reason');
 if (elHit) elHit.textContent = sumHit;
 if (elMiss) elMiss.textContent = sumMiss;
 if (elReason) elReason.textContent = sumReason;
-window.DeepSeekMonitorPlugin?.sync({
-settings: state.settings,
+syncDeepSeekMonitorForActiveScope({
 messages: state.messages,
 forceBalanceRefresh: false
 });
@@ -18675,13 +19213,18 @@ proactiveRafId = requestAnimationFrame(flushProactiveDom);
 }
 };
 try {
+const proScopeCfg = getModeApiConfig(isDsUi ? 'deepseek' : 'roleplay');
+const proLlmMode = proScopeCfg.channel === 'local_antigravity' ? 'local_antigravity' : 'api';
+const proOv = buildModeApiOverride(isDsUi ? 'deepseek' : 'roleplay');
 const response = await fetch('/api/chat/proactive', {
 method: 'POST',
 headers: { 'Content-Type': 'application/json' },
 body: JSON.stringify({
 session_id: originSessionId,
 trigger_reason: triggerReason,
-include_follow_ups: isShowFollowUpsEnabled()
+include_follow_ups: isShowFollowUpsEnabled(),
+llm_mode: proLlmMode,
+mode_api_override: proOv
 }),
 signal: abortController.signal
 });
@@ -18769,15 +19312,15 @@ speakDialogueOnly(accContent, ttsBtn);
 }
 }
 };
-for await (const chunk of response.body) {
-if (!isStillOriginSession()) break;
+await readStreamChunksCompat(response.body, (chunk) => {
+if (!isStillOriginSession()) return;
 buffer += decoder.decode(chunk, { stream: true });
 const events = buffer.split(/\r?\n\r?\n/);
 buffer = events.pop() || '';
 for (const rawBlock of events) {
 handleSseBlock(rawBlock);
 }
-}
+});
 if (isStillOriginSession()) {
 buffer += decoder.decode();
 if (buffer.trim() && !receivedDoneEvent) {
@@ -20174,8 +20717,8 @@ runCloneBtn.innerHTML = origHtml;
 })();
 ;
 (() => {
-const CURRENT_APK_VERSION = '2.7.6';
-const CURRENT_APK_CODE = 167;
+const CURRENT_APK_VERSION = '2.7.7';
+const CURRENT_APK_CODE = 168;
 const DEEPSEEK_API_KEYS_URL = 'https://platform.deepseek.com/api_keys';
 const DEEPSEEK_OFFICIAL_CHAT_URL = 'https://api.deepseek.com/v1/chat/completions';
 const PUBLIC_WEB_ORIGIN = 'https://star.claudexxb.online';
@@ -20593,6 +21136,186 @@ return String(str ?? '')
 }
 function sleep(ms) {
 return new Promise((r) => setTimeout(r, ms));
+}
+let nativeReqSeq = 0;
+const pendingNativeHttp = new Map();
+const pendingNativeSleeps = new Map();
+const pendingNativeVerdicts = new Map();
+function nextNativeReqId(prefix) {
+nativeReqSeq += 1;
+return `${prefix}_${Date.now()}_${nativeReqSeq}`;
+}
+window.__onNativeHttpResult = (reqId, payloadStr) => {
+const entry = pendingNativeHttp.get(reqId);
+if (!entry) return;
+pendingNativeHttp.delete(reqId);
+try {
+entry.resolve(typeof payloadStr === 'string' ? JSON.parse(payloadStr) : payloadStr);
+} catch {
+entry.resolve({ ok: false, status: 0, body: '', error: '原生 HTTP 响应解析失败' });
+}
+};
+window.__onNativeSleepDone = (reqId) => {
+const entry = pendingNativeSleeps.get(reqId);
+if (!entry) return;
+pendingNativeSleeps.delete(reqId);
+entry.resolve();
+};
+window.__onNativeVerdictResult = (reqId, payloadStr) => {
+const entry = pendingNativeVerdicts.get(reqId);
+if (!entry) return;
+pendingNativeVerdicts.delete(reqId);
+try {
+entry.resolve(typeof payloadStr === 'string' ? JSON.parse(payloadStr) : payloadStr);
+} catch {
+entry.resolve({ changed: false, elapsedMs: 0, prefetchedSnapshot: null });
+}
+};
+function nativeSleep(ms, signal = null) {
+const delayMs = Math.max(0, Number(ms) || 0);
+if (delayMs === 0) return Promise.resolve();
+const b = getBridge();
+if (!isNativeApk() || !b || typeof b.nativeSleepAsync !== 'function') {
+if (!signal) return sleep(delayMs);
+return new Promise((resolve) => {
+if (signal.aborted) {
+resolve();
+return;
+}
+const timer = setTimeout(() => {
+signal.removeEventListener('abort', onAbort);
+resolve();
+}, delayMs);
+const onAbort = () => {
+clearTimeout(timer);
+resolve();
+};
+signal.addEventListener('abort', onAbort, { once: true });
+});
+}
+return new Promise((resolve) => {
+if (signal?.aborted) {
+resolve();
+return;
+}
+const reqId = nextNativeReqId('slp');
+let settled = false;
+const done = () => {
+if (settled) return;
+settled = true;
+clearTimeout(guardTimer);
+if (signal) signal.removeEventListener('abort', onAbort);
+resolve();
+};
+const onAbort = () => {
+pendingNativeSleeps.delete(reqId);
+try { b.cancelNativeSleep?.(reqId); } catch {}
+done();
+};
+const guardTimer = setTimeout(() => {
+pendingNativeSleeps.delete(reqId);
+done();
+}, delayMs + 2500);
+pendingNativeSleeps.set(reqId, { resolve: done });
+if (signal) signal.addEventListener('abort', onAbort, { once: true });
+try {
+b.nativeSleepAsync(reqId, delayMs);
+} catch {
+pendingNativeSleeps.delete(reqId);
+clearTimeout(guardTimer);
+if (signal) signal.removeEventListener('abort', onAbort);
+sleep(delayMs).then(done);
+}
+});
+}
+async function nativeHttpPostJson(url, headersObj, bodyObj, { timeoutMs = 12000, signal = null } = {}) {
+const b = getBridge();
+const bodyStr = JSON.stringify(bodyObj || {});
+if (isNativeApk() && b && typeof b.nativeHttpPostAsync === 'function') {
+return new Promise((resolve, reject) => {
+if (signal?.aborted) {
+const ae = new Error('请求已取消');
+ae.name = 'AbortError';
+reject(ae);
+return;
+}
+const reqId = nextNativeReqId('http');
+let settled = false;
+const cleanup = () => {
+clearTimeout(guardTimer);
+if (signal) signal.removeEventListener('abort', onAbort);
+};
+const onAbort = () => {
+if (settled) return;
+settled = true;
+pendingNativeHttp.delete(reqId);
+cleanup();
+try { b.cancelNativeHttp?.(reqId); } catch {}
+const ae = new Error('请求已取消');
+ae.name = 'AbortError';
+reject(ae);
+};
+const guardTimer = setTimeout(() => {
+if (settled) return;
+settled = true;
+pendingNativeHttp.delete(reqId);
+if (signal) signal.removeEventListener('abort', onAbort);
+try { b.cancelNativeHttp?.(reqId); } catch {}
+const te = new Error('原生 HTTP 请求超时');
+te.name = 'AbortError';
+reject(te);
+}, timeoutMs + 2000);
+pendingNativeHttp.set(reqId, {
+resolve: (resObj) => {
+if (settled) return;
+settled = true;
+cleanup();
+resolve({
+ok: Boolean(resObj?.ok),
+status: Number(resObj?.status) || 0,
+bodyText: String(resObj?.body || ''),
+error: String(resObj?.error || ''),
+fromNative: true
+});
+}
+});
+if (signal) signal.addEventListener('abort', onAbort, { once: true });
+try {
+b.nativeHttpPostAsync(reqId, String(url), JSON.stringify(headersObj || {}), bodyStr, timeoutMs);
+} catch (err) {
+if (!settled) {
+settled = true;
+pendingNativeHttp.delete(reqId);
+cleanup();
+reject(err);
+}
+}
+});
+}
+const timeoutCtrl = new AbortController();
+const timeoutTimer = setTimeout(() => {
+try { timeoutCtrl.abort(); } catch {}
+}, timeoutMs);
+const onOuterAbort = () => {
+try { timeoutCtrl.abort(); } catch {}
+};
+if (signal) {
+if (signal.aborted) timeoutCtrl.abort();
+else signal.addEventListener('abort', onOuterAbort, { once: true });
+}
+try {
+const resp = await fetch(url, {
+method: 'POST',
+headers: { 'Content-Type': 'application/json', ...(headersObj || {}) },
+body: bodyStr,
+signal: timeoutCtrl.signal
+});
+const bodyText = await resp.text().catch(() => '');
+return { ok: resp.ok, status: resp.status, bodyText, error: resp.ok ? '' : bodyText, fromNative: false };
+} finally {
+clearTimeout(timeoutTimer);
+if (signal) signal.removeEventListener('abort', onOuterAbort);
+}
 }
 function showToast(msg) {
 const toastEl = $('memory-toast');
@@ -21241,7 +21964,7 @@ duration: args.duration !== undefined ? Number(args.duration) : undefined
 },
 targetApp: String(snapshot?.appName || ''),
 targetPackage: String(snapshot?.packageName || ''),
-delayMs: tool === 'phone_open' ? 1100 : tool === 'phone_type' ? 500 : 480
+delayMs: tool === 'phone_open' ? 750 : tool === 'phone_type' ? 280 : 220
 };
 }
 function renderEmptyGuideLearnedSkills() {
@@ -21434,7 +22157,7 @@ const initSnap = readAndFormatSnapshot(false);
 if (initSnap.packageName === 'com.deepseek.starwhisper.studio' && typeof b.returnToLastExternalApp === 'function') {
 if (b.returnToLastExternalApp()) {
 addStepItem(cardCtx.stepsList, 0, '切回目标应用准备离线回放', '免 API 本地技能回放', '已切回', false, 'skill.prep');
-await sleep(550);
+await nativeSleep(320, signal);
 }
 }
 }
@@ -21519,8 +22242,8 @@ ok = b.dispatchGlobalAction(String(args.key || st.tool || 'back'));
 detailMsg = ok ? `系统键 (${args.key || st.tool})` : '系统键失败';
 } else if (st.tool === 'phone_wait' || st.tool === 'wait') {
 ok = true;
-const ms = Math.min(8000, Math.max(200, Number(args.ms) || 1000));
-await sleep(ms);
+const ms = Math.min(8000, Math.max(150, Number(args.ms) || 650));
+await nativeSleep(ms, signal);
 detailMsg = `等待 ${ms}ms`;
 } else {
 ok = true;
@@ -21530,7 +22253,7 @@ ok = false;
 detailMsg = `异常：${err?.message || err}`;
 }
 updateStepResult(rowEl, detailMsg, !ok, ok);
-await sleep(Math.min(2500, Math.max(240, Number(st.delayMs) || 480)));
+await nativeSleep(Math.min(1800, Math.max(150, Number(st.delayMs) || 240)), signal);
 }
 upsertLearnedSkill({ ...skill, runCount: (Number(skill.runCount) || 0) + 1 });
 return {
@@ -22363,25 +23086,8 @@ return list;
 }
 return [];
 }
-function readAndFormatSnapshot(includeInvisible = false) {
-if (!isNativeApk()) {
-return {
-snapshotId: '',
-packageName: '',
-appName: '网页预览',
-signature: '',
-hasSensitiveField: false,
-sensitiveReason: '',
-nodes: [],
-screenTreeText: ''
-};
-}
-const b = getBridge();
-try {
-if (typeof b.dumpScreenSnapshot === 'function') {
-const raw = b.dumpScreenSnapshot(Boolean(includeInvisible));
-const parsed = JSON.parse(raw);
-if (parsed && Array.isArray(parsed.nodes)) {
+function formatParsedSnapshot(parsed) {
+if (!parsed || !Array.isArray(parsed.nodes)) return null;
 const limitedNodes = parsed.nodes.slice(0, 160);
 const formatNodeCompact = (n) => {
 const flags = [];
@@ -22429,6 +23135,26 @@ nodes: parsed.nodes,
 screenTreeText: lines.join('\n')
 };
 }
+function readAndFormatSnapshot(includeInvisible = false) {
+if (!isNativeApk()) {
+return {
+snapshotId: '',
+packageName: '',
+appName: '网页预览',
+signature: '',
+hasSensitiveField: false,
+sensitiveReason: '',
+nodes: [],
+screenTreeText: ''
+};
+}
+const b = getBridge();
+try {
+if (typeof b.dumpScreenSnapshot === 'function') {
+const raw = b.dumpScreenSnapshot(Boolean(includeInvisible));
+const parsed = JSON.parse(raw);
+const formatted = formatParsedSnapshot(parsed);
+if (formatted) return formatted;
 }
 if (typeof b.dumpScreenHierarchy === 'function') {
 const raw = b.dumpScreenHierarchy(false);
@@ -22477,6 +23203,16 @@ return JSON.parse(b.getScreenMeta()) || {};
 } catch {}
 return { ok: false, packageName: '', appName: '', signature: '', hasSensitiveField: false, sensitiveReason: '' };
 }
+function readTopPackageFast() {
+if (!isNativeApk()) return '';
+const b = getBridge();
+try {
+if (typeof b.getTopPackageFast === 'function') {
+return String(b.getTopPackageFast() || '');
+}
+} catch {}
+return readScreenMeta().packageName || '';
+}
 function readScreenEventSeq() {
 if (!isNativeApk()) return { seq: 0, pkg: '', ts: 0 };
 const b = getBridge();
@@ -22494,10 +23230,71 @@ return { changed: true, fromApp: beforeMeta?.appName || '', toApp: beforeMeta?.a
 const maxWait = customMaxWait > 0
 ? customMaxWait
 : (toolName === 'phone_open'
-? 1600
+? 1100
 : (toolName === 'phone_type'
-? 700
-: (toolName === 'phone_scroll' || toolName === 'phone_swipe' ? 600 : 720)));
+? 420
+: (toolName === 'phone_scroll' || toolName === 'phone_swipe' ? 380 : 420)));
+const b = getBridge();
+if (b && typeof b.waitForScreenVerdictAsync === 'function') {
+const startAt = Date.now();
+return new Promise((resolve) => {
+if (signal?.aborted || emergencyStopRequested) {
+resolve({
+changed: false,
+fromApp: beforeMeta?.appName || '',
+toApp: beforeMeta?.appName || '',
+elapsedMs: 0,
+prefetchedSnapshot: null
+});
+return;
+}
+const reqId = nextNativeReqId('vrd');
+let settled = false;
+const finish = (resObj) => {
+if (settled) return;
+settled = true;
+clearTimeout(guardTimer);
+if (signal) signal.removeEventListener('abort', onAbort);
+const formattedPrefetch = resObj?.prefetchedSnapshot ? formatParsedSnapshot(resObj.prefetchedSnapshot) : null;
+resolve({
+changed: Boolean(resObj?.changed),
+fromApp: beforeMeta?.appName || beforeMeta?.packageName || '',
+toApp: String(resObj?.toApp || resObj?.packageName || beforeMeta?.appName || ''),
+elapsedMs: Number(resObj?.elapsedMs) || (Date.now() - startAt),
+hasSensitiveField: Boolean(resObj?.hasSensitiveField),
+sensitiveReason: String(resObj?.sensitiveReason || ''),
+prefetchedSnapshot: formattedPrefetch
+});
+};
+const onAbort = () => {
+pendingNativeVerdicts.delete(reqId);
+try { b.cancelWaitForScreenVerdict?.(reqId); } catch {}
+finish({ changed: false, elapsedMs: Date.now() - startAt, prefetchedSnapshot: null });
+};
+const guardTimer = setTimeout(() => {
+pendingNativeVerdicts.delete(reqId);
+try { b.cancelWaitForScreenVerdict?.(reqId); } catch {}
+finish({ changed: false, elapsedMs: Date.now() - startAt, prefetchedSnapshot: null });
+}, maxWait + 1200);
+pendingNativeVerdicts.set(reqId, { resolve: finish });
+if (signal) signal.addEventListener('abort', onAbort, { once: true });
+try {
+b.waitForScreenVerdictAsync(
+reqId,
+String(beforeMeta?.packageName || ''),
+String(beforeMeta?.signature || ''),
+Number(beforeMeta?.eventSeq) || 0,
+String(toolName || ''),
+maxWait
+);
+} catch {
+pendingNativeVerdicts.delete(reqId);
+clearTimeout(guardTimer);
+if (signal) signal.removeEventListener('abort', onAbort);
+finish({ changed: false, elapsedMs: Date.now() - startAt, prefetchedSnapshot: null });
+}
+});
+}
 const startAt = Date.now();
 const beforeSeq = Number(beforeMeta?.eventSeq) || 0;
 const hasEventSeqApi = typeof getBridge()?.getScreenEventSeq === 'function';
@@ -22506,15 +23303,15 @@ let latest = beforeMeta || {};
 let checkedMetaOnce = false;
 while (Date.now() - startAt < maxWait) {
 if (signal?.aborted || emergencyStopRequested) break;
-await sleep(80);
+await nativeSleep(55, signal);
 const elapsed = Date.now() - startAt;
 if (hasEventSeqApi && beforeSeq > 0) {
 const ev = readScreenEventSeq();
-if (Number(ev.seq) === beforeSeq && elapsed < 380) {
+if (Number(ev.seq) === beforeSeq && elapsed < 260) {
 continue;
 }
 if (Number(ev.seq) !== beforeSeq) {
-await sleep(toolName === 'phone_open' ? 220 : 90);
+await nativeSleep(toolName === 'phone_open' ? 140 : 50, signal);
 latest = readScreenMeta();
 checkedMetaOnce = true;
 if (
@@ -22529,7 +23326,7 @@ break;
 continue;
 }
 }
-if (!checkedMetaOnce || elapsed >= maxWait - 120) {
+if (!checkedMetaOnce || elapsed >= maxWait - 100) {
 latest = readScreenMeta();
 checkedMetaOnce = true;
 if (latest && latest.ok) {
@@ -22538,7 +23335,7 @@ if (
 (beforeMeta?.signature && latest.signature && latest.signature !== beforeMeta.signature)
 ) {
 changed = true;
-await sleep(90);
+await nativeSleep(50, signal);
 latest = readScreenMeta();
 break;
 }
@@ -23424,6 +24221,28 @@ else signal.addEventListener('abort', () => finish({ mode: 'cancel' }), { once: 
 }
 });
 }
+const AMBIGUOUS_PREFLIGHT_RE = /^(?:帮我|请|麻烦|去|我要|我想)?(?:点个?外卖|叫个?外卖|点餐|买吃的|写作业|做作业|刷题|答题|做题|发消息|发微信|回消息|联系一下|通知一下|买票|订票|订酒店|买东西|购物|逛淘宝|刷视频)[！!。.\s]*$/;
+function isClearlyExplicitTask(clean) {
+if (!clean) return false;
+if (isAtomicBuiltInLocalCmd(clean)) return true;
+if (AMBIGUOUS_PREFLIGHT_RE.test(clean)) return false;
+if (/点外卖|叫外卖/.test(clean) && clean.length <= 12 && !/(?:买|点|搜|吃|来份|来一份|螺蛳粉|奶茶|咖啡|汉堡|米线|面|饭|炸鸡)/.test(clean)) {
+return false;
+}
+if (/^(?:帮我|继续|开始)?(?:写作业|做作业|答题|做题|刷题)$/.test(clean)) {
+return false;
+}
+if (/^(?:帮我)?(?:发消息|发微信|回消息)/.test(clean) && !/(?:给|向|发|内容|说)/.test(clean.slice(4))) {
+return false;
+}
+if (/^(?:打开|启动|进入|去|切到|用)\s*[^\s，。！？,!?]{1,12}/.test(clean) && clean.length >= 4) {
+return true;
+}
+if (/(?:给\S{1,12}(?:发|回|说)|搜一下|搜索\S+|查找\S+|查看\S+|继续把|把当前|把这套|不要交卷|不交卷)/.test(clean)) {
+return true;
+}
+return false;
+}
 function shouldSkipPreFlightClarify(taskText, clarifyPolicy, resumeOpts) {
 if (resumeOpts && Array.isArray(resumeOpts.history)) return true;
 if (clarifyPolicy === 'off') return true;
@@ -23431,7 +24250,7 @@ const clean = String(taskText || '').trim();
 if (!clean) return true;
 if (isLikelyPureChat(clean)) return true;
 if (/^(?:直接执行|不用问|别问了|马上执行|立刻执行)/.test(clean)) return true;
-if (clarifyPolicy === 'smart' && isAtomicBuiltInLocalCmd(clean)) return true;
+if (clarifyPolicy === 'smart' && isClearlyExplicitTask(clean)) return true;
 return false;
 }
 function buildLocalFallbackPreFlight(taskText, clarifyPolicy) {
@@ -23482,9 +24301,6 @@ options: ['确认无误，立即开始', '先打开目标页面让我看看']
 return { intent: 'task', ready: true, thought: '指令目标明确，可直接开始执行。', planPreview: '', question: '', options: [] };
 }
 async function requestPreFlightCheck({ execMode, task, clarifyPolicy, lastExternalApp, installedApps, signal }) {
-if (!isNativeApk() && execMode === 'local') {
-return { ok: true, preflight: buildLocalFallbackPreFlight(task, clarifyPolicy) };
-}
 if (execMode === 'local') {
 return { ok: true, preflight: buildLocalFallbackPreFlight(task, clarifyPolicy) };
 }
@@ -23498,25 +24314,17 @@ return null;
 }
 const preSys = [
 '你是星语手机辅助代理（Phone Agent · dsh-Go 任务前需求预检助手）。',
-'在真正切走手机界面或开始执行任务之前，快速判断用户的指令是否清晰完整，避免“一发指令就盲目跳走”。',
-'仅输出严格合法的 JSON 对象（不要 Markdown 代码块）：',
-'{"intent":"chat|task","ready":true|false,"thought":"简短中文需求完整度分析(<=70字)","planPreview":"若现在执行将采取的1~2句中文拟定步骤","question":"若 ready=false，用友好简洁的中文一次性问清1~3个最关键的缺失细节","options":["可直接点击的快捷回答1","快捷回答2","快捷回答3"]}',
-'规则：1. 闲聊/提问咨询设 intent="chat", ready=true。2. 目标 App/当前上下文明确且无关键参数缺口（如“打开微信给张三发在吗”、“继续把当前这套单选题做完不交卷”）在 smart 模式设 intent="task", ready=true。3. 存在明显缺失或歧义（如“点外卖/写作业/发消息/买票/购物/刷视频”缺对象/条件）或 clarifyPolicy==="always" 设 intent="task", ready=false 并给出 2~4 个快捷选项。'
+'快速判断指令是否清晰完整，仅输出严格合法 JSON：',
+'{"intent":"chat|task","ready":true|false,"thought":"简短分析(<=36字)","planPreview":"1句拟定步骤","question":"若ready=false的简短中文提问","options":["快捷选项1","快捷选项2"]}',
+'规则：1.闲聊设intent="chat",ready=true。2.目标App/上下文明确且无关键缺口在smart模式设intent="task",ready=true。3.明显缺关键对象或clarifyPolicy==="always"设intent="task",ready=false并给2~4个快捷options。'
 ].join('\n');
 const preUser = JSON.stringify({
 task,
 clarifyPolicy,
 lastExternalApp: lastExternalApp || getLastExternalAppInfo(),
-conversationMemory: paChatMemory.slice(-6),
+conversationMemory: paChatMemory.slice(-4),
 installedAppsPreview: compactApps
 });
-const timeoutCtrl = new AbortController();
-const tTimer = setTimeout(() => { try { timeoutCtrl.abort(); } catch {} }, 8000);
-const onOuter = () => { try { timeoutCtrl.abort(); } catch {} };
-if (signal) {
-if (signal.aborted) timeoutCtrl.abort();
-else signal.addEventListener('abort', onOuter, { once: true });
-}
 try {
 const bodyObj = {
 model: targetModel,
@@ -23525,20 +24333,20 @@ messages: [
 { role: 'user', content: preUser }
 ],
 temperature: 0.2,
-max_tokens: 512,
+max_tokens: 280,
 stream: false
 };
 if (String(targetUrl || '').includes('deepseek.com')) {
 bodyObj.response_format = { type: 'json_object' };
 }
-const resp = await fetch(targetUrl, {
-method: 'POST',
-headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${cleanKey}` },
-body: JSON.stringify(bodyObj),
-signal: timeoutCtrl.signal
-});
-if (resp.ok) {
-const j = await resp.json();
+const nRes = await nativeHttpPostJson(
+targetUrl,
+{ Authorization: `Bearer ${cleanKey}` },
+bodyObj,
+{ timeoutMs: 4500, signal }
+);
+if (nRes.ok && nRes.bodyText) {
+const j = JSON.parse(nRes.bodyText);
 const content = String(j?.choices?.[0]?.message?.content || '').trim();
 const cleaned = content.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
 const obj = JSON.parse(cleaned);
@@ -23556,10 +24364,7 @@ options: Array.isArray(obj?.options) ? obj.options.map((x) => String(x || '').tr
 }
 };
 }
-} catch {} finally {
-clearTimeout(tTimer);
-if (signal) signal.removeEventListener('abort', onOuter);
-}
+} catch {}
 try {
 const pPayload = {
 phase: 'preflight',
@@ -23882,30 +24687,29 @@ return { packageName: '', appName: '' };
 }
 function buildPlanningPromptMessages({ task, snapshot, history, screenSize, installedApps, screenVerdict, loopDiagnostics, interjections, stepIndex, lastExternalApp }) {
 const sys = [
-'你是星语手机辅助代理（Phone Agent · dsh-Go 规划内核），既能与用户自然思考、自由对话解答问题，又能精准操控手机。',
+'你是星语手机辅助代理（Phone Agent · dsh-Go 规划内核），根据任务、屏幕快照(ref)、ScreenVerdict 与历史步骤输出唯一精确的下一步动作。',
 `屏幕分辨率: ${screenSize.width}x${screenSize.height}。`,
-'你必须仅返回一个合法 JSON 对象（不要用 Markdown 代码块包裹，也不要附加前后任何解释文字），字段定义：',
-'{"thought":"清晰自然的中文思考推理(30~110字，简述看到了什么、分析判断与决策原因)","tool":"工具名","args":{},"summary":"面向用户的中文简述(<=28字)","risk":"read|write|sensitive","reply":"在 chat / done / ask_user 时填写自然友好的中文回复"}',
+'仅输出严格合法 JSON（禁止 Markdown 代码块与多余解释），将 tool 与 args 放最前面以加速响应：',
+'{"tool":"工具名","args":{},"thought":"简短中文判断(<=30字)","summary":"简述(<=16字)","risk":"read|write|sensitive","reply":"chat/done/ask_user时的中文回复"}',
 '可用 tool 与 args：',
-'chat:{"message":"无需操作手机，直接用自然友好的中文对话回答用户问题或讨论方案"} / phone_open:{"appName":"微信"} / phone_tap:{"ref":"e12","snapshotId":"snap_1"} / phone_tap_xy:{"x":540,"y":1200} / phone_double_tap:{"x":540,"y":1000} / phone_long_press:{"ref":"e12","duration":700} / phone_type:{"ref":"e8","text":"你好","clear":false,"submit":true} / phone_scroll:{"direction":"down|up|left|right","amount":0.65} / phone_swipe:{"x1":540,"y1":1600,"x2":540,"y2":600,"duration":320} / phone_key:{"key":"back|home|recents|notifications|quick_settings|enter|screenshot"} / phone_wait:{"ms":1000} / ask_user:{"message":"需要向用户追问澄清、确认选择或请求手动操作的清晰问题","reason":"clarify|confirm|sensitive|manual","options":["推荐选项1","选项2"]} / done:{"message":"完成总结"}',
-'关键约束：',
-'0. 自由对话优先识别：若用户是在打招呼、闲聊、询问原理/题目思路、讨论方案、咨询你能做什么、或仅针对屏幕内容提问而无需点击/打开手机时，直接返回 tool="chat"，用 reply 给出完整有温度的回答，严禁瞎点手机！',
-'0.5 模糊/不确定主动问清楚（关键！）：当用户指令缺少关键信息（如未指定发给谁/发什么内容/买哪款/选哪个规格、多选拿不准、当前界面有多个同名目标或即将执行重要提交/删除/付款）时，严禁瞎猜乱点！必须立即返回 tool="ask_user"，在 reply 中礼貌问清楚具体需求，并尽可能在 args.options 中提供 2~4 个简短清晰的快捷选项。',
-'1. 优先用 phone_open 打开应用；点击屏幕元素首选 phone_tap 并携带 ref 与 snapshotId。',
-'2. 防卡死与防死循环铁律：严禁连续 2 步返回 phone_wait！仔细检查 screenVerdict 与 loopDiagnostics：若 blockedActions 非空，严禁再输出列表中已失效的动作、控件或坐标；若 oscillationDetected=true（页面 A↔B 往返死循环），严禁继续在两个页面间重复点击，必须更换入口、改用搜索框、执行 phone_key(back) 退出重进，或返回 ask_user 请求用户协助。',
-'2.5 遮挡弹窗清理：若页面被开屏广告、版本更新、权限引导或好评弹窗遮挡，优先点击“跳过/取消/以后再说/暂不更新/知道了/关闭”等按钮清理遮挡后再继续主任务。',
-'3. 若同一屏幕上已同时清晰可见 2~3 个明确无歧义的连贯操作（如学习答题“选中选项 + 点击下一题/提交”），可额外附带 `"actions":[{"tool":"phone_tap","args":{"ref":"e10"}},{"tool":"phone_tap","args":{"ref":"e24"}}]`（最多 3 个同屏非敏感微动作），否则只输出单动作。',
-'4. 严禁操作控制端自身（packageName="com.deepseek.starwhisper.studio"）或在其聊天框打字；用户说“继续写作业/继续答题”且未指定打开 DeepSeek 时，绝不要去打开 DeepSeek 应用，而是切回 lastExternalApp 或在当前学习软件中继续操作。',
-'5. screenTreeText 中每一行 `R1: ... | ...` 代表屏幕同一水平行的元素。做选择题时必须严格核对同一行的选项字母与右侧文字；带有 (sel) 或 (chk) 的表示已选中，若已选对直接点“下一题”，严禁张冠李戴选错行！',
-'6. 连续多题/多页任务铁律：当任务属于连续流程（如“写作业/继续写作业/答题/刷题/完成练习”）时，只要屏幕上还存在“下一题”按钮、或题号进度（如 3/5、12/20）未达最后且未出现“提交成功/练习完成/得分”页面，严禁做完一题就返回 done！必须持续作答并点击“下一题”，一口气把整套题全部做完，直到全部完成或出现最终交卷/结算页才返回 done（或需要人工确认最终交卷时返回 ask_user）。',
-'7. 若 interjections 非空，最高优先级立即响应用户中途插话或回复确认。',
-'8. 若 hasSensitiveField=true 或涉及付款/转账/下单/密码/验证码/删除/卸载/发消息，risk 必须为 "sensitive"，支付密码/验证码直接 ask_user 交还人工。'
+'chat:{"message":"无需操作手机，直接对话回答"} / phone_open:{"appName":"微信"} / phone_tap:{"ref":"e12","snapshotId":"snap_1"} / phone_tap_xy:{"x":540,"y":1200} / phone_double_tap:{"x":540,"y":1000} / phone_long_press:{"ref":"e12","duration":650} / phone_type:{"ref":"e8","text":"你好","clear":false,"submit":true} / phone_scroll:{"direction":"down|up|left|right","amount":0.65} / phone_swipe:{"x1":540,"y1":1600,"x2":540,"y2":600,"duration":240} / phone_key:{"key":"back|home|recents|notifications|quick_settings|enter|screenshot"} / phone_wait:{"ms":600} / ask_user:{"message":"向用户追问或请求确认的问题","reason":"clarify|confirm|sensitive|manual","options":["推荐选项1","选项2"]} / done:{"message":"完成总结"}',
+'关键规则：',
+'0. 闲聊/提问/只读屏幕解答直接返回 tool="chat"，严禁瞎点。',
+'0.5 缺收件人/内容/规格等关键参数或重要提交/删除/付款时，严禁瞎猜，立即返回 ask_user 并尽量给 2~4 个快捷 options。',
+'1. 打开应用首选 phone_open；点控件首选 phone_tap(ref, snapshotId)。',
+'2. 防卡死铁律：严禁连续 2 步 phone_wait；若 blockedActions 非空或 noChangeStreak>=1、errorStreak>=1，必须立刻更换完全不同的控件/坐标/路径；oscillationDetected=true 时立即换路、phone_key(back) 或 ask_user。',
+'2.5 遇开屏广告/更新/权限弹窗，优先点击跳过/关闭/以后再说清理。',
+'3. 同屏明确无歧义的 2~3 个连贯非敏感微动作（如先选答案再点下一题）可附带 `"actions":[{"tool":"phone_tap","args":{"ref":"e10"}},{"tool":"phone_tap","args":{"ref":"e24"}}]`。',
+'4. 严禁操作控制端自身(packageName="com.deepseek.starwhisper.studio")；说“继续写作业/答题”且未提 DeepSeek 时切回 lastExternalApp。',
+'5. screenTreeText 每行 `R1: ... | ...` 为同一水平行；做题须核对同行字母与文字，带 (sel)/(chk) 表示已选中，已选对直接点“下一题”。',
+'6. 连续做题/多页任务只要还有“下一题”或题号未达最后且未出现得分/提交成功页，严禁提前 done，须连贯做完。',
+'7. interjections 非空时最高优先级响应用户插话。',
+'8. hasSensitiveField=true 或付款/转账/下单/删除/密码/验证码设 risk="sensitive"，密码/验证码/刷脸直接 ask_user 交还人工。'
 ].join('\n');
-const recentHistory = (history || []).slice(-10).map((h) => ({
+const recentHistory = (history || []).slice(-6).map((h) => ({
 step: h.step,
 tool: h.tool || h.action,
 args: h.argsSummary || '',
-summary: h.summary,
 result: h.result,
 changed: h.changed === undefined ? null : Boolean(h.changed),
 page: h.page || ''
@@ -23920,25 +24724,25 @@ pkgLower.includes('launcher') ||
 appLower.includes('桌面') ||
 (lastHist && lastHist.tool === 'phone_open' && String(lastHist.result || '').includes('未能'));
 const usrObj = {
-task,
-stepIndex: stepIndex || (history || []).length + 1,
 selfPackageName: 'com.deepseek.starwhisper.studio',
-lastExternalApp: lastExternalApp || getLastExternalAppInfo(),
-snapshotId: snapshot?.snapshotId || '',
-foregroundApp: snapshot?.appName || '',
-packageName: snapshot?.packageName || '',
-hasSensitiveField: Boolean(snapshot?.hasSensitiveField),
-sensitiveReason: snapshot?.sensitiveReason || '',
-screenVerdict: screenVerdict || null,
-loopDiagnostics: loopDiagnostics || null,
-interjections: interjections || [],
-conversationMemory: paChatMemory.slice(-6),
-recentHistory,
-screenTreeText: snapshot?.screenTreeText || ''
+lastExternalApp: lastExternalApp || getLastExternalAppInfo()
 };
 if (needAppsList) {
 usrObj.installedApps = (installedApps || []).slice(0, 40).map((a) => (typeof a === 'string' ? a : a.name));
 }
+usrObj.task = task;
+usrObj.stepIndex = stepIndex || (history || []).length + 1;
+usrObj.snapshotId = snapshot?.snapshotId || '';
+usrObj.foregroundApp = snapshot?.appName || '';
+usrObj.packageName = snapshot?.packageName || '';
+usrObj.hasSensitiveField = Boolean(snapshot?.hasSensitiveField);
+if (snapshot?.sensitiveReason) usrObj.sensitiveReason = snapshot.sensitiveReason;
+if (screenVerdict) usrObj.screenVerdict = screenVerdict;
+if (loopDiagnostics) usrObj.loopDiagnostics = loopDiagnostics;
+if (interjections && interjections.length) usrObj.interjections = interjections;
+if (paChatMemory.length) usrObj.conversationMemory = paChatMemory.slice(-4);
+if (recentHistory.length) usrObj.recentHistory = recentHistory;
+usrObj.screenTreeText = snapshot?.screenTreeText || '';
 const usr = JSON.stringify(usrObj);
 return [
 { role: 'system', content: sys },
@@ -24136,46 +24940,27 @@ const directBody = {
 model: modelToUse,
 messages: msgs,
 temperature: isReasoner ? 0.2 : 0.15,
-max_tokens: isReasoner ? 2048 : 1024,
+max_tokens: isReasoner ? 2048 : 420,
 stream: false
 };
 if (allowJsonFormat && !isReasoner && isOfficialDsUrl) {
 directBody.response_format = { type: 'json_object' };
 }
-const timeoutCtrl = new AbortController();
-const timeoutTimer = setTimeout(() => {
-try { timeoutCtrl.abort(); } catch {}
-}, 18000);
-const onOuterAbort = () => {
-try { timeoutCtrl.abort(); } catch {}
-};
-if (signal) {
-if (signal.aborted) timeoutCtrl.abort();
-else signal.addEventListener('abort', onOuterAbort, { once: true });
-}
-let directRes;
-try {
-directRes = await fetch(targetUrl, {
-method: 'POST',
-headers: {
-'Content-Type': 'application/json',
-Authorization: `Bearer ${cleanKey}`
-},
-body: JSON.stringify(directBody),
-signal: timeoutCtrl.signal
-});
-} finally {
-clearTimeout(timeoutTimer);
-if (signal) signal.removeEventListener('abort', onOuterAbort);
-}
-if (!directRes.ok) {
-const txt = await directRes.text().catch(() => '');
-const httpErr = new Error(`直连 API 返回 (${directRes.status}): ${txt.slice(0, 120)}`);
-httpErr.code = directRes.status === 401 || directRes.status === 403 ? 'DIRECT_AUTH_ERROR' : 'DIRECT_HTTP_ERROR';
-httpErr.status = directRes.status;
+const nRes = await nativeHttpPostJson(
+targetUrl,
+{ Authorization: `Bearer ${cleanKey}` },
+directBody,
+{ timeoutMs: 12000, signal }
+);
+if (!nRes.ok) {
+const txt = String(nRes.bodyText || nRes.error || '');
+const httpErr = new Error(nRes.status ? `直连 API 返回 (${nRes.status}): ${txt.slice(0, 120)}` : `直连请求失败: ${txt.slice(0, 120)}`);
+httpErr.code = nRes.status === 401 || nRes.status === 403 ? 'DIRECT_AUTH_ERROR' : 'DIRECT_HTTP_ERROR';
+httpErr.status = nRes.status;
+httpErr.fromNative = nRes.fromNative;
 throw httpErr;
 }
-const json = await directRes.json();
+const json = JSON.parse(nRes.bodyText || '{}');
 const msgObj = json?.choices?.[0]?.message || {};
 const content = String(msgObj.content || '').trim();
 const rawReasoning = String(msgObj.reasoning_content || '').trim();
@@ -24206,8 +24991,8 @@ retryModel,
 '刚才未返回合法 JSON 动作指令。请严格只输出一个合法 JSON 对象（不要任何 Markdown 或解释文字）。',
 false
 );
-} else if (firstErr?.name === 'AbortError' || Number(firstErr?.status) >= 500 || /fetch|network|timeout/i.test(String(firstErr?.message || ''))) {
-await sleep(400);
+} else if (firstErr?.name === 'AbortError' || Number(firstErr?.status) >= 500 || (firstErr?.fromNative && /timeout|reset|eof/i.test(String(firstErr?.message || '')))) {
+await nativeSleep(120, signal);
 result = await attemptDirectCall(targetModel, '', false);
 } else {
 throw firstErr;
@@ -24346,7 +25131,7 @@ customModel: cloudCfg.model
 signal
 );
 if (!cloudRes.ok && !signal?.aborted && (cloudRes.status >= 500 || cloudRes.status === 0)) {
-await sleep(400);
+await nativeSleep(150, signal);
 cloudRes = await apiPostJson(
 '/api/phone-agent/plan',
 {
@@ -24881,6 +25666,7 @@ resumeOpts && typeof resumeOpts.roundAutoApproved === 'boolean'
 : (getConfirmPolicy() === 'auto_turn');
 let startStep = isResuming && Number(resumeOpts.startStep) > 0 ? Number(resumeOpts.startStep) : 1;
 let lastScreenVerdict = resumeOpts?.lastScreenVerdict || null;
+let prefetchedSnap = null;
 let noChangeStreak = 0;
 let earlyDoneIntercepts = 0;
 let autoContinueHint = Array.isArray(resumeOpts?.initialInterjections)
@@ -24974,8 +25760,10 @@ const switchedOk = typeof b.returnToLastExternalApp === 'function'
 if (switchedOk) {
 const label = lastExtApp.appName || '上一个应用';
 addStepItem(cardCtx.stepsList, 0, `自动切回「${label}」继续执行`, '防止在控制端自身界面误操作', '已切回', false, 'phone.open');
-await sleep(520);
+await nativeSleep(320, signal);
 }
+} else if (initSnap.packageName && initSnap.packageName !== SELF_PKG && Array.isArray(initSnap.nodes) && initSnap.nodes.length > 0) {
+prefetchedSnap = initSnap;
 }
 }
 for (let step = startStep; step <= MAX_STEPS; step++) {
@@ -25005,7 +25793,8 @@ updateQueueBarUi();
 if (native && b && typeof b.updateFloatState === 'function') {
 try { b.updateFloatState('thinking', `第 ${step} 步 规划中...`); } catch {}
 }
-const snapshot = readAndFormatSnapshot(false);
+const snapshot = prefetchedSnap || readAndFormatSnapshot(false);
+prefetchedSnap = null;
 const currentPageKey = `${snapshot.packageName || ''}::${snapshot.signature || ''}`;
 if (native && currentPageKey !== '::') {
 loopState.recentPageSigs.push(currentPageKey);
@@ -25228,7 +26017,8 @@ summary: '检测到未完成全部题目，自动继续作答下一题',
 result: '已拦截提前结束，继续推进',
 changed: false
 });
-await sleep(160);
+prefetchedSnap = null;
+await nativeSleep(80, signal);
 continue;
 }
 const doneMsg = plan.reply || plan.args?.message || plan.summary || '全部任务步骤已顺利完成';
@@ -25276,7 +26066,7 @@ autoContinueHint = '【用户现场指示】跳过刚才卡住的目标与方式
 } else if (/返回上一页/.test(replyClean)) {
 if (native && b && typeof b.dispatchGlobalAction === 'function') {
 try { b.dispatchGlobalAction('back'); } catch {}
-await sleep(420);
+await nativeSleep(260, signal);
 }
 autoContinueHint = '【用户现场指示】已返回上一页，请换一条全新路径重新查找目标。';
 } else if (/我已手动操作/.test(replyClean)) {
@@ -25298,7 +26088,8 @@ result: `用户回复确认：${replyClean}`,
 changed: true,
 page: snapshot.appName || snapshot.packageName || ''
 });
-await sleep(160);
+prefetchedSnap = null;
+await nativeSleep(80, signal);
 continue;
 }
 if (askResult.mode === 'back_to_chat') {
@@ -25384,13 +26175,14 @@ if (gateRejected || handedOver) break;
 if (native && b && typeof b.updateFloatState === 'function') {
 try { b.updateFloatState('acting', plan.summary || '执行中...'); } catch {}
 }
+const preActionSeq = native ? (Number(readScreenEventSeq().seq) || beforeEventSeq) : 0;
 const beforeMeta = native
 ? {
 ok: true,
 packageName: snapshot.packageName || '',
 appName: snapshot.appName || '',
 signature: snapshot.signature || '',
-eventSeq: beforeEventSeq
+eventSeq: preActionSeq
 }
 : null;
 let execRes = { executed: false, text: '' };
@@ -25403,8 +26195,8 @@ break;
 }
 const subAct = actionQueue[ai];
 if (ai > 0 && native) {
-const liveMeta = readScreenMeta();
-if (liveMeta?.ok && liveMeta.packageName && snapshot.packageName && liveMeta.packageName !== snapshot.packageName) {
+const livePkg = readTopPackageFast();
+if (livePkg && snapshot.packageName && livePkg !== snapshot.packageName) {
 execTexts.push('页面已切换，提前结束本批微动作');
 break;
 }
@@ -25417,7 +26209,7 @@ if (cap) recordedSteps.push(cap);
 }
 if (execRes.error || !native) break;
 if (ai < actionQueue.length - 1) {
-await sleep(subAct.tool === 'phone_tap' ? 200 : 220);
+await nativeSleep(subAct.tool === 'phone_tap' ? 85 : 100, signal);
 }
 }
 if (abortedByUser) {
@@ -25432,7 +26224,7 @@ let verdict = native
 beforeMeta,
 lastSubTool,
 signal,
-actionQueue.length === 1 && execRes.method === 'node' && (lastSubTool === 'phone_tap' || lastSubTool === 'click_node') ? 380 : 0
+actionQueue.length === 1 && execRes.method === 'node' && (lastSubTool === 'phone_tap' || lastSubTool === 'click_node') ? 260 : 0
 )
 : { changed: true, elapsedMs: 0 };
 if (
@@ -25449,9 +26241,16 @@ typeof b?.dispatchClick === 'function'
 const fallbackTapped = b.dispatchClick(execRes.x, execRes.y);
 if (fallbackTapped) {
 execTexts[0] = `${execRes.text}（已物理补点）`;
-verdict = await waitForScreenVerdict(beforeMeta, lastSubTool, signal, 420);
+verdict = await waitForScreenVerdict(beforeMeta, lastSubTool, signal, 320);
 }
 }
+const nextCachedSnap = verdict?.prefetchedSnapshot && verdict.prefetchedSnapshot.packageName
+? verdict.prefetchedSnapshot
+: null;
+if (verdict && 'prefetchedSnapshot' in verdict) {
+delete verdict.prefetchedSnapshot;
+}
+prefetchedSnap = nextCachedSnap;
 const finalExecText = execTexts.join(' -> ') || execRes.text;
 const stepFp = getActionFingerprint(plan, snapshot);
 loopState.recentActionFingerprints.push(stepFp);

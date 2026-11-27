@@ -200,11 +200,18 @@ function runAgyEngine({ prompt, model, enableThinking, onReasoning, onContent, s
   });
 }
 
+const BRIDGE_CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization'
+};
+
 function sendJson(res, status, obj) {
   const body = JSON.stringify(obj);
   res.writeHead(status, {
     'Content-Type': 'application/json; charset=utf-8',
-    'Content-Length': Buffer.byteLength(body)
+    'Content-Length': Buffer.byteLength(body),
+    ...BRIDGE_CORS_HEADERS
   });
   res.end(body);
 }
@@ -233,6 +240,11 @@ function checkBearerAuth(req, expectedToken) {
 }
 
 const server = http.createServer(async (req, res) => {
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204, BRIDGE_CORS_HEADERS);
+    res.end();
+    return;
+  }
   const cfg = readBridgeSecretConfig();
   const urlPath = (req.url || '/').split('?')[0];
 
@@ -307,7 +319,8 @@ const server = http.createServer(async (req, res) => {
         'Content-Type': 'text/event-stream; charset=utf-8',
         'Cache-Control': 'no-cache, no-transform',
         Connection: 'keep-alive',
-        'X-Bridge-Used-Engine': 'agy'
+        'X-Bridge-Used-Engine': 'agy',
+        ...BRIDGE_CORS_HEADERS
       });
       keepAliveTimer = setInterval(() => {
         if (!res.writableEnded) {

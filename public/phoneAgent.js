@@ -7,8 +7,8 @@
    ========================================================================== */
 
 (() => {
-  const CURRENT_APK_VERSION = '2.7.6';
-  const CURRENT_APK_CODE = 167;
+  const CURRENT_APK_VERSION = '2.7.7';
+  const CURRENT_APK_CODE = 168;
   const DEEPSEEK_API_KEYS_URL = 'https://platform.deepseek.com/api_keys';
   const DEEPSEEK_OFFICIAL_CHAT_URL = 'https://api.deepseek.com/v1/chat/completions';
   const PUBLIC_WEB_ORIGIN = 'https://star.claudexxb.online';
@@ -464,6 +464,197 @@
 
   function sleep(ms) {
     return new Promise((r) => setTimeout(r, ms));
+  }
+
+  let nativeReqSeq = 0;
+  const pendingNativeHttp = new Map();
+  const pendingNativeSleeps = new Map();
+  const pendingNativeVerdicts = new Map();
+
+  function nextNativeReqId(prefix) {
+    nativeReqSeq += 1;
+    return `${prefix}_${Date.now()}_${nativeReqSeq}`;
+  }
+
+  window.__onNativeHttpResult = (reqId, payloadStr) => {
+    const entry = pendingNativeHttp.get(reqId);
+    if (!entry) return;
+    pendingNativeHttp.delete(reqId);
+    try {
+      entry.resolve(typeof payloadStr === 'string' ? JSON.parse(payloadStr) : payloadStr);
+    } catch {
+      entry.resolve({ ok: false, status: 0, body: '', error: '原生 HTTP 响应解析失败' });
+    }
+  };
+
+  window.__onNativeSleepDone = (reqId) => {
+    const entry = pendingNativeSleeps.get(reqId);
+    if (!entry) return;
+    pendingNativeSleeps.delete(reqId);
+    entry.resolve();
+  };
+
+  window.__onNativeVerdictResult = (reqId, payloadStr) => {
+    const entry = pendingNativeVerdicts.get(reqId);
+    if (!entry) return;
+    pendingNativeVerdicts.delete(reqId);
+    try {
+      entry.resolve(typeof payloadStr === 'string' ? JSON.parse(payloadStr) : payloadStr);
+    } catch {
+      entry.resolve({ changed: false, elapsedMs: 0, prefetchedSnapshot: null });
+    }
+  };
+
+  function nativeSleep(ms, signal = null) {
+    const delayMs = Math.max(0, Number(ms) || 0);
+    if (delayMs === 0) return Promise.resolve();
+    const b = getBridge();
+    if (!isNativeApk() || !b || typeof b.nativeSleepAsync !== 'function') {
+      if (!signal) return sleep(delayMs);
+      return new Promise((resolve) => {
+        if (signal.aborted) {
+          resolve();
+          return;
+        }
+        const timer = setTimeout(() => {
+          signal.removeEventListener('abort', onAbort);
+          resolve();
+        }, delayMs);
+        const onAbort = () => {
+          clearTimeout(timer);
+          resolve();
+        };
+        signal.addEventListener('abort', onAbort, { once: true });
+      });
+    }
+
+    return new Promise((resolve) => {
+      if (signal?.aborted) {
+        resolve();
+        return;
+      }
+      const reqId = nextNativeReqId('slp');
+      let settled = false;
+      const done = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(guardTimer);
+        if (signal) signal.removeEventListener('abort', onAbort);
+        resolve();
+      };
+      const onAbort = () => {
+        pendingNativeSleeps.delete(reqId);
+        try { b.cancelNativeSleep?.(reqId); } catch {}
+        done();
+      };
+      const guardTimer = setTimeout(() => {
+        pendingNativeSleeps.delete(reqId);
+        done();
+      }, delayMs + 2500);
+      pendingNativeSleeps.set(reqId, { resolve: done });
+      if (signal) signal.addEventListener('abort', onAbort, { once: true });
+      try {
+        b.nativeSleepAsync(reqId, delayMs);
+      } catch {
+        pendingNativeSleeps.delete(reqId);
+        clearTimeout(guardTimer);
+        if (signal) signal.removeEventListener('abort', onAbort);
+        sleep(delayMs).then(done);
+      }
+    });
+  }
+
+  async function nativeHttpPostJson(url, headersObj, bodyObj, { timeoutMs = 12000, signal = null } = {}) {
+    const b = getBridge();
+    const bodyStr = JSON.stringify(bodyObj || {});
+    if (isNativeApk() && b && typeof b.nativeHttpPostAsync === 'function') {
+      return new Promise((resolve, reject) => {
+        if (signal?.aborted) {
+          const ae = new Error('请求已取消');
+          ae.name = 'AbortError';
+          reject(ae);
+          return;
+        }
+        const reqId = nextNativeReqId('http');
+        let settled = false;
+        const cleanup = () => {
+          clearTimeout(guardTimer);
+          if (signal) signal.removeEventListener('abort', onAbort);
+        };
+        const onAbort = () => {
+          if (settled) return;
+          settled = true;
+          pendingNativeHttp.delete(reqId);
+          cleanup();
+          try { b.cancelNativeHttp?.(reqId); } catch {}
+          const ae = new Error('请求已取消');
+          ae.name = 'AbortError';
+          reject(ae);
+        };
+        const guardTimer = setTimeout(() => {
+          if (settled) return;
+          settled = true;
+          pendingNativeHttp.delete(reqId);
+          if (signal) signal.removeEventListener('abort', onAbort);
+          try { b.cancelNativeHttp?.(reqId); } catch {}
+          const te = new Error('原生 HTTP 请求超时');
+          te.name = 'AbortError';
+          reject(te);
+        }, timeoutMs + 2000);
+
+        pendingNativeHttp.set(reqId, {
+          resolve: (resObj) => {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            resolve({
+              ok: Boolean(resObj?.ok),
+              status: Number(resObj?.status) || 0,
+              bodyText: String(resObj?.body || ''),
+              error: String(resObj?.error || ''),
+              fromNative: true
+            });
+          }
+        });
+        if (signal) signal.addEventListener('abort', onAbort, { once: true });
+
+        try {
+          b.nativeHttpPostAsync(reqId, String(url), JSON.stringify(headersObj || {}), bodyStr, timeoutMs);
+        } catch (err) {
+          if (!settled) {
+            settled = true;
+            pendingNativeHttp.delete(reqId);
+            cleanup();
+            reject(err);
+          }
+        }
+      });
+    }
+
+    const timeoutCtrl = new AbortController();
+    const timeoutTimer = setTimeout(() => {
+      try { timeoutCtrl.abort(); } catch {}
+    }, timeoutMs);
+    const onOuterAbort = () => {
+      try { timeoutCtrl.abort(); } catch {}
+    };
+    if (signal) {
+      if (signal.aborted) timeoutCtrl.abort();
+      else signal.addEventListener('abort', onOuterAbort, { once: true });
+    }
+    try {
+      const resp = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(headersObj || {}) },
+        body: bodyStr,
+        signal: timeoutCtrl.signal
+      });
+      const bodyText = await resp.text().catch(() => '');
+      return { ok: resp.ok, status: resp.status, bodyText, error: resp.ok ? '' : bodyText, fromNative: false };
+    } finally {
+      clearTimeout(timeoutTimer);
+      if (signal) signal.removeEventListener('abort', onOuterAbort);
+    }
   }
 
   function showToast(msg) {
@@ -1173,7 +1364,7 @@
       },
       targetApp: String(snapshot?.appName || ''),
       targetPackage: String(snapshot?.packageName || ''),
-      delayMs: tool === 'phone_open' ? 1100 : tool === 'phone_type' ? 500 : 480
+      delayMs: tool === 'phone_open' ? 750 : tool === 'phone_type' ? 280 : 220
     };
   }
 
@@ -1379,7 +1570,7 @@
       if (initSnap.packageName === 'com.deepseek.starwhisper.studio' && typeof b.returnToLastExternalApp === 'function') {
         if (b.returnToLastExternalApp()) {
           addStepItem(cardCtx.stepsList, 0, '切回目标应用准备离线回放', '免 API 本地技能回放', '已切回', false, 'skill.prep');
-          await sleep(550);
+          await nativeSleep(320, signal);
         }
       }
     }
@@ -1470,8 +1661,8 @@
           detailMsg = ok ? `系统键 (${args.key || st.tool})` : '系统键失败';
         } else if (st.tool === 'phone_wait' || st.tool === 'wait') {
           ok = true;
-          const ms = Math.min(8000, Math.max(200, Number(args.ms) || 1000));
-          await sleep(ms);
+          const ms = Math.min(8000, Math.max(150, Number(args.ms) || 650));
+          await nativeSleep(ms, signal);
           detailMsg = `等待 ${ms}ms`;
         } else {
           ok = true;
@@ -1482,7 +1673,7 @@
       }
 
       updateStepResult(rowEl, detailMsg, !ok, ok);
-      await sleep(Math.min(2500, Math.max(240, Number(st.delayMs) || 480)));
+      await nativeSleep(Math.min(1800, Math.max(150, Number(st.delayMs) || 240)), signal);
     }
 
     upsertLearnedSkill({ ...skill, runCount: (Number(skill.runCount) || 0) + 1 });
@@ -2382,6 +2573,59 @@
     return [];
   }
 
+  function formatParsedSnapshot(parsed) {
+    if (!parsed || !Array.isArray(parsed.nodes)) return null;
+    const limitedNodes = parsed.nodes.slice(0, 160);
+    const formatNodeCompact = (n) => {
+      const flags = [];
+      if (n.clickable) flags.push('clk');
+      if (n.editable) flags.push('edt');
+      if (n.scrollable) flags.push('scr');
+      if (n.checked) flags.push('chk');
+      if (n.selected) flags.push('sel');
+      if (n.password) flags.push('pwd');
+      const label = [n.text, n.desc].filter(Boolean).join(' / ').slice(0, 48);
+      const cx = Array.isArray(n.center) ? n.center[0] : 0;
+      const cy = Array.isArray(n.center) ? n.center[1] : 0;
+      const flagStr = flags.length ? ` (${flags.join(',')})` : '';
+      return `[${n.ref || ''}] ${n.cls || 'View'}${label ? ` "${label}"` : ''}${flagStr} @${cx},${cy}`;
+    };
+
+    const rowGroups = [];
+    let curRow = null;
+    for (const n of limitedNodes) {
+      const cy = Array.isArray(n.center) ? Number(n.center[1]) : 0;
+      const rowKey = Number(n.row) > 0 ? Number(n.row) : 0;
+      if (!curRow || (rowKey > 0 ? curRow.rowKey !== rowKey : Math.abs(cy - curRow.anchorY) > 38)) {
+        curRow = { rowKey, anchorY: cy, items: [n] };
+        rowGroups.push(curRow);
+      } else {
+        curRow.items.push(n);
+      }
+    }
+
+    const lines = rowGroups.map((grp, rIdx) => {
+      const sortedItems = grp.items.slice().sort((a, b) => {
+        const ax = Array.isArray(a.center) ? Number(a.center[0]) : 0;
+        const bx = Array.isArray(b.center) ? Number(b.center[0]) : 0;
+        return ax - bx;
+      });
+      return `R${rIdx + 1}: ${sortedItems.map(formatNodeCompact).join(' | ')}`;
+    });
+
+    return {
+      snapshotId: String(parsed.snapshotId || ''),
+      packageName: String(parsed.packageName || ''),
+      appName: String(parsed.appName || parsed.packageName || ''),
+      signature: String(parsed.signature || ''),
+      eventSeq: Number(parsed.eventSeq) || 0,
+      hasSensitiveField: Boolean(parsed.hasSensitiveField),
+      sensitiveReason: String(parsed.sensitiveReason || ''),
+      nodes: parsed.nodes,
+      screenTreeText: lines.join('\n')
+    };
+  }
+
   function readAndFormatSnapshot(includeInvisible = false) {
     if (!isNativeApk()) {
       return {
@@ -2400,57 +2644,8 @@
       if (typeof b.dumpScreenSnapshot === 'function') {
         const raw = b.dumpScreenSnapshot(Boolean(includeInvisible));
         const parsed = JSON.parse(raw);
-        if (parsed && Array.isArray(parsed.nodes)) {
-          const limitedNodes = parsed.nodes.slice(0, 160);
-          const formatNodeCompact = (n) => {
-            const flags = [];
-            if (n.clickable) flags.push('clk');
-            if (n.editable) flags.push('edt');
-            if (n.scrollable) flags.push('scr');
-            if (n.checked) flags.push('chk');
-            if (n.selected) flags.push('sel');
-            if (n.password) flags.push('pwd');
-            const label = [n.text, n.desc].filter(Boolean).join(' / ').slice(0, 48);
-            const cx = Array.isArray(n.center) ? n.center[0] : 0;
-            const cy = Array.isArray(n.center) ? n.center[1] : 0;
-            const flagStr = flags.length ? ` (${flags.join(',')})` : '';
-            return `[${n.ref || ''}] ${n.cls || 'View'}${label ? ` "${label}"` : ''}${flagStr} @${cx},${cy}`;
-          };
-
-          const rowGroups = [];
-          let curRow = null;
-          for (const n of limitedNodes) {
-            const cy = Array.isArray(n.center) ? Number(n.center[1]) : 0;
-            const rowKey = Number(n.row) > 0 ? Number(n.row) : 0;
-            if (!curRow || (rowKey > 0 ? curRow.rowKey !== rowKey : Math.abs(cy - curRow.anchorY) > 38)) {
-              curRow = { rowKey, anchorY: cy, items: [n] };
-              rowGroups.push(curRow);
-            } else {
-              curRow.items.push(n);
-            }
-          }
-
-          const lines = rowGroups.map((grp, rIdx) => {
-            const sortedItems = grp.items.slice().sort((a, b) => {
-              const ax = Array.isArray(a.center) ? Number(a.center[0]) : 0;
-              const bx = Array.isArray(b.center) ? Number(b.center[0]) : 0;
-              return ax - bx;
-            });
-            return `R${rIdx + 1}: ${sortedItems.map(formatNodeCompact).join(' | ')}`;
-          });
-
-          return {
-            snapshotId: String(parsed.snapshotId || ''),
-            packageName: String(parsed.packageName || ''),
-            appName: String(parsed.appName || parsed.packageName || ''),
-            signature: String(parsed.signature || ''),
-            eventSeq: Number(parsed.eventSeq) || 0,
-            hasSensitiveField: Boolean(parsed.hasSensitiveField),
-            sensitiveReason: String(parsed.sensitiveReason || ''),
-            nodes: parsed.nodes,
-            screenTreeText: lines.join('\n')
-          };
-        }
+        const formatted = formatParsedSnapshot(parsed);
+        if (formatted) return formatted;
       }
       if (typeof b.dumpScreenHierarchy === 'function') {
         const raw = b.dumpScreenHierarchy(false);
@@ -2502,6 +2697,17 @@
     return { ok: false, packageName: '', appName: '', signature: '', hasSensitiveField: false, sensitiveReason: '' };
   }
 
+  function readTopPackageFast() {
+    if (!isNativeApk()) return '';
+    const b = getBridge();
+    try {
+      if (typeof b.getTopPackageFast === 'function') {
+        return String(b.getTopPackageFast() || '');
+      }
+    } catch {}
+    return readScreenMeta().packageName || '';
+  }
+
   function readScreenEventSeq() {
     if (!isNativeApk()) return { seq: 0, pkg: '', ts: 0 };
     const b = getBridge();
@@ -2520,10 +2726,76 @@
     const maxWait = customMaxWait > 0
       ? customMaxWait
       : (toolName === 'phone_open'
-        ? 1600
+        ? 1100
         : (toolName === 'phone_type'
-          ? 700
-          : (toolName === 'phone_scroll' || toolName === 'phone_swipe' ? 600 : 720)));
+          ? 420
+          : (toolName === 'phone_scroll' || toolName === 'phone_swipe' ? 380 : 420)));
+    const b = getBridge();
+
+    // 原生事件驱动屏变检测 + 单次采树缓存（彻底消除 WebView 后台 1000ms 定时器节流与重复扫树）
+    if (b && typeof b.waitForScreenVerdictAsync === 'function') {
+      const startAt = Date.now();
+      return new Promise((resolve) => {
+        if (signal?.aborted || emergencyStopRequested) {
+          resolve({
+            changed: false,
+            fromApp: beforeMeta?.appName || '',
+            toApp: beforeMeta?.appName || '',
+            elapsedMs: 0,
+            prefetchedSnapshot: null
+          });
+          return;
+        }
+        const reqId = nextNativeReqId('vrd');
+        let settled = false;
+        const finish = (resObj) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(guardTimer);
+          if (signal) signal.removeEventListener('abort', onAbort);
+          const formattedPrefetch = resObj?.prefetchedSnapshot ? formatParsedSnapshot(resObj.prefetchedSnapshot) : null;
+          resolve({
+            changed: Boolean(resObj?.changed),
+            fromApp: beforeMeta?.appName || beforeMeta?.packageName || '',
+            toApp: String(resObj?.toApp || resObj?.packageName || beforeMeta?.appName || ''),
+            elapsedMs: Number(resObj?.elapsedMs) || (Date.now() - startAt),
+            hasSensitiveField: Boolean(resObj?.hasSensitiveField),
+            sensitiveReason: String(resObj?.sensitiveReason || ''),
+            prefetchedSnapshot: formattedPrefetch
+          });
+        };
+        const onAbort = () => {
+          pendingNativeVerdicts.delete(reqId);
+          try { b.cancelWaitForScreenVerdict?.(reqId); } catch {}
+          finish({ changed: false, elapsedMs: Date.now() - startAt, prefetchedSnapshot: null });
+        };
+        const guardTimer = setTimeout(() => {
+          pendingNativeVerdicts.delete(reqId);
+          try { b.cancelWaitForScreenVerdict?.(reqId); } catch {}
+          finish({ changed: false, elapsedMs: Date.now() - startAt, prefetchedSnapshot: null });
+        }, maxWait + 1200);
+
+        pendingNativeVerdicts.set(reqId, { resolve: finish });
+        if (signal) signal.addEventListener('abort', onAbort, { once: true });
+
+        try {
+          b.waitForScreenVerdictAsync(
+            reqId,
+            String(beforeMeta?.packageName || ''),
+            String(beforeMeta?.signature || ''),
+            Number(beforeMeta?.eventSeq) || 0,
+            String(toolName || ''),
+            maxWait
+          );
+        } catch {
+          pendingNativeVerdicts.delete(reqId);
+          clearTimeout(guardTimer);
+          if (signal) signal.removeEventListener('abort', onAbort);
+          finish({ changed: false, elapsedMs: Date.now() - startAt, prefetchedSnapshot: null });
+        }
+      });
+    }
+
     const startAt = Date.now();
     const beforeSeq = Number(beforeMeta?.eventSeq) || 0;
     const hasEventSeqApi = typeof getBridge()?.getScreenEventSeq === 'function';
@@ -2533,15 +2805,15 @@
 
     while (Date.now() - startAt < maxWait) {
       if (signal?.aborted || emergencyStopRequested) break;
-      await sleep(80);
+      await nativeSleep(55, signal);
       const elapsed = Date.now() - startAt;
       if (hasEventSeqApi && beforeSeq > 0) {
         const ev = readScreenEventSeq();
-        if (Number(ev.seq) === beforeSeq && elapsed < 380) {
+        if (Number(ev.seq) === beforeSeq && elapsed < 260) {
           continue;
         }
         if (Number(ev.seq) !== beforeSeq) {
-          await sleep(toolName === 'phone_open' ? 220 : 90);
+          await nativeSleep(toolName === 'phone_open' ? 140 : 50, signal);
           latest = readScreenMeta();
           checkedMetaOnce = true;
           if (
@@ -2556,7 +2828,7 @@
           continue;
         }
       }
-      if (!checkedMetaOnce || elapsed >= maxWait - 120) {
+      if (!checkedMetaOnce || elapsed >= maxWait - 100) {
         latest = readScreenMeta();
         checkedMetaOnce = true;
         if (latest && latest.ok) {
@@ -2565,7 +2837,7 @@
             (beforeMeta?.signature && latest.signature && latest.signature !== beforeMeta.signature)
           ) {
             changed = true;
-            await sleep(90);
+            await nativeSleep(50, signal);
             latest = readScreenMeta();
             break;
           }
@@ -3529,6 +3801,32 @@
     });
   }
 
+  const AMBIGUOUS_PREFLIGHT_RE = /^(?:帮我|请|麻烦|去|我要|我想)?(?:点个?外卖|叫个?外卖|点餐|买吃的|写作业|做作业|刷题|答题|做题|发消息|发微信|回消息|联系一下|通知一下|买票|订票|订酒店|买东西|购物|逛淘宝|刷视频)[！!。.\s]*$/;
+
+  function isClearlyExplicitTask(clean) {
+    if (!clean) return false;
+    if (isAtomicBuiltInLocalCmd(clean)) return true;
+    if (AMBIGUOUS_PREFLIGHT_RE.test(clean)) return false;
+    // “帮我点外卖...” 仅在不含具体菜品/店铺/搜索词且很短时才视为模糊
+    if (/点外卖|叫外卖/.test(clean) && clean.length <= 12 && !/(?:买|点|搜|吃|来份|来一份|螺蛳粉|奶茶|咖啡|汉堡|米线|面|饭|炸鸡)/.test(clean)) {
+      return false;
+    }
+    if (/^(?:帮我|继续|开始)?(?:写作业|做作业|答题|做题|刷题)$/.test(clean)) {
+      return false;
+    }
+    if (/^(?:帮我)?(?:发消息|发微信|回消息)/.test(clean) && !/(?:给|向|发|内容|说)/.test(clean.slice(4))) {
+      return false;
+    }
+    // 明确包含应用与后续操作目标 / 明确动作宾语 / 继续当前任务
+    if (/^(?:打开|启动|进入|去|切到|用)\s*[^\s，。！？,!?]{1,12}/.test(clean) && clean.length >= 4) {
+      return true;
+    }
+    if (/(?:给\S{1,12}(?:发|回|说)|搜一下|搜索\S+|查找\S+|查看\S+|继续把|把当前|把这套|不要交卷|不交卷)/.test(clean)) {
+      return true;
+    }
+    return false;
+  }
+
   function shouldSkipPreFlightClarify(taskText, clarifyPolicy, resumeOpts) {
     if (resumeOpts && Array.isArray(resumeOpts.history)) return true;
     if (clarifyPolicy === 'off') return true;
@@ -3536,7 +3834,7 @@
     if (!clean) return true;
     if (isLikelyPureChat(clean)) return true;
     if (/^(?:直接执行|不用问|别问了|马上执行|立刻执行)/.test(clean)) return true;
-    if (clarifyPolicy === 'smart' && isAtomicBuiltInLocalCmd(clean)) return true;
+    if (clarifyPolicy === 'smart' && isClearlyExplicitTask(clean)) return true;
     return false;
   }
 
@@ -3589,9 +3887,6 @@
   }
 
   async function requestPreFlightCheck({ execMode, task, clarifyPolicy, lastExternalApp, installedApps, signal }) {
-    if (!isNativeApk() && execMode === 'local') {
-      return { ok: true, preflight: buildLocalFallbackPreFlight(task, clarifyPolicy) };
-    }
     if (execMode === 'local') {
       return { ok: true, preflight: buildLocalFallbackPreFlight(task, clarifyPolicy) };
     }
@@ -3607,26 +3902,17 @@
       }
       const preSys = [
         '你是星语手机辅助代理（Phone Agent · dsh-Go 任务前需求预检助手）。',
-        '在真正切走手机界面或开始执行任务之前，快速判断用户的指令是否清晰完整，避免“一发指令就盲目跳走”。',
-        '仅输出严格合法的 JSON 对象（不要 Markdown 代码块）：',
-        '{"intent":"chat|task","ready":true|false,"thought":"简短中文需求完整度分析(<=70字)","planPreview":"若现在执行将采取的1~2句中文拟定步骤","question":"若 ready=false，用友好简洁的中文一次性问清1~3个最关键的缺失细节","options":["可直接点击的快捷回答1","快捷回答2","快捷回答3"]}',
-        '规则：1. 闲聊/提问咨询设 intent="chat", ready=true。2. 目标 App/当前上下文明确且无关键参数缺口（如“打开微信给张三发在吗”、“继续把当前这套单选题做完不交卷”）在 smart 模式设 intent="task", ready=true。3. 存在明显缺失或歧义（如“点外卖/写作业/发消息/买票/购物/刷视频”缺对象/条件）或 clarifyPolicy==="always" 设 intent="task", ready=false 并给出 2~4 个快捷选项。'
+        '快速判断指令是否清晰完整，仅输出严格合法 JSON：',
+        '{"intent":"chat|task","ready":true|false,"thought":"简短分析(<=36字)","planPreview":"1句拟定步骤","question":"若ready=false的简短中文提问","options":["快捷选项1","快捷选项2"]}',
+        '规则：1.闲聊设intent="chat",ready=true。2.目标App/上下文明确且无关键缺口在smart模式设intent="task",ready=true。3.明显缺关键对象或clarifyPolicy==="always"设intent="task",ready=false并给2~4个快捷options。'
       ].join('\n');
       const preUser = JSON.stringify({
         task,
         clarifyPolicy,
         lastExternalApp: lastExternalApp || getLastExternalAppInfo(),
-        conversationMemory: paChatMemory.slice(-6),
+        conversationMemory: paChatMemory.slice(-4),
         installedAppsPreview: compactApps
       });
-
-      const timeoutCtrl = new AbortController();
-      const tTimer = setTimeout(() => { try { timeoutCtrl.abort(); } catch {} }, 8000);
-      const onOuter = () => { try { timeoutCtrl.abort(); } catch {} };
-      if (signal) {
-        if (signal.aborted) timeoutCtrl.abort();
-        else signal.addEventListener('abort', onOuter, { once: true });
-      }
 
       try {
         const bodyObj = {
@@ -3636,20 +3922,20 @@
             { role: 'user', content: preUser }
           ],
           temperature: 0.2,
-          max_tokens: 512,
+          max_tokens: 280,
           stream: false
         };
         if (String(targetUrl || '').includes('deepseek.com')) {
           bodyObj.response_format = { type: 'json_object' };
         }
-        const resp = await fetch(targetUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${cleanKey}` },
-          body: JSON.stringify(bodyObj),
-          signal: timeoutCtrl.signal
-        });
-        if (resp.ok) {
-          const j = await resp.json();
+        const nRes = await nativeHttpPostJson(
+          targetUrl,
+          { Authorization: `Bearer ${cleanKey}` },
+          bodyObj,
+          { timeoutMs: 4500, signal }
+        );
+        if (nRes.ok && nRes.bodyText) {
+          const j = JSON.parse(nRes.bodyText);
           const content = String(j?.choices?.[0]?.message?.content || '').trim();
           const cleaned = content.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
           const obj = JSON.parse(cleaned);
@@ -3667,10 +3953,7 @@
             }
           };
         }
-      } catch {} finally {
-        clearTimeout(tTimer);
-        if (signal) signal.removeEventListener('abort', onOuter);
-      }
+      } catch {}
 
       // 若直连受限，走云端 /api/phone-agent/plan preflight 兜底
       try {
@@ -4017,31 +4300,30 @@
 
   function buildPlanningPromptMessages({ task, snapshot, history, screenSize, installedApps, screenVerdict, loopDiagnostics, interjections, stepIndex, lastExternalApp }) {
     const sys = [
-      '你是星语手机辅助代理（Phone Agent · dsh-Go 规划内核），既能与用户自然思考、自由对话解答问题，又能精准操控手机。',
+      '你是星语手机辅助代理（Phone Agent · dsh-Go 规划内核），根据任务、屏幕快照(ref)、ScreenVerdict 与历史步骤输出唯一精确的下一步动作。',
       `屏幕分辨率: ${screenSize.width}x${screenSize.height}。`,
-      '你必须仅返回一个合法 JSON 对象（不要用 Markdown 代码块包裹，也不要附加前后任何解释文字），字段定义：',
-      '{"thought":"清晰自然的中文思考推理(30~110字，简述看到了什么、分析判断与决策原因)","tool":"工具名","args":{},"summary":"面向用户的中文简述(<=28字)","risk":"read|write|sensitive","reply":"在 chat / done / ask_user 时填写自然友好的中文回复"}',
+      '仅输出严格合法 JSON（禁止 Markdown 代码块与多余解释），将 tool 与 args 放最前面以加速响应：',
+      '{"tool":"工具名","args":{},"thought":"简短中文判断(<=30字)","summary":"简述(<=16字)","risk":"read|write|sensitive","reply":"chat/done/ask_user时的中文回复"}',
       '可用 tool 与 args：',
-      'chat:{"message":"无需操作手机，直接用自然友好的中文对话回答用户问题或讨论方案"} / phone_open:{"appName":"微信"} / phone_tap:{"ref":"e12","snapshotId":"snap_1"} / phone_tap_xy:{"x":540,"y":1200} / phone_double_tap:{"x":540,"y":1000} / phone_long_press:{"ref":"e12","duration":700} / phone_type:{"ref":"e8","text":"你好","clear":false,"submit":true} / phone_scroll:{"direction":"down|up|left|right","amount":0.65} / phone_swipe:{"x1":540,"y1":1600,"x2":540,"y2":600,"duration":320} / phone_key:{"key":"back|home|recents|notifications|quick_settings|enter|screenshot"} / phone_wait:{"ms":1000} / ask_user:{"message":"需要向用户追问澄清、确认选择或请求手动操作的清晰问题","reason":"clarify|confirm|sensitive|manual","options":["推荐选项1","选项2"]} / done:{"message":"完成总结"}',
-      '关键约束：',
-      '0. 自由对话优先识别：若用户是在打招呼、闲聊、询问原理/题目思路、讨论方案、咨询你能做什么、或仅针对屏幕内容提问而无需点击/打开手机时，直接返回 tool="chat"，用 reply 给出完整有温度的回答，严禁瞎点手机！',
-      '0.5 模糊/不确定主动问清楚（关键！）：当用户指令缺少关键信息（如未指定发给谁/发什么内容/买哪款/选哪个规格、多选拿不准、当前界面有多个同名目标或即将执行重要提交/删除/付款）时，严禁瞎猜乱点！必须立即返回 tool="ask_user"，在 reply 中礼貌问清楚具体需求，并尽可能在 args.options 中提供 2~4 个简短清晰的快捷选项。',
-      '1. 优先用 phone_open 打开应用；点击屏幕元素首选 phone_tap 并携带 ref 与 snapshotId。',
-      '2. 防卡死与防死循环铁律：严禁连续 2 步返回 phone_wait！仔细检查 screenVerdict 与 loopDiagnostics：若 blockedActions 非空，严禁再输出列表中已失效的动作、控件或坐标；若 oscillationDetected=true（页面 A↔B 往返死循环），严禁继续在两个页面间重复点击，必须更换入口、改用搜索框、执行 phone_key(back) 退出重进，或返回 ask_user 请求用户协助。',
-      '2.5 遮挡弹窗清理：若页面被开屏广告、版本更新、权限引导或好评弹窗遮挡，优先点击“跳过/取消/以后再说/暂不更新/知道了/关闭”等按钮清理遮挡后再继续主任务。',
-      '3. 若同一屏幕上已同时清晰可见 2~3 个明确无歧义的连贯操作（如学习答题“选中选项 + 点击下一题/提交”），可额外附带 `"actions":[{"tool":"phone_tap","args":{"ref":"e10"}},{"tool":"phone_tap","args":{"ref":"e24"}}]`（最多 3 个同屏非敏感微动作），否则只输出单动作。',
-      '4. 严禁操作控制端自身（packageName="com.deepseek.starwhisper.studio"）或在其聊天框打字；用户说“继续写作业/继续答题”且未指定打开 DeepSeek 时，绝不要去打开 DeepSeek 应用，而是切回 lastExternalApp 或在当前学习软件中继续操作。',
-      '5. screenTreeText 中每一行 `R1: ... | ...` 代表屏幕同一水平行的元素。做选择题时必须严格核对同一行的选项字母与右侧文字；带有 (sel) 或 (chk) 的表示已选中，若已选对直接点“下一题”，严禁张冠李戴选错行！',
-      '6. 连续多题/多页任务铁律：当任务属于连续流程（如“写作业/继续写作业/答题/刷题/完成练习”）时，只要屏幕上还存在“下一题”按钮、或题号进度（如 3/5、12/20）未达最后且未出现“提交成功/练习完成/得分”页面，严禁做完一题就返回 done！必须持续作答并点击“下一题”，一口气把整套题全部做完，直到全部完成或出现最终交卷/结算页才返回 done（或需要人工确认最终交卷时返回 ask_user）。',
-      '7. 若 interjections 非空，最高优先级立即响应用户中途插话或回复确认。',
-      '8. 若 hasSensitiveField=true 或涉及付款/转账/下单/密码/验证码/删除/卸载/发消息，risk 必须为 "sensitive"，支付密码/验证码直接 ask_user 交还人工。'
+      'chat:{"message":"无需操作手机，直接对话回答"} / phone_open:{"appName":"微信"} / phone_tap:{"ref":"e12","snapshotId":"snap_1"} / phone_tap_xy:{"x":540,"y":1200} / phone_double_tap:{"x":540,"y":1000} / phone_long_press:{"ref":"e12","duration":650} / phone_type:{"ref":"e8","text":"你好","clear":false,"submit":true} / phone_scroll:{"direction":"down|up|left|right","amount":0.65} / phone_swipe:{"x1":540,"y1":1600,"x2":540,"y2":600,"duration":240} / phone_key:{"key":"back|home|recents|notifications|quick_settings|enter|screenshot"} / phone_wait:{"ms":600} / ask_user:{"message":"向用户追问或请求确认的问题","reason":"clarify|confirm|sensitive|manual","options":["推荐选项1","选项2"]} / done:{"message":"完成总结"}',
+      '关键规则：',
+      '0. 闲聊/提问/只读屏幕解答直接返回 tool="chat"，严禁瞎点。',
+      '0.5 缺收件人/内容/规格等关键参数或重要提交/删除/付款时，严禁瞎猜，立即返回 ask_user 并尽量给 2~4 个快捷 options。',
+      '1. 打开应用首选 phone_open；点控件首选 phone_tap(ref, snapshotId)。',
+      '2. 防卡死铁律：严禁连续 2 步 phone_wait；若 blockedActions 非空或 noChangeStreak>=1、errorStreak>=1，必须立刻更换完全不同的控件/坐标/路径；oscillationDetected=true 时立即换路、phone_key(back) 或 ask_user。',
+      '2.5 遇开屏广告/更新/权限弹窗，优先点击跳过/关闭/以后再说清理。',
+      '3. 同屏明确无歧义的 2~3 个连贯非敏感微动作（如先选答案再点下一题）可附带 `"actions":[{"tool":"phone_tap","args":{"ref":"e10"}},{"tool":"phone_tap","args":{"ref":"e24"}}]`。',
+      '4. 严禁操作控制端自身(packageName="com.deepseek.starwhisper.studio")；说“继续写作业/答题”且未提 DeepSeek 时切回 lastExternalApp。',
+      '5. screenTreeText 每行 `R1: ... | ...` 为同一水平行；做题须核对同行字母与文字，带 (sel)/(chk) 表示已选中，已选对直接点“下一题”。',
+      '6. 连续做题/多页任务只要还有“下一题”或题号未达最后且未出现得分/提交成功页，严禁提前 done，须连贯做完。',
+      '7. interjections 非空时最高优先级响应用户插话。',
+      '8. hasSensitiveField=true 或付款/转账/下单/删除/密码/验证码设 risk="sensitive"，密码/验证码/刷脸直接 ask_user 交还人工。'
     ].join('\n');
 
-    const recentHistory = (history || []).slice(-10).map((h) => ({
+    const recentHistory = (history || []).slice(-6).map((h) => ({
       step: h.step,
       tool: h.tool || h.action,
       args: h.argsSummary || '',
-      summary: h.summary,
       result: h.result,
       changed: h.changed === undefined ? null : Boolean(h.changed),
       page: h.page || ''
@@ -4057,25 +4339,26 @@
       (lastHist && lastHist.tool === 'phone_open' && String(lastHist.result || '').includes('未能'));
 
     const usrObj = {
-      task,
-      stepIndex: stepIndex || (history || []).length + 1,
       selfPackageName: 'com.deepseek.starwhisper.studio',
-      lastExternalApp: lastExternalApp || getLastExternalAppInfo(),
-      snapshotId: snapshot?.snapshotId || '',
-      foregroundApp: snapshot?.appName || '',
-      packageName: snapshot?.packageName || '',
-      hasSensitiveField: Boolean(snapshot?.hasSensitiveField),
-      sensitiveReason: snapshot?.sensitiveReason || '',
-      screenVerdict: screenVerdict || null,
-      loopDiagnostics: loopDiagnostics || null,
-      interjections: interjections || [],
-      conversationMemory: paChatMemory.slice(-6),
-      recentHistory,
-      screenTreeText: snapshot?.screenTreeText || ''
+      lastExternalApp: lastExternalApp || getLastExternalAppInfo()
     };
     if (needAppsList) {
       usrObj.installedApps = (installedApps || []).slice(0, 40).map((a) => (typeof a === 'string' ? a : a.name));
     }
+    usrObj.task = task;
+    usrObj.stepIndex = stepIndex || (history || []).length + 1;
+    usrObj.snapshotId = snapshot?.snapshotId || '';
+    usrObj.foregroundApp = snapshot?.appName || '';
+    usrObj.packageName = snapshot?.packageName || '';
+    usrObj.hasSensitiveField = Boolean(snapshot?.hasSensitiveField);
+    if (snapshot?.sensitiveReason) usrObj.sensitiveReason = snapshot.sensitiveReason;
+    if (screenVerdict) usrObj.screenVerdict = screenVerdict;
+    if (loopDiagnostics) usrObj.loopDiagnostics = loopDiagnostics;
+    if (interjections && interjections.length) usrObj.interjections = interjections;
+    if (paChatMemory.length) usrObj.conversationMemory = paChatMemory.slice(-4);
+    if (recentHistory.length) usrObj.recentHistory = recentHistory;
+    usrObj.screenTreeText = snapshot?.screenTreeText || '';
+
     const usr = JSON.stringify(usrObj);
 
     return [
@@ -4285,46 +4568,27 @@
           model: modelToUse,
           messages: msgs,
           temperature: isReasoner ? 0.2 : 0.15,
-          max_tokens: isReasoner ? 2048 : 1024,
+          max_tokens: isReasoner ? 2048 : 420,
           stream: false
         };
         if (allowJsonFormat && !isReasoner && isOfficialDsUrl) {
           directBody.response_format = { type: 'json_object' };
         }
-        const timeoutCtrl = new AbortController();
-        const timeoutTimer = setTimeout(() => {
-          try { timeoutCtrl.abort(); } catch {}
-        }, 18000);
-        const onOuterAbort = () => {
-          try { timeoutCtrl.abort(); } catch {}
-        };
-        if (signal) {
-          if (signal.aborted) timeoutCtrl.abort();
-          else signal.addEventListener('abort', onOuterAbort, { once: true });
-        }
-        let directRes;
-        try {
-          directRes = await fetch(targetUrl, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${cleanKey}`
-            },
-            body: JSON.stringify(directBody),
-            signal: timeoutCtrl.signal
-          });
-        } finally {
-          clearTimeout(timeoutTimer);
-          if (signal) signal.removeEventListener('abort', onOuterAbort);
-        }
-        if (!directRes.ok) {
-          const txt = await directRes.text().catch(() => '');
-          const httpErr = new Error(`直连 API 返回 (${directRes.status}): ${txt.slice(0, 120)}`);
-          httpErr.code = directRes.status === 401 || directRes.status === 403 ? 'DIRECT_AUTH_ERROR' : 'DIRECT_HTTP_ERROR';
-          httpErr.status = directRes.status;
+        const nRes = await nativeHttpPostJson(
+          targetUrl,
+          { Authorization: `Bearer ${cleanKey}` },
+          directBody,
+          { timeoutMs: 12000, signal }
+        );
+        if (!nRes.ok) {
+          const txt = String(nRes.bodyText || nRes.error || '');
+          const httpErr = new Error(nRes.status ? `直连 API 返回 (${nRes.status}): ${txt.slice(0, 120)}` : `直连请求失败: ${txt.slice(0, 120)}`);
+          httpErr.code = nRes.status === 401 || nRes.status === 403 ? 'DIRECT_AUTH_ERROR' : 'DIRECT_HTTP_ERROR';
+          httpErr.status = nRes.status;
+          httpErr.fromNative = nRes.fromNative;
           throw httpErr;
         }
-        const json = await directRes.json();
+        const json = JSON.parse(nRes.bodyText || '{}');
         const msgObj = json?.choices?.[0]?.message || {};
         const content = String(msgObj.content || '').trim();
         const rawReasoning = String(msgObj.reasoning_content || '').trim();
@@ -4356,8 +4620,8 @@
               '刚才未返回合法 JSON 动作指令。请严格只输出一个合法 JSON 对象（不要任何 Markdown 或解释文字）。',
               false
             );
-          } else if (firstErr?.name === 'AbortError' || Number(firstErr?.status) >= 500 || /fetch|network|timeout/i.test(String(firstErr?.message || ''))) {
-            await sleep(400);
+          } else if (firstErr?.name === 'AbortError' || Number(firstErr?.status) >= 500 || (firstErr?.fromNative && /timeout|reset|eof/i.test(String(firstErr?.message || '')))) {
+            await nativeSleep(120, signal);
             result = await attemptDirectCall(targetModel, '', false);
           } else {
             throw firstErr;
@@ -4499,7 +4763,7 @@
       signal
     );
     if (!cloudRes.ok && !signal?.aborted && (cloudRes.status >= 500 || cloudRes.status === 0)) {
-      await sleep(400);
+      await nativeSleep(150, signal);
       cloudRes = await apiPostJson(
         '/api/phone-agent/plan',
         {
@@ -5085,6 +5349,7 @@
           : (getConfirmPolicy() === 'auto_turn');
       let startStep = isResuming && Number(resumeOpts.startStep) > 0 ? Number(resumeOpts.startStep) : 1;
       let lastScreenVerdict = resumeOpts?.lastScreenVerdict || null;
+      let prefetchedSnap = null;
       let noChangeStreak = 0;
       let earlyDoneIntercepts = 0;
       let autoContinueHint = Array.isArray(resumeOpts?.initialInterjections)
@@ -5184,8 +5449,10 @@
           if (switchedOk) {
             const label = lastExtApp.appName || '上一个应用';
             addStepItem(cardCtx.stepsList, 0, `自动切回「${label}」继续执行`, '防止在控制端自身界面误操作', '已切回', false, 'phone.open');
-            await sleep(520);
+            await nativeSleep(320, signal);
           }
+        } else if (initSnap.packageName && initSnap.packageName !== SELF_PKG && Array.isArray(initSnap.nodes) && initSnap.nodes.length > 0) {
+          prefetchedSnap = initSnap;
         }
       }
 
@@ -5220,7 +5487,8 @@
           try { b.updateFloatState('thinking', `第 ${step} 步 规划中...`); } catch {}
         }
 
-        const snapshot = readAndFormatSnapshot(false);
+        const snapshot = prefetchedSnap || readAndFormatSnapshot(false);
+        prefetchedSnap = null;
         const currentPageKey = `${snapshot.packageName || ''}::${snapshot.signature || ''}`;
         if (native && currentPageKey !== '::') {
           loopState.recentPageSigs.push(currentPageKey);
@@ -5459,7 +5727,8 @@
               result: '已拦截提前结束，继续推进',
               changed: false
             });
-            await sleep(160);
+            prefetchedSnap = null;
+            await nativeSleep(80, signal);
             continue;
           }
 
@@ -5512,7 +5781,7 @@
             } else if (/返回上一页/.test(replyClean)) {
               if (native && b && typeof b.dispatchGlobalAction === 'function') {
                 try { b.dispatchGlobalAction('back'); } catch {}
-                await sleep(420);
+                await nativeSleep(260, signal);
               }
               autoContinueHint = '【用户现场指示】已返回上一页，请换一条全新路径重新查找目标。';
             } else if (/我已手动操作/.test(replyClean)) {
@@ -5535,7 +5804,8 @@
               changed: true,
               page: snapshot.appName || snapshot.packageName || ''
             });
-            await sleep(160);
+            prefetchedSnap = null;
+            await nativeSleep(80, signal);
             continue;
           }
 
@@ -5627,13 +5897,14 @@
           try { b.updateFloatState('acting', plan.summary || '执行中...'); } catch {}
         }
 
+        const preActionSeq = native ? (Number(readScreenEventSeq().seq) || beforeEventSeq) : 0;
         const beforeMeta = native
           ? {
               ok: true,
               packageName: snapshot.packageName || '',
               appName: snapshot.appName || '',
               signature: snapshot.signature || '',
-              eventSeq: beforeEventSeq
+              eventSeq: preActionSeq
             }
           : null;
 
@@ -5647,8 +5918,8 @@
           }
           const subAct = actionQueue[ai];
           if (ai > 0 && native) {
-            const liveMeta = readScreenMeta();
-            if (liveMeta?.ok && liveMeta.packageName && snapshot.packageName && liveMeta.packageName !== snapshot.packageName) {
+            const livePkg = readTopPackageFast();
+            if (livePkg && snapshot.packageName && livePkg !== snapshot.packageName) {
               execTexts.push('页面已切换，提前结束本批微动作');
               break;
             }
@@ -5661,7 +5932,7 @@
           }
           if (execRes.error || !native) break;
           if (ai < actionQueue.length - 1) {
-            await sleep(subAct.tool === 'phone_tap' ? 200 : 220);
+            await nativeSleep(subAct.tool === 'phone_tap' ? 85 : 100, signal);
           }
         }
         if (abortedByUser) {
@@ -5677,11 +5948,11 @@
               beforeMeta,
               lastSubTool,
               signal,
-              actionQueue.length === 1 && execRes.method === 'node' && (lastSubTool === 'phone_tap' || lastSubTool === 'click_node') ? 380 : 0
+              actionQueue.length === 1 && execRes.method === 'node' && (lastSubTool === 'phone_tap' || lastSubTool === 'click_node') ? 260 : 0
             )
           : { changed: true, elapsedMs: 0 };
 
-        // 零往返自动物理补点：如果 node ACTION_CLICK 报成功但 380ms 内画面无反应，自动以真实坐标手势补点一次
+        // 零往返自动物理补点：如果 node ACTION_CLICK 报成功但 260ms 内画面无反应，自动以真实坐标手势补点一次
         if (
           native &&
           actionQueue.length === 1 &&
@@ -5696,9 +5967,18 @@
           const fallbackTapped = b.dispatchClick(execRes.x, execRes.y);
           if (fallbackTapped) {
             execTexts[0] = `${execRes.text}（已物理补点）`;
-            verdict = await waitForScreenVerdict(beforeMeta, lastSubTool, signal, 420);
+            verdict = await waitForScreenVerdict(beforeMeta, lastSubTool, signal, 320);
           }
         }
+
+        // 将原生事件等待器顺带采集的最新快照直接缓存供下一步复用，省去重复 Binder 全树扫描
+        const nextCachedSnap = verdict?.prefetchedSnapshot && verdict.prefetchedSnapshot.packageName
+          ? verdict.prefetchedSnapshot
+          : null;
+        if (verdict && 'prefetchedSnapshot' in verdict) {
+          delete verdict.prefetchedSnapshot;
+        }
+        prefetchedSnap = nextCachedSnap;
 
         const finalExecText = execTexts.join(' -> ') || execRes.text;
         const stepFp = getActionFingerprint(plan, snapshot);

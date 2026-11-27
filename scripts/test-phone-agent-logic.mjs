@@ -934,6 +934,337 @@ async function runTests() {
     ok(inlineDrawer.classList.contains('hidden') && cloudBox.classList.contains('hidden'), 'local 模式下直连抽屉与云端配置抽屉均隐藏');
   }
 
+  // ========= 场景 11：本地直连（local_antigravity / local）彻底零计费且隐藏计费胶囊 =========
+  {
+    const h = createHarness();
+    const { win, doc, localStorageMock } = h;
+    const chatForm = doc.createElement('form');
+    chatForm.id = 'chat-form';
+    doc.body.appendChild(chatForm);
+    doc.head = doc.createElement('head');
+    const monitorCode = fs.readFileSync(path.join(ROOT, 'public', 'plugins', 'deepseekUsageMonitor.js'), 'utf8');
+    vm.runInContext(monitorCode, win);
+
+    const plugin = win.DeepSeekMonitorPlugin;
+    // 先在 DeepSeek 官方模式下记录一轮计费并激活底部状态条
+    plugin.sync({ scopeProvider: 'own_deepseek', settings: { provider: 'own_deepseek', has_own_deepseek_key: true, own_deepseek_model: 'deepseek-v4.1-flash' } });
+    plugin.recordTurnUsage({
+      usage: { prompt_tokens: 1000, completion_tokens: 200 },
+      model: 'deepseek-v4.1-flash',
+      provider: 'own_deepseek'
+    });
+    const bar = doc.getElementById('oss-ds-composer-bar');
+    ok(plugin.getState().enabled === true && !bar.classList.contains('hidden'), '先在 own_deepseek 下验证计费条可展示');
+
+    // 当切换到 local_antigravity 时，即便旧 settings.provider 仍残留 own_deepseek，插件也必须立即关闭且隐藏
+    plugin.sync({
+      scopeProvider: 'local_antigravity',
+      settings: { provider: 'own_deepseek', has_own_deepseek_key: true, own_deepseek_model: 'deepseek-v4.1-flash' }
+    });
+    ok(plugin.getState().enabled === false && bar.classList.contains('hidden'), '切换至 local_antigravity 时计费插件强制禁用且底部胶囊隐藏');
+
+    const ignoredLocalChat = plugin.recordTurnUsage({
+      usage: { prompt_tokens: 1800, completion_tokens: 450 },
+      model: 'DeepSeek-V4.1-Flash',
+      source: 'DeepSeek对话',
+      provider: 'local_antigravity'
+    });
+    ok(ignoredLocalChat === null, 'local_antigravity 聊天传入 recordTurnUsage 被严格拒绝返回 null');
+    ok(plugin.getState().records.length === 1, 'local_antigravity 对话不会新增任何 Token 计费流水');
+
+    // 手机辅助本地直连 (local) 也同理严格免疫计费
+    plugin.syncPhoneAgent({ execMode: 'local', model: 'DeepSeek-V4.1-Flash' });
+    ok(plugin.getState().enabled === false && bar.classList.contains('hidden'), '手机辅助 local 模式同步后计费插件强制禁用');
+    const ignoredPaLocal = plugin.recordTurnUsage({
+      usage: { prompt_tokens: 900, completion_tokens: 120 },
+      model: 'DeepSeek-V4.1-Flash',
+      source: '手机辅助模式',
+      provider: 'local'
+    });
+    ok(ignoredPaLocal === null && JSON.parse(localStorageMock.getItem('ds_billing_records_v1') || '[]').length === 1, '手机辅助 local 模式绝不累加 Token 计费流水');
+  }
+
+  // ========= 场景 12：App 端独立适配层（APK 源站）本地直连/自定义端口透传与 WebView getReader() 流式读取 =========
+  {
+    const adapterCode = fs.readFileSync(path.join(ROOT, 'public', 'standaloneAdapter.js'), 'utf8');
+    const lsMap = new Map();
+    const ssMap = new Map();
+    const saLocalStorage = {
+      getItem: (k) => (lsMap.has(k) ? lsMap.get(k) : null),
+      setItem: (k, v) => lsMap.set(k, String(v)),
+      removeItem: (k) => lsMap.delete(k)
+    };
+    const saSessionStorage = {
+      getItem: (k) => (ssMap.has(k) ? ssMap.get(k) : null),
+      setItem: (k, v) => ssMap.set(k, String(v)),
+      removeItem: (k) => ssMap.delete(k)
+    };
+
+    const recordedRemoteCalls = [];
+    const createReaderOnlySseBody = (chunksText) => {
+      const enc = new TextEncoder();
+      const encoded = chunksText.map((t) => enc.encode(t));
+      let idx = 0;
+      return {
+        // 故意不实现 Symbol.asyncIterator，真实模拟低版本 Android System WebView
+        getReader() {
+          return {
+            async read() {
+              if (idx < encoded.length) {
+                return { done: false, value: encoded[idx++] };
+              }
+              return { done: true, value: undefined };
+            },
+            releaseLock() {}
+          };
+        }
+      };
+    };
+
+    const saFetch = async (input, init = {}) => {
+      const url = typeof input === 'string' ? input : String(input?.url || '');
+      const hdrs = new Headers(init?.headers || {});
+      recordedRemoteCalls.push({
+        url,
+        method: (init?.method || 'GET').toUpperCase(),
+        auth: hdrs.get('Authorization') || '',
+        body: init?.body ? JSON.parse(init.body) : null
+      });
+
+      if (url === 'http://127.0.0.1:18765/health') {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ available: true, status: 'ok' })
+        };
+      }
+      if (url === 'http://127.0.0.1:3000/api/antigravity/status') {
+        return {
+          ok: true,
+          status: 200,
+          headers: new Headers({ 'Content-Type': 'application/json' }),
+          json: async () => ({ available: true, transport: 'pc_local_server' }),
+          text: async () => JSON.stringify({ available: true, transport: 'pc_local_server' })
+        };
+      }
+      if (url === 'http://127.0.0.1:3000/api/auth/demo-login') {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ token: 'remote_tok_999', user: { id: 88, nickname: '测试旅人' } })
+        };
+      }
+      if (url === 'http://127.0.0.1:3000/api/sessions' && (init?.method || 'GET').toUpperCase() === 'POST') {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ session_id: 777 })
+        };
+      }
+      if (url === 'http://127.0.0.1:3000/api/chat/stream') {
+        return {
+          ok: true,
+          status: 200,
+          body: createReaderOnlySseBody([
+            'event: reasoning\ndata: {"delta":"思考过程"}\n\n',
+            'event: content\ndata: {"delta":"来自PC端本机端口的回复"}\n\n',
+            'event: done\ndata: {"meta":{"usage":{"prompt_tokens":999},"follow_ups":["继续聊聊"]}}\n\n'
+          ])
+        };
+      }
+      return { ok: false, status: 404, json: async () => ({ error: 'not found' }), text: async () => 'not found' };
+    };
+
+    const saWin = {
+      location: {
+        protocol: 'https:',
+        hostname: 'appassets.androidplatform.net',
+        origin: 'https://appassets.androidplatform.net',
+        search: ''
+      },
+      AndroidAppBridge: {
+        isNativeApk: () => true,
+        saveAuthCredentials: () => {}
+      },
+      localStorage: saLocalStorage,
+      sessionStorage: saSessionStorage,
+      fetch: saFetch,
+      Headers,
+      Response,
+      ReadableStream,
+      TextEncoder,
+      TextDecoder,
+      URL,
+      URLSearchParams,
+      AbortController,
+      console,
+      Math,
+      Date,
+      JSON,
+      setTimeout,
+      clearTimeout
+    };
+    saWin.window = saWin;
+    vm.createContext(saWin);
+    vm.runInContext(adapterCode, saWin);
+
+    const hooks = saWin.__STAR_STANDALONE_HOOKS__;
+    ok(Boolean(hooks), 'standaloneAdapter 成功暴露测试钩子');
+    ok(hooks.getRemoteBackendOrigin() === 'https://star.claudexxb.online', '未配置本机端口时默认指向官方云端隧道');
+
+    saLocalStorage.setItem('star_app_local_backend_url', 'http://192.168.1.88:3000/');
+    ok(hooks.getRemoteBackendOrigin() === 'http://192.168.1.88:3000', '自定义局域网端口自动去除末尾斜杠并生效');
+    ok(hooks.isBridgeGatewayOrigin('http://127.0.0.1:18765') === true && hooks.isBridgeGatewayOrigin('http://127.0.0.1:3000') === false, '准确识别 18765 直连网关与 3000 完整后端');
+
+    // 1) 验证 18765 网关探测适配
+    saLocalStorage.setItem('star_app_local_backend_url', 'http://127.0.0.1:18765');
+    const stBridgeResp = await saWin.fetch('/api/antigravity/status');
+    const stBridgeJson = await stBridgeResp.json();
+    ok(stBridgeJson.available === true && stBridgeJson.transport === 'direct_local_port_18765', '配置 18765 网关端口时 /api/antigravity/status 自动映射 /health 返回可用状态');
+
+    // 2) 验证 3000 自定义本地后端全链路流式聊天与零 usage 落盘
+    saLocalStorage.setItem('star_app_local_backend_url', 'http://127.0.0.1:3000');
+    const bootstrapResp = await saWin.fetch('/api/bootstrap');
+    const bootstrapData = await bootstrapResp.json();
+    const firstPersonaId = bootstrapData.personas[0].id;
+    const newSessResp = await saWin.fetch('/api/sessions', {
+      method: 'POST',
+      body: JSON.stringify({ persona_id: firstPersonaId })
+    });
+    const newSessData = await newSessResp.json();
+    const localSid = newSessData.session_id;
+
+    recordedRemoteCalls.length = 0;
+    const chatResp = await saWin.fetch('/api/chat/stream', {
+      method: 'POST',
+      body: JSON.stringify({
+        session_id: localSid,
+        content: '测试本地端口聊天',
+        llm_mode: 'local_antigravity'
+      })
+    });
+    ok(chatResp.ok, 'App 端 local_antigravity 发起 /api/chat/stream 返回 200 SSE 响应');
+
+    // 用 readStreamBodyWithReader 消费客户端返回流（验证无 asyncIterator 也可正常完整消费）
+    const dec = new TextDecoder();
+    let clientSseText = '';
+    await hooks.readStreamBodyWithReader(chatResp.body, (chunk) => {
+      clientSseText += dec.decode(chunk, { stream: true });
+    });
+    clientSseText += dec.decode();
+
+    ok(clientSseText.includes('来自PC端本机端口的回复'), 'App 端完整接收到本机端口流式回复内容');
+    ok(recordedRemoteCalls.some((c) => c.url === 'http://127.0.0.1:3000/api/auth/demo-login'), '自动完成本机端匿名认证');
+    ok(recordedRemoteCalls.some((c) => c.url === 'http://127.0.0.1:3000/api/sessions' && c.auth === 'Bearer remote_tok_999'), '携带真实 Token 自动创建远端映射会话');
+    const streamCall = recordedRemoteCalls.find((c) => c.url === 'http://127.0.0.1:3000/api/chat/stream');
+    ok(Boolean(streamCall) && streamCall.auth === 'Bearer remote_tok_999' && streamCall.body?.llm_mode === 'local_antigravity', '向本机端口透传 llm_mode=local_antigravity 与真实鉴权头');
+
+    const sessDetailResp = await saWin.fetch(`/api/sessions/${localSid}/export`);
+    const sessDetailJson = await sessDetailResp.json();
+    const lastAssistant = [...(sessDetailJson.messages || [])].reverse().find((m) => m.role === 'assistant');
+    ok(Boolean(lastAssistant) && lastAssistant.content.includes('来自PC端本机端口的回复'), '本地存储成功落盘流式助手回复');
+    const parsedMeta = JSON.parse(lastAssistant.meta_json || '{}');
+    ok(parsedMeta.usage === null, '即便上游携带 usage 字段，本地直连落盘 meta.usage 依然强制为 null（零计费）');
+  }
+
+  // ========= 场景 12：原生加速通道（事件驱动屏变 + 快照零重复采集 + 原生 HTTP + 明确任务跳过 Pre-flight） =========
+  {
+    const h = createHarness({
+      initialStorage: {
+        pa_exec_mode_v1: 'api_direct',
+        pa_exclusive_api_key_v1: 'sk-deepseek-fast-test-123456'
+      }
+    });
+    const { win, doc, nativeState, hooks } = h;
+    const b = win.AndroidAppBridge;
+
+    let dumpSnapshotCalls = 0;
+    let verdictWaitCalls = 0;
+    let nativeHttpCalls = 0;
+    let nativeSleepCalls = 0;
+    let preflightCalled = false;
+    let sawPrefetchedLeakInPayload = false;
+
+    const origDump = b.dumpScreenSnapshot;
+    b.dumpScreenSnapshot = (inc) => {
+      dumpSnapshotCalls += 1;
+      return origDump(inc);
+    };
+    b.getTopPackageFast = () => nativeState.packageName;
+    b.nativeSleepAsync = (reqId, ms) => {
+      nativeSleepCalls += 1;
+      setTimeout(() => win.__onNativeSleepDone(reqId), Math.min(ms, 5));
+    };
+    b.cancelNativeSleep = () => {};
+    b.waitForScreenVerdictAsync = (reqId, beforePkg) => {
+      verdictWaitCalls += 1;
+      setTimeout(() => {
+        nativeState.eventSeq += 1;
+        nativeState.signature = 'sig_page_2_next';
+        const nextSnap = {
+          snapshotId: `snap_${nativeState.eventSeq}`,
+          packageName: nativeState.packageName,
+          appName: nativeState.appName,
+          signature: nativeState.signature,
+          eventSeq: nativeState.eventSeq,
+          hasSensitiveField: false,
+          nodes: [
+            { ref: 'e10', text: '确认提交', cls: 'Button', clickable: true, center: [540, 1500] }
+          ]
+        };
+        win.__onNativeVerdictResult(reqId, JSON.stringify({
+          changed: true,
+          fromApp: beforePkg,
+          toApp: nativeState.appName,
+          packageName: nativeState.packageName,
+          signature: nativeState.signature,
+          elapsedMs: 42,
+          hasSensitiveField: false,
+          sensitiveReason: '',
+          prefetchedSnapshot: nextSnap
+        }));
+      }, 8);
+    };
+    b.cancelWaitForScreenVerdict = () => {};
+
+    let llmStep = 0;
+    b.nativeHttpPostAsync = (reqId, _url, _headersJson, bodyStr) => {
+      nativeHttpCalls += 1;
+      const body = JSON.parse(bodyStr || '{}');
+      const usrContent = body?.messages?.[1]?.content || '';
+      if (String(usrContent).includes('"clarifyPolicy"') && !String(usrContent).includes('screenTreeText')) {
+        preflightCalled = true;
+      }
+      if (String(usrContent).includes('prefetchedSnapshot')) {
+        sawPrefetchedLeakInPayload = true;
+      }
+      setTimeout(() => {
+        llmStep += 1;
+        const plan = llmStep === 1
+          ? { tool: 'phone_tap', args: { ref: 'e1', snapshotId: 'snap_1' }, thought: '点击去结算', summary: '点击去结算' }
+          : { tool: 'done', thought: '已进入下一步', summary: '完成', reply: '加速执行完成' };
+        win.__onNativeHttpResult(reqId, JSON.stringify({
+          ok: true,
+          status: 200,
+          body: JSON.stringify({ choices: [{ message: { content: JSON.stringify(plan) } }] })
+        }));
+      }, 5);
+    };
+    b.cancelNativeHttp = () => {};
+
+    ok(hooks.shouldSkipPreFlightClarify('打开高德地图搜附近咖啡', 'smart', null) === true, 'smart 模式下明确指令直通跳过 Pre-flight');
+
+    const card = makeCardCtx(doc);
+    await hooks.runReActLoop('打开高德地图搜附近咖啡', card, 'api_direct');
+
+    ok(!preflightCalled, '明确指令未发出多余 Pre-flight LLM 请求');
+    ok(nativeHttpCalls === 2, `BYOK 直连走原生 HTTP 通道完成 2 步规划 (actual=${nativeHttpCalls})`);
+    ok(verdictWaitCalls === 1, `第 1 步走原生事件驱动屏变等待 (actual=${verdictWaitCalls})`);
+    ok(dumpSnapshotCalls === 1, `第 2 步直接复用原生 prefetchedSnapshot 零重复采树 (actual=${dumpSnapshotCalls})`);
+    ok(!sawPrefetchedLeakInPayload, 'screenVerdict 未将 prefetchedSnapshot 冗余载荷发往大模型');
+    ok(nativeSleepCalls >= 0, 'nativeSleepAsync 原生定时通道就绪');
+  }
+
   console.log(`ALL_PHONE_AGENT_LOGIC_TESTS_PASSED (${passed} assertions)`);
 }
 

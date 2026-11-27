@@ -22,7 +22,7 @@
 </p>
 
 <p>
-  <img src="https://img.shields.io/badge/Release-v2.7.6_Build_167-7C3AED?style=flat-square&logo=rocket&logoColor=white" alt="Version v2.7.6" />
+  <img src="https://img.shields.io/badge/Release-v2.7.7_Build_168-7C3AED?style=flat-square&logo=rocket&logoColor=white" alt="Version v2.7.7" />
   <img src="https://img.shields.io/badge/Node.js-%3E%3D22.5.0-339933?style=flat-square&logo=node.js&logoColor=white" alt="Node.js >= 22.5.0" />
   <img src="https://img.shields.io/badge/Dependencies-0_npm_Packages-FF6B6B?style=flat-square&logo=npm&logoColor=white" alt="Zero npm Dependencies" />
   <img src="https://img.shields.io/badge/Storage-node%3Asqlite-003B57?style=flat-square&logo=sqlite&logoColor=white" alt="Native SQLite" />
@@ -47,11 +47,14 @@
 
 ---
 
-## 🚀 v2.7.6 最新版本核心特性
+## 🚀 v2.7.7 最新版本核心特性
 
-0. **手机辅助双模式彻底职责分明（v2.7.6）**：`DeepSeek API` 模式移除冗余接口地址输入框，专注官方直连并默认锁定 `deepseek-v4.1-flash`；`云端 API` 模式新增「接口地址 Base URL + 云端 API Key + 常用兼容服务商快捷预设」，填写地址与密钥后自动/手动从 `/v1/models` 拉取可调用模型列表，支持一键测试连通性与独立沙盒保存。
+0. **手机辅助原生极速化重构（v2.7.7）**：新增 Android 原生事件驱动屏变等待与快照零重复采集缓存（消除后台 WebView `setTimeout` 1000ms 节流并把单步 2~4 遍无障碍全树扫描降为 1 遍）、原生异步 HTTP 线程池（`Keep-Alive + gzip`，绕过虚拟源 CORS 预检与后台挂起）、非节流原生定时通道以及明确指令免预检直通与动作前置紧凑 Prompt，大幅拉齐 `dsh-Go` 原版控屏响应速度。
+1. **本地直连彻底免计费 + App 端本地直连与自定义端口通信修复（v2.7.7）**：彻底屏蔽 `local_antigravity`（本地直连）通道的 Token 与费用统计，隐藏其计费插件与状态栏额度胶囊；全面补齐主服务端 `server/index.js` 与本机网关 `server/localBridgeDaemon.js` 对 APK 虚拟源站（`appassets.androidplatform.net`）的 `/api/*` `OPTIONS` 预检及跨源响应头支持；App 独立适配层支持默认云端主干与「本机自定义后端端口（如 `http://127.0.0.1:3000`、`http://127.0.0.1:18765` 或局域网 IP）」直连流式对话，并将流式读取统一为兼容低版本 Android WebView 的 `ReadableStream.getReader()` 实现。
 
-### 📌 v2.7.5 ~ v2.7.4 核心更新回顾
+### 📌 v2.7.6 ~ v2.7.4 核心更新回顾
+
+- **手机辅助双模式彻底职责分明（v2.7.6）**：`DeepSeek API` 模式移除冗余接口地址输入框，专注官方直连并默认锁定 `deepseek-v4.1-flash`；`云端 API` 模式新增「接口地址 Base URL + 云端 API Key + 常用兼容服务商快捷预设」，填写地址与密钥后自动/手动从 `/v1/models` 拉取可调用模型列表，支持一键测试连通性与独立沙盒保存。
 
 1. **DeepSeek API 默认 V4.1 Flash + 云端自动拉取模型 + 极简聊天框计费胶囊**：DeepSeek API 模式默认使用 `deepseek-v4.1-flash`；桌面/手机/手机辅助控制台的云端 API 模式填写地址与 Key 后自动从 `/v1/models` 拉取可用模型下拉选择（无需手填）；全新升级 DeepSeek 专属计费插件（v2.0.0），仅在 DeepSeek 官方 API 模式下于聊天框紧上方极简展示实时 Token 与额度/费用，点击展开详情与每轮消耗明细。
 2. **卡顿主动问询防死循环**：执行遇连续 2 步画面无变化、连续 2 步动作报错或纠偏后再次振荡时，AI 立即主动弹窗向用户请示（提供「跳过换方法 / 返回上一页 / 我已手动操作 / 停止任务」快捷选项 + 自由输入现场指示），彻底告别死循环。

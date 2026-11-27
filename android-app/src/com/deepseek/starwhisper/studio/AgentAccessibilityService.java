@@ -16,6 +16,7 @@ import android.media.AudioManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
+import android.os.HandlerThread;
 import android.os.Looper;
 import android.util.DisplayMetrics;
 import android.util.Log;
@@ -34,6 +35,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Random;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -49,7 +51,65 @@ public class AgentAccessibilityService extends AccessibilityService {
     private final AtomicInteger nodeCounter = new AtomicInteger(1);
     private final AtomicInteger snapshotSeq = new AtomicInteger(0);
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    private HandlerThread snapshotWorkerThread = null;
+    private volatile Handler snapshotWorkerHandler = null;
+    private final Object waiterLock = new Object();
+    private volatile PendingVerdictWaiter activeVerdictWaiter = null;
     private final Random random = new Random();
+
+    public interface VerdictCallback {
+        void onComplete(String resultJson);
+    }
+
+    private static final class PendingVerdictWaiter {
+        final String reqId;
+        final String beforePkg;
+        final String beforeSig;
+        final int beforeSeq;
+        final String toolName;
+        final long startAtMs;
+        final long deadlineMs;
+        final int debounceMs;
+        final VerdictCallback callback;
+        final AtomicBoolean finished = new AtomicBoolean(false);
+        volatile long firstEventMs = 0L;
+        Runnable debounceTask = null;
+        Runnable fallbackCheckTask = null;
+        Runnable timeoutTask = null;
+
+        PendingVerdictWaiter(
+                String reqId,
+                String beforePkg,
+                String beforeSig,
+                int beforeSeq,
+                String toolName,
+                long startAtMs,
+                long deadlineMs,
+                int debounceMs,
+                VerdictCallback callback
+        ) {
+            this.reqId = reqId;
+            this.beforePkg = beforePkg != null ? beforePkg : "";
+            this.beforeSig = beforeSig != null ? beforeSig : "";
+            this.beforeSeq = beforeSeq;
+            this.toolName = toolName != null ? toolName : "";
+            this.startAtMs = startAtMs;
+            this.deadlineMs = deadlineMs;
+            this.debounceMs = debounceMs;
+            this.callback = callback;
+        }
+    }
+
+    private static final class SnapshotResult {
+        boolean ok;
+        String snapshotId = "";
+        String packageName = "";
+        String appName = "";
+        String signature = "";
+        boolean hasSensitiveField = false;
+        String sensitiveReason = "";
+        String json = "";
+    }
 
     // 快照缓存（dsh-go ref 精准定位 + 过期保护）
     private volatile String currentSnapshotId = "";
@@ -110,10 +170,24 @@ public class AgentAccessibilityService extends AccessibilityService {
         return sInstance != null;
     }
 
+    private Handler ensureWorkerHandler() {
+        Handler h = snapshotWorkerHandler;
+        if (h != null) return h;
+        synchronized (waiterLock) {
+            if (snapshotWorkerHandler == null) {
+                snapshotWorkerThread = new HandlerThread("StarWhisperSnapshotWorker");
+                snapshotWorkerThread.start();
+                snapshotWorkerHandler = new Handler(snapshotWorkerThread.getLooper());
+            }
+            return snapshotWorkerHandler;
+        }
+    }
+
     @Override
     public void onServiceConnected() {
         super.onServiceConnected();
         sInstance = this;
+        ensureWorkerHandler();
         Log.i(TAG, "AgentAccessibilityService 已成功连接并在前台就绪");
     }
 
@@ -191,6 +265,7 @@ public class AgentAccessibilityService extends AccessibilityService {
                 screenEventSeq.incrementAndGet();
                 lastEventPackage = pkg;
                 lastEventTimeMs = System.currentTimeMillis();
+                notifyVerdictWaiterOnEvent();
             }
 
             if ((evType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
@@ -529,7 +604,17 @@ public class AgentAccessibilityService extends AccessibilityService {
 
     @Override
     public void onDestroy() {
+        cancelActiveVerdictWaiter("服务销毁");
         stopAllBackgroundTasks("无障碍服务关闭");
+        synchronized (waiterLock) {
+            if (snapshotWorkerThread != null) {
+                try {
+                    snapshotWorkerThread.quitSafely();
+                } catch (Throwable ignored) {}
+                snapshotWorkerThread = null;
+                snapshotWorkerHandler = null;
+            }
+        }
         super.onDestroy();
         if (sInstance == this) {
             sInstance = null;
@@ -573,6 +658,177 @@ public class AgentAccessibilityService extends AccessibilityService {
                 || low.contains("abchina") || low.contains("boc");
     }
 
+    public String getCurrentPackageFast() {
+        try {
+            AccessibilityNodeInfo root = getRootInActiveWindow();
+            if (root == null) return "";
+            CharSequence pkgCs = root.getPackageName();
+            String pkg = pkgCs != null ? pkgCs.toString() : "";
+            root.recycle();
+            return pkg;
+        } catch (Throwable ignored) {
+            return "";
+        }
+    }
+
+    public void cancelWaitForScreenChange(String reqId) {
+        if (reqId == null) return;
+        synchronized (waiterLock) {
+            PendingVerdictWaiter w = activeVerdictWaiter;
+            if (w != null && reqId.equals(w.reqId)) {
+                cancelActiveVerdictWaiter("前端取消");
+            }
+        }
+    }
+
+    private void cancelActiveVerdictWaiter(String reason) {
+        Handler h = snapshotWorkerHandler;
+        synchronized (waiterLock) {
+            PendingVerdictWaiter w = activeVerdictWaiter;
+            activeVerdictWaiter = null;
+            if (w != null && w.finished.compareAndSet(false, true)) {
+                if (h != null) {
+                    if (w.debounceTask != null) h.removeCallbacks(w.debounceTask);
+                    if (w.fallbackCheckTask != null) h.removeCallbacks(w.fallbackCheckTask);
+                    if (w.timeoutTask != null) h.removeCallbacks(w.timeoutTask);
+                }
+            }
+        }
+    }
+
+    private void notifyVerdictWaiterOnEvent() {
+        final PendingVerdictWaiter w = activeVerdictWaiter;
+        if (w == null || w.finished.get()) return;
+        final Handler h = ensureWorkerHandler();
+        final long now = System.currentTimeMillis();
+        synchronized (waiterLock) {
+            if (activeVerdictWaiter != w || w.finished.get()) return;
+            if (w.firstEventMs == 0L) {
+                w.firstEventMs = now;
+            }
+            if (w.debounceTask != null) {
+                h.removeCallbacks(w.debounceTask);
+            }
+            long delay = (now - w.firstEventMs >= 130L) ? 0L : w.debounceMs;
+            w.debounceTask = new Runnable() {
+                @Override
+                public void run() {
+                    evaluateWaiterSnapshot(w, false);
+                }
+            };
+            h.postDelayed(w.debounceTask, delay);
+        }
+    }
+
+    public void waitForScreenChangeAndSnapshotAsync(
+            String reqId,
+            String beforePkg,
+            String beforeSig,
+            int beforeSeq,
+            String toolName,
+            int maxWaitMs,
+            VerdictCallback callback
+    ) {
+        if (callback == null) return;
+        final Handler h = ensureWorkerHandler();
+        final int safeMaxWait = Math.max(120, Math.min(maxWaitMs > 0 ? maxWaitMs : 450, 5000));
+        final int debounceMs = "phone_open".equals(toolName) || "launch_app".equals(toolName) ? 120 : 45;
+        final long now = System.currentTimeMillis();
+
+        final PendingVerdictWaiter waiter = new PendingVerdictWaiter(
+                reqId,
+                beforePkg,
+                beforeSig,
+                beforeSeq,
+                toolName,
+                now,
+                now + safeMaxWait,
+                debounceMs,
+                callback
+        );
+
+        synchronized (waiterLock) {
+            cancelActiveVerdictWaiter("新等待请求替换");
+            activeVerdictWaiter = waiter;
+            waiter.timeoutTask = new Runnable() {
+                @Override
+                public void run() {
+                    evaluateWaiterSnapshot(waiter, true);
+                }
+            };
+            h.postDelayed(waiter.timeoutTask, safeMaxWait);
+
+            // 若等待前事件已触发（同步触发），立刻走短防抖检查；否则安排保底采样防止纯自绘控件无事件漏检
+            if (beforeSeq > 0 && screenEventSeq.get() != beforeSeq) {
+                waiter.firstEventMs = now;
+                waiter.debounceTask = new Runnable() {
+                    @Override
+                    public void run() {
+                        evaluateWaiterSnapshot(waiter, false);
+                    }
+                };
+                h.postDelayed(waiter.debounceTask, debounceMs);
+            } else {
+                int fallbackMs = Math.min(safeMaxWait, Math.max(160, debounceMs + 115));
+                waiter.fallbackCheckTask = new Runnable() {
+                    @Override
+                    public void run() {
+                        evaluateWaiterSnapshot(waiter, false);
+                    }
+                };
+                h.postDelayed(waiter.fallbackCheckTask, fallbackMs);
+            }
+        }
+    }
+
+    private void evaluateWaiterSnapshot(PendingVerdictWaiter w, boolean isFinalTimeout) {
+        if (w == null || w.finished.get()) return;
+        SnapshotResult snap = captureSnapshotInternal(false);
+        boolean changed = snap.ok && (
+                (!w.beforePkg.isEmpty() && !snap.packageName.isEmpty() && !snap.packageName.equals(w.beforePkg))
+                        || (!w.beforeSig.isEmpty() && !snap.signature.isEmpty() && !snap.signature.equals(w.beforeSig))
+        );
+
+        long now = System.currentTimeMillis();
+        if (!changed && !isFinalTimeout && now + 35L < w.deadlineMs) {
+            return;
+        }
+
+        if (!w.finished.compareAndSet(false, true)) {
+            return;
+        }
+
+        Handler h = snapshotWorkerHandler;
+        synchronized (waiterLock) {
+            if (activeVerdictWaiter == w) {
+                activeVerdictWaiter = null;
+            }
+            if (h != null) {
+                if (w.debounceTask != null) h.removeCallbacks(w.debounceTask);
+                if (w.fallbackCheckTask != null) h.removeCallbacks(w.fallbackCheckTask);
+                if (w.timeoutTask != null) h.removeCallbacks(w.timeoutTask);
+            }
+        }
+
+        long elapsed = Math.max(0L, now - w.startAtMs);
+        StringBuilder out = new StringBuilder();
+        out.append("{");
+        out.append("\"changed\":").append(changed).append(",");
+        out.append("\"fromApp\":\"").append(escapeJson(w.beforePkg)).append("\",");
+        out.append("\"toApp\":\"").append(escapeJson(snap.appName.isEmpty() ? snap.packageName : snap.appName)).append("\",");
+        out.append("\"packageName\":\"").append(escapeJson(snap.packageName)).append("\",");
+        out.append("\"signature\":\"").append(escapeJson(snap.signature)).append("\",");
+        out.append("\"elapsedMs\":").append(elapsed).append(",");
+        out.append("\"hasSensitiveField\":").append(snap.hasSensitiveField).append(",");
+        out.append("\"sensitiveReason\":\"").append(escapeJson(snap.sensitiveReason)).append("\",");
+        out.append("\"prefetchedSnapshot\":").append(snap.ok && snap.json != null && !snap.json.isEmpty() ? snap.json : "null");
+        out.append("}");
+
+        try {
+            w.callback.onComplete(out.toString());
+        } catch (Throwable ignored) {}
+    }
+
     /**
      * dsh-go 风格快照化屏幕采集：
      * - 自动分配 snapshotId 与 ref (e1, e2, ...)
@@ -581,9 +837,16 @@ public class AgentAccessibilityService extends AccessibilityService {
      * - 按屏幕从上到下、从左到右视觉顺序排序并裁剪高价值节点
      */
     public String dumpScreenSnapshot(boolean includeInvisible) {
+        return captureSnapshotInternal(includeInvisible).json;
+    }
+
+    private SnapshotResult captureSnapshotInternal(boolean includeInvisible) {
+        SnapshotResult res = new SnapshotResult();
         AccessibilityNodeInfo root = getRootInActiveWindow();
         if (root == null) {
-            return "{\"error\":\"无法获取当前屏幕根节点（请确认屏幕未锁定或当前应用允许无障碍读取）\",\"snapshotId\":\"\",\"nodes\":[]}";
+            res.ok = false;
+            res.json = "{\"error\":\"无法获取当前屏幕根节点（请确认屏幕未锁定或当前应用允许无障碍读取）\",\"snapshotId\":\"\",\"nodes\":[]}";
+            return res;
         }
 
         DisplayMetrics dm = getResources().getDisplayMetrics();
@@ -689,7 +952,7 @@ public class AgentAccessibilityService extends AccessibilityService {
         currentSnapshotId = snapId;
         String signature = buildScreenSignature(pkgName, collected);
 
-        StringBuilder sb = new StringBuilder();
+        StringBuilder sb = new StringBuilder(2048);
         sb.append("{");
         sb.append("\"snapshotId\":\"").append(escapeJson(snapId)).append("\",");
         sb.append("\"packageName\":\"").append(escapeJson(pkgName)).append("\",");
@@ -727,7 +990,16 @@ public class AgentAccessibilityService extends AccessibilityService {
             sb.append("}");
         }
         sb.append("]}");
-        return sb.toString();
+
+        res.ok = true;
+        res.snapshotId = snapId;
+        res.packageName = pkgName;
+        res.appName = appName;
+        res.signature = signature;
+        res.hasSensitiveField = sensitiveFlag[0];
+        res.sensitiveReason = sensitiveReason.toString();
+        res.json = sb.toString();
+        return res;
     }
 
     public String getScreenEventSeqJson() {
@@ -806,9 +1078,21 @@ public class AgentAccessibilityService extends AccessibilityService {
             boolean[] sensitiveFlag,
             StringBuilder sensitiveReason
     ) {
-        if (node == null || out.size() >= MAX_SNAPSHOT_NODES * 2) return;
+        if (node == null || depth > 28 || out.size() >= MAX_SNAPSHOT_NODES * 2) return;
 
         boolean visible = node.isVisibleToUser();
+        Rect bounds = new Rect();
+        node.getBoundsInScreen(bounds);
+
+        // 屏幕外且不可见的列表项/预加载容器直接剪枝，避免大量跨进程 Binder 遍历
+        if (!includeInvisible && !visible) {
+            if (bounds.width() <= 0 || bounds.height() <= 0
+                    || bounds.bottom <= 0 || bounds.top >= screenH
+                    || bounds.right <= 0 || bounds.left >= screenW) {
+                return;
+            }
+        }
+
         boolean isPassword = node.isPassword();
         CharSequence rawText = node.getText();
         CharSequence rawDesc = node.getContentDescription();
@@ -831,8 +1115,6 @@ public class AgentAccessibilityService extends AccessibilityService {
         boolean isInteractive = clickable || editable || checkable;
 
         if ((visible || includeInvisible) && (isInteractive || hasText)) {
-            Rect bounds = new Rect();
-            node.getBoundsInScreen(bounds);
             if (bounds.width() > 2 && bounds.height() > 2
                     && bounds.right > 0 && bounds.bottom > 0
                     && bounds.left < screenW && bounds.top < screenH) {
@@ -1051,17 +1333,14 @@ public class AgentAccessibilityService extends AccessibilityService {
 
         if (ok && autoSubmit) {
             final Rect finalBounds = inputBounds;
-            int[] delays = new int[]{ 260, 580 };
-            for (int d : delays) {
-                mainHandler.postDelayed(new Runnable() {
-                    @Override
-                    public void run() {
-                        if (!FloatAgentService.sEmergencyStopRequested) {
-                            performSmartSubmitAction(finalBounds);
-                        }
+            mainHandler.postDelayed(new Runnable() {
+                @Override
+                public void run() {
+                    if (!FloatAgentService.sEmergencyStopRequested) {
+                        performSmartSubmitAction(finalBounds);
                     }
-                }, d);
-            }
+                }
+            }, 150);
         }
 
         return "{\"ok\":" + ok + ",\"message\":\"" + (ok ? "已向 " + escapeJson(entry.ref) + " 填入文字" : "文本输入失败") + "\"}";
@@ -1082,13 +1361,13 @@ public class AgentAccessibilityService extends AccessibilityService {
         int midX = w / 2;
 
         if ("down".equals(dir)) {
-            return performSwipe(midX, midY + spanY / 2, midX, midY - spanY / 2, 340);
+            return performSwipe(midX, midY + spanY / 2, midX, midY - spanY / 2, 230);
         } else if ("up".equals(dir)) {
-            return performSwipe(midX, midY - spanY / 2, midX, midY + spanY / 2, 340);
+            return performSwipe(midX, midY - spanY / 2, midX, midY + spanY / 2, 230);
         } else if ("left".equals(dir)) {
-            return performSwipe(midX + spanX / 2, midY, midX - spanX / 2, midY, 320);
+            return performSwipe(midX + spanX / 2, midY, midX - spanX / 2, midY, 210);
         } else if ("right".equals(dir)) {
-            return performSwipe(midX - spanX / 2, midY, midX + spanX / 2, midY, 320);
+            return performSwipe(midX - spanX / 2, midY, midX + spanX / 2, midY, 210);
         }
         return false;
     }
@@ -1241,7 +1520,7 @@ public class AgentAccessibilityService extends AccessibilityService {
     }
 
     /**
-     * 模拟单点坐标触摸点击 (通过 Android 原生手势分发，80ms 微按压提升 WebView/ROM 识别率)
+     * 模拟单点坐标触摸点击 (通过 Android 原生手势分发，45ms 敏捷按压兼顾 WebView/ROM 识别率)
      */
     public boolean performClickCoordinate(int x, int y) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return false;
@@ -1250,7 +1529,7 @@ public class AgentAccessibilityService extends AccessibilityService {
         path.moveTo(x, y);
         path.lineTo(x + 1, y);
         GestureDescription.Builder builder = new GestureDescription.Builder();
-        builder.addStroke(new GestureDescription.StrokeDescription(path, 0, 80));
+        builder.addStroke(new GestureDescription.StrokeDescription(path, 0, 45));
         return dispatchGesture(builder.build(), null, null);
     }
 

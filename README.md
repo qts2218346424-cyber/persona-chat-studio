@@ -22,7 +22,7 @@
 </p>
 
 <p>
-  <img src="https://img.shields.io/badge/Release-v2.7.10_Build_171-7C3AED?style=flat-square&logo=rocket&logoColor=white" alt="Version v2.7.10" />
+  <img src="https://img.shields.io/badge/Release-v2.7.11_Build_172-7C3AED?style=flat-square&logo=rocket&logoColor=white" alt="Version v2.7.11" />
   <img src="https://img.shields.io/badge/Node.js-%3E%3D22.5.0-339933?style=flat-square&logo=node.js&logoColor=white" alt="Node.js >= 22.5.0" />
   <img src="https://img.shields.io/badge/Dependencies-0_npm_Packages-FF6B6B?style=flat-square&logo=npm&logoColor=white" alt="Zero npm Dependencies" />
   <img src="https://img.shields.io/badge/Storage-node%3Asqlite-003B57?style=flat-square&logo=sqlite&logoColor=white" alt="Native SQLite" />
@@ -47,10 +47,11 @@
 
 ---
 
-## 🚀 v2.7.10 最新版本核心特性
+## 🚀 v2.7.11 最新版本核心特性
 
-0. **奶龙移动与悬浮窗 UI 清晰度全面修复（v2.7.10）**：彻底修复奶龙拖拽与自由漫步时因 3D 透视旋转、动画抢占、粒子遮脸及气泡撑开导致的模糊残影与出屏裁切；优化奶龙全套表情贴图语义映射与左右漫步原生朝向，重构三层柔滑地面接触投影，头顶气泡改为向上智能避让与右边界钳制，Web 端同步移除水印圆形切边遮罩。
-1. **大肥鱼 + 奶龙双桌面形象切换 & 手机辅助通透背景 / 可视化思考 HUD（v2.7.9）**：悬浮窗新增「🐲 奶龙」形象备选（含 7 套专属表情与 12 条语录语音），支持在悬浮窗面板与 Web 控制台间双向实时同步切换；重构手机辅助模式为壁纸通透毛玻璃背景与右下角错落水印（不再遮挡中心文字）；应用内升级四阶段管线（识屏→思考→执行→核验）+ 推理时间轴，跨应用执行升级为毛玻璃头顶气泡与实时结构化任务 HUD 卡片（支持精简/详情折叠与一键急停）。
+0. **悬浮窗双窗物理隔离与防裁剪根治修复（v2.7.11）**：将头顶气泡与跨应用任务 HUD 拆分至独立悬浮窗（`bubbleHostView`），移除桌面本体窗 `FLAG_LAYOUT_NO_LIMITS` 并引入 `syncCollapsedWindowSize()` 显式像素宽高同步，彻底根治国产 Android ROM 下悬浮窗被系统裁成 40dp 窄条、大肥鱼/奶龙本体被切掉右半边及气泡文字竖排挤压的异常 UI；同时支持气泡按桌宠实时坐标上下智能避让与尾指针精准对齐。
+1. **奶龙移动与悬浮窗 UI 清晰度全面修复（v2.7.10）**：彻底修复奶龙拖拽与自由漫步时因 3D 透视旋转、动画抢占、粒子遮脸及气泡撑开导致的模糊残影与出屏裁切；优化奶龙全套表情贴图语义映射与左右漫步原生朝向，重构三层柔滑地面接触投影，头顶气泡改为向上智能避让与右边界钳制，Web 端同步移除水印圆形切边遮罩。
+2. **大肥鱼 + 奶龙双桌面形象切换 & 手机辅助通透背景 / 可视化思考 HUD（v2.7.9）**：悬浮窗新增「🐲 奶龙」形象备选（含 7 套专属表情与 12 条语录语音），支持在悬浮窗面板与 Web 控制台间双向实时同步切换；重构手机辅助模式为壁纸通透毛玻璃背景与右下角错落水印（不再遮挡中心文字）；应用内升级四阶段管线（识屏→思考→执行→核验）+ 推理时间轴，跨应用执行升级为毛玻璃头顶气泡与实时结构化任务 HUD 卡片（支持精简/详情折叠与一键急停）。
 
 ### 📌 v2.7.8 ~ v2.7.4 核心更新回顾
 

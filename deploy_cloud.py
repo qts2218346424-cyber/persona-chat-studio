@@ -194,10 +194,10 @@ const {{ db, getRawPlatformConfigInternal, updateAdminPlatformConfig, saveAdminA
 db.prepare("DELETE FROM personas WHERE id = \\x27persona_linqi\\x27").run();
 db.prepare("UPDATE site_announcements SET enabled = 0").run();
 saveAdminAnnouncement("admin", {{
-  title: "星语恋庭 v2.7.10 (Build 171) 正式发布：奶龙移动与悬浮窗 UI 清晰度全面修复！",
-  content: "1. 【拖拽/漫步防抖清晰化】：移除移动中 3D 透视旋转与动画冲突，粒子特效移至底层，拖拽时自动收起气泡与外置栏，告别模糊与遮挡！\\n2. 【左右朝向与出屏裁切修复】：修正奶龙向左/向右原生贴图朝向与全套表情语义，漫步边界按容器真实宽度严格防裁切。\\n3. 【柔滑接触投影与智能气泡避让】：重构三层柔滑地面阴影并消除残影，头顶气泡自动向上扩展与右边界钳制，阅读 100% 清晰完整。",
+  title: "星语恋庭 v2.7.11 (Build 172) 正式上线：悬浮窗双窗物理隔离与防裁剪根治修复！",
+  content: "1. 【独立气泡/HUD 浮窗隔离】：将头顶气泡与跨应用 LIVE HUD 拆分为独立悬浮窗（bubbleHostView），不再挤压桌宠本体容器！\\n2. 【显式像素尺寸同步】：移除桌面本体窗 FLAG_LAYOUT_NO_LIMITS 并引入 syncCollapsedWindowSize()，彻底根治国产 ROM 下悬浮窗被裁成 40dp 窄条、角色被切半与文字竖排异常！\\n3. 【气泡智能避让与尾指针校准】：气泡与 HUD 随桌宠位置上下左右智能避让并精准对准头顶尾指针。",
   enabled: true,
-  version: 171
+  version: 172
 }});
 db.prepare("UPDATE sessions SET companion_config = NULL").run();
 db.prepare("UPDATE user_settings SET value = \\x27demo\\x27 WHERE key = \\x27provider\\x27").run();

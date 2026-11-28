@@ -7,8 +7,8 @@
    ========================================================================== */
 
 (() => {
-  const CURRENT_APK_VERSION = '2.7.10';
-  const CURRENT_APK_CODE = 171;
+  const CURRENT_APK_VERSION = '2.7.11';
+  const CURRENT_APK_CODE = 172;
   const DEEPSEEK_API_KEYS_URL = 'https://platform.deepseek.com/api_keys';
   const DEEPSEEK_OFFICIAL_CHAT_URL = 'https://api.deepseek.com/v1/chat/completions';
   const PUBLIC_WEB_ORIGIN = 'https://star.claudexxb.online';

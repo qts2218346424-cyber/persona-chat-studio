@@ -197,7 +197,9 @@ public class FloatAgentService extends Service {
     private volatile long lastWeatherFetchMs = 0L;
     private final java.util.Random petRandom = new java.util.Random();
 
-    // 独立全透明背景桌面漂浮歌词窗、外置互动条与美化版头顶气泡
+    // 独立全透明背景桌面漂浮歌词窗、独立头顶气泡/HUD窗、外置互动条
+    private FrameLayout bubbleHostView;
+    private WindowManager.LayoutParams bubbleOverlayParams;
     private LinearLayout externalPetActionBar;
     private LinearLayout headSpeechBubbleWrap;
     private LinearLayout headSpeechBubbleCard;
@@ -221,7 +223,6 @@ public class FloatAgentService extends Service {
     private ValueAnimator petActionAnim;
     private boolean isDraggingPet = false;
     private boolean extBarHiddenDuringDrag = false;
-    private int headBubbleYOffset = 0;
     private long lastDragVoiceMs = 0L;
     private int dragWiggleCount = 0;
 
@@ -384,52 +385,43 @@ public class FloatAgentService extends Service {
         }
     };
 
-    private void restoreBubbleWindowOffset() {
-        if (headBubbleYOffset != 0 && layoutParams != null && windowManager != null && floatRootView != null) {
-            DisplayMetrics dm = getResources().getDisplayMetrics();
-            int petH = (petBubbleContainer != null && petBubbleContainer.getHeight() > 0) ? petBubbleContainer.getHeight() : dp(100);
-            int maxY = Math.max(dp(28), dm.heightPixels - petH - dp(24));
-            layoutParams.y = Math.max(dp(28), Math.min(layoutParams.y + headBubbleYOffset, maxY));
-            savedPillY = layoutParams.y;
-            headBubbleYOffset = 0;
-            try {
-                windowManager.updateViewLayout(floatRootView, layoutParams);
-            } catch (Exception ignored) {}
-        } else {
-            headBubbleYOffset = 0;
+    private void hideBubbleHostIfIdle() {
+        if (bubbleHostView == null) return;
+        boolean speechVisible = (headSpeechBubbleWrap != null && headSpeechBubbleWrap.getVisibility() == View.VISIBLE);
+        boolean hudVisible = (taskHudWrap != null && taskHudWrap.getVisibility() == View.VISIBLE);
+        if (!speechVisible && !hudVisible) {
+            bubbleHostView.setVisibility(View.GONE);
         }
     }
 
     private void dismissHeadBubbleImmediate() {
         mainHandler.removeCallbacks(headBubbleHideRunnable);
-        final View targetWrap = headSpeechBubbleWrap != null ? headSpeechBubbleWrap : headSpeechBubbleView;
-        if (targetWrap != null) {
-            targetWrap.animate().cancel();
-            if (targetWrap.getVisibility() == View.VISIBLE) {
-                targetWrap.setVisibility(View.GONE);
-            }
-            targetWrap.setAlpha(1f);
-            targetWrap.setTranslationY(0f);
+        if (headSpeechBubbleWrap != null) {
+            headSpeechBubbleWrap.animate().cancel();
+            headSpeechBubbleWrap.setVisibility(View.GONE);
+            headSpeechBubbleWrap.setAlpha(1f);
+            headSpeechBubbleWrap.setTranslationY(0f);
         }
-        restoreBubbleWindowOffset();
+        hideBubbleHostIfIdle();
     }
 
     private final Runnable headBubbleHideRunnable = new Runnable() {
         @Override
         public void run() {
-            final View targetWrap = headSpeechBubbleWrap != null ? headSpeechBubbleWrap : headSpeechBubbleView;
-            if (targetWrap != null && targetWrap.getVisibility() == View.VISIBLE) {
-                targetWrap.animate().alpha(0f).translationY(dpFloat(4f)).setDuration(220).withEndAction(new Runnable() {
+            if (headSpeechBubbleWrap != null && headSpeechBubbleWrap.getVisibility() == View.VISIBLE) {
+                headSpeechBubbleWrap.animate().alpha(0f).translationY(dpFloat(4f)).setDuration(220).withEndAction(new Runnable() {
                     @Override
                     public void run() {
-                        targetWrap.setVisibility(View.GONE);
-                        targetWrap.setAlpha(1f);
-                        targetWrap.setTranslationY(0f);
-                        restoreBubbleWindowOffset();
+                        if (headSpeechBubbleWrap != null) {
+                            headSpeechBubbleWrap.setVisibility(View.GONE);
+                            headSpeechBubbleWrap.setAlpha(1f);
+                            headSpeechBubbleWrap.setTranslationY(0f);
+                        }
+                        hideBubbleHostIfIdle();
                     }
                 }).start();
             } else {
-                restoreBubbleWindowOffset();
+                hideBubbleHostIfIdle();
             }
         }
     };
@@ -438,13 +430,14 @@ public class FloatAgentService extends Service {
         @Override
         public void run() {
             if (taskHudWrap != null && "idle".equals(sCurrentStatus)) {
-                taskHudWrap.animate().alpha(0f).translationY(dpFloat(4f)).setDuration(260).withEndAction(new Runnable() {
+                taskHudWrap.animate().alpha(0f).translationY(dpFloat(4f)).setDuration(240).withEndAction(new Runnable() {
                     @Override
                     public void run() {
                         if (taskHudWrap != null && "idle".equals(sCurrentStatus)) {
                             taskHudWrap.setVisibility(View.GONE);
                             taskHudWrap.setAlpha(1f);
                             taskHudWrap.setTranslationY(0f);
+                            hideBubbleHostIfIdle();
                         }
                     }
                 }).start();
@@ -1570,7 +1563,7 @@ public class FloatAgentService extends Service {
                 WindowManager.LayoutParams.WRAP_CONTENT,
                 WindowManager.LayoutParams.WRAP_CONTENT,
                 overlayWindowType(),
-                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
                 PixelFormat.TRANSLUCENT
         );
 
@@ -1775,8 +1768,7 @@ public class FloatAgentService extends Service {
         externalPetActionBar.addView(extMeme);
         externalPetActionBar.addView(extHide);
 
-        petBubbleContainer.addView(taskHudWrap);
-        petBubbleContainer.addView(headSpeechBubbleWrap);
+        // 桌宠本体窗口只放本体行与外置互动条，气泡与 LIVE HUD 物理隔离到独立悬浮窗防裁剪
         petBubbleContainer.addView(petTopRow);
         petBubbleContainer.addView(externalPetActionBar);
 
@@ -1791,7 +1783,8 @@ public class FloatAgentService extends Service {
         expandPanel.setVisibility(View.GONE);
         applyPersonaVisualTheme();
 
-        floatRootView.addView(petBubbleContainer);
+        floatRootView.addView(petBubbleContainer, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         floatRootView.addView(expandPanel);
 
         // 拖拽拎起桌宠 + 晕乎彩蛋 + 脚底离地阴影缩淡 + 放下踩实回弹 + 防误触保护
@@ -1841,6 +1834,7 @@ public class FloatAgentService extends Service {
                             if (externalPetActionBar != null && externalPetActionBar.getVisibility() == View.VISIBLE) {
                                 extBarHiddenDuringDrag = true;
                                 externalPetActionBar.setVisibility(View.GONE);
+                                syncCollapsedWindowSize();
                             }
                             setPetPose("drag");
                             long nowMs = System.currentTimeMillis();
@@ -1861,13 +1855,12 @@ public class FloatAgentService extends Service {
                         if (isDraggingPet) {
                             // 拎在半空中时脚底阴影缩淡，关闭 3D rotationY 透视避免边缘发虚锯齿
                             applyPetPhysics(6.5f, 0.98f, 1.03f, -vx * 0.35f, 0f, 0f, 0.22f);
-                            int curW = (petBubbleContainer != null && petBubbleContainer.getWidth() > 0)
-                                    ? Math.min(petBubbleContainer.getWidth(), dp(120))
-                                    : dp(82);
+                            int curW = layoutParams.width > 0 ? layoutParams.width : dp(86);
+                            int curH = layoutParams.height > 0 ? layoutParams.height : dp(80);
                             int nextX = initialX + (int) dx;
                             int nextY = initialY + (int) dy;
-                            int maxY = Math.max(dp(100), dm.heightPixels - dp(80));
-                            int clampedX = Math.max(0, Math.min(nextX, dm.widthPixels - curW));
+                            int maxY = Math.max(dp(100), dm.heightPixels - curH - dp(16));
+                            int clampedX = Math.max(0, Math.min(nextX, Math.max(dp(6), dm.widthPixels - curW)));
                             int clampedY = Math.max(dp(28), Math.min(nextY, maxY));
                             if (clampedX != layoutParams.x || clampedY != layoutParams.y) {
                                 layoutParams.x = clampedX;
@@ -1946,13 +1939,13 @@ public class FloatAgentService extends Service {
                                 playPetBounceAnim("bounce");
                             }
                         } else {
-                            int petW = petBubbleContainer.getWidth() > 0 ? petBubbleContainer.getWidth() : dp(76);
-                            int petH = petBubbleContainer.getHeight() > 0 ? petBubbleContainer.getHeight() : dp(100);
+                            int petW = layoutParams.width > 0 ? layoutParams.width : dp(86);
+                            int petH = layoutParams.height > 0 ? layoutParams.height : dp(80);
                             int margin = dp(6);
                             if (freeRoamEnabled) {
                                 // 开启全屏自由漫步时，允许停在用户拖放的任意屏幕位置，不再强制吸死左右侧边
-                                layoutParams.x = Math.max(margin, Math.min(layoutParams.x, dm.widthPixels - petW - margin));
-                                layoutParams.y = Math.max(dp(34), Math.min(layoutParams.y, dm.heightPixels - petH - dp(24)));
+                                layoutParams.x = Math.max(margin, Math.min(layoutParams.x, Math.max(margin, dm.widthPixels - petW - margin)));
+                                layoutParams.y = Math.max(dp(28), Math.min(layoutParams.y, Math.max(dp(34), dm.heightPixels - petH - dp(20))));
                             } else {
                                 int center = layoutParams.x + petW / 2;
                                 layoutParams.x = (center < dm.widthPixels / 2)
@@ -1965,6 +1958,9 @@ public class FloatAgentService extends Service {
                                 windowManager.updateViewLayout(floatRootView, layoutParams);
                             } catch (Exception ignored) {}
                             applyStatusStyle(sCurrentStatus, statusTextView != null ? statusTextView.getText().toString() : "dsh-Go", false);
+                            if (taskHudWrap != null && taskHudWrap.getVisibility() == View.VISIBLE) {
+                                positionBubbleOverlayWindow(taskHudWrap, taskHudTailView, Math.min(dp(268), dm.widthPixels - dp(24)));
+                            }
                             // 放下后“咚”地稳稳落地压实地板并弹一小圈微尘！
                             playPetBounceAnim("land");
                             scheduleIdleSleep();
@@ -1978,15 +1974,84 @@ public class FloatAgentService extends Service {
 
         try {
             windowManager.addView(floatRootView, layoutParams);
+            syncCollapsedWindowSize();
+            initBubbleOverlayWindow();
             scheduleIdleSleep();
         } catch (Exception e) {
             Toast.makeText(this, "悬浮窗初始化失败，请检查系统悬浮窗权限", Toast.LENGTH_SHORT).show();
         }
     }
 
+    private void syncCollapsedWindowSize() {
+        if (isExpanded || windowManager == null || floatRootView == null
+                || petBubbleContainer == null || layoutParams == null) {
+            return;
+        }
+        DisplayMetrics dm = getResources().getDisplayMetrics();
+        petBubbleContainer.measure(
+                View.MeasureSpec.makeMeasureSpec(dm.widthPixels, View.MeasureSpec.AT_MOST),
+                View.MeasureSpec.makeMeasureSpec(dm.heightPixels, View.MeasureSpec.AT_MOST)
+        );
+        int targetW = Math.max(dp(86), petBubbleContainer.getMeasuredWidth());
+        int targetH = Math.max(dp(80), petBubbleContainer.getMeasuredHeight());
+        int maxAllowedX = Math.max(dp(6), dm.widthPixels - targetW - dp(6));
+        int maxAllowedY = Math.max(dp(28), dm.heightPixels - targetH - dp(20));
+        int nextX = Math.max(dp(6), Math.min(layoutParams.x, maxAllowedX));
+        int nextY = Math.max(dp(28), Math.min(layoutParams.y, maxAllowedY));
+        boolean changed = (layoutParams.width != targetW) || (layoutParams.height != targetH)
+                || (layoutParams.x != nextX) || (layoutParams.y != nextY);
+        if (changed) {
+            layoutParams.width = targetW;
+            layoutParams.height = targetH;
+            layoutParams.x = nextX;
+            layoutParams.y = nextY;
+            savedPillX = nextX;
+            savedPillY = nextY;
+            try {
+                windowManager.updateViewLayout(floatRootView, layoutParams);
+            } catch (Exception ignored) {}
+        }
+    }
+
+    private void initBubbleOverlayWindow() {
+        if (windowManager == null) return;
+        if (bubbleHostView != null) {
+            try { windowManager.removeView(bubbleHostView); } catch (Exception ignored) {}
+        }
+        DisplayMetrics dm = getResources().getDisplayMetrics();
+        bubbleHostView = new FrameLayout(this);
+        bubbleHostView.setClipChildren(false);
+        bubbleHostView.setClipToPadding(false);
+        bubbleHostView.setVisibility(View.GONE);
+        if (taskHudWrap != null) {
+            bubbleHostView.addView(taskHudWrap, new FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        }
+        if (headSpeechBubbleWrap != null) {
+            bubbleHostView.addView(headSpeechBubbleWrap, new FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        }
+        bubbleOverlayParams = new WindowManager.LayoutParams(
+                Math.min(dp(236), dm.widthPixels - dp(24)),
+                WindowManager.LayoutParams.WRAP_CONTENT,
+                overlayWindowType(),
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+                PixelFormat.TRANSLUCENT
+        );
+        bubbleOverlayParams.gravity = Gravity.TOP | Gravity.START;
+        bubbleOverlayParams.x = dp(12);
+        bubbleOverlayParams.y = dp(60);
+        try {
+            windowManager.addView(bubbleHostView, bubbleOverlayParams);
+        } catch (Exception ignored) {
+            bubbleHostView = null;
+        }
+    }
+
     private void applyVoiceTailVisibility() {
         if (quickMicBadgeView != null) {
             quickMicBadgeView.setVisibility(showVoiceTail ? View.VISIBLE : View.GONE);
+            syncCollapsedWindowSize();
         }
     }
 
@@ -2005,16 +2070,17 @@ public class FloatAgentService extends Service {
 
         headSpeechBubbleCard = new LinearLayout(this);
         headSpeechBubbleCard.setOrientation(LinearLayout.VERTICAL);
+        headSpeechBubbleCard.setLayoutParams(new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         headSpeechBubbleCard.setPadding(dp(11), dp(8), dp(11), dp(8));
-        headSpeechBubbleCard.setMinimumWidth(dp(112));
         setViewBg(headSpeechBubbleCard, createRoundRect("#F20F172A", 15, "#7038BDF8", 1.2f));
 
         LinearLayout badgeRow = new LinearLayout(this);
         badgeRow.setOrientation(LinearLayout.HORIZONTAL);
         badgeRow.setGravity(Gravity.CENTER_VERTICAL);
         LinearLayout.LayoutParams brLp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        brLp.bottomMargin = dp(3);
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        brLp.bottomMargin = dp(4);
         badgeRow.setLayoutParams(brLp);
 
         headBubbleBadgeDot = new View(this);
@@ -2025,10 +2091,12 @@ public class FloatAgentService extends Service {
         headBubbleBadgeView = new TextView(this);
         headBubbleBadgeView.setText("🐳 大肥鱼");
         headBubbleBadgeView.setTextColor(Color.parseColor("#7DD3FC"));
-        headBubbleBadgeView.setTextSize(10f);
+        headBubbleBadgeView.setTextSize(10.5f);
+        headBubbleBadgeView.setSingleLine(true);
+        headBubbleBadgeView.setEllipsize(TextUtils.TruncateAt.END);
         headBubbleBadgeView.setTypeface(null, android.graphics.Typeface.BOLD);
         headBubbleBadgeView.setLayoutParams(new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f));
 
         TextView closeMiniHint = new TextView(this);
         closeMiniHint.setText("×");
@@ -2044,7 +2112,8 @@ public class FloatAgentService extends Service {
         headSpeechBubbleView.setTextColor(Color.parseColor("#FFFFFF"));
         headSpeechBubbleView.setTextSize(12.5f);
         headSpeechBubbleView.setLineSpacing(dpFloat(2.5f), 1.0f);
-        headSpeechBubbleView.setMaxWidth(maxBubbleWidth);
+        headSpeechBubbleView.setLayoutParams(new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         headSpeechBubbleView.setMaxLines(4);
         headSpeechBubbleView.setEllipsize(TextUtils.TruncateAt.END);
 
@@ -2085,7 +2154,8 @@ public class FloatAgentService extends Service {
 
         taskHudCard = new LinearLayout(this);
         taskHudCard.setOrientation(LinearLayout.VERTICAL);
-        taskHudCard.setLayoutParams(new LinearLayout.LayoutParams(hudWidth, ViewGroup.LayoutParams.WRAP_CONTENT));
+        taskHudCard.setLayoutParams(new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         taskHudCard.setPadding(dp(11), dp(9), dp(11), dp(9));
         setViewBg(taskHudCard, createRoundRect("#F00C1322", 16, "#706366F1", 1.3f));
 
@@ -2404,6 +2474,7 @@ public class FloatAgentService extends Service {
 
         if ("idle".equals(hudState)) {
             taskHudWrap.setVisibility(View.GONE);
+            hideBubbleHostIfIdle();
             return;
         }
 
@@ -2512,6 +2583,11 @@ public class FloatAgentService extends Service {
 
         boolean wasHidden = (taskHudWrap.getVisibility() != View.VISIBLE);
         taskHudWrap.setVisibility(View.VISIBLE);
+        if (bubbleHostView != null && !isExpanded) {
+            bubbleHostView.setVisibility(View.VISIBLE);
+            DisplayMetrics dm = getResources().getDisplayMetrics();
+            positionBubbleOverlayWindow(taskHudWrap, taskHudTailView, Math.min(dp(268), dm.widthPixels - dp(24)));
+        }
         if (wasHidden) {
             taskHudWrap.animate().cancel();
             taskHudWrap.setAlpha(0f);
@@ -2523,9 +2599,48 @@ public class FloatAgentService extends Service {
         }
     }
 
+    private void positionBubbleOverlayWindow(View activeContent, View tailView, int widthPx) {
+        if (bubbleHostView == null || bubbleOverlayParams == null || windowManager == null
+                || layoutParams == null || activeContent == null || isExpanded) {
+            return;
+        }
+        DisplayMetrics dm = getResources().getDisplayMetrics();
+        int safeWidth = Math.max(dp(140), Math.min(widthPx, dm.widthPixels - dp(20)));
+        bubbleOverlayParams.width = safeWidth;
+        bubbleOverlayParams.height = WindowManager.LayoutParams.WRAP_CONTENT;
+
+        activeContent.measure(
+                View.MeasureSpec.makeMeasureSpec(safeWidth, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(Math.max(dp(120), dm.heightPixels / 2), View.MeasureSpec.AT_MOST)
+        );
+        int bubbleH = Math.max(dp(36), activeContent.getMeasuredHeight());
+        int petCenterX = layoutParams.x + dp(41);
+        int petH = Math.max(dp(80), layoutParams.height > 0 ? layoutParams.height : dp(82));
+
+        int bx = Math.max(dp(10), Math.min(petCenterX - safeWidth / 2, dm.widthPixels - safeWidth - dp(10)));
+        int by = layoutParams.y - bubbleH - dp(2);
+        if (by < dp(32)) {
+            by = Math.min(dm.heightPixels - bubbleH - dp(20), layoutParams.y + petH + dp(4));
+            if (tailView != null) tailView.setVisibility(View.GONE);
+        } else if (tailView != null) {
+            tailView.setVisibility(View.VISIBLE);
+            if (tailView.getLayoutParams() instanceof LinearLayout.LayoutParams) {
+                LinearLayout.LayoutParams tlp = (LinearLayout.LayoutParams) tailView.getLayoutParams();
+                tlp.leftMargin = Math.max(dp(16), Math.min(petCenterX - bx - dp(7), safeWidth - dp(30)));
+                tailView.setLayoutParams(tlp);
+            }
+        }
+        bubbleOverlayParams.x = bx;
+        bubbleOverlayParams.y = Math.max(dp(28), by);
+        try {
+            windowManager.updateViewLayout(bubbleHostView, bubbleOverlayParams);
+        } catch (Exception ignored) {}
+    }
+
     private void applyExternalPetBarVisibility() {
         if (externalPetActionBar != null) {
             externalPetActionBar.setVisibility(showExternalPetBar ? View.VISIBLE : View.GONE);
+            syncCollapsedWindowSize();
         }
     }
 
@@ -4483,54 +4598,41 @@ public class FloatAgentService extends Service {
     }
 
     private void showHeadBubble(final String msg, final long durationMs) {
-        if (headSpeechBubbleView == null || msg == null || msg.trim().isEmpty() || isDraggingPet) return;
+        if (headSpeechBubbleWrap == null || headSpeechBubbleView == null || msg == null
+                || msg.trim().isEmpty() || isDraggingPet || isExpanded) return;
         // 正在执行任务、LIVE HUD 激活时，不让闲聊气泡遮挡重要任务信息
         if (!"idle".equals(sCurrentStatus) && taskHudWrap != null && taskHudWrap.getVisibility() == View.VISIBLE) {
             return;
         }
-        final View targetWrap = headSpeechBubbleWrap != null ? headSpeechBubbleWrap : headSpeechBubbleView;
         if (!headBubbleEnabled) {
-            targetWrap.setVisibility(View.GONE);
-            restoreBubbleWindowOffset();
+            headSpeechBubbleWrap.setVisibility(View.GONE);
+            hideBubbleHostIfIdle();
             return;
         }
         String trimmed = msg.trim();
         mainHandler.removeCallbacks(headBubbleHideRunnable);
-        targetWrap.animate().cancel();
+        headSpeechBubbleWrap.animate().cancel();
+        if (taskHudWrap != null) {
+            taskHudWrap.setVisibility(View.GONE);
+        }
         if (headBubbleBadgeView != null) {
             headBubbleBadgeView.setText(resolveHeadBubbleTag(trimmed));
         }
         headSpeechBubbleView.setText(trimmed);
-        targetWrap.setAlpha(0f);
-        targetWrap.setScaleX(0.92f);
-        targetWrap.setScaleY(0.92f);
-        targetWrap.setTranslationY(dpFloat(4f));
-        targetWrap.setVisibility(View.VISIBLE);
+        headSpeechBubbleWrap.setAlpha(0f);
+        headSpeechBubbleWrap.setScaleX(0.92f);
+        headSpeechBubbleWrap.setScaleY(0.92f);
+        headSpeechBubbleWrap.setTranslationY(dpFloat(4f));
+        headSpeechBubbleWrap.setVisibility(View.VISIBLE);
 
-        // 向上扩展空间，避免弹出头顶气泡时将奶龙本体向下挤出或溢出屏幕右侧
-        if (layoutParams != null && windowManager != null && floatRootView != null) {
-            DisplayMetrics dm = getResources().getDisplayMetrics();
-            int maxW = Math.min(dp(248), Math.round(dm.widthPixels * 0.72f));
-            targetWrap.measure(
-                    View.MeasureSpec.makeMeasureSpec(maxW, View.MeasureSpec.AT_MOST),
-                    View.MeasureSpec.makeMeasureSpec(dp(180), View.MeasureSpec.AT_MOST)
-            );
-            int measuredH = targetWrap.getMeasuredHeight() + dp(4);
-            int measuredW = Math.max(dp(124), targetWrap.getMeasuredWidth());
-            int curAnchorY = layoutParams.y + headBubbleYOffset;
-            int targetY = Math.max(dp(28), curAnchorY - measuredH);
-            headBubbleYOffset = curAnchorY - targetY;
-            layoutParams.y = targetY;
-            int maxSafeX = Math.max(dp(6), dm.widthPixels - measuredW - dp(8));
-            if (layoutParams.x > maxSafeX) {
-                layoutParams.x = maxSafeX;
-            }
-            try {
-                windowManager.updateViewLayout(floatRootView, layoutParams);
-            } catch (Exception ignored) {}
+        DisplayMetrics dm = getResources().getDisplayMetrics();
+        int desiredWidth = Math.min(dp(236), dm.widthPixels - dp(24));
+        if (bubbleHostView != null) {
+            bubbleHostView.setVisibility(View.VISIBLE);
+            positionBubbleOverlayWindow(headSpeechBubbleWrap, headBubbleTailView, desiredWidth);
         }
 
-        targetWrap.animate()
+        headSpeechBubbleWrap.animate()
                 .alpha(1f)
                 .scaleX(1f)
                 .scaleY(1f)
@@ -5878,15 +5980,18 @@ public class FloatAgentService extends Service {
         if (isRecordingVoice) {
             statusPillView.setVisibility(View.VISIBLE);
             statusTextView.setText("🎙️ 倾听中…说完点右侧钮");
+            syncCollapsedWindowSize();
             return;
         }
         // 已彻底删除大肥鱼折叠态右侧黑底歌词尾巴，保持本体踩实简洁；仅有近 45 分钟内的活跃外卖进度才安静提示一条简报
         if (!takeoutTitle.isEmpty() && (System.currentTimeMillis() - takeoutUpdatedMs) < 45 * 60 * 1000L) {
             statusPillView.setVisibility(View.VISIBLE);
             statusTextView.setText(takeoutTitle);
+            syncCollapsedWindowSize();
             return;
         }
         statusPillView.setVisibility(View.GONE);
+        syncCollapsedWindowSize();
     }
 
     // ========= 折叠态一键直达语音 & 多提示录音引擎 =========
@@ -7289,15 +7394,19 @@ public class FloatAgentService extends Service {
         savedPillY = layoutParams.y;
 
         if (petBubbleContainer != null) petBubbleContainer.setVisibility(View.GONE);
+        dismissHeadBubbleImmediate();
+        if (bubbleHostView != null) bubbleHostView.setVisibility(View.GONE);
         expandPanel.setVisibility(View.VISIBLE);
         refreshDynamicWidgets();
         refreshMusicUi();
 
         DisplayMetrics dm = getResources().getDisplayMetrics();
         int panelWidth = Math.min((int) (dm.widthPixels * 0.93f), dp(364));
+        layoutParams.width = panelWidth;
+        layoutParams.height = WindowManager.LayoutParams.WRAP_CONTENT;
         layoutParams.x = Math.max(dp(6), (dm.widthPixels - panelWidth) / 2);
         layoutParams.y = Math.max(dp(36), Math.min(savedPillY, dm.heightPixels / 4));
-        layoutParams.flags = WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL;
+        layoutParams.flags = WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN;
         try {
             windowManager.updateViewLayout(floatRootView, layoutParams);
         } catch (Exception ignored) {}
@@ -7316,11 +7425,17 @@ public class FloatAgentService extends Service {
 
         layoutParams.x = savedPillX;
         layoutParams.y = savedPillY;
-        layoutParams.flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS;
+        layoutParams.flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN;
         try {
             windowManager.updateViewLayout(floatRootView, layoutParams);
         } catch (Exception ignored) {}
+        syncCollapsedWindowSize();
         refreshCollapsedPill();
+        if (bubbleHostView != null && taskHudWrap != null && taskHudWrap.getVisibility() == View.VISIBLE) {
+            bubbleHostView.setVisibility(View.VISIBLE);
+            DisplayMetrics dm = getResources().getDisplayMetrics();
+            positionBubbleOverlayWindow(taskHudWrap, taskHudTailView, Math.min(dp(268), dm.widthPixels - dp(24)));
+        }
         scheduleIdleSleep();
     }
 
@@ -7464,6 +7579,7 @@ public class FloatAgentService extends Service {
             setViewBg(statusDotView, dotShape);
         }
         setViewBg(statusPillView, pillBg);
+        syncCollapsedWindowSize();
         if ("idle".equals(state)) {
             refreshCollapsedPill();
         }
@@ -7938,6 +8054,12 @@ public class FloatAgentService extends Service {
             try {
                 windowManager.removeView(floatRootView);
             } catch (Exception ignored) {}
+        }
+        if (bubbleHostView != null && windowManager != null) {
+            try {
+                windowManager.removeView(bubbleHostView);
+            } catch (Exception ignored) {}
+            bubbleHostView = null;
         }
         if (sInstance == this) {
             sInstance = null;

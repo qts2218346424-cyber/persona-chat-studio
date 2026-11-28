@@ -73,7 +73,7 @@
     hasMoreMessages: false,
     totalMessages: 0,
     oldestMessageId: 0,
-    appVersion: '2.7.7',
+    appVersion: '2.7.8',
     tourIndex: 0,
     tourActive: false,
     llmMode: 'local_antigravity',
@@ -179,14 +179,18 @@
       }
       const cfg = getModeApiConfig(getActiveChatScope());
       const isOwnDeepSeek = cfg.channel === 'own_deepseek';
+      const ownKey = isOwnDeepSeek ? String(cfg.ownKey || '').trim() : '';
       window.DeepSeekMonitorPlugin?.sync?.({
+        scopeProvider: cfg.channel,
+        apiKey: ownKey,
+        baseUrl: isOwnDeepSeek ? 'https://api.deepseek.com/v1/chat/completions' : '',
         settings: {
           provider: cfg.channel,
-          has_own_deepseek_key: Boolean(isOwnDeepSeek && cfg.ownKey),
+          has_own_deepseek_key: Boolean(isOwnDeepSeek && ownKey),
           own_deepseek_model: isOwnDeepSeek ? 'deepseek-v4.1-flash' : ''
         },
         ...(Array.isArray(messages) ? { messages } : {}),
-        forceBalanceRefresh: Boolean(forceBalanceRefresh && isOwnDeepSeek && cfg.ownKey)
+        forceBalanceRefresh: Boolean(forceBalanceRefresh && isOwnDeepSeek && ownKey)
       });
     } catch {}
   }
@@ -7544,6 +7548,8 @@
                 usage: turnUsage,
                 model: finalAssistantMsg?.meta?.model || payload?.model || 'deepseek-v4.1-flash',
                 source: originIsDsUi ? 'DeepSeek对话' : '剧场对话',
+                apiKey: String(activeScopeCfg.ownKey || '').trim(),
+                baseUrl: 'https://api.deepseek.com/v1/chat/completions',
                 provider: 'own_deepseek'
               });
             }
@@ -14566,6 +14572,21 @@
           syncComposerEmptyState();
           scheduleScrollToBottom(false);
           renderSessionList();
+          syncDeepSeekMonitorForActiveScope({
+            messages: state.messages,
+            forceBalanceRefresh: true
+          });
+          const proUsage = proMsg?.meta?.usage || payload?.usage || null;
+          if (proUsage && proScopeCfg.channel === 'own_deepseek') {
+            window.DeepSeekMonitorPlugin?.recordTurnUsage({
+              usage: proUsage,
+              model: proMsg?.meta?.model || payload?.model || 'deepseek-v4.1-flash',
+              source: '主动对话',
+              apiKey: String(proScopeCfg.ownKey || '').trim(),
+              baseUrl: 'https://api.deepseek.com/v1/chat/completions',
+              provider: 'own_deepseek'
+            });
+          }
           if (triggerReason === 'idle') {
             showToast('看你安静了一会儿，TA 主动给你发来了一条新消息');
           } else if (triggerReason === 'return' || triggerReason === 'late_night_return') {

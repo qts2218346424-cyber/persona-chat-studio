@@ -194,10 +194,10 @@ const {{ db, getRawPlatformConfigInternal, updateAdminPlatformConfig, saveAdminA
 db.prepare("DELETE FROM personas WHERE id = \\x27persona_linqi\\x27").run();
 db.prepare("UPDATE site_announcements SET enabled = 0").run();
 saveAdminAnnouncement("admin", {{
-  title: "星语恋庭 v2.5.7 更新：新增经典 QQ 聊天默认主题 & 修复系统指令抽屉文字白底看不清问题！",
-  content: "1. 【新增经典 QQ 聊天默认主题设置】：无论电脑还是手机、剧场还是问答模式，均默认呈现经典 QQ 洁净灰底 + 纯白逐句分段气泡 + QQ 标志天蓝气泡；并在电脑设置、手机设置及外观工坊支持随时一键切换默认风格。\\n2. 【彻底修复白色卡片上文字与按钮看不清问题】：修复右侧「系统指令 / 养成 / 记忆档案」抽屉在浅色与默认系统模式下出现白底浅字、按钮隐身的对比度 Bug，全面对齐 WCAG AA 清晰可读标准。\\n3. 【整合删除歌词尾巴与肥鱼脚底接触阴影】：随身版同步升级至 v2.5.7 (Build 154)！",
+  title: "星语恋庭 v2.7.8 (Build 169) 正式发布：手机辅助原生极速化重构！",
+  content: "1. 【手机辅助原生事件驱动屏变与快照复用】：消除退居后台 WebView 定时器 1000ms 节流，并将每步 2~4 遍无障碍全树扫描精简为 1 遍复用，控屏速度大幅提升！\\n2. 【原生异步 HTTP 线程池与非节流定时通道】：Android 原生直连上游接口（Keep-Alive + gzip），彻底绕过虚拟源跨域预检与后台挂起，明确指令免预检直通、动作字段前置生成更迅捷。\\n3. 【v2.7.7 本地直连零计费与自定义端口直连】：完整继承本地直连彻底免计费与任意局域网/本机端口直连支持。",
   enabled: true,
-  version: 154
+  version: 169
 }});
 db.prepare("UPDATE sessions SET companion_config = NULL").run();
 db.prepare("UPDATE user_settings SET value = \\x27demo\\x27 WHERE key = \\x27provider\\x27").run();

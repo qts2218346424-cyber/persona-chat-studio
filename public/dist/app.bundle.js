@@ -2823,22 +2823,33 @@ payloadMsgs.push({ role: 'assistant', content: prefix, prefix: true });
 const reqBody = {
 model,
 messages: payloadMsgs,
-stream: true
+stream: true,
+stream_options: { include_usage: true }
 };
-if (!isOfficialDs) {
-reqBody.stream_options = { include_usage: true };
-}
 if (model === 'deepseek-chat' && sess.ds_json_mode === 1) {
 reqBody.response_format = { type: 'json_object' };
 }
+const postUrl = prefix ? ep.betaChatUrl : ep.chatUrl;
 let resp;
 try {
-resp = await originalFetch(prefix ? ep.betaChatUrl : ep.chatUrl, {
+resp = await originalFetch(postUrl, {
 method: 'POST',
 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
 body: JSON.stringify(reqBody),
 signal
 });
+if (!resp.ok && resp.status === 400 && reqBody.stream_options) {
+const errProbe = await resp.clone().text().catch(() => '');
+if (/stream_options/i.test(errProbe)) {
+delete reqBody.stream_options;
+resp = await originalFetch(postUrl, {
+method: 'POST',
+headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+body: JSON.stringify(reqBody),
+signal
+});
+}
+}
 } catch (netErr) {
 throw new Error(`连接 API 服务超时或网络失败: ${netErr.message}`);
 }
@@ -2852,6 +2863,23 @@ detail = await resp.text();
 }
 throw new Error(`API 接口异常 (${resp.status}): ${detail}`);
 }
+const extractOfficialUsage = (rawU) => {
+if (!rawU || !isOfficialDs) return null;
+const pTok = Number(rawU.prompt_tokens) || 0;
+const cTok = Number(rawU.completion_tokens) || 0;
+const hitTok = Number(rawU.prompt_cache_hit_tokens) || 0;
+const missTok = rawU.prompt_cache_miss_tokens !== undefined
+? (Number(rawU.prompt_cache_miss_tokens) || 0)
+: Math.max(0, pTok - hitTok);
+return {
+prompt_tokens: pTok,
+completion_tokens: cTok,
+total_tokens: Number(rawU.total_tokens) || (pTok + cTok),
+prompt_cache_hit_tokens: hitTok,
+prompt_cache_miss_tokens: missTok,
+reasoning_tokens: Number(rawU.reasoning_tokens ?? rawU.completion_tokens_details?.reasoning_tokens) || 0
+};
+};
 const dec = new TextDecoder();
 let buf = '';
 await readStreamBodyWithReader(resp.body, (ch) => {
@@ -2865,13 +2893,8 @@ const ds = l.slice(5).trim();
 if (ds === '[DONE]') continue;
 try {
 const j = JSON.parse(ds);
-if (j.usage && isOfficialDs) {
-usage = {
-prompt_cache_hit_tokens: j.usage.prompt_cache_hit_tokens ?? 0,
-prompt_cache_miss_tokens: j.usage.prompt_cache_miss_tokens ?? (j.usage.prompt_tokens || 0),
-reasoning_tokens: j.usage.completion_tokens_details?.reasoning_tokens || 0
-};
-}
+const uObj = extractOfficialUsage(j.usage);
+if (uObj) usage = uObj;
 const d = j.choices?.[0]?.delta || {};
 if (d.reasoning_content) {
 fullR += d.reasoning_content;
@@ -2885,7 +2908,7 @@ sendEvent('content', { delta: d.content });
 }
 });
 const tailStr = dec.decode();
-if (tailStr) {
+if (tailStr || buf.trim()) {
 for (const raw of (buf + tailStr).split(/\r?\n/)) {
 const l = raw.trim();
 if (!l.startsWith('data:')) continue;
@@ -2893,6 +2916,8 @@ const ds = l.slice(5).trim();
 if (ds === '[DONE]') continue;
 try {
 const j = JSON.parse(ds);
+const uObj = extractOfficialUsage(j.usage);
+if (uObj) usage = uObj;
 const d = j.choices?.[0]?.delta || {};
 if (d.reasoning_content) {
 fullR += d.reasoning_content;
@@ -3726,6 +3751,8 @@ const POPOVER_ID = 'oss-ds-monitor-popover';
 const TRIGGER_BTN_ID = 'oss-ds-monitor-trigger-btn';
 const RECORDS_STORAGE_KEY = 'ds_billing_records_v1';
 const PUBLIC_WEB_ORIGIN = 'https://star.claudexxb.online';
+const MAX_RECORDS = 50;
+let postTurnRefreshTimer = null;
 const monitorState = {
 enabled: false,
 popoverOpen: false,
@@ -3740,12 +3767,14 @@ toppedUpBalance: '0.00',
 grantedBalance: '0.00',
 model: 'deepseek-v4.1-flash',
 lastBalanceFetchAt: 0,
+lastBalanceUpdatedAt: 0,
 sessionHitTokens: 0,
 sessionMissTokens: 0,
 sessionCompletionTokens: 0,
 lastTurnHitRate: null,
 lastTurnUsage: null,
 records: [],
+activeAuth: { apiKey: '', baseUrl: '', mode: '' },
 phoneAgentAuth: { apiKey: '', baseUrl: '', execMode: '' },
 errorMsg: ''
 };
@@ -3753,17 +3782,33 @@ function loadStoredRecords() {
 try {
 const raw = localStorage.getItem(RECORDS_STORAGE_KEY);
 const arr = raw ? JSON.parse(raw) : [];
-return Array.isArray(arr) ? arr.slice(0, 30) : [];
+return Array.isArray(arr) ? arr.slice(0, MAX_RECORDS) : [];
 } catch {
 return [];
 }
 }
 function saveStoredRecords(records) {
 try {
-localStorage.setItem(RECORDS_STORAGE_KEY, JSON.stringify((records || []).slice(0, 30)));
+localStorage.setItem(RECORDS_STORAGE_KEY, JSON.stringify((records || []).slice(0, MAX_RECORDS)));
 } catch {}
 }
 monitorState.records = loadStoredRecords();
+function clearPostTurnRefreshTimer() {
+if (postTurnRefreshTimer) {
+clearTimeout(postTurnRefreshTimer);
+postTurnRefreshTimer = null;
+}
+}
+function schedulePostTurnBalanceRefresh() {
+clearPostTurnRefreshTimer();
+if (!monitorState.activeAuth?.apiKey) return;
+postTurnRefreshTimer = setTimeout(() => {
+postTurnRefreshTimer = null;
+if (monitorState.enabled && monitorState.activeAuth?.apiKey) {
+refreshBalance(true);
+}
+}, 1800);
+}
 function estimateTurnCostCny(usage = {}, model = '') {
 const u = usage || {};
 const promptTokens = Math.max(0, Number(u.prompt_tokens) || 0);
@@ -3772,6 +3817,10 @@ const missTokens = u.prompt_cache_miss_tokens !== undefined
 ? Math.max(0, Number(u.prompt_cache_miss_tokens) || 0)
 : Math.max(0, promptTokens - hitTokens);
 const completionTokens = Math.max(0, Number(u.completion_tokens) || 0);
+const reasoningTokens = Math.max(
+0,
+Number(u.reasoning_tokens ?? u.completion_tokens_details?.reasoning_tokens) || 0
+);
 const totalTokens = Math.max(Number(u.total_tokens) || 0, hitTokens + missTokens + completionTokens);
 const isReasoner = /reasoner|r1/i.test(String(model || ''));
 const hitRatePer1M = isReasoner ? 1.0 : 0.2;
@@ -3787,6 +3836,7 @@ promptTokens: hitTokens + missTokens,
 hitTokens,
 missTokens,
 completionTokens,
+reasoningTokens,
 totalTokens,
 costCny: Number(costCny.toFixed(6)),
 savedCny: Number(savedCny.toFixed(6))
@@ -3799,8 +3849,24 @@ return `¥${n.toFixed(digits)}`;
 }
 function formatCompactInt(n) {
 const num = Number(n) || 0;
+if (num >= 1000000) return `${(num / 1000000).toFixed(2)}M`;
 if (num >= 10000) return `${(num / 1000).toFixed(1)}k`;
 return String(num);
+}
+function formatTimeHms(ts) {
+const d = new Date(ts || Date.now());
+const hh = String(d.getHours()).padStart(2, '0');
+const mm = String(d.getMinutes()).padStart(2, '0');
+const ss = String(d.getSeconds()).padStart(2, '0');
+return `${hh}:${mm}:${ss}`;
+}
+function shortModelLabel(model) {
+const m = String(model || '').trim().toLowerCase();
+if (!m) return 'V4.1-Flash';
+if (m.includes('reasoner') || m.includes('r1')) return 'R1/Reasoner';
+if (m.includes('v4.1')) return 'V4.1-Flash';
+if (m.includes('chat')) return 'DS-Chat';
+return String(model).slice(0, 18);
 }
 function injectPluginStyles() {
 if (typeof document === 'undefined' || !document.head) return;
@@ -3815,6 +3881,7 @@ style.textContent = `
         align-items: center;
         justify-content: flex-end;
         padding: 0 4px;
+        box-sizing: border-box;
       }
       .oss-ds-composer-bar.hidden {
         display: none !important;
@@ -3823,12 +3890,13 @@ style.textContent = `
         display: inline-flex;
         align-items: center;
         gap: 6px;
-        height: 24px;
-        padding: 0 9px;
+        height: 25px;
+        max-width: 100%;
+        padding: 0 10px;
         border-radius: 999px;
-        border: 1px solid light-dark(rgba(77, 107, 254, 0.2), rgba(147, 197, 253, 0.22));
-        background: light-dark(rgba(248, 250, 252, 0.86), rgba(30, 41, 59, 0.72));
-        color: light-dark(#475569, #cbd5e1);
+        border: 1px solid var(--border-subtle, rgba(77, 107, 254, 0.24));
+        background: var(--bg-elevated, rgba(248, 250, 252, 0.94));
+        color: var(--text-secondary, #475569);
         font: inherit;
         font-size: 11.5px;
         font-weight: 500;
@@ -3836,13 +3904,14 @@ style.textContent = `
         cursor: pointer;
         white-space: nowrap;
         flex-shrink: 0;
+        box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
         backdrop-filter: blur(8px);
         transition: border-color 0.14s ease, color 0.14s ease, background-color 0.14s ease;
       }
       .oss-ds-monitor-pill:hover {
         border-color: #4d6bfe;
-        color: light-dark(#1e3a8a, #f8fafc);
-        background: light-dark(rgba(239, 246, 255, 0.96), rgba(30, 41, 59, 0.92));
+        color: var(--text-primary, #1e3a8a);
+        background: #eff6ff;
       }
       .oss-ds-monitor-pill.hidden {
         display: none !important;
@@ -3851,7 +3920,11 @@ style.textContent = `
         opacity: 0.35;
       }
       .oss-ds-monitor-pill .oss-cache-tag {
-        color: light-dark(#2563eb, #93c5fd);
+        color: #2563eb;
+        font-weight: 600;
+      }
+      .oss-ds-monitor-pill .oss-pill-cost {
+        color: #0f172a;
         font-weight: 600;
       }
       .oss-ds-monitor-pill .oss-pill-caret {
@@ -3859,27 +3932,33 @@ style.textContent = `
         font-size: 12px;
       }
       .oss-ds-monitor-pill.low-balance {
-        border-color: rgba(239, 68, 68, 0.48);
-        color: light-dark(#b91c1c, #fca5a5);
+        border-color: rgba(239, 68, 68, 0.5);
+        color: #b91c1c;
+        background: #fef2f2;
+      }
+      .oss-ds-monitor-pill.low-balance .oss-cache-tag,
+      .oss-ds-monitor-pill.low-balance .oss-pill-cost {
+        color: #b91c1c;
       }
       .oss-ds-monitor-popover {
         position: fixed;
         bottom: 130px;
         right: 16px;
         margin: 0;
-        width: min(352px, calc(100vw - 24px));
-        max-height: min(460px, calc(100dvh - 140px));
+        width: min(368px, calc(100vw - 24px));
+        max-height: min(500px, calc(100dvh - 130px));
         overflow-y: auto;
         padding: 14px;
         border-radius: 16px;
-        border: 1px solid light-dark(rgba(15, 23, 42, 0.1), rgba(255, 255, 255, 0.14));
-        background: light-dark(#ffffff, #171b28);
+        border: 1px solid var(--border-subtle, rgba(15, 23, 42, 0.12));
+        background: var(--bg-elevated, #ffffff);
         color: var(--text-primary, #1f2329);
         box-shadow: 0 18px 44px rgba(15, 23, 42, 0.22);
         z-index: 1280;
         display: none;
         flex-direction: column;
         gap: 10px;
+        box-sizing: border-box;
       }
       .oss-ds-monitor-popover.is-open {
         display: flex;
@@ -3896,11 +3975,12 @@ style.textContent = `
         gap: 6px;
         font-size: 13.5px;
         font-weight: 800;
+        color: var(--text-primary, #0f172a);
       }
       .oss-mon-refresh-btn {
         padding: 3px 9px;
         border-radius: 8px;
-        border: 1px solid var(--border-subtle, rgba(148, 163, 184, 0.3));
+        border: 1px solid var(--border-subtle, rgba(148, 163, 184, 0.35));
         background: transparent;
         color: var(--text-secondary, #64748b);
         font: inherit;
@@ -3914,8 +3994,8 @@ style.textContent = `
       .oss-mon-card {
         padding: 10px 12px;
         border-radius: 12px;
-        background: light-dark(#f8fafc, rgba(255, 255, 255, 0.04));
-        border: 1px solid light-dark(rgba(15, 23, 42, 0.06), rgba(255, 255, 255, 0.08));
+        background: var(--bg-surface, #f8fafc);
+        border: 1px solid var(--border-subtle, rgba(15, 23, 42, 0.08));
         display: flex;
         flex-direction: column;
         gap: 7px;
@@ -3930,12 +4010,12 @@ style.textContent = `
         font-size: 21px;
         font-weight: 800;
         letter-spacing: -0.02em;
-        color: light-dark(#0f172a, #f8fafc);
+        color: var(--text-primary, #0f172a);
       }
       .oss-mon-status-dot {
         font-size: 11.5px;
         font-weight: 700;
-        color: light-dark(#059669, #34d399);
+        color: #059669;
       }
       .oss-mon-status-dot.warn {
         color: #ef4444;
@@ -3953,7 +4033,7 @@ style.textContent = `
       .oss-mon-bar-track {
         height: 7px;
         border-radius: 999px;
-        background: light-dark(#e2e8f0, #334155);
+        background: #e2e8f0;
         overflow: hidden;
         display: flex;
       }
@@ -3970,8 +4050,8 @@ style.textContent = `
       .oss-mon-metric-item {
         padding: 6px 8px;
         border-radius: 8px;
-        background: light-dark(#ffffff, rgba(15, 23, 42, 0.45));
-        border: 1px solid light-dark(rgba(15, 23, 42, 0.05), rgba(255, 255, 255, 0.06));
+        background: var(--bg-elevated, #ffffff);
+        border: 1px solid var(--border-subtle, rgba(15, 23, 42, 0.06));
         display: flex;
         flex-direction: column;
         gap: 2px;
@@ -3983,9 +4063,10 @@ style.textContent = `
       .oss-mon-metric-item strong {
         font-size: 12.5px;
         font-weight: 700;
+        color: var(--text-primary, #0f172a);
       }
       .oss-mon-records-list {
-        max-height: 150px;
+        max-height: 164px;
         overflow-y: auto;
         display: flex;
         flex-direction: column;
@@ -3998,13 +4079,15 @@ style.textContent = `
         gap: 6px;
         padding: 5px 8px;
         border-radius: 8px;
-        background: light-dark(#ffffff, rgba(255, 255, 255, 0.03));
+        background: var(--bg-elevated, #ffffff);
+        border: 1px solid var(--border-subtle, rgba(15, 23, 42, 0.04));
         font-size: 11px;
         color: var(--text-secondary, #64748b);
       }
       .oss-mon-rec-row strong {
-        color: light-dark(#1e3a8a, #93c5fd);
+        color: #1e3a8a;
         font-weight: 700;
+        white-space: nowrap;
       }
       .oss-mon-foot {
         display: flex;
@@ -4028,6 +4111,129 @@ style.textContent = `
       .oss-mon-link-btn:hover {
         text-decoration: underline;
       }
+      html[data-theme="dark"] .oss-ds-monitor-pill,
+      body.dark .oss-ds-monitor-pill {
+        background: rgba(30, 41, 59, 0.92);
+        border-color: rgba(147, 197, 253, 0.25);
+        color: #cbd5e1;
+      }
+      html[data-theme="dark"] .oss-ds-monitor-pill:hover,
+      body.dark .oss-ds-monitor-pill:hover {
+        background: rgba(30, 41, 59, 0.98);
+        color: #f8fafc;
+      }
+      html[data-theme="dark"] .oss-ds-monitor-pill .oss-cache-tag,
+      body.dark .oss-ds-monitor-pill .oss-cache-tag {
+        color: #93c5fd;
+      }
+      html[data-theme="dark"] .oss-ds-monitor-pill .oss-pill-cost,
+      body.dark .oss-ds-monitor-pill .oss-pill-cost {
+        color: #e2e8f0;
+      }
+      html[data-theme="dark"] .oss-ds-monitor-pill.low-balance,
+      body.dark .oss-ds-monitor-pill.low-balance {
+        background: rgba(127, 29, 29, 0.45);
+        color: #fca5a5;
+      }
+      html[data-theme="dark"] .oss-ds-monitor-popover,
+      body.dark .oss-ds-monitor-popover {
+        background: #171b28;
+        color: #e2e8f0;
+        border-color: rgba(255, 255, 255, 0.14);
+      }
+      html[data-theme="dark"] .oss-mon-card,
+      body.dark .oss-mon-card {
+        background: rgba(255, 255, 255, 0.04);
+        border-color: rgba(255, 255, 255, 0.08);
+      }
+      html[data-theme="dark"] .oss-mon-metric-item,
+      body.dark .oss-mon-metric-item,
+      html[data-theme="dark"] .oss-mon-rec-row,
+      body.dark .oss-mon-rec-row {
+        background: rgba(15, 23, 42, 0.55);
+        border-color: rgba(255, 255, 255, 0.06);
+      }
+      html[data-theme="dark"] .oss-mon-bal-num,
+      body.dark .oss-mon-bal-num,
+      html[data-theme="dark"] .oss-mon-title,
+      body.dark .oss-mon-title,
+      html[data-theme="dark"] .oss-mon-metric-item strong,
+      body.dark .oss-mon-metric-item strong {
+        color: #f8fafc;
+      }
+      html[data-theme="dark"] .oss-mon-status-dot,
+      body.dark .oss-mon-status-dot {
+        color: #34d399;
+      }
+      html[data-theme="dark"] .oss-mon-bar-track,
+      body.dark .oss-mon-bar-track {
+        background: #334155;
+      }
+      html[data-theme="dark"] .oss-mon-rec-row strong,
+      body.dark .oss-mon-rec-row strong {
+        color: #93c5fd;
+      }
+      @media (prefers-color-scheme: dark) {
+        html:not([data-theme="light"]) .oss-ds-monitor-pill {
+          background: rgba(30, 41, 59, 0.92);
+          border-color: rgba(147, 197, 253, 0.25);
+          color: #cbd5e1;
+        }
+        html:not([data-theme="light"]) .oss-ds-monitor-pill .oss-cache-tag {
+          color: #93c5fd;
+        }
+        html:not([data-theme="light"]) .oss-ds-monitor-pill .oss-pill-cost {
+          color: #e2e8f0;
+        }
+        html:not([data-theme="light"]) .oss-ds-monitor-popover {
+          background: #171b28;
+          color: #e2e8f0;
+          border-color: rgba(255, 255, 255, 0.14);
+        }
+        html:not([data-theme="light"]) .oss-mon-card {
+          background: rgba(255, 255, 255, 0.04);
+          border-color: rgba(255, 255, 255, 0.08);
+        }
+        html:not([data-theme="light"]) .oss-mon-metric-item,
+        html:not([data-theme="light"]) .oss-mon-rec-row {
+          background: rgba(15, 23, 42, 0.55);
+          border-color: rgba(255, 255, 255, 0.06);
+        }
+        html:not([data-theme="light"]) .oss-mon-bal-num,
+        html:not([data-theme="light"]) .oss-mon-title,
+        html:not([data-theme="light"]) .oss-mon-metric-item strong {
+          color: #f8fafc;
+        }
+        html:not([data-theme="light"]) .oss-mon-bar-track {
+          background: #334155;
+        }
+        html:not([data-theme="light"]) .oss-mon-rec-row strong {
+          color: #93c5fd;
+        }
+      }
+      @media (max-width: 640px) {
+        .oss-ds-composer-bar {
+          margin: 0 auto 4px;
+          padding: 0 2px;
+        }
+        .oss-ds-monitor-pill {
+          height: 23px;
+          padding: 0 8px;
+          font-size: 11px;
+        }
+        .oss-ds-monitor-popover {
+          left: 12px !important;
+          right: 12px !important;
+          width: auto !important;
+          max-height: min(68dvh, 480px);
+          bottom: calc(env(safe-area-inset-bottom, 0px) + 84px) !important;
+        }
+      }
+      @media (max-width: 420px) {
+        .oss-ds-monitor-pill .oss-pill-cost-wrap {
+          display: none;
+        }
+      }
     `;
 document.head.appendChild(style);
 }
@@ -4038,13 +4244,20 @@ if (pop) pop.classList.remove('is-open');
 }
 function positionPopoverNearTrigger(btn, pop) {
 if (!btn || !pop || typeof btn.getBoundingClientRect !== 'function') return;
+const vw = window.innerWidth || 1200;
+if (vw <= 640) {
+pop.style.top = 'auto';
+pop.style.left = '12px';
+pop.style.right = '12px';
+return;
+}
 const rect = btn.getBoundingClientRect();
 if (!rect.width && !rect.height) return;
 const vh = window.innerHeight || 800;
-const vw = window.innerWidth || 1200;
-const bottom = Math.max(72, vh - rect.top + 8);
-const right = Math.max(12, vw - rect.right);
+const bottom = Math.min(Math.max(72, vh - rect.top + 8), Math.max(72, vh - 160));
+const right = Math.min(Math.max(12, vw - rect.right), Math.max(12, vw - 380));
 pop.style.top = 'auto';
+pop.style.left = 'auto';
 pop.style.bottom = `${bottom}px`;
 pop.style.right = `${right}px`;
 }
@@ -4122,13 +4335,13 @@ pop.innerHTML = `
         </div>
         <div class="oss-mon-card">
           <div class="oss-mon-bal-row">
-            <span style="font-size:12px;font-weight:700;">累计统计与缓存省费</span>
+            <span style="font-size:12px;font-weight:700;">今日 & 累计统计与缓存省费</span>
             <span style="font-size:11.5px;font-weight:700;color:#10b981;" id="oss-mon-hit-rate-label">等待首轮</span>
           </div>
           <div class="oss-mon-bar-track"><div class="oss-mon-bar-hit" id="oss-mon-bar-hit" style="width:0%"></div></div>
           <div class="oss-mon-metrics-grid">
-            <div class="oss-mon-metric-item"><span>累计总 Token</span><strong id="oss-mon-total-tokens">0</strong></div>
-            <div class="oss-mon-metric-item"><span>累计总费用</span><strong id="oss-mon-total-cost">¥0.0000</strong></div>
+            <div class="oss-mon-metric-item"><span>今日消耗 / 费用</span><strong id="oss-mon-today-stats">0 tok · ¥0.0000</strong></div>
+            <div class="oss-mon-metric-item"><span>累计总 Token / 费用</span><strong id="oss-mon-total-stats">0 tok · ¥0.0000</strong></div>
             <div class="oss-mon-metric-item"><span>缓存命中 / 未命中</span><strong id="oss-mon-hit-miss">0 / 0</strong></div>
             <div class="oss-mon-metric-item"><span>缓存已省费用</span><strong id="oss-mon-saved-cny">¥0.0000</strong></div>
           </div>
@@ -4141,8 +4354,8 @@ pop.innerHTML = `
           <div class="oss-mon-records-list" id="oss-mon-records-list"></div>
         </div>
         <div class="oss-mon-foot">
-          <span>按 DeepSeek 官方阶梯单价实时估算</span>
-          <span>v2.0.0</span>
+          <span id="oss-mon-foot-note">按 DeepSeek 官方阶梯单价实时估算</span>
+          <span>v2.1.0</span>
         </div>
       `;
 document.body.appendChild(pop);
@@ -4203,21 +4416,33 @@ function aggregateRecords() {
 let totalTokens = 0;
 let totalCost = 0;
 let totalSaved = 0;
+let totalReasoningTokens = 0;
 let hit = 0;
 let miss = 0;
+let todayTokens = 0;
+let todayCost = 0;
+const now = new Date();
+const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
 for (const r of monitorState.records) {
-totalTokens += Number(r.totalTokens) || 0;
-totalCost += Number(r.costCny) || 0;
+const tTok = Number(r.totalTokens) || 0;
+const tCost = Number(r.costCny) || 0;
+totalTokens += tTok;
+totalCost += tCost;
 totalSaved += Number(r.savedCny) || 0;
+totalReasoningTokens += Number(r.reasoningTokens) || 0;
 hit += Number(r.hitTokens) || 0;
 miss += Number(r.missTokens) || 0;
+if ((Number(r.ts) || 0) >= todayStart) {
+todayTokens += tTok;
+todayCost += tCost;
+}
 }
 if (monitorState.records.length === 0) {
 totalTokens = monitorState.sessionHitTokens + monitorState.sessionMissTokens + monitorState.sessionCompletionTokens;
 hit = monitorState.sessionHitTokens;
 miss = monitorState.sessionMissTokens;
 }
-return { totalTokens, totalCost, totalSaved, hit, miss };
+return { totalTokens, totalCost, totalSaved, totalReasoningTokens, hit, miss, todayTokens, todayCost };
 }
 function renderMonitorUi() {
 const nodes = ensureDomMounted();
@@ -4235,22 +4460,28 @@ const agg = aggregateRecords();
 const lastRec = monitorState.records[0] || monitorState.lastTurnUsage || null;
 const totalPrompt = agg.hit + agg.miss;
 const hitRate = totalPrompt > 0 ? Math.round((agg.hit / totalPrompt) * 100) : null;
-const tokNum = lastRec ? lastRec.totalTokens : agg.totalTokens;
-const tokPart = `<span class="oss-cache-tag">${formatCompactInt(tokNum)} tok</span>`;
-const quotaPart = monitorState.loadingBalance && monitorState.totalBalance === null
-? '查额度…'
-: (monitorState.balanceSupported && monitorState.totalBalance !== null)
-? `余 ${monitorState.symbol}${monitorState.totalBalance}`
-: formatCny(lastRec ? lastRec.costCny : agg.totalCost, 4);
+const hasKey = Boolean(monitorState.activeAuth?.apiKey);
 const isLow =
 monitorState.balanceSupported &&
 monitorState.totalBalance !== null &&
 Number(monitorState.totalBalance) <= 1.0;
 btn.classList.toggle('low-balance', isLow);
-btn.innerHTML = `${tokPart}<span class="oss-sep">·</span><span>${quotaPart}</span><span class="oss-pill-caret">›</span>`;
+if (!hasKey && agg.totalTokens === 0 && monitorState.totalBalance === null) {
+btn.innerHTML = `<span class="oss-cache-tag">DeepSeek 计费</span><span class="oss-sep">·</span><span>待填 Key</span><span class="oss-pill-caret">›</span>`;
+} else {
+const tokPart = `<span class="oss-cache-tag">累计 ${formatCompactInt(agg.totalTokens)} tok</span>`;
+const costWrap = `<span class="oss-pill-cost-wrap"><span class="oss-sep">·</span><span class="oss-pill-cost">${formatCny(agg.totalCost, 4)}</span></span>`;
+let quotaHtml = '';
+if (monitorState.loadingBalance && monitorState.totalBalance === null) {
+quotaHtml = `<span class="oss-sep">·</span><span>查额度…</span>`;
+} else if (monitorState.balanceSupported && monitorState.totalBalance !== null) {
+quotaHtml = `<span class="oss-sep">·</span><span>余 ${monitorState.symbol}${monitorState.totalBalance}</span>`;
+}
+btn.innerHTML = `${tokPart}${costWrap}${quotaHtml}<span class="oss-pill-caret">›</span>`;
+}
 const titleEl = pop.querySelector('#oss-mon-provider-title');
 if (titleEl) {
-titleEl.textContent = `${monitorState.providerLabel || 'DeepSeek API'} · 实时计费`;
+titleEl.textContent = `${monitorState.providerLabel || 'DeepSeek 官方 API'} · 实时计费`;
 }
 const balNumEl = pop.querySelector('#oss-mon-bal-num');
 const balStatusEl = pop.querySelector('#oss-mon-bal-status');
@@ -4262,9 +4493,11 @@ balStatusEl.textContent = monitorState.isAvailable ? '余额充足可用' : '余
 balStatusEl.classList.toggle('warn', !monitorState.isAvailable);
 }
 if (balSubEl) {
+const refTm = monitorState.lastBalanceUpdatedAt ? formatTimeHms(monitorState.lastBalanceUpdatedAt) : '';
 balSubEl.innerHTML = `
           <span>充值余额：<b>${monitorState.symbol}${monitorState.toppedUpBalance}</b></span>
           <span>赠金余额：<b>${monitorState.symbol}${monitorState.grantedBalance}</b></span>
+          ${refTm ? `<span style="grid-column:1/-1;opacity:0.78;">最后刷新：${refTm}</span>` : ''}
         `;
 }
 } else {
@@ -4284,21 +4517,25 @@ const lastTokEl = pop.querySelector('#oss-mon-last-tokens');
 const lastCostEl = pop.querySelector('#oss-mon-last-cost');
 if (lastModelEl) lastModelEl.textContent = lastRec?.model || monitorState.model || 'deepseek-v4.1-flash';
 if (lastTokEl) {
-lastTokEl.textContent = lastRec
-? `${formatCompactInt(lastRec.totalTokens)}（入 ${formatCompactInt(lastRec.promptTokens)} / 出 ${formatCompactInt(lastRec.completionTokens)}）`
-: '0';
+if (lastRec) {
+const hitStr = lastRec.hitTokens > 0 ? ` 命中${formatCompactInt(lastRec.hitTokens)}` : '';
+const rsnStr = lastRec.reasoningTokens > 0 ? ` 思考${formatCompactInt(lastRec.reasoningTokens)}` : '';
+lastTokEl.textContent = `${formatCompactInt(lastRec.totalTokens)}（入 ${formatCompactInt(lastRec.promptTokens)}${hitStr} / 出 ${formatCompactInt(lastRec.completionTokens)}${rsnStr}）`;
+} else {
+lastTokEl.textContent = '0';
+}
 }
 if (lastCostEl) lastCostEl.textContent = lastRec ? formatCny(lastRec.costCny, 5) : '¥0.0000';
 const rateLabelEl = pop.querySelector('#oss-mon-hit-rate-label');
 const barHitEl = pop.querySelector('#oss-mon-bar-hit');
-const totalTokEl = pop.querySelector('#oss-mon-total-tokens');
-const totalCostEl = pop.querySelector('#oss-mon-total-cost');
+const todayStatsEl = pop.querySelector('#oss-mon-today-stats');
+const totalStatsEl = pop.querySelector('#oss-mon-total-stats');
 const hitMissEl = pop.querySelector('#oss-mon-hit-miss');
 const savedCnyEl = pop.querySelector('#oss-mon-saved-cny');
 if (rateLabelEl) rateLabelEl.textContent = hitRate !== null ? `缓存命中 ${hitRate}%` : '等待首轮回复';
 if (barHitEl) barHitEl.style.width = `${hitRate !== null ? Math.max(4, hitRate) : 0}%`;
-if (totalTokEl) totalTokEl.textContent = formatCompactInt(agg.totalTokens);
-if (totalCostEl) totalCostEl.textContent = formatCny(agg.totalCost, 4);
+if (todayStatsEl) todayStatsEl.textContent = `${formatCompactInt(agg.todayTokens)} tok · ${formatCny(agg.todayCost, 4)}`;
+if (totalStatsEl) totalStatsEl.textContent = `${formatCompactInt(agg.totalTokens)} tok · ${formatCny(agg.totalCost, 4)}`;
 if (hitMissEl) hitMissEl.textContent = `${formatCompactInt(agg.hit)} / ${formatCompactInt(agg.miss)}`;
 if (savedCnyEl) savedCnyEl.textContent = formatCny(agg.totalSaved, 4);
 const recListEl = pop.querySelector('#oss-mon-records-list');
@@ -4306,10 +4543,9 @@ if (recListEl) {
 if (monitorState.records.length === 0) {
 recListEl.innerHTML = '<div class="oss-mon-rec-row"><span>暂无消费记录，发送任意消息后自动统计</span></div>';
 } else {
-recListEl.innerHTML = monitorState.records.slice(0, 12).map((r) => {
-const d = new Date(r.ts || Date.now());
-const tm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;
-return `<div class="oss-mon-rec-row"><span>${tm} · ${r.source || '对话'}</span><strong>${formatCompactInt(r.totalTokens)} tok · ${formatCny(r.costCny, 4)}</strong></div>`;
+recListEl.innerHTML = monitorState.records.slice(0, 15).map((r) => {
+const tm = formatTimeHms(r.ts);
+return `<div class="oss-mon-rec-row"><span>${tm} · ${r.source || '对话'} · ${shortModelLabel(r.model)}</span><strong>${formatCompactInt(r.totalTokens)} tok · ${formatCny(r.costCny, 4)}</strong></div>`;
 }).join('');
 }
 }
@@ -4340,14 +4576,28 @@ monitorState.enabled = true;
 monitorState.model = usedModel;
 monitorState.lastTurnUsage = record;
 monitorState.records.unshift(record);
-if (monitorState.records.length > 30) {
-monitorState.records = monitorState.records.slice(0, 30);
+if (monitorState.records.length > MAX_RECORDS) {
+monitorState.records = monitorState.records.slice(0, MAX_RECORDS);
 }
 saveStoredRecords(monitorState.records);
-if (apiKey) {
-monitorState.phoneAgentAuth = { apiKey, baseUrl, execMode: monitorState.phoneAgentAuth.execMode || 'api_direct' };
+const cleanKey = String(apiKey || '').trim();
+if (cleanKey) {
+const resolvedBase = String(baseUrl || monitorState.activeAuth.baseUrl || 'https://api.deepseek.com/v1/chat/completions').trim();
+monitorState.activeAuth = {
+apiKey: cleanKey,
+baseUrl: resolvedBase,
+mode: monitorState.activeAuth.mode || (String(source).includes('手机辅助') ? 'phone_agent' : 'chat')
+};
+monitorState.phoneAgentAuth = {
+apiKey: cleanKey,
+baseUrl: resolvedBase,
+execMode: monitorState.phoneAgentAuth.execMode || (String(source).includes('手机辅助') ? 'api_direct' : '')
+};
 }
 renderMonitorUi();
+if (monitorState.activeAuth?.apiKey) {
+schedulePostTurnBalanceRefresh();
+}
 return record;
 }
 function clearBillingRecords() {
@@ -4360,7 +4610,9 @@ saveStoredRecords([]);
 renderMonitorUi();
 }
 async function refreshBalance(force = false) {
-if (!monitorState.enabled && !monitorState.phoneAgentAuth.apiKey) return;
+const authKey = String(monitorState.activeAuth?.apiKey || monitorState.phoneAgentAuth?.apiKey || '').trim();
+const authBase = String(monitorState.activeAuth?.baseUrl || monitorState.phoneAgentAuth?.baseUrl || '').trim();
+if (!monitorState.enabled && !authKey) return;
 if (monitorState.loadingBalance) return;
 if (!force && Date.now() - monitorState.lastBalanceFetchAt < 6000) return;
 monitorState.loadingBalance = true;
@@ -4375,12 +4627,14 @@ window.__starAuthStore?.getActiveToken?.() ||
 localStorage.getItem('star_whisper_token') ||
 localStorage.getItem('star_auth_token') ||
 '';
-if (activeToken) headers.Authorization = `Bearer ${activeToken}`;
+if (activeToken && activeToken !== 'standalone_demo_token') {
+headers.Authorization = `Bearer ${activeToken}`;
+}
 let data = null;
-if (monitorState.phoneAgentAuth?.apiKey) {
+if (authKey) {
 const body = JSON.stringify({
-customApiKey: monitorState.phoneAgentAuth.apiKey,
-customBaseUrl: monitorState.phoneAgentAuth.baseUrl || ''
+customApiKey: authKey,
+customBaseUrl: authBase || ''
 });
 let res = await fetch('/api/deepseek/check-balance', { method: 'POST', headers, body }).catch(() => null);
 if (!res || !res.ok) {
@@ -4404,6 +4658,11 @@ monitorState.toppedUpBalance = data.topped_up_balance ?? '0.00';
 monitorState.grantedBalance = data.granted_balance ?? '0.00';
 monitorState.model = data.model || monitorState.model;
 monitorState.errorMsg = data.error || '';
+if (monitorState.balanceSupported) {
+monitorState.lastBalanceUpdatedAt = Date.now();
+}
+} else if (!authKey) {
+monitorState.errorMsg = '请先在设置中填写 DeepSeek API Key，保存后自动查询实时余额';
 }
 }
 } catch {
@@ -4414,13 +4673,40 @@ if (refreshBtn) refreshBtn.textContent = '刷新余额';
 renderMonitorUi();
 }
 }
-function syncFromHost({ scopeProvider, settings, messages, forceBalanceRefresh = false } = {}) {
+function resetBalanceCache() {
+monitorState.balanceSupported = false;
+monitorState.totalBalance = null;
+monitorState.toppedUpBalance = '0.00';
+monitorState.grantedBalance = '0.00';
+monitorState.lastBalanceFetchAt = 0;
+monitorState.lastBalanceUpdatedAt = 0;
+}
+function syncFromHost({ scopeProvider, settings, messages, apiKey, baseUrl, forceBalanceRefresh = false } = {}) {
 const prov = String(scopeProvider || settings?.provider || '').trim().toLowerCase();
 const isUsingDeepSeek = prov === 'own_deepseek';
 const prevEnabled = monitorState.enabled;
+const prevKey = monitorState.activeAuth?.apiKey || '';
+const resolvedKey = isUsingDeepSeek
+? String(apiKey || settings?.apiKey || settings?.own_deepseek_api_key || '').trim()
+: '';
+const resolvedBase = isUsingDeepSeek
+? String(baseUrl || settings?.baseUrl || 'https://api.deepseek.com/v1/chat/completions').trim()
+: '';
 monitorState.enabled = isUsingDeepSeek;
 if (!isUsingDeepSeek) {
+clearPostTurnRefreshTimer();
+monitorState.activeAuth = { apiKey: '', baseUrl: '', mode: '' };
 monitorState.phoneAgentAuth = { apiKey: '', baseUrl: '', execMode: '' };
+} else {
+monitorState.activeAuth = { apiKey: resolvedKey, baseUrl: resolvedBase, mode: 'chat' };
+monitorState.phoneAgentAuth = { apiKey: resolvedKey, baseUrl: resolvedBase, execMode: '' };
+if (resolvedKey && prevKey !== resolvedKey) {
+resetBalanceCache();
+monitorState.errorMsg = '';
+} else if (!resolvedKey) {
+resetBalanceCache();
+monitorState.errorMsg = '请先在设置中填写 DeepSeek API Key，保存后自动查询实时余额';
+}
 }
 if (isUsingDeepSeek && settings?.own_deepseek_model) {
 monitorState.model = settings.own_deepseek_model;
@@ -4430,29 +4716,54 @@ if (Array.isArray(messages)) {
 recomputeCacheMetrics(messages);
 }
 renderMonitorUi();
-if (isUsingDeepSeek && settings?.has_own_deepseek_key && (!prevEnabled || forceBalanceRefresh || monitorState.totalBalance === null)) {
-refreshBalance(forceBalanceRefresh);
+const keyChanged = isUsingDeepSeek && Boolean(resolvedKey) && prevKey !== resolvedKey;
+const hasServerKey = isUsingDeepSeek && Boolean(resolvedKey || settings?.has_own_deepseek_key);
+if (keyChanged) {
+refreshBalance(true);
+} else if (hasServerKey && (!prevEnabled || forceBalanceRefresh || monitorState.totalBalance === null)) {
+refreshBalance(Boolean(forceBalanceRefresh));
 }
 }
 function syncPhoneAgent({ execMode = '', apiKey = '', baseUrl = '', model = '' } = {}) {
 const lowerBase = String(baseUrl || '').trim().toLowerCase();
 const isDeepSeekDirect = execMode === 'api_direct' && (!lowerBase || lowerBase.includes('deepseek.com'));
-const prevKey = monitorState.phoneAgentAuth.apiKey;
+const prevEnabled = monitorState.enabled;
+const prevKey = monitorState.activeAuth?.apiKey || monitorState.phoneAgentAuth?.apiKey || '';
+const cleanKey = isDeepSeekDirect ? String(apiKey || '').trim() : '';
+const cleanBase = isDeepSeekDirect ? String(baseUrl || 'https://api.deepseek.com/v1/chat/completions').trim() : '';
+if (!isDeepSeekDirect) {
+clearPostTurnRefreshTimer();
+}
+monitorState.activeAuth = {
+apiKey: cleanKey,
+baseUrl: cleanBase,
+mode: isDeepSeekDirect ? 'phone_agent' : ''
+};
 monitorState.phoneAgentAuth = {
-apiKey: isDeepSeekDirect ? String(apiKey || '') : '',
-baseUrl: isDeepSeekDirect ? String(baseUrl || '') : '',
+apiKey: cleanKey,
+baseUrl: cleanBase,
 execMode: String(execMode || '')
 };
 monitorState.enabled = isDeepSeekDirect;
+if (isDeepSeekDirect && !cleanKey) {
+resetBalanceCache();
+monitorState.errorMsg = '请先在手机辅助设置中填写 DeepSeek API Key，保存后自动查询实时余额';
+} else if (isDeepSeekDirect && cleanKey && prevKey !== cleanKey) {
+resetBalanceCache();
+monitorState.errorMsg = '';
+}
 if (model && isDeepSeekDirect) monitorState.model = model;
 monitorState.providerLabel = 'DeepSeek API · 手机辅助';
 renderMonitorUi();
-if (isDeepSeekDirect && apiKey && (monitorState.totalBalance === null || prevKey !== apiKey)) {
+const keyChanged = isDeepSeekDirect && Boolean(cleanKey) && prevKey !== cleanKey;
+if (keyChanged) {
+refreshBalance(true);
+} else if (isDeepSeekDirect && cleanKey && (!prevEnabled || monitorState.totalBalance === null)) {
 refreshBalance(false);
 }
 }
 window.DeepSeekMonitorPlugin = {
-version: '2.0.0',
+version: '2.1.0',
 license: 'MIT',
 sync: syncFromHost,
 syncPhoneAgent,
@@ -5999,7 +6310,7 @@ lastInteractionAt: Date.now(),
 hasMoreMessages: false,
 totalMessages: 0,
 oldestMessageId: 0,
-appVersion: '2.7.7',
+appVersion: '2.7.8',
 tourIndex: 0,
 tourActive: false,
 llmMode: 'local_antigravity',
@@ -20717,8 +21028,8 @@ runCloneBtn.innerHTML = origHtml;
 })();
 ;
 (() => {
-const CURRENT_APK_VERSION = '2.7.7';
-const CURRENT_APK_CODE = 168;
+const CURRENT_APK_VERSION = '2.7.8';
+const CURRENT_APK_CODE = 169;
 const DEEPSEEK_API_KEYS_URL = 'https://platform.deepseek.com/api_keys';
 const DEEPSEEK_OFFICIAL_CHAT_URL = 'https://api.deepseek.com/v1/chat/completions';
 const PUBLIC_WEB_ORIGIN = 'https://star.claudexxb.online';
@@ -22912,12 +23223,15 @@ if (keyInp && !keyInp.matches(':focus')) keyInp.value = cfg.apiKey;
 const modelSel = $('pa-cfg-model');
 if (modelSel && !modelSel.matches(':focus')) modelSel.value = cfg.model || 'deepseek-v4.1-flash';
 try {
+const currentUiMode = document.getElementById('app-shell')?.dataset?.uiMode || '';
+if (currentUiMode === 'phone-agent') {
 window.DeepSeekMonitorPlugin?.syncPhoneAgent?.({
 execMode: mode,
 apiKey: mode === 'api_direct' ? cfg.apiKey : '',
 baseUrl: mode === 'api_direct' ? DEEPSEEK_OFFICIAL_CHAT_URL : '',
 model: mode === 'api_cloud' ? cloudCfg.model : cfg.model
 });
+}
 } catch {}
 const autoChk = $('pa-cfg-auto-approve');
 if (autoChk) autoChk.checked = Boolean(cfg.autoApprove);
@@ -24307,11 +24621,12 @@ return { ok: true, preflight: buildLocalFallbackPreFlight(task, clarifyPolicy) }
 const cfg = getDirectConfig();
 const cloudCfg = getCloudConfig();
 const compactApps = (installedApps || []).slice(0, 30).map((a) => (typeof a === 'string' ? a : a.name));
-const runByokPreFlight = async ({ apiKey, targetUrl, targetModel }) => {
+const runByokPreFlight = async ({ apiKey, targetUrl, targetModel, allowDeepSeekMonitor = false }) => {
 const cleanKey = cleanApiKey(apiKey);
 if (!cleanKey) {
 return null;
 }
+const isOfficialDsUrl = String(targetUrl || '').toLowerCase().includes('deepseek.com');
 const preSys = [
 '你是星语手机辅助代理（Phone Agent · dsh-Go 任务前需求预检助手）。',
 '快速判断指令是否清晰完整，仅输出严格合法 JSON：',
@@ -24336,7 +24651,7 @@ temperature: 0.2,
 max_tokens: 280,
 stream: false
 };
-if (String(targetUrl || '').includes('deepseek.com')) {
+if (isOfficialDsUrl) {
 bodyObj.response_format = { type: 'json_object' };
 }
 const nRes = await nativeHttpPostJson(
@@ -24347,6 +24662,18 @@ bodyObj,
 );
 if (nRes.ok && nRes.bodyText) {
 const j = JSON.parse(nRes.bodyText);
+if (allowDeepSeekMonitor && isOfficialDsUrl && j?.usage) {
+try {
+window.DeepSeekMonitorPlugin?.recordTurnUsage?.({
+usage: j.usage,
+model: targetModel,
+source: '手机辅助·预检',
+apiKey: cleanKey,
+baseUrl: targetUrl,
+provider: 'own_deepseek'
+});
+} catch {}
+}
 const content = String(j?.choices?.[0]?.message?.content || '').trim();
 const cleaned = content.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
 const obj = JSON.parse(cleaned);
@@ -24391,6 +24718,18 @@ if (cData?.preflight) pRes = { ok: true, data: cData };
 }
 }
 if (pRes.ok && pRes.data?.preflight) {
+if (allowDeepSeekMonitor && isOfficialDsUrl && pRes.data?.usage) {
+try {
+window.DeepSeekMonitorPlugin?.recordTurnUsage?.({
+usage: pRes.data.usage,
+model: pRes.data.model || targetModel,
+source: '手机辅助·预检',
+apiKey: cleanKey,
+baseUrl: targetUrl,
+provider: 'own_deepseek'
+});
+} catch {}
+}
 return { ok: true, preflight: pRes.data.preflight };
 }
 } catch {}
@@ -24403,7 +24742,7 @@ return { ok: true, preflight: buildLocalFallbackPreFlight(task, clarifyPolicy) }
 }
 const rawModel = String(cfg.model || 'deepseek-v4.1-flash').trim() || 'deepseek-v4.1-flash';
 const targetModel = /reasoner|r1/i.test(rawModel) ? 'deepseek-chat' : resolveDirectModelForUrl(rawModel, DEEPSEEK_OFFICIAL_CHAT_URL);
-const res = await runByokPreFlight({ apiKey: cleanKey, targetUrl: DEEPSEEK_OFFICIAL_CHAT_URL, targetModel });
+const res = await runByokPreFlight({ apiKey: cleanKey, targetUrl: DEEPSEEK_OFFICIAL_CHAT_URL, targetModel, allowDeepSeekMonitor: true });
 if (res) return res;
 return { ok: true, preflight: buildLocalFallbackPreFlight(task, clarifyPolicy) };
 }

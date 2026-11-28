@@ -7,8 +7,8 @@
    ========================================================================== */
 
 (() => {
-  const CURRENT_APK_VERSION = '2.7.7';
-  const CURRENT_APK_CODE = 168;
+  const CURRENT_APK_VERSION = '2.7.8';
+  const CURRENT_APK_CODE = 169;
   const DEEPSEEK_API_KEYS_URL = 'https://platform.deepseek.com/api_keys';
   const DEEPSEEK_OFFICIAL_CHAT_URL = 'https://api.deepseek.com/v1/chat/completions';
   const PUBLIC_WEB_ORIGIN = 'https://star.claudexxb.online';
@@ -2383,12 +2383,15 @@
     const modelSel = $('pa-cfg-model');
     if (modelSel && !modelSel.matches(':focus')) modelSel.value = cfg.model || 'deepseek-v4.1-flash';
     try {
-      window.DeepSeekMonitorPlugin?.syncPhoneAgent?.({
-        execMode: mode,
-        apiKey: mode === 'api_direct' ? cfg.apiKey : '',
-        baseUrl: mode === 'api_direct' ? DEEPSEEK_OFFICIAL_CHAT_URL : '',
-        model: mode === 'api_cloud' ? cloudCfg.model : cfg.model
-      });
+      const currentUiMode = document.getElementById('app-shell')?.dataset?.uiMode || '';
+      if (currentUiMode === 'phone-agent') {
+        window.DeepSeekMonitorPlugin?.syncPhoneAgent?.({
+          execMode: mode,
+          apiKey: mode === 'api_direct' ? cfg.apiKey : '',
+          baseUrl: mode === 'api_direct' ? DEEPSEEK_OFFICIAL_CHAT_URL : '',
+          model: mode === 'api_cloud' ? cloudCfg.model : cfg.model
+        });
+      }
     } catch {}
     const autoChk = $('pa-cfg-auto-approve');
     if (autoChk) autoChk.checked = Boolean(cfg.autoApprove);
@@ -3895,11 +3898,12 @@
     const cloudCfg = getCloudConfig();
     const compactApps = (installedApps || []).slice(0, 30).map((a) => (typeof a === 'string' ? a : a.name));
 
-    const runByokPreFlight = async ({ apiKey, targetUrl, targetModel }) => {
+    const runByokPreFlight = async ({ apiKey, targetUrl, targetModel, allowDeepSeekMonitor = false }) => {
       const cleanKey = cleanApiKey(apiKey);
       if (!cleanKey) {
         return null;
       }
+      const isOfficialDsUrl = String(targetUrl || '').toLowerCase().includes('deepseek.com');
       const preSys = [
         '你是星语手机辅助代理（Phone Agent · dsh-Go 任务前需求预检助手）。',
         '快速判断指令是否清晰完整，仅输出严格合法 JSON：',
@@ -3925,7 +3929,7 @@
           max_tokens: 280,
           stream: false
         };
-        if (String(targetUrl || '').includes('deepseek.com')) {
+        if (isOfficialDsUrl) {
           bodyObj.response_format = { type: 'json_object' };
         }
         const nRes = await nativeHttpPostJson(
@@ -3936,6 +3940,18 @@
         );
         if (nRes.ok && nRes.bodyText) {
           const j = JSON.parse(nRes.bodyText);
+          if (allowDeepSeekMonitor && isOfficialDsUrl && j?.usage) {
+            try {
+              window.DeepSeekMonitorPlugin?.recordTurnUsage?.({
+                usage: j.usage,
+                model: targetModel,
+                source: '手机辅助·预检',
+                apiKey: cleanKey,
+                baseUrl: targetUrl,
+                provider: 'own_deepseek'
+              });
+            } catch {}
+          }
           const content = String(j?.choices?.[0]?.message?.content || '').trim();
           const cleaned = content.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
           const obj = JSON.parse(cleaned);
@@ -3982,6 +3998,18 @@
           }
         }
         if (pRes.ok && pRes.data?.preflight) {
+          if (allowDeepSeekMonitor && isOfficialDsUrl && pRes.data?.usage) {
+            try {
+              window.DeepSeekMonitorPlugin?.recordTurnUsage?.({
+                usage: pRes.data.usage,
+                model: pRes.data.model || targetModel,
+                source: '手机辅助·预检',
+                apiKey: cleanKey,
+                baseUrl: targetUrl,
+                provider: 'own_deepseek'
+              });
+            } catch {}
+          }
           return { ok: true, preflight: pRes.data.preflight };
         }
       } catch {}
@@ -3995,7 +4023,7 @@
       }
       const rawModel = String(cfg.model || 'deepseek-v4.1-flash').trim() || 'deepseek-v4.1-flash';
       const targetModel = /reasoner|r1/i.test(rawModel) ? 'deepseek-chat' : resolveDirectModelForUrl(rawModel, DEEPSEEK_OFFICIAL_CHAT_URL);
-      const res = await runByokPreFlight({ apiKey: cleanKey, targetUrl: DEEPSEEK_OFFICIAL_CHAT_URL, targetModel });
+      const res = await runByokPreFlight({ apiKey: cleanKey, targetUrl: DEEPSEEK_OFFICIAL_CHAT_URL, targetModel, allowDeepSeekMonitor: true });
       if (res) return res;
       return { ok: true, preflight: buildLocalFallbackPreFlight(task, clarifyPolicy) };
     }
@@ -7599,6 +7627,7 @@
       findPopupDismissNode,
       getActionFingerprint,
       shouldSkipPreFlightClarify,
+      runPreFlightCheck,
       summarizePlanArgs,
       runReActLoop,
       openSetupGuideWizard,

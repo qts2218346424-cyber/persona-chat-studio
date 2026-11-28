@@ -2949,23 +2949,34 @@
           const reqBody = {
             model,
             messages: payloadMsgs,
-            stream: true
+            stream: true,
+            stream_options: { include_usage: true }
           };
-          if (!isOfficialDs) {
-            reqBody.stream_options = { include_usage: true };
-          }
           if (model === 'deepseek-chat' && sess.ds_json_mode === 1) {
             reqBody.response_format = { type: 'json_object' };
           }
 
+          const postUrl = prefix ? ep.betaChatUrl : ep.chatUrl;
           let resp;
           try {
-            resp = await originalFetch(prefix ? ep.betaChatUrl : ep.chatUrl, {
+            resp = await originalFetch(postUrl, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
               body: JSON.stringify(reqBody),
               signal
             });
+            if (!resp.ok && resp.status === 400 && reqBody.stream_options) {
+              const errProbe = await resp.clone().text().catch(() => '');
+              if (/stream_options/i.test(errProbe)) {
+                delete reqBody.stream_options;
+                resp = await originalFetch(postUrl, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+                  body: JSON.stringify(reqBody),
+                  signal
+                });
+              }
+            }
           } catch (netErr) {
             throw new Error(`连接 API 服务超时或网络失败: ${netErr.message}`);
           }
@@ -2979,6 +2990,25 @@
             }
             throw new Error(`API 接口异常 (${resp.status}): ${detail}`);
           }
+
+          const extractOfficialUsage = (rawU) => {
+            if (!rawU || !isOfficialDs) return null;
+            const pTok = Number(rawU.prompt_tokens) || 0;
+            const cTok = Number(rawU.completion_tokens) || 0;
+            const hitTok = Number(rawU.prompt_cache_hit_tokens) || 0;
+            const missTok = rawU.prompt_cache_miss_tokens !== undefined
+              ? (Number(rawU.prompt_cache_miss_tokens) || 0)
+              : Math.max(0, pTok - hitTok);
+            return {
+              prompt_tokens: pTok,
+              completion_tokens: cTok,
+              total_tokens: Number(rawU.total_tokens) || (pTok + cTok),
+              prompt_cache_hit_tokens: hitTok,
+              prompt_cache_miss_tokens: missTok,
+              reasoning_tokens: Number(rawU.reasoning_tokens ?? rawU.completion_tokens_details?.reasoning_tokens) || 0
+            };
+          };
+
           const dec = new TextDecoder();
           let buf = '';
           await readStreamBodyWithReader(resp.body, (ch) => {
@@ -2992,13 +3022,8 @@
               if (ds === '[DONE]') continue;
               try {
                 const j = JSON.parse(ds);
-                if (j.usage && isOfficialDs) {
-                  usage = {
-                    prompt_cache_hit_tokens: j.usage.prompt_cache_hit_tokens ?? 0,
-                    prompt_cache_miss_tokens: j.usage.prompt_cache_miss_tokens ?? (j.usage.prompt_tokens || 0),
-                    reasoning_tokens: j.usage.completion_tokens_details?.reasoning_tokens || 0
-                  };
-                }
+                const uObj = extractOfficialUsage(j.usage);
+                if (uObj) usage = uObj;
                 const d = j.choices?.[0]?.delta || {};
                 if (d.reasoning_content) {
                   fullR += d.reasoning_content;
@@ -3012,7 +3037,7 @@
             }
           });
           const tailStr = dec.decode();
-          if (tailStr) {
+          if (tailStr || buf.trim()) {
             for (const raw of (buf + tailStr).split(/\r?\n/)) {
               const l = raw.trim();
               if (!l.startsWith('data:')) continue;
@@ -3020,6 +3045,8 @@
               if (ds === '[DONE]') continue;
               try {
                 const j = JSON.parse(ds);
+                const uObj = extractOfficialUsage(j.usage);
+                if (uObj) usage = uObj;
                 const d = j.choices?.[0]?.delta || {};
                 if (d.reasoning_content) {
                   fullR += d.reasoning_content;

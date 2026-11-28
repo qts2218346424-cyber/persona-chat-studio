@@ -795,7 +795,7 @@ async function runTests() {
     vm.runInContext(monitorCode, win);
 
     const plugin = win.DeepSeekMonitorPlugin;
-    ok(Boolean(plugin) && plugin.version === '2.0.0', 'DeepSeek 计费监控插件 v2.0.0 加载成功');
+    ok(Boolean(plugin) && plugin.version === '2.1.0', 'DeepSeek 计费监控插件 v2.1.0 加载成功');
 
     // 校验 V4.1 Flash 阶梯定价计算（命中 1000 * 0.2 + 未命中 1000 * 2.0 + 输出 500 * 3.0） / 1e6 = 0.0037
     const flashCost = plugin.estimateTurnCostCny({
@@ -1167,7 +1167,7 @@ async function runTests() {
     ok(parsedMeta.usage === null, '即便上游携带 usage 字段，本地直连落盘 meta.usage 依然强制为 null（零计费）');
   }
 
-  // ========= 场景 12：原生加速通道（事件驱动屏变 + 快照零重复采集 + 原生 HTTP + 明确任务跳过 Pre-flight） =========
+  // ========= 场景 13：原生加速通道（事件驱动屏变 + 快照零重复采集 + 原生 HTTP + 明确任务跳过 Pre-flight） =========
   {
     const h = createHarness({
       initialStorage: {

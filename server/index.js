@@ -662,8 +662,8 @@ function extractAuthToken(req, parsedUrl = null) {
   return '';
 }
 
-const APP_LATEST_VERSION = '2.7.8';
-const APP_LATEST_VERSION_CODE = 169;
+const APP_LATEST_VERSION = '2.7.9';
+const APP_LATEST_VERSION_CODE = 170;
 const APP_OFFICIAL_CERT_SHA256 = '6fd05e32a3cabf327140129d866e55a342fe30daa3384c67aad4b3cbdd98a17b';
 const APP_UPDATE_TICKET_SECRET = crypto
   .createHash('sha256')
@@ -977,6 +977,7 @@ async function handleApi(req, res, pathname, parsedUrl) {
       forceUpdate,
       diffGenerations,
       changelog: [
+        '【奶龙双桌宠切换 + 手机辅助通透背景 + 可视化思考时间轴与跨应用 HUD（v2.7.9）】悬浮窗新增「🐲 奶龙」形象备选（含 7 套专属表情与 12 条语录语音），支持在悬浮窗与控制台双向同步切换大肥鱼/奶龙与主题色；重构手机辅助为通透壁纸/毛玻璃背景与右下角错落水印，彻底告别遮挡文字；应用内升级四阶段管线（识屏→思考→执行→核验）与思考时间轴，跨应用执行升级为毛玻璃头顶气泡与实时结构化任务 HUD 卡片（支持精简/详情折叠与一键急停）。',
         '【DeepSeek 用量、费用与余额实时统计插件全面修复 + 手机辅助原生极速化重构（v2.7.8）】修复手机辅助跨模式抢占、聊天分模式密钥未同步导致余额无法拉取、App 端独立流式未附带 stream_options 导致 Token 漏记以及 WebView 下 light-dark 样式透明问题，新增主动对话与手机辅助预检记账、今日/累计明细与每轮后自动刷新余额；同时新增 Android 原生事件驱动屏变等待、快照零重复采集与原生异步 HTTP 线程池，明确指令免预检直通响应更快。',
         '【本地直连彻底免计费 + App 端直连/本地端口跨源聊天全面修复（v2.7.7）】严格隔离本地直连通道（local_antigravity）与 DeepSeek 计费监控插件：本地直连与离线兜底均不计算 Token/费用且不展示额度胶囊；服务端与本机 Bridge 网关（18765）全面放开跨源预检与 Bearer 鉴权头，App 端独立适配层接入远程主干与「手机设置-本地直连自定义后端端口」双向直连并兼容 Android WebView SSE 流式读取。',
         '【DeepSeek 官方直连免填地址 + 云端 API 独立配置密钥地址与模型拉取（v2.7.6）】DeepSeek API 模式精简为官方直连，只需填 Key 并默认使用 deepseek-v4.1-flash 无需填接口地址；云端 API 抽屉新增「服务商预设 + 接口地址 Base URL + 云端 API Key + 自动/手动拉取可用模型 + 测试保存」完整能力',

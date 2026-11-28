@@ -194,10 +194,10 @@ const {{ db, getRawPlatformConfigInternal, updateAdminPlatformConfig, saveAdminA
 db.prepare("DELETE FROM personas WHERE id = \\x27persona_linqi\\x27").run();
 db.prepare("UPDATE site_announcements SET enabled = 0").run();
 saveAdminAnnouncement("admin", {{
-  title: "星语恋庭 v2.7.8 (Build 169) 正式发布：手机辅助原生极速化重构！",
-  content: "1. 【手机辅助原生事件驱动屏变与快照复用】：消除退居后台 WebView 定时器 1000ms 节流，并将每步 2~4 遍无障碍全树扫描精简为 1 遍复用，控屏速度大幅提升！\\n2. 【原生异步 HTTP 线程池与非节流定时通道】：Android 原生直连上游接口（Keep-Alive + gzip），彻底绕过虚拟源跨域预检与后台挂起，明确指令免预检直通、动作字段前置生成更迅捷。\\n3. 【v2.7.7 本地直连零计费与自定义端口直连】：完整继承本地直连彻底免计费与任意局域网/本机端口直连支持。",
+  title: "星语恋庭 v2.7.9 (Build 170) 正式发布：奶龙双桌宠切换 & 可视化思考 HUD！",
+  content: "1. 【大肥鱼 + 奶龙双桌面形象切换】：悬浮窗新增「🐲 奶龙」形象（7 套表情 + 12 条语音），与大肥鱼一键互切并双向同步 Web 控制台与背景主题！\\n2. 【手机辅助通透背景与直观思考时间轴】：解除不透明遮罩、启用壁纸通透与右下角错落水印，并升级识屏→思考→执行→核验四阶段管线与结果回执。\\n3. 【跨应用实时 HUD 与气泡美化】：跨应用执行任务时提供毛玻璃头顶气泡与实时思考/动作/核验 HUD 卡片，支持精简/详情折叠与一键急停。",
   enabled: true,
-  version: 169
+  version: 170
 }});
 db.prepare("UPDATE sessions SET companion_config = NULL").run();
 db.prepare("UPDATE user_settings SET value = \\x27demo\\x27 WHERE key = \\x27provider\\x27").run();

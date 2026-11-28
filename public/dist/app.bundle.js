@@ -3883,6 +3883,9 @@ style.textContent = `
         padding: 0 4px;
         box-sizing: border-box;
       }
+      .oss-ds-composer-bar:not(.hidden) {
+        display: flex !important;
+      }
       .oss-ds-composer-bar.hidden {
         display: none !important;
       }
@@ -3907,6 +3910,9 @@ style.textContent = `
         box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
         backdrop-filter: blur(8px);
         transition: border-color 0.14s ease, color 0.14s ease, background-color 0.14s ease;
+      }
+      .oss-ds-monitor-pill:not(.hidden) {
+        display: inline-flex !important;
       }
       .oss-ds-monitor-pill:hover {
         border-color: #4d6bfe;
@@ -4213,6 +4219,7 @@ style.textContent = `
       }
       @media (max-width: 640px) {
         .oss-ds-composer-bar {
+          width: 100%;
           margin: 0 auto 4px;
           padding: 0 2px;
         }
@@ -4225,8 +4232,7 @@ style.textContent = `
           left: 12px !important;
           right: 12px !important;
           width: auto !important;
-          max-height: min(68dvh, 480px);
-          bottom: calc(env(safe-area-inset-bottom, 0px) + 84px) !important;
+          max-height: min(68dvh, 460px);
         }
       }
       @media (max-width: 420px) {
@@ -4246,14 +4252,16 @@ function positionPopoverNearTrigger(btn, pop) {
 if (!btn || !pop || typeof btn.getBoundingClientRect !== 'function') return;
 const vw = window.innerWidth || 1200;
 const vh = window.innerHeight || 800;
+const rect = btn.getBoundingClientRect();
 if (vw <= 640) {
+const bottom = rect.height ? Math.max(82, vh - rect.top + 8) : 92;
 pop.style.top = 'auto';
 pop.style.left = '12px';
 pop.style.right = '12px';
-pop.style.maxHeight = `${Math.min(480, Math.max(240, vh - 110))}px`;
+pop.style.bottom = `${bottom}px`;
+pop.style.maxHeight = `${Math.min(460, Math.max(220, Math.floor(vh - bottom - 60)))}px`;
 return;
 }
-const rect = btn.getBoundingClientRect();
 if (!rect.width && !rect.height) return;
 const spaceAbove = Math.max(0, rect.top - 16);
 const spaceBelow = Math.max(0, vh - rect.bottom - 16);
@@ -9057,6 +9065,9 @@ cached.session.llm_mode = nextMode;
 }
 }
 syncLlmModeUi();
+syncDeepSeekMonitorForActiveScope({
+forceBalanceRefresh: nextChannel === 'own_deepseek'
+});
 const isNextLocal = nextChannel === 'local_antigravity';
 let switchNotice = '';
 if (isNextLocal) {

@@ -1294,7 +1294,9 @@ async function runTests() {
     doc.body.appendChild(chatForm);
     doc.head = doc.createElement('head');
     const monitorCode = fs.readFileSync(path.join(ROOT, 'public', 'plugins', 'deepseekUsageMonitor.js'), 'utf8');
+    const mobileRespCss = fs.readFileSync(path.join(ROOT, 'public', 'mobile-responsive.css'), 'utf8');
     ok(!monitorCode.includes('light-dark('), 'DeepSeek 计费插件已彻底移除无回退的 light-dark() CSS 函数');
+    ok(!mobileRespCss.includes('.oss-ds-monitor-pill'), '移动端响应式样式不再错误隐藏 .oss-ds-monitor-pill 计费胶囊');
     vm.runInContext(monitorCode, win);
 
     const plugin = win.DeepSeekMonitorPlugin;

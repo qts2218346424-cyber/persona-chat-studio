@@ -3084,6 +3084,9 @@
     }
 
     syncLlmModeUi();
+    syncDeepSeekMonitorForActiveScope({
+      forceBalanceRefresh: nextChannel === 'own_deepseek'
+    });
 
     const isNextLocal = nextChannel === 'local_antigravity';
     let switchNotice = '';

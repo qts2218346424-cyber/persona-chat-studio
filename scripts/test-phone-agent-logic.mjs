@@ -334,6 +334,8 @@ function createHarness(options = {}) {
     ],
     actionsLog: [],
     nextClickOk: true,
+    petPersona: options.nativePetPersona || 'feiyu',
+    floatProgressLogs: [],
     onClickHook: null,
     onGlobalActionHook: null
   };
@@ -428,6 +430,15 @@ function createHarness(options = {}) {
     resetEmergencyStop: () => {},
     isEmergencyStopRequested: () => false,
     updateFloatState: () => {},
+    updateFloatProgress: (jsonStr) => {
+      try { nativeState.floatProgressLogs.push(JSON.parse(jsonStr)); } catch {}
+    },
+    getFloatPetPersona: () => nativeState.petPersona,
+    setFloatPetPersona: (id) => {
+      nativeState.petPersona = id === 'nailong' ? 'nailong' : 'feiyu';
+      nativeState.actionsLog.push(`setFloatPetPersona:${nativeState.petPersona}`);
+      return true;
+    },
     setEdgeGlowEnabled: () => {},
     setAgentForegroundActive: () => {},
     showToast: () => {}
@@ -1474,6 +1485,103 @@ async function runTests() {
     const lastAsst2 = [...(exp2.messages || [])].reverse().find((m) => m.role === 'assistant');
     const meta2 = JSON.parse(lastAsst2?.meta_json || '{}');
     ok(meta2.usage?.prompt_tokens === 1500 && meta2.usage?.completion_tokens === 320 && meta2.usage?.prompt_cache_hit_tokens === 800, 'App 端持久化消息完整保留 prompt/completion/cache_hit usage');
+  }
+
+  // ========= 场景 15：双桌宠（大肥鱼/奶龙）双向同步 + 跨应用结构化进度推送 + 思考过程展示 =========
+  {
+    const h = createHarness({
+      nativePetPersona: 'nailong',
+      initialStorage: {
+        pa_exec_mode_v1: 'api_cloud',
+        pa_confirm_policy_v2: 'auto_turn',
+        pa_clarify_policy_v1: 'off'
+      }
+    });
+    const { win, doc, localStorageMock, nativeState, setFetchHandler, hooks } = h;
+    const bgLayer = doc.createElement('div');
+    bgLayer.id = 'pa-whale-bg-layer';
+    doc.body.appendChild(bgLayer);
+
+    // 1) 初始化后原生为 nailong 时可同步写入 Web 背景与本地缓存
+    win.PhoneAgent.setPetPersona(nativeState.petPersona, { syncNative: false });
+    ok(win.PhoneAgent.getPetPersona() === 'nailong', '默认或原生同步可正确识别奶龙形象 nailong');
+    ok(bgLayer.dataset.petPersona === 'nailong' && doc.getElementById('app-shell').dataset.petPersona === 'nailong', '切换奶龙同步更新背景水印与 appShell data-pet-persona 属性');
+
+    // 2) Web 手动切换为大肥鱼并回传原生桥接
+    win.PhoneAgent.setPetPersona('feiyu', { syncNative: true });
+    ok(nativeState.petPersona === 'feiyu' && localStorageMock.getItem('pa_pet_persona_v1') === 'feiyu', 'Web 切换大肥鱼同步写入 localStorage 与 AndroidAppBridge');
+
+    // 3) 原生面板切换奶龙通知 Web 时不反向循环写入原生
+    const prevLogLen = nativeState.actionsLog.length;
+    win.__onNativePetPersonaChanged('nailong');
+    ok(win.PhoneAgent.getPetPersona() === 'nailong' && nativeState.actionsLog.length === prevLogLen, '原生事件回调 __onNativePetPersonaChanged(' + "'nailong'" + ') 同步更新 Web 状态且不触发反向死循环');
+    ok(hooks.inferToolActionLabel('phone_tap') === '点击控件' && hooks.inferToolActionLabel('phone_type') === '文本输入', 'inferToolActionLabel 映射清晰易懂的中文动作意图');
+
+    // 4) ReAct 执行完整周期推送结构化思考与核验结果给悬浮窗 HUD
+    let llmCall = 0;
+    setFetchHandler(async (_url, opts = {}) => {
+      const body = JSON.parse(opts.body || '{}');
+      if (body.phase === 'preflight') {
+        return { ok: true, status: 200, json: async () => ({ ok: true, preflight: { intent: 'task', ready: true } }) };
+      }
+      llmCall += 1;
+      if (llmCall === 1) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            ok: true,
+            plan: {
+              thought: '页面上可见“去结算”按钮，点击推进下单流程',
+              tool: 'phone_tap',
+              args: { ref: 'e1', snapshotId: 'snap_1' },
+              summary: '点击去结算',
+              risk: 'read'
+            }
+          })
+        };
+      }
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          ok: true,
+          plan: {
+            thought: '结算页面已打开，任务达成',
+            tool: 'done',
+            summary: '已点击去结算',
+            reply: '已为你点击“去结算”按钮。'
+          }
+        })
+      };
+    });
+    nativeState.onClickHook = (ref, st) => {
+      st.eventSeq += 1;
+      st.signature = 'sig_checkout';
+      return { ok: true, method: 'node', x: 540, y: 1200, message: `点击 ${ref} 成功` };
+    };
+    const cardCtx = makeCardCtx(doc);
+    const timerEl = doc.createElement('span');
+    const stripEl = doc.createElement('div');
+    ['inspect', 'think', 'act', 'verify'].forEach((p) => {
+      const pill = doc.createElement('span');
+      pill.className = 'pa-phase-pill';
+      pill.dataset.phase = p;
+      stripEl.appendChild(pill);
+    });
+    cardCtx.thinkingTimerEl = timerEl;
+    cardCtx.phaseStripEl = stripEl;
+    await hooks.runReActLoop('点击去结算', cardCtx, 'api_cloud');
+    const logs = nativeState.floatProgressLogs;
+    const thinkingLog = logs.find((x) => x.phase === 'thinking');
+    const plannedLog = logs.find((x) => x.phase === 'planned');
+    const verifiedLog = logs.find((x) => x.phase === 'verified');
+    const doneLog = logs.find((x) => x.phase === 'done');
+    ok(Boolean(thinkingLog && plannedLog && verifiedLog && doneLog), 'runReActLoop 依次向悬浮窗推送 thinking / planned / verified / done 四类结构化 HUD 进度');
+    ok(plannedLog?.thought?.includes('去结算') && plannedLog?.appName === '目标应用' && plannedLog?.toolName === 'phone_tap', 'planned HUD 负载完整携带思考理由、当前应用名与动作工具');
+    ok(verifiedLog?.verdictText?.includes('画面已更新'), 'verified HUD 负载明确携带画面更新核验结果');
+    ok((cardCtx.thoughtCount || 0) >= 2 && cardCtx.thinkingList.children.length >= 2, '应用内思考容器完整追加带元数据与结果的多步思考条目');
+    ok(stripEl.children.every((el) => el.classList.contains('is-done')), '任务完成后阶段进度条 4 个阶段均切换为 is-done 完成态');
   }
 
   console.log(`ALL_PHONE_AGENT_LOGIC_TESTS_PASSED (${passed} assertions)`);

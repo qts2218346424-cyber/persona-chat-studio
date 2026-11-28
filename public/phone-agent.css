@@ -2609,8 +2609,10 @@
 
 .pa-trace-accordion {
   border-radius: 14px;
-  background: light-dark(#f8fafc, #181b25);
-  border: 1px solid light-dark(rgba(15, 23, 42, 0.07), rgba(255, 255, 255, 0.09));
+  background: light-dark(rgba(248, 250, 252, 0.72), rgba(22, 26, 38, 0.68));
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid light-dark(rgba(15, 23, 42, 0.08), rgba(255, 255, 255, 0.1));
   overflow: hidden;
   transition: border-color 0.2s ease, background-color 0.2s ease;
 }
@@ -2732,8 +2734,8 @@
   gap: 3px;
   padding: 7px 9px;
   border-radius: 9px;
-  background: light-dark(#ffffff, rgba(255, 255, 255, 0.04));
-  border: 1px solid light-dark(rgba(15, 23, 42, 0.05), rgba(255, 255, 255, 0.06));
+  background: light-dark(rgba(255, 255, 255, 0.76), rgba(255, 255, 255, 0.05));
+  border: 1px solid light-dark(rgba(15, 23, 42, 0.06), rgba(255, 255, 255, 0.08));
   cursor: pointer;
 }
 
@@ -3360,7 +3362,7 @@
 }
 
 /* ==========================================================================
-   v2.7.1 dsh-Go 深海大鲸鱼半透明主题背景 + 透明思考链 + 居中确认弹窗
+   v2.8.0 dsh-Go 双桌宠通透主题背景 + 直观思考时间轴 + 奶龙切换卡片
    ========================================================================== */
 .app-shell:not([data-ui-mode="phone-agent"]) #pa-whale-bg-layer {
   display: none !important;
@@ -3370,9 +3372,22 @@
   position: relative;
   isolation: isolate;
   background: light-dark(
-    radial-gradient(ellipse 85% 65% at 50% 18%, rgba(232, 240, 255, 0.72), rgba(246, 248, 253, 0.92)),
-    radial-gradient(ellipse 85% 65% at 50% 18%, rgba(23, 33, 62, 0.42), rgba(13, 16, 26, 0.96))
+    radial-gradient(ellipse 85% 60% at 80% 18%, rgba(232, 240, 255, 0.34), rgba(246, 248, 253, 0.48)),
+    radial-gradient(ellipse 85% 60% at 80% 18%, rgba(23, 33, 62, 0.32), rgba(13, 16, 26, 0.44))
   );
+  transition: background 0.3s ease;
+}
+
+.app-shell[data-ui-mode="phone-agent"][data-pet-persona="nailong"] .messages-viewport {
+  background: light-dark(
+    radial-gradient(ellipse 85% 60% at 82% 20%, rgba(254, 243, 199, 0.34), rgba(255, 251, 235, 0.44)),
+    radial-gradient(ellipse 85% 60% at 82% 20%, rgba(68, 44, 14, 0.30), rgba(16, 17, 24, 0.44))
+  );
+}
+
+/* 用户启用自定义聊天壁纸时，保持视口底色完全通透，不遮挡壁纸 */
+html[data-has-wallpaper="1"] .app-shell[data-ui-mode="phone-agent"] .messages-viewport {
+  background: transparent !important;
 }
 
 .pa-whale-bg-layer {
@@ -3383,31 +3398,85 @@
   overflow: visible;
   pointer-events: none;
   z-index: 0;
-  display: flex;
-  justify-content: center;
 }
 
 .pa-whale-bg-halo {
   position: absolute;
-  top: 12vh;
-  width: min(76vw, 440px);
-  height: min(76vw, 440px);
+  top: clamp(210px, 46dvh, 480px);
+  right: clamp(-30px, 2vw, 24px);
+  width: min(72vw, 340px);
+  height: min(72vw, 340px);
   border-radius: 50%;
   background: light-dark(
-    radial-gradient(circle, rgba(77, 107, 254, 0.1) 0%, rgba(56, 189, 248, 0.04) 48%, transparent 72%),
-    radial-gradient(circle, rgba(77, 107, 254, 0.18) 0%, rgba(56, 189, 248, 0.07) 48%, transparent 72%)
+    radial-gradient(circle, rgba(77, 107, 254, 0.16) 0%, rgba(56, 189, 248, 0.08) 48%, transparent 72%),
+    radial-gradient(circle, rgba(77, 107, 254, 0.24) 0%, rgba(56, 189, 248, 0.10) 48%, transparent 72%)
   );
-  filter: blur(20px);
+  filter: blur(22px);
+  transition: background 0.35s ease;
+}
+
+.pa-whale-bg-halo-sec {
+  position: absolute;
+  top: 7vh;
+  left: clamp(-40px, 2vw, 32px);
+  width: min(56vw, 260px);
+  height: min(56vw, 260px);
+  border-radius: 50%;
+  background: light-dark(
+    radial-gradient(circle, rgba(56, 189, 248, 0.12) 0%, rgba(99, 102, 241, 0.05) 50%, transparent 74%),
+    radial-gradient(circle, rgba(56, 189, 248, 0.16) 0%, rgba(99, 102, 241, 0.07) 50%, transparent 74%)
+  );
+  filter: blur(24px);
+  transition: background 0.35s ease;
+}
+
+.pa-whale-bg-layer[data-pet-persona="nailong"] .pa-whale-bg-halo {
+  background: light-dark(
+    radial-gradient(circle, rgba(245, 158, 11, 0.20) 0%, rgba(251, 191, 36, 0.09) 48%, transparent 72%),
+    radial-gradient(circle, rgba(245, 158, 11, 0.26) 0%, rgba(251, 191, 36, 0.11) 48%, transparent 72%)
+  );
+}
+
+.pa-whale-bg-layer[data-pet-persona="nailong"] .pa-whale-bg-halo-sec {
+  background: light-dark(
+    radial-gradient(circle, rgba(251, 146, 60, 0.14) 0%, rgba(253, 224, 71, 0.05) 50%, transparent 74%),
+    radial-gradient(circle, rgba(251, 146, 60, 0.18) 0%, rgba(250, 204, 21, 0.07) 50%, transparent 74%)
+  );
+}
+
+/* 形象水印错落置于右下角开放留白处，避免被页面正中的引导卡片或对话气泡遮挡 */
+.pa-whale-bg-svg,
+.pa-whale-bg-img {
+  position: absolute;
+  top: clamp(235px, 50dvh, 520px);
+  right: clamp(8px, 3.5vw, 40px);
+  width: clamp(148px, 34vw, 230px);
+  height: clamp(148px, 34vw, 230px);
+  transform-origin: center bottom;
+  animation: paWhaleFloat 13s ease-in-out infinite;
+  user-select: none;
+  pointer-events: none;
 }
 
 .pa-whale-bg-svg {
-  position: absolute;
-  top: 18vh;
-  width: min(64vw, 310px);
-  height: min(64vw, 310px);
-  opacity: light-dark(0.065, 0.11);
-  transform-origin: center center;
-  animation: paWhaleFloat 14s ease-in-out infinite;
+  opacity: light-dark(0.18, 0.24);
+  filter: drop-shadow(0 12px 26px rgba(77, 107, 254, 0.16));
+}
+
+.pa-whale-bg-img {
+  object-fit: contain;
+  opacity: light-dark(0.28, 0.34);
+  filter: drop-shadow(0 12px 26px rgba(245, 158, 11, 0.22));
+  -webkit-mask-image: radial-gradient(circle at 50% 48%, rgba(0, 0, 0, 1) 62%, rgba(0, 0, 0, 0) 98%);
+  mask-image: radial-gradient(circle at 50% 48%, rgba(0, 0, 0, 1) 62%, rgba(0, 0, 0, 0) 98%);
+}
+
+.pa-whale-bg-layer[data-pet-persona="feiyu"] .pa-bg-mascot-nailong {
+  display: none;
+}
+
+.pa-whale-bg-layer[data-pet-persona="nailong"] .pa-bg-mascot-feiyu {
+  display: none;
 }
 
 @keyframes paWhaleFloat {
@@ -3416,7 +3485,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .pa-whale-bg-svg {
+  .pa-whale-bg-svg,
+  .pa-whale-bg-img {
     animation: none !important;
   }
 }
@@ -3428,12 +3498,13 @@
   z-index: 1;
 }
 
+/* 居中卡片保持通透玻璃质感，让后方壁纸与主题光晕可透过 */
 .app-shell[data-ui-mode="phone-agent"] .pa-empty-guide {
-  background: light-dark(rgba(255, 255, 255, 0.72), rgba(22, 26, 38, 0.68));
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  border: 1px solid light-dark(rgba(77, 107, 254, 0.14), rgba(147, 197, 253, 0.14));
-  box-shadow: 0 14px 36px -12px rgba(15, 23, 42, 0.1);
+  background: light-dark(rgba(255, 255, 255, 0.58), rgba(20, 24, 36, 0.56));
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid light-dark(rgba(77, 107, 254, 0.16), rgba(147, 197, 253, 0.16));
+  box-shadow: 0 14px 36px -12px rgba(15, 23, 42, 0.12);
 }
 
 .pa-cap-pills {
@@ -3455,21 +3526,92 @@
 }
 
 .app-shell[data-ui-mode="phone-agent"] .composer-card {
-  background: light-dark(rgba(255, 255, 255, 0.86), rgba(24, 28, 40, 0.84)) !important;
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  border: 1px solid light-dark(rgba(77, 107, 254, 0.16), rgba(147, 197, 253, 0.16)) !important;
+  background: light-dark(rgba(255, 255, 255, 0.78), rgba(22, 26, 38, 0.76)) !important;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid light-dark(rgba(77, 107, 254, 0.18), rgba(147, 197, 253, 0.18)) !important;
   box-shadow: 0 8px 28px -8px rgba(15, 23, 42, 0.12) !important;
 }
 
-/* 透明思考过程独立卡片 */
+/* 悬浮窗双形象选择卡片（大肥鱼 vs 奶龙） */
+.pa-pet-selector-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.pa-pet-card {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 10px;
+  border-radius: 13px;
+  border: 1.5px solid light-dark(rgba(15, 23, 42, 0.09), rgba(255, 255, 255, 0.11));
+  background: light-dark(rgba(248, 250, 252, 0.85), rgba(30, 35, 50, 0.78));
+  color: light-dark(#0f172a, #f1f5f9);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.16s ease, background-color 0.16s ease, transform 0.12s ease, box-shadow 0.16s ease;
+}
+
+.pa-pet-card:active {
+  transform: scale(0.98);
+}
+
+.pa-pet-card-thumb {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  object-fit: contain;
+  background: light-dark(rgba(255, 255, 255, 0.9), rgba(15, 23, 42, 0.45));
+  padding: 3px;
+  flex-shrink: 0;
+  border: 1px solid light-dark(rgba(15, 23, 42, 0.06), rgba(255, 255, 255, 0.08));
+}
+
+.pa-pet-card-info {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.pa-pet-card-info strong {
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.pa-pet-card-info span {
+  font-size: 11px;
+  line-height: 1.3;
+  color: light-dark(#64748b, #94a3b8);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pa-pet-card[data-pa-pet="feiyu"].active {
+  border-color: #4d6bfe;
+  background: light-dark(rgba(239, 246, 255, 0.92), rgba(77, 107, 254, 0.2));
+  box-shadow: 0 6px 16px -6px rgba(77, 107, 254, 0.35);
+}
+
+.pa-pet-card[data-pa-pet="nailong"].active {
+  border-color: #f59e0b;
+  background: light-dark(rgba(255, 251, 235, 0.96), rgba(245, 158, 11, 0.18));
+  box-shadow: 0 6px 16px -6px rgba(245, 158, 11, 0.35);
+}
+
+/* 直观可视化思考过程独立卡片（含四段实时阶段条 + 推理时间轴） */
 .pa-thinking-box {
   margin-bottom: 8px;
-  border-radius: 13px;
-  background: light-dark(rgba(255, 255, 255, 0.72), rgba(22, 26, 38, 0.72));
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  border: 1px solid light-dark(rgba(77, 107, 254, 0.14), rgba(147, 197, 253, 0.15));
+  border-radius: 14px;
+  background: light-dark(rgba(255, 255, 255, 0.72), rgba(22, 26, 38, 0.70));
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid light-dark(rgba(77, 107, 254, 0.18), rgba(147, 197, 253, 0.18));
+  box-shadow: 0 6px 20px -8px rgba(15, 23, 42, 0.10);
   overflow: hidden;
 }
 
@@ -3480,15 +3622,15 @@
 .pa-thinking-head {
   display: flex;
   align-items: center;
-  gap: 7px;
-  padding: 8px 12px;
+  gap: 8px;
+  padding: 9px 12px;
   cursor: pointer;
   user-select: none;
 }
 
 .pa-thinking-dot {
-  width: 7px;
-  height: 7px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
   background: #4d6bfe;
   flex-shrink: 0;
@@ -3498,69 +3640,202 @@
   animation: paPulseRing 1.4s ease-in-out infinite;
 }
 
+.pa-thinking-box:not(.is-thinking) .pa-thinking-dot {
+  background: #10b981;
+}
+
 .pa-thinking-title {
   flex: 1 1 auto;
-  font-size: 12px;
-  font-weight: 650;
+  min-width: 0;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: light-dark(#1e3a8a, #93c5fd);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pa-thinking-timer {
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: light-dark(rgba(77, 107, 254, 0.08), rgba(147, 197, 253, 0.12));
   color: light-dark(#3b58e8, #93c5fd);
+  flex-shrink: 0;
 }
 
 .pa-thinking-chevron {
   font-size: 11px;
   color: light-dark(#64748b, #94a3b8);
   transition: transform 0.18s ease;
+  flex-shrink: 0;
 }
 
 .pa-thinking-box.is-collapsed .pa-thinking-chevron {
   transform: rotate(-90deg);
 }
 
+.pa-thinking-box.is-collapsed .pa-phase-strip,
 .pa-thinking-box.is-collapsed .pa-thinking-list {
   display: none;
 }
 
+/* 四段实时管线：识屏 -> 思考 -> 执行 -> 核验 */
+.pa-phase-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 5px;
+  padding: 0 12px 9px;
+}
+
+.pa-phase-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 4px 6px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: light-dark(#64748b, #94a3b8);
+  background: light-dark(rgba(241, 245, 249, 0.8), rgba(255, 255, 255, 0.05));
+  border: 1px solid light-dark(rgba(15, 23, 42, 0.05), rgba(255, 255, 255, 0.06));
+  transition: all 0.18s ease;
+}
+
+.pa-phase-pill.is-done {
+  color: light-dark(#047857, #34d399);
+  background: light-dark(rgba(236, 253, 245, 0.9), rgba(16, 185, 129, 0.16));
+  border-color: light-dark(rgba(16, 185, 129, 0.24), rgba(16, 185, 129, 0.32));
+}
+
+.pa-phase-pill.is-active {
+  color: light-dark(#1d4ed8, #93c5fd);
+  background: light-dark(rgba(239, 246, 255, 0.95), rgba(77, 107, 254, 0.24));
+  border-color: light-dark(rgba(77, 107, 254, 0.36), rgba(147, 197, 253, 0.42));
+  box-shadow: 0 2px 8px -3px rgba(77, 107, 254, 0.35);
+}
+
 .pa-thinking-list {
-  padding: 2px 12px 10px 14px;
+  padding: 4px 12px 12px 22px;
   margin-left: 14px;
-  border-left: 2px solid light-dark(rgba(77, 107, 254, 0.25), rgba(147, 197, 253, 0.25));
+  border-left: 2px solid light-dark(rgba(77, 107, 254, 0.24), rgba(147, 197, 253, 0.24));
   display: flex;
   flex-direction: column;
-  gap: 7px;
+  gap: 10px;
 }
 
 .pa-thinking-item {
+  position: relative;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: light-dark(rgba(248, 250, 252, 0.78), rgba(255, 255, 255, 0.04));
+  border: 1px solid light-dark(rgba(15, 23, 42, 0.06), rgba(255, 255, 255, 0.07));
+}
+
+.pa-tl-node {
+  position: absolute;
+  left: -17px;
+  top: 12px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #4d6bfe;
+  border: 2px solid light-dark(#ffffff, #141824);
+  box-shadow: 0 0 0 2px light-dark(rgba(77, 107, 254, 0.22), rgba(147, 197, 253, 0.22));
+}
+
+.pa-thought-meta-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
 }
 
 .pa-thinking-step-tag {
   font-size: 10.5px;
   font-weight: 700;
-  color: light-dark(#64748b, #94a3b8);
+  font-variant-numeric: tabular-nums;
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: light-dark(rgba(77, 107, 254, 0.1), rgba(77, 107, 254, 0.2));
+  color: light-dark(#3b58e8, #93c5fd);
+}
+
+.pa-thought-app-chip {
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: light-dark(rgba(15, 23, 42, 0.06), rgba(255, 255, 255, 0.09));
+  color: light-dark(#475569, #cbd5e1);
+}
+
+.pa-thought-intent {
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: light-dark(rgba(14, 165, 233, 0.12), rgba(56, 189, 248, 0.18));
+  color: light-dark(#0369a1, #7dd3fc);
 }
 
 .pa-thinking-text {
-  font-size: 12.5px;
+  font-size: 13px;
   line-height: 1.55;
-  color: light-dark(#334155, #cbd5e1);
+  color: light-dark(#1e293b, #e2e8f0);
 }
 
 .pa-thinking-raw {
   margin-top: 2px;
+  padding-top: 4px;
+  border-top: 1px dashed light-dark(rgba(15, 23, 42, 0.08), rgba(255, 255, 255, 0.1));
   font-size: 11.5px;
   line-height: 1.45;
   color: light-dark(#64748b, #94a3b8);
 }
 
+.pa-thought-outcome {
+  margin-top: 3px;
+  align-self: flex-start;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+.pa-thought-outcome.hidden {
+  display: none;
+}
+
+.pa-thought-outcome.is-changed {
+  background: light-dark(#ecfdf5, rgba(16, 185, 129, 0.18));
+  color: light-dark(#047857, #34d399);
+}
+
+.pa-thought-outcome.is-same {
+  background: light-dark(#f1f5f9, rgba(255, 255, 255, 0.08));
+  color: light-dark(#475569, #cbd5e1);
+}
+
+.pa-thought-outcome.is-error {
+  background: light-dark(#fef2f2, rgba(239, 68, 68, 0.2));
+  color: light-dark(#b91c1c, #f87171);
+}
+
 .pa-final-reply.pa-chat-reply {
   padding: 12px 15px;
   border-radius: 15px;
-  background: light-dark(rgba(255, 255, 255, 0.85), rgba(26, 30, 44, 0.84));
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  border: 1px solid light-dark(rgba(15, 23, 42, 0.07), rgba(255, 255, 255, 0.1));
-  box-shadow: 0 4px 16px -4px rgba(15, 23, 42, 0.06);
+  background: light-dark(rgba(255, 255, 255, 0.78), rgba(24, 28, 42, 0.76));
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid light-dark(rgba(15, 23, 42, 0.08), rgba(255, 255, 255, 0.11));
+  box-shadow: 0 4px 16px -4px rgba(15, 23, 42, 0.08);
 }
 
 /* 居中模态确认与引擎切换弹窗 */

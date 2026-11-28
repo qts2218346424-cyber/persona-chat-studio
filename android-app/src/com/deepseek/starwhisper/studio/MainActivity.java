@@ -757,6 +757,24 @@ public class MainActivity extends Activity {
         }
     }
 
+    public static void dispatchPetPersonaToWebView(final String personaId) {
+        final MainActivity act = sInstance;
+        if (act != null && act.webView != null) {
+            act.runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    if (act.webView != null) {
+                        String quoted = JSONObject.quote(personaId != null ? personaId : "feiyu");
+                        act.webView.evaluateJavascript(
+                            "if(window.__onNativePetPersonaChanged){window.__onNativePetPersonaChanged(" + quoted + ");}",
+                            null
+                        );
+                    }
+                }
+            });
+        }
+    }
+
     public static boolean dispatchFloatInterjectToWebView(final String task) {
         final MainActivity act = sInstance;
         if (act == null || act.webView == null || !act.webPageReady || task == null || task.trim().isEmpty()) {
@@ -1139,6 +1157,21 @@ public class MainActivity extends Activity {
         @JavascriptInterface
         public void updateFloatState(String state, String text) {
             FloatAgentService.updateState(state, text);
+        }
+
+        @JavascriptInterface
+        public void updateFloatProgress(String progressJson) {
+            FloatAgentService.updateProgress(progressJson);
+        }
+
+        @JavascriptInterface
+        public String getFloatPetPersona() {
+            return FloatAgentService.getPetPersona(MainActivity.this);
+        }
+
+        @JavascriptInterface
+        public boolean setFloatPetPersona(String personaId) {
+            return FloatAgentService.setPetPersonaFromBridge(MainActivity.this, personaId);
         }
 
         @JavascriptInterface

@@ -21078,6 +21078,7 @@ confirmPolicy: 'pa_confirm_policy_v2',
 clarifyPolicy: 'pa_clarify_policy_v1',
 trustedApps: 'pa_trusted_apps_v1',
 edgeGlow: 'pa_edge_glow_v1',
+petPersona: 'pa_pet_persona_v1',
 exclusiveKey: 'pa_exclusive_api_key_v1',
 learnedSkills: 'pa_learned_skills_v1',
 taskHistory: 'pa_task_history_v1',
@@ -21817,6 +21818,141 @@ try { b.setEdgeGlowEnabled(flag); } catch {}
 }
 syncStatus();
 }
+function normalizePetPersona(personaId) {
+return personaId === 'nailong' ? 'nailong' : 'feiyu';
+}
+function getPetPersona() {
+try {
+return normalizePetPersona(localStorage.getItem(STORAGE_KEYS.petPersona));
+} catch {
+return 'feiyu';
+}
+}
+function applyPetPersonaWebTheme(personaId) {
+const id = normalizePetPersona(personaId);
+const bgLayer = $('pa-whale-bg-layer');
+if (bgLayer) {
+if (bgLayer.dataset) bgLayer.dataset.petPersona = id;
+if (typeof bgLayer.setAttribute === 'function') {
+bgLayer.setAttribute('data-pet-persona', id);
+}
+}
+const appShell = $('app-shell');
+if (appShell) {
+if (appShell.dataset) appShell.dataset.petPersona = id;
+if (typeof appShell.setAttribute === 'function') {
+appShell.setAttribute('data-pet-persona', id);
+}
+}
+if (typeof document?.querySelectorAll === 'function') {
+document.querySelectorAll('.pa-pet-card').forEach((card) => {
+const active = card?.dataset?.paPet === id;
+card?.classList?.toggle('active', active);
+if (typeof card?.setAttribute === 'function') {
+card.setAttribute('aria-checked', String(active));
+}
+});
+}
+}
+function setPetPersona(personaId, { syncNative = true, notify = false } = {}) {
+const id = normalizePetPersona(personaId);
+try {
+localStorage.setItem(STORAGE_KEYS.petPersona, id);
+} catch {}
+applyPetPersonaWebTheme(id);
+if (syncNative) {
+const b = getBridge();
+if (isNativeApk() && b && typeof b.setFloatPetPersona === 'function') {
+try { b.setFloatPetPersona(id); } catch {}
+}
+}
+syncStatus();
+if (notify) {
+showToast(id === 'nailong' ? '已切换悬浮窗形象：🐲 奶龙（暖金守护）' : '已切换悬浮窗形象：🐳 大肥鱼（海蓝守护）');
+}
+return id;
+}
+function syncPetPersonaFromNative() {
+const b = getBridge();
+if (isNativeApk() && b && typeof b.getFloatPetPersona === 'function') {
+try {
+const nativeId = normalizePetPersona(b.getFloatPetPersona());
+localStorage.setItem(STORAGE_KEYS.petPersona, nativeId);
+applyPetPersonaWebTheme(nativeId);
+return nativeId;
+} catch {}
+}
+const localId = getPetPersona();
+applyPetPersonaWebTheme(localId);
+return localId;
+}
+if (typeof window !== 'undefined') {
+window.__onNativePetPersonaChanged = (personaId) => {
+setPetPersona(personaId, { syncNative: false, notify: false });
+};
+}
+function inferToolActionLabel(toolName, summary = '') {
+const raw = String(toolName || '').trim();
+const map = {
+'phone.screen': '读取屏幕',
+phone_tap: '点击控件',
+phone_tap_xy: '坐标点击',
+click_node: '点击控件',
+click: '点击',
+phone_type: '文本输入',
+input: '文本输入',
+phone_scroll: '页面滚动',
+scroll: '页面滚动',
+phone_swipe: '滑动手势',
+swipe: '滑动手势',
+phone_open: '打开应用',
+launch_app: '打开应用',
+phone_key: '系统按键',
+key: '系统按键',
+back: '返回上页',
+home: '回到桌面',
+phone_wait: '等待加载',
+wait: '等待加载',
+ask_user: '请求确认',
+done: '完成任务',
+chat: '直接回复'
+};
+if (map[raw]) return map[raw];
+if (raw.startsWith('skill.')) return '离线技能';
+return String(summary || raw || '执行操作').slice(0, 12);
+}
+function syncNativeFloatProgress(payload = {}) {
+const b = getBridge();
+if (!isNativeApk() || !b) return;
+const state = payload.state || 'idle';
+const phase = payload.phase || 'thinking';
+const step = Number(payload.step) || 0;
+const appName = String(payload.appName || '').slice(0, 32);
+const toolName = String(payload.toolName || '').slice(0, 32);
+const summary = String(payload.summary || '').slice(0, 96);
+const thought = String(payload.thought || '').slice(0, 220);
+const verdictText = String(payload.verdictText || '').slice(0, 96);
+if (typeof b.updateFloatProgress === 'function') {
+try {
+b.updateFloatProgress(JSON.stringify({
+state,
+phase,
+step,
+appName,
+toolName,
+summary,
+thought,
+verdictText
+}));
+return;
+} catch {}
+}
+if (typeof b.updateFloatState === 'function') {
+try {
+b.updateFloatState(state, summary || thought || 'dsh-Go');
+} catch {}
+}
+}
 function renderTrustedAppsList() {
 const wrap = $('pa-trusted-apps-list');
 if (!wrap) return;
@@ -22520,13 +22656,29 @@ cardCtx.stepCount = i + 1;
 if (cardCtx.summaryTextEl) {
 cardCtx.summaryTextEl.textContent = `离线技能 [${i + 1}/${steps.length}]：${stepLabel}`;
 }
-if (native && b && typeof b.updateFloatState === 'function') {
-try { b.updateFloatState('acting', `技能 ${i + 1}/${steps.length}`); } catch {}
-}
+updateThinkingPhase(cardCtx, 'act');
+const thoughtStepEl = appendThoughtItem(
+cardCtx,
+`技能第 ${i + 1}/${steps.length} 步`,
+`正在离线回放动作：${stepLabel}`,
+'',
+{ stepNum: i + 1, appName: skill.name || '离线技能', toolName: st.tool, actionSummary: stepLabel }
+);
+syncNativeFloatProgress({
+state: 'acting',
+phase: 'planned',
+step: i + 1,
+appName: skill.name || '离线技能',
+toolName: st.tool,
+summary: `${i + 1}/${steps.length} · ${stepLabel}`,
+thought: `正在离线回放固化技能「${skill.name}」第 ${i + 1} 步`
+});
 const rowEl = addStepItem(cardCtx.stepsList, i + 1, stepLabel, '零 API 本地固化技能回放', native ? '执行中' : '演练中', false, `skill.${st.tool}`);
 if (!native) {
 await sleep(220);
 updateStepResult(rowEl, '演练完成', false, true);
+updateThoughtOutcome(thoughtStepEl, '✓ 演练完成', true, false);
+updateThinkingPhase(cardCtx, 'verify');
 continue;
 }
 let ok = false;
@@ -22594,6 +22746,20 @@ ok = false;
 detailMsg = `异常：${err?.message || err}`;
 }
 updateStepResult(rowEl, detailMsg, !ok, ok);
+if (cardCtx.lastThoughtItemEl) {
+updateThoughtOutcome(cardCtx.lastThoughtItemEl, ok ? `✓ ${detailMsg}` : `✕ ${detailMsg}`, ok, !ok);
+}
+updateThinkingPhase(cardCtx, 'verify');
+syncNativeFloatProgress({
+state: 'acting',
+phase: 'verified',
+step: i + 1,
+appName: skill.name || '离线技能',
+toolName: st.tool,
+summary: `${i + 1}/${steps.length} · ${stepLabel}`,
+thought: detailMsg,
+verdictText: ok ? `✓ ${detailMsg}` : `✕ ${detailMsg}`
+});
 await nativeSleep(Math.min(1800, Math.max(150, Number(st.delayMs) || 240)), signal);
 }
 upsertLearnedSkill({ ...skill, runCount: (Number(skill.runCount) || 0) + 1 });
@@ -22623,18 +22789,31 @@ const signal = activeAbortController.signal;
 emergencyStopRequested = false;
 isAgentRunning = true;
 cardCtx.isSkillReplay = true;
+let skillReplaySucceeded = false;
 try {
 const res = await replayLearnedSkill(skill, cardCtx, signal);
+skillReplaySucceeded = res?.status === 'done';
 finalizeAgentTurn(cardCtx, {
 status: res.status,
 summaryTitle: res.summaryTitle,
 replyText: res.replyText,
 isSkillReplay: true
 });
+if (skillReplaySucceeded) {
+syncNativeFloatProgress({
+state: 'idle',
+phase: 'done',
+step: cardCtx.stepCount || 0,
+appName: skill.name || '离线技能',
+toolName: 'done',
+summary: res.summaryTitle || `技能「${skill.name}」完成`,
+thought: (res.replyText || '').slice(0, 120)
+});
+}
 } finally {
 isAgentRunning = false;
 const b = getBridge();
-if (isNativeApk() && b && typeof b.updateFloatState === 'function') {
+if (isNativeApk() && b && !skillReplaySucceeded && typeof b.updateFloatState === 'function') {
 try { b.updateFloatState('idle', 'dsh-Go'); } catch {}
 }
 syncStatus();
@@ -23365,14 +23544,19 @@ card.setAttribute('aria-checked', String(act));
 renderTrustedAppsList();
 const edgeGlowChk = $('pa-cfg-edge-glow');
 if (edgeGlowChk) edgeGlowChk.checked = isEdgeGlowEnabled();
+const activePersona = getPetPersona();
+applyPetPersonaWebTheme(activePersona);
 const heroTitle = $('pa-empty-hero-title');
 const heroSub = $('pa-empty-hero-sub');
 if (heroTitle && heroSub) {
 if (native && !a11yOk) {
 heroTitle.textContent = '开启无障碍即可代劳控屏';
 heroSub.textContent = '点上方状态栏前往系统开启「DeepSeek · 星语」无障碍服务';
+} else if (activePersona === 'nailong') {
+heroTitle.textContent = 'dsh-Go 手机控屏已就绪 · 🐲 奶龙护航中';
+heroSub.textContent = '透明思考推演与跨应用浮窗同步，密码与支付操作始终交还给你';
 } else {
-heroTitle.textContent = 'dsh-Go 手机控屏已就绪';
+heroTitle.textContent = 'dsh-Go 手机控屏已就绪 · 🐳 大肥鱼护航中';
 heroSub.textContent = '支持三档安全确认，密码、支付与验证码操作始终交还给你';
 }
 }
@@ -23797,7 +23981,14 @@ card.innerHTML = `
         <div class="pa-thinking-head" role="button" tabindex="0" aria-expanded="true">
           <span class="pa-thinking-dot" aria-hidden="true"></span>
           <span class="pa-thinking-title">正在深度思考…</span>
+          <span class="pa-thinking-timer">0.0s</span>
           <span class="pa-thinking-chevron" aria-hidden="true">▾</span>
+        </div>
+        <div class="pa-phase-strip" aria-label="执行阶段进度">
+          <span class="pa-phase-pill is-active" data-phase="inspect">1 识屏</span>
+          <span class="pa-phase-pill" data-phase="think">2 思考</span>
+          <span class="pa-phase-pill" data-phase="act">3 执行</span>
+          <span class="pa-phase-pill" data-phase="verify">4 核验</span>
         </div>
         <div class="pa-thinking-list"></div>
       </div>
@@ -23841,12 +24032,27 @@ paSessionNodes.push(row);
 container.appendChild(row);
 syncEmptyGuideVisibility();
 scrollChatToBottom();
+const startedAt = Date.now();
+const thinkingTimerEl = card.querySelector('.pa-thinking-timer');
+let timerHandle = null;
+if (typeof window !== 'undefined' && typeof requestAnimationFrame === 'function' && thinkingTimerEl) {
+timerHandle = setInterval(() => {
+if (!card.isConnected) {
+clearInterval(timerHandle);
+return;
+}
+thinkingTimerEl.textContent = `${((Date.now() - startedAt) / 1000).toFixed(1)}s`;
+}, 250);
+timerHandle?.unref?.();
+}
 return {
 row,
 card,
 thinkingBox,
 thinkingHead,
 thinkingTitleEl: card.querySelector('.pa-thinking-title'),
+thinkingTimerEl,
+phaseStripEl: card.querySelector('.pa-phase-strip'),
 thinkingList: card.querySelector('.pa-thinking-list'),
 accordion,
 summaryEl,
@@ -23857,35 +24063,90 @@ confirmSlot: card.querySelector('.pa-confirm-slot'),
 fixSlot: card.querySelector('.pa-fix-slot'),
 stopBtn: card.querySelector('.pa-card-stop-btn'),
 finalReplyEl: card.querySelector('.pa-final-reply'),
-startedAt: Date.now(),
+startedAt,
+timerHandle,
+lastThoughtItemEl: null,
 stepCount: 0,
 thoughtCount: 0
 };
 }
-function appendThoughtItem(cardCtx, stepLabel, thoughtText, reasoningText = '') {
-if (!cardCtx || !cardCtx.thinkingList) return;
+const PA_PHASE_ORDER = ['inspect', 'think', 'act', 'verify'];
+function updateThinkingPhase(cardCtx, activePhase = 'inspect') {
+if (!cardCtx) return;
+if (cardCtx.thinkingTimerEl && cardCtx.startedAt) {
+cardCtx.thinkingTimerEl.textContent = `${((Date.now() - cardCtx.startedAt) / 1000).toFixed(1)}s`;
+}
+if (!cardCtx.phaseStripEl || typeof cardCtx.phaseStripEl.querySelectorAll !== 'function') return;
+const targetIdx = activePhase === 'done_all' ? PA_PHASE_ORDER.length : PA_PHASE_ORDER.indexOf(activePhase);
+cardCtx.phaseStripEl.querySelectorAll('.pa-phase-pill').forEach((pill) => {
+const p = pill?.dataset?.phase || '';
+const idx = PA_PHASE_ORDER.indexOf(p);
+pill.classList.remove('is-active', 'is-done');
+if (activePhase === 'done_all') {
+pill.classList.add('is-done');
+} else if (idx >= 0 && targetIdx >= 0) {
+if (idx < targetIdx) pill.classList.add('is-done');
+else if (idx === targetIdx) pill.classList.add('is-active');
+}
+});
+}
+function appendThoughtItem(cardCtx, stepLabel, thoughtText, reasoningText = '', meta = {}) {
+if (!cardCtx || !cardCtx.thinkingList) return null;
 const cleanThought = String(thoughtText || '').trim();
 const cleanReason = String(reasoningText || '').trim();
-if (!cleanThought && !cleanReason) return;
+if (!cleanThought && !cleanReason) return null;
 cardCtx.thoughtCount = (cardCtx.thoughtCount || 0) + 1;
 if (cardCtx.thinkingBox) cardCtx.thinkingBox.classList.remove('hidden');
+const appChip = String(meta?.appName || '').trim();
+const toolName = String(meta?.toolName || '').trim();
+const actionSummary = String(meta?.actionSummary || '').trim();
+const intentLabel = toolName ? inferToolActionLabel(toolName, actionSummary) : '';
 if (cardCtx.thinkingTitleEl) {
-cardCtx.thinkingTitleEl.textContent = `思考过程 · 第 ${cardCtx.thoughtCount} 步`;
+cardCtx.thinkingTitleEl.textContent = appChip
+? `正在思考 · ${appChip} · 第 ${cardCtx.thoughtCount} 步`
+: `思考过程 · 第 ${cardCtx.thoughtCount} 步`;
+}
+if (cardCtx.thinkingTimerEl && cardCtx.startedAt) {
+cardCtx.thinkingTimerEl.textContent = `${((Date.now() - cardCtx.startedAt) / 1000).toFixed(1)}s`;
 }
 const item = document.createElement('div');
 item.className = 'pa-thinking-item';
 item.innerHTML = `
-      <div class="pa-thinking-step-tag">${escapeHtml(stepLabel || `推理 ${cardCtx.thoughtCount}`)}</div>
+      <span class="pa-tl-node" aria-hidden="true"></span>
+      <div class="pa-thought-meta-row">
+        <span class="pa-thinking-step-tag">${escapeHtml(stepLabel || `推理 ${cardCtx.thoughtCount}`)}</span>
+        ${appChip ? `<span class="pa-thought-app-chip">${escapeHtml(appChip)}</span>` : ''}
+        ${intentLabel ? `<span class="pa-thought-intent">${escapeHtml(intentLabel)}</span>` : ''}
+      </div>
       <div class="pa-thinking-text">${escapeHtml(cleanThought || cleanReason.slice(0, 220))}</div>
       ${cleanReason && cleanThought && cleanReason !== cleanThought
 ? `<div class="pa-thinking-raw">${escapeHtml(cleanReason.slice(0, 500))}</div>`
 : ''}
+      <div class="pa-thought-outcome hidden"></div>
     `;
 cardCtx.thinkingList.appendChild(item);
+cardCtx.lastThoughtItemEl = item;
 while (cardCtx.thinkingList.children.length > 20) {
 cardCtx.thinkingList.firstElementChild?.remove();
 }
 scrollChatToBottom();
+return item;
+}
+function updateThoughtOutcome(thoughtEl, outcomeText, changed = null, isError = false) {
+if (!thoughtEl || typeof thoughtEl.querySelector !== 'function') return;
+const outcomeEl = thoughtEl.querySelector('.pa-thought-outcome');
+if (!outcomeEl) return;
+const clean = String(outcomeText || '').trim();
+if (!clean) return;
+outcomeEl.classList.remove('hidden', 'is-changed', 'is-same', 'is-error');
+if (isError) {
+outcomeEl.classList.add('is-error');
+} else if (changed === true) {
+outcomeEl.classList.add('is-changed');
+} else {
+outcomeEl.classList.add('is-same');
+}
+outcomeEl.textContent = clean;
 }
 function addStepItem(stepsList, stepNum, summary, thought, statusText, isError = false, toolName = 'step') {
 if (!stepsList) return null;
@@ -23945,7 +24206,15 @@ scrollChatToBottom();
 }
 function finalizeAgentTurn(cardCtx, { status = 'done', summaryTitle = '', replyText = '', handoverCb = null, recordedSteps = null, sourceTask = '', isSkillReplay = false, isChatOnly = false, quickAction = null } = {}) {
 if (!cardCtx) return;
+if (cardCtx.timerHandle) {
+clearInterval(cardCtx.timerHandle);
+cardCtx.timerHandle = null;
+}
 const elapsedSec = ((Date.now() - (cardCtx.startedAt || Date.now())) / 1000).toFixed(1);
+if (cardCtx.thinkingTimerEl) {
+cardCtx.thinkingTimerEl.textContent = `${elapsedSec}s`;
+}
+updateThinkingPhase(cardCtx, status === 'done' ? 'done_all' : '');
 if (cardCtx.thinkingBox) {
 cardCtx.thinkingBox.classList.remove('is-thinking');
 if ((cardCtx.thoughtCount || 0) === 0) {
@@ -25929,6 +26198,8 @@ let finalSummaryTitle = '';
 let finalReplyText = '';
 let handoverCb = null;
 let isChatOnlyTurn = false;
+let lastHudVerdictText = '';
+let sentDoneHudNotice = false;
 try {
 const matchedSkill = !isResuming ? findMatchingLearnedSkill(taskText) : null;
 if (matchedSkill && (execMode === 'local' || /^skill:/i.test(String(taskText || '').trim()))) {
@@ -25939,6 +26210,18 @@ summaryTitle: skillRes.summaryTitle,
 replyText: skillRes.replyText,
 isSkillReplay: true
 });
+if (skillRes?.status === 'done') {
+sentDoneHudNotice = true;
+syncNativeFloatProgress({
+state: 'idle',
+phase: 'done',
+step: cardCtx.stepCount || 0,
+appName: matchedSkill.name || '离线技能',
+toolName: 'done',
+summary: skillRes.summaryTitle || `技能「${matchedSkill.name}」完成`,
+thought: (skillRes.replyText || '').slice(0, 120)
+});
+}
 syncStatus();
 return;
 }
@@ -25994,6 +26277,16 @@ finalizeAgentTurn(cardCtx, {
 status: 'done',
 summaryTitle: `已执行：${taskText}`,
 replyText: res.summary
+});
+sentDoneHudNotice = true;
+syncNativeFloatProgress({
+state: 'idle',
+phase: 'done',
+step: 1,
+appName: '',
+toolName: 'local.rule',
+summary: `已执行：${taskText}`,
+thought: (res.summary || '').slice(0, 120)
 });
 if (isNativeAutoSwiping() && cardCtx.stopBtn) {
 cardCtx.stopBtn.classList.remove('hidden');
@@ -26159,11 +26452,21 @@ const item = queuedInterjections.shift();
 if (item && item.text) turnInterjections.push(item.text);
 }
 updateQueueBarUi();
-if (native && b && typeof b.updateFloatState === 'function') {
-try { b.updateFloatState('thinking', `第 ${step} 步 规划中...`); } catch {}
-}
+updateThinkingPhase(cardCtx, 'inspect');
 const snapshot = prefetchedSnap || readAndFormatSnapshot(false);
 prefetchedSnap = null;
+syncNativeFloatProgress({
+state: 'thinking',
+phase: 'thinking',
+step,
+appName: snapshot.appName || '桌面',
+toolName: 'phone.screen',
+summary: `第 ${step} 步 识屏规划`,
+thought: native
+? `正在读取「${snapshot.appName || '当前界面'}」(${snapshot.nodes?.length || 0} 个元素) 并推理下一步…`
+: '网页端正在进行逻辑推演规划…',
+verdictText: lastHudVerdictText
+});
 const currentPageKey = `${snapshot.packageName || ''}::${snapshot.signature || ''}`;
 if (native && currentPageKey !== '::') {
 loopState.recentPageSigs.push(currentPageKey);
@@ -26196,6 +26499,7 @@ cardCtx.stepCount = step;
 if (cardCtx.summaryTextEl) {
 cardCtx.summaryTextEl.textContent = `第 ${step} 步 · ${snapshot.appName || '读取屏幕'} 规划中`;
 }
+updateThinkingPhase(cardCtx, 'think');
 let planResp;
 try {
 planResp = await requestPlanStep({
@@ -26350,7 +26654,19 @@ toolName = 'ask_user';
 }
 }
 }
-appendThoughtItem(cardCtx, `第 ${step} 步`, plan.thought, plan.reasoning);
+const currentThoughtEl = appendThoughtItem(
+cardCtx,
+`第 ${step} 步`,
+plan.thought,
+plan.reasoning,
+{
+stepNum: step,
+appName: snapshot.appName || '',
+toolName,
+actionSummary: plan.summary || ''
+}
+);
+updateThinkingPhase(cardCtx, toolName === 'done' || toolName === 'chat' ? 'verify' : 'act');
 const badgeEl = pendingStepEl?.querySelector('.pa-tool-badge');
 if (badgeEl) badgeEl.textContent = Array.isArray(plan.actions) && plan.actions.length >= 2 ? `${toolName}×${plan.actions.length}` : toolName;
 const descEl = pendingStepEl?.querySelector('.pa-step-desc');
@@ -26362,6 +26678,7 @@ cardCtx.summaryTextEl.textContent = `${toolName} · ${plan.summary || '执行中
 }
 if (toolName === 'chat') {
 const chatMsg = plan.reply || plan.args?.message || plan.summary || '好的，我在听。';
+updateThoughtOutcome(currentThoughtEl, '✓ 对话已回复', true, false);
 recordPaChatTurn('assistant', chatMsg);
 isChatOnlyTurn = true;
 finalStatus = 'done';
@@ -26379,6 +26696,7 @@ if (native && isBatchContinuousTask && earlyDoneIntercepts < 8 && !isFinishedScr
 earlyDoneIntercepts += 1;
 autoContinueHint = '【系统强提醒】检测到当前屏幕仍有未完成题目（存在“下一题”按钮或进度未到最后一题），严禁提前返回 done！请立刻作答当前屏幕题目（或若已选中正确答案则直接点击“下一题”），持续推进直到整套题全部做完。';
 updateStepResult(pendingStepEl, '继续下一题', false);
+updateThoughtOutcome(currentThoughtEl, '↻ 检测到仍有题目，继续作答', false, false);
 history.push({
 step,
 tool: 'continue_next',
@@ -26393,6 +26711,7 @@ continue;
 const doneMsg = plan.reply || plan.args?.message || plan.summary || '全部任务步骤已顺利完成';
 recordPaChatTurn('assistant', doneMsg);
 updateStepResult(pendingStepEl, '已完成', false);
+updateThoughtOutcome(currentThoughtEl, '✓ 任务已完成', true, false);
 appendNativeConsoleLog(`AI 任务完成: ${doneMsg}`);
 finalStatus = 'done';
 finalSummaryTitle = `已完成 ${step} 步手机操控${snapshot.appName ? ` · ${snapshot.appName}` : ''}`;
@@ -26541,9 +26860,16 @@ addTrustedApp(snapshot.appName, snapshot.packageName);
 }
 }
 if (gateRejected || handedOver) break;
-if (native && b && typeof b.updateFloatState === 'function') {
-try { b.updateFloatState('acting', plan.summary || '执行中...'); } catch {}
-}
+syncNativeFloatProgress({
+state: 'acting',
+phase: 'planned',
+step,
+appName: snapshot.appName || '当前界面',
+toolName,
+summary: plan.summary || inferToolActionLabel(toolName),
+thought: plan.thought || plan.reasoning || '',
+verdictText: lastHudVerdictText
+});
 const preActionSeq = native ? (Number(readScreenEventSeq().seq) || beforeEventSeq) : 0;
 const beforeMeta = native
 ? {
@@ -26665,12 +26991,31 @@ lastScreenVerdict = {
 ...verdict,
 noChangeStreak: loopState.noChangeStreak
 };
+const stepChanged = native && !execRes.error && lastSubTool !== 'phone_wait' ? Boolean(verdict.changed) : null;
 updateStepResult(
 pendingStepEl,
 finalExecText,
 Boolean(execRes.error),
-native && !execRes.error && lastSubTool !== 'phone_wait' ? Boolean(verdict.changed) : null
+stepChanged
 );
+const hudOutcomeMsg = execRes.error
+? `✕ ${String(finalExecText || '执行失败').slice(0, 36)}`
+: (stepChanged === true
+? `✓ 画面已更新${verdict?.elapsedMs ? ` (${verdict.elapsedMs}ms)` : ''}`
+: (lastSubTool === 'phone_wait' ? `⏱ ${finalExecText}` : '• 画面未变，继续观察'));
+updateThoughtOutcome(currentThoughtEl, hudOutcomeMsg, stepChanged === true, Boolean(execRes.error));
+updateThinkingPhase(cardCtx, 'verify');
+lastHudVerdictText = hudOutcomeMsg;
+syncNativeFloatProgress({
+state: 'acting',
+phase: 'verified',
+step,
+appName: snapshot.appName || '当前界面',
+toolName: lastSubTool || toolName,
+summary: plan.summary || inferToolActionLabel(toolName),
+thought: plan.thought || '',
+verdictText: lastHudVerdictText
+});
 appendNativeConsoleLog(`第${step}步 [${toolName}]: ${finalExecText}`);
 history.push({
 step,
@@ -26709,13 +27054,25 @@ recordedSteps,
 sourceTask: taskText,
 isChatOnly: isChatOnlyTurn
 });
+if (native && finalStatus === 'done' && !isChatOnlyTurn && (cardCtx.stepCount || 0) > 0 && !handoverCb) {
+sentDoneHudNotice = true;
+syncNativeFloatProgress({
+state: 'idle',
+phase: 'done',
+step: cardCtx.stepCount || 0,
+appName: lastExtApp || '',
+toolName: 'done',
+summary: finalSummaryTitle || `已完成 ${cardCtx.stepCount || 0} 步控屏`,
+thought: (finalReplyText || '').slice(0, 120)
+});
+}
 } finally {
 isAgentRunning = false;
 queuedInterjections = [];
 updateQueueBarUi();
 if (native && b && !isNativeAutoSwiping()) {
 try {
-if (typeof b.updateFloatState === 'function') b.updateFloatState('idle', 'dsh-Go');
+if (!sentDoneHudNotice && typeof b.updateFloatState === 'function') b.updateFloatState('idle', 'dsh-Go');
 if (typeof b.setAgentForegroundActive === 'function') b.setAgentForegroundActive(false, '');
 } catch {}
 }
@@ -27693,6 +28050,12 @@ showToast(`任务前需求确认已切换为：${getClarifyPolicyLabel(cp)}`);
 $('pa-cfg-edge-glow')?.addEventListener('change', (e) => {
 setEdgeGlowPref(Boolean(e.target.checked));
 });
+document.querySelectorAll('.pa-pet-card').forEach((card) => {
+card.addEventListener('click', () => {
+const petId = card.dataset?.paPet || 'feiyu';
+setPetPersona(petId, { syncNative: true, notify: true });
+});
+});
 $('pa-queue-now-btn')?.addEventListener('click', () => {
 if (queuedInterjections.length > 0) {
 queuedInterjections[queuedInterjections.length - 1].priority = true;
@@ -28019,6 +28382,7 @@ isDownloadingUpdate = false;
 }
 });
 }
+syncPetPersonaFromNative();
 syncStatus();
 syncLearnedSkillsToNative(loadLearnedSkills());
 if (document.getElementById('app-shell')?.dataset.uiMode === 'phone-agent') {
@@ -28071,6 +28435,8 @@ getCloudConfig,
 setCloudConfig,
 getCloudModel,
 setCloudModel,
+getPetPersona,
+setPetPersona,
 getConfig: () => ({ execMode: getExecMode(), ...getDirectConfig() }),
 setExecMode,
 setDirectApiKey,
@@ -28103,7 +28469,14 @@ requestPreFlightCheck,
 summarizePlanArgs,
 runReActLoop,
 openSetupGuideWizard,
-getSetupPermissionsState
+getSetupPermissionsState,
+getPetPersona,
+setPetPersona,
+inferToolActionLabel,
+syncNativeFloatProgress,
+appendThoughtItem,
+updateThoughtOutcome,
+updateThinkingPhase
 }
 };
 })();

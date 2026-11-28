@@ -92,6 +92,9 @@ public class FloatAgentService extends Service {
     private static final String PREF_KEY_QUICK_PHRASES = "quick_phrases_v1";
     private static final String PREF_KEY_QUICK_DIRECT = "quick_send_direct_v1";
     private static final String PREF_KEY_CUSTOM_SONGS = "custom_songs_v1";
+    private static final String PREF_KEY_PET_PERSONA = "pet_persona_id";
+    public static final String PET_FEIYU = "feiyu";
+    public static final String PET_NAILONG = "nailong";
     private static final String ASR_ENDPOINT = "https://star.claudexxb.online/api/asr/transcribe";
     private static final String LYRICS_ENDPOINT = "https://star.claudexxb.online/api/music/lyrics";
     private static final String WEATHER_ENDPOINT = "https://star.claudexxb.online/api/weather/summary";
@@ -118,8 +121,39 @@ public class FloatAgentService extends Service {
     private TextView pillStopBtn;
     private LinearLayout expandPanel;
 
-    // 展开态与折叠态共用提示元素
+    // 跨应用 LIVE 思考与执行气泡 HUD 控件（在手机其他 App 运行时直观展示 AI 思考、动作与上步回执）
+    private LinearLayout taskHudWrap;
+    private LinearLayout taskHudCard;
+    private View taskHudDotView;
+    private TextView taskHudStageBadge;
+    private TextView taskHudMetaView;
+    private TextView taskHudFoldBtn;
+    private TextView taskHudStopBtn;
+    private LinearLayout taskHudBodyBox;
+    private LinearLayout taskHudThoughtBox;
+    private TextView taskHudThoughtView;
+    private TextView taskHudActionView;
+    private TextView taskHudVerdictView;
+    private BubblePointerView taskHudTailView;
+    private boolean taskHudCompactMode = false;
+    private String lastTaskHudThought = "";
+    private String lastTaskHudApp = "";
+    private String lastTaskHudTool = "";
+    private String lastTaskHudAction = "";
+    private String lastTaskHudVerdict = "";
+    private int lastTaskHudStep = 0;
+
+    // 展开态与折叠态共用提示元素与人设切换引用
+    private String petPersonaId = PET_FEIYU;
+    private String currentPoseKey = "idle";
     private ImageView headPetIcon;
+    private TextView headTitleView;
+    private TextView tabPetBtn;
+    private LinearLayout petSwitchFeiyuCard;
+    private LinearLayout petSwitchNailongCard;
+    private TextView personaSwitchPrefBtn;
+    private TextView extFeedPillBtn;
+    private TextView panelFeedBtn;
     private TextView subtitleBannerView;
     private TextView musicTitleView;
     private TextView musicLyricView;
@@ -163,9 +197,14 @@ public class FloatAgentService extends Service {
     private volatile long lastWeatherFetchMs = 0L;
     private final java.util.Random petRandom = new java.util.Random();
 
-    // 独立全透明背景桌面漂浮歌词窗、外置互动条与头顶气泡
+    // 独立全透明背景桌面漂浮歌词窗、外置互动条与美化版头顶气泡
     private LinearLayout externalPetActionBar;
+    private LinearLayout headSpeechBubbleWrap;
+    private LinearLayout headSpeechBubbleCard;
+    private View headBubbleBadgeDot;
+    private TextView headBubbleBadgeView;
     private TextView headSpeechBubbleView;
+    private BubblePointerView headBubbleTailView;
     private LinearLayout floatingLyricRootView;
     private WindowManager.LayoutParams floatingLyricParams;
     private TextView floatingLyricSubText;
@@ -338,7 +377,7 @@ public class FloatAgentService extends Service {
                 if (petGroundShadowView != null) {
                     petGroundShadowView.updateShadow(0f, 1f, 0f, 0f);
                 }
-                setPetPoseDrawable(R.drawable.feiyu_idle);
+                setPetPose("idle");
             }
         }
     };
@@ -346,13 +385,31 @@ public class FloatAgentService extends Service {
     private final Runnable headBubbleHideRunnable = new Runnable() {
         @Override
         public void run() {
-            if (headSpeechBubbleView != null) {
-                headSpeechBubbleView.animate().alpha(0f).setDuration(260).withEndAction(new Runnable() {
+            final View targetWrap = headSpeechBubbleWrap != null ? headSpeechBubbleWrap : headSpeechBubbleView;
+            if (targetWrap != null) {
+                targetWrap.animate().alpha(0f).translationY(dpFloat(4f)).setDuration(260).withEndAction(new Runnable() {
                     @Override
                     public void run() {
-                        if (headSpeechBubbleView != null) {
-                            headSpeechBubbleView.setVisibility(View.GONE);
-                            headSpeechBubbleView.setAlpha(1f);
+                        targetWrap.setVisibility(View.GONE);
+                        targetWrap.setAlpha(1f);
+                        targetWrap.setTranslationY(0f);
+                    }
+                }).start();
+            }
+        }
+    };
+
+    private final Runnable taskHudAutoHideRunnable = new Runnable() {
+        @Override
+        public void run() {
+            if (taskHudWrap != null && "idle".equals(sCurrentStatus)) {
+                taskHudWrap.animate().alpha(0f).translationY(dpFloat(4f)).setDuration(260).withEndAction(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (taskHudWrap != null && "idle".equals(sCurrentStatus)) {
+                            taskHudWrap.setVisibility(View.GONE);
+                            taskHudWrap.setAlpha(1f);
+                            taskHudWrap.setTranslationY(0f);
                         }
                     }
                 }).start();
@@ -366,7 +423,7 @@ public class FloatAgentService extends Service {
             if (sInstance == null) return;
             if (!isExpanded && !isDraggingPet && "idle".equals(sCurrentStatus)
                     && !isRecordingVoice && (singerEngine == null || !singerEngine.isSinging())) {
-                // 每 25 分钟异步刷一次实时天气，供大肥鱼吐槽真实温度与阴晴雨雪
+                // 每 25 分钟异步刷一次实时天气，供桌宠吐槽真实温度与阴晴雨雪
                 if (System.currentTimeMillis() - lastWeatherFetchMs > 25 * 60 * 1000L) {
                     fetchWeatherSummaryAsync();
                 }
@@ -379,19 +436,19 @@ public class FloatAgentService extends Service {
                     triggerMischiefAction(false);
                 } else {
                     int step = autoLifeStep % 8;
-                    int pose = R.drawable.feiyu_happy;
+                    String poseKey = "happy";
                     String anim = "look_around";
                     switch (step) {
-                        case 0: pose = R.drawable.feiyu_idle; anim = "look_around"; break;
-                        case 1: pose = R.drawable.feiyu_eating; anim = "nibble"; break;
-                        case 2: pose = R.drawable.feiyu_sleepy; anim = "nap_startle"; break;
-                        case 3: pose = R.drawable.feiyu_focus; anim = "tiptoe"; break;
-                        case 4: pose = R.drawable.feiyu_happy; anim = "ear_twitch"; break;
-                        case 5: pose = R.drawable.feiyu_dance; anim = "dance"; break;
-                        case 6: pose = R.drawable.feiyu_beg; anim = "bubble_pop"; break;
-                        default: pose = R.drawable.feiyu_derp; anim = "curious"; break;
+                        case 0: poseKey = "idle"; anim = "look_around"; break;
+                        case 1: poseKey = "eating"; anim = "nibble"; break;
+                        case 2: poseKey = "sleepy"; anim = "nap_startle"; break;
+                        case 3: poseKey = "focus"; anim = "tiptoe"; break;
+                        case 4: poseKey = "happy"; anim = "ear_twitch"; break;
+                        case 5: poseKey = "dance"; anim = "dance"; break;
+                        case 6: poseKey = "beg"; anim = "bubble_pop"; break;
+                        default: poseKey = "derp"; anim = "curious"; break;
                     }
-                    setPetPoseDrawable(pose);
+                    setPetPose(poseKey);
                     playPetBounceAnim(anim);
                     mainHandler.removeCallbacks(lifePoseResetRunnable);
                     mainHandler.postDelayed(lifePoseResetRunnable, 4600);
@@ -432,9 +489,9 @@ public class FloatAgentService extends Service {
         public void run() {
             if ("idle".equals(sCurrentStatus) && !isDraggingPet) {
                 if (qqMusicPlaying || (singerEngine != null && singerEngine.isSinging())) {
-                    setPetPoseDrawable(R.drawable.feiyu_dance);
+                    setPetPose("dance");
                 } else {
-                    setPetPoseDrawable(R.drawable.feiyu_idle);
+                    setPetPose("idle");
                 }
             }
         }
@@ -444,7 +501,9 @@ public class FloatAgentService extends Service {
         @Override
         public void run() {
             if (subtitleBannerView != null && !isRecordingVoice && (singerEngine == null || !singerEngine.isSinging())) {
-                subtitleBannerView.setText("🍚 大肥鱼待命中 · 戳我喂米饭 / 摸头 / 唱歌 / 点歌~");
+                subtitleBannerView.setText(isNailong()
+                        ? "🍗 奶龙待命中 · 戳我啃鸡腿 / 摸肚皮 / 跳舞 / 聊天~"
+                        : "🍚 大肥鱼待命中 · 戳我喂米饭 / 摸头 / 唱歌 / 点歌~");
             }
             refreshCollapsedPill();
         }
@@ -465,6 +524,52 @@ public class FloatAgentService extends Service {
 
     public static boolean isRunning() {
         return sInstance != null;
+    }
+
+    public static String getPetPersona(Context ctx) {
+        if (sInstance != null) {
+            return sInstance.petPersonaId;
+        }
+        if (ctx != null) {
+            try {
+                String saved = ctx.getSharedPreferences(PREFS_NAME, MODE_PRIVATE).getString(PREF_KEY_PET_PERSONA, PET_FEIYU);
+                if (PET_NAILONG.equals(saved)) return PET_NAILONG;
+            } catch (Exception ignored) {}
+        }
+        return PET_FEIYU;
+    }
+
+    public static boolean setPetPersonaFromBridge(Context ctx, final String personaId) {
+        final String targetId = PET_NAILONG.equals(personaId) ? PET_NAILONG : PET_FEIYU;
+        if (ctx != null) {
+            try {
+                ctx.getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+                        .edit()
+                        .putString(PREF_KEY_PET_PERSONA, targetId)
+                        .apply();
+            } catch (Exception ignored) {}
+        }
+        final FloatAgentService inst = sInstance;
+        if (inst != null) {
+            inst.mainHandler.post(new Runnable() {
+                @Override
+                public void run() {
+                    inst.switchPetPersona(targetId, true, false);
+                }
+            });
+        }
+        return true;
+    }
+
+    public static void updateProgress(final String progressJson) {
+        final FloatAgentService inst = sInstance;
+        if (inst == null) return;
+        inst.mainHandler.post(new Runnable() {
+            @Override
+            public void run() {
+                inst.applyStructuredProgressJson(progressJson);
+            }
+        });
     }
 
     public static void setEdgeGlowEnabled(final boolean enabled) {
@@ -958,6 +1063,8 @@ public class FloatAgentService extends Service {
     private void loadPrefs() {
         try {
             SharedPreferences sp = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+            String savedPersona = sp.getString(PREF_KEY_PET_PERSONA, PET_FEIYU);
+            petPersonaId = PET_NAILONG.equals(savedPersona) ? PET_NAILONG : PET_FEIYU;
             showVoiceTail = sp.getBoolean("show_voice_tail", true);
             showExternalPetBar = sp.getBoolean("show_ext_pet_bar", true);
             freeRoamEnabled = sp.getBoolean("free_roam_enabled", true);
@@ -1122,8 +1229,8 @@ public class FloatAgentService extends Service {
             public void run() {
                 if (inst.singerEngine != null && inst.singerEngine.isSinging()) {
                     inst.singerEngine.stop();
-                    inst.setPetPoseDrawable(R.drawable.feiyu_happy);
-                    inst.showPetSubtitle("🎵 已暂停大肥鱼歌唱~", 2400);
+                    inst.setPetPose("happy");
+                    inst.showPetSubtitle("🎵 已暂停" + inst.petDisplayName() + "歌唱~", 2400);
                 }
             }
         });
@@ -1212,7 +1319,9 @@ public class FloatAgentService extends Service {
             @Override
             public void run() {
                 if (sInstance != null && isRunning()) {
-                    showHeadBubble("🐟 大肥鱼来啦！我会在屏幕上到处溜达，陪你聊天吐槽天气哦~", 4500);
+                    showHeadBubble(isNailong()
+                            ? "🐲 奶龙来啦！大鸡腿准备好没，我会到处溜达陪你控屏哦~"
+                            : "🐳 大肥鱼来啦！我会在屏幕上到处溜达，陪你聊天吐槽天气哦~", 4500);
                 }
             }
         }, 700);
@@ -1233,22 +1342,73 @@ public class FloatAgentService extends Service {
         return WindowManager.LayoutParams.TYPE_PHONE;
     }
 
-    private GradientDrawable createRoundRect(String fillHex, int radiusDp, String strokeHex, int strokeDp) {
-        GradientDrawable gd = new GradientDrawable();
-        gd.setColor(Color.parseColor(fillHex));
-        gd.setCornerRadius(dp(radiusDp));
-        if (strokeHex != null && strokeDp > 0) {
-            gd.setStroke(Math.max(1, dp(strokeDp)), Color.parseColor(strokeHex));
-        }
-        return gd;
-    }
-
     private void setViewBg(View v, GradientDrawable bg) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN) {
             v.setBackground(bg);
         } else {
             v.setBackgroundDrawable(bg);
         }
+    }
+
+    private boolean isNailong() {
+        return PET_NAILONG.equals(petPersonaId);
+    }
+
+    private String petDisplayName() {
+        return isNailong() ? "奶龙" : "大肥鱼";
+    }
+
+    private String petDisplayEmoji() {
+        return isNailong() ? "🐲" : "🐳";
+    }
+
+    private int resolvePetPoseRes(String poseKey) {
+        String key = poseKey != null ? poseKey : "idle";
+        if (isNailong()) {
+            switch (key) {
+                case "happy":
+                case "eating":
+                case "dance":
+                    return R.drawable.nailong_happy;
+                case "focus":
+                case "busy":
+                    return R.drawable.nailong_focus;
+                case "sleepy":
+                case "beg":
+                    return R.drawable.nailong_sleepy;
+                case "walk":
+                    return R.drawable.nailong_walk;
+                case "drag":
+                    return R.drawable.nailong_drag;
+                case "derp":
+                case "dizzy":
+                    return R.drawable.nailong_derp;
+                case "idle":
+                default:
+                    return R.drawable.nailong_idle;
+            }
+        }
+        switch (key) {
+            case "happy": return R.drawable.feiyu_happy;
+            case "eating": return R.drawable.feiyu_eating;
+            case "focus": return R.drawable.feiyu_focus;
+            case "busy": return R.drawable.feiyu_busy;
+            case "sleepy": return R.drawable.feiyu_sleepy;
+            case "walk": return R.drawable.feiyu_walk;
+            case "dance": return R.drawable.feiyu_dance;
+            case "drag": return R.drawable.feiyu_drag;
+            case "derp": return R.drawable.feiyu_derp;
+            case "beg": return R.drawable.feiyu_beg;
+            case "dizzy": return R.drawable.feiyu_dizzy;
+            case "idle":
+            default:
+                return R.drawable.feiyu_idle;
+        }
+    }
+
+    private void setPetPose(String poseKey) {
+        currentPoseKey = (poseKey != null && !poseKey.isEmpty()) ? poseKey : "idle";
+        setPetPoseDrawable(resolvePetPoseRes(currentPoseKey));
     }
 
     private void setPetPoseDrawable(int resId) {
@@ -1258,6 +1418,47 @@ public class FloatAgentService extends Service {
         if (headPetIcon != null) {
             headPetIcon.setImageResource(resId);
         }
+    }
+
+    private void switchPetPersona(String nextPersonaId, boolean announce, boolean notifyWeb) {
+        String normalized = PET_NAILONG.equals(nextPersonaId) ? PET_NAILONG : PET_FEIYU;
+        boolean changed = !normalized.equals(petPersonaId);
+        petPersonaId = normalized;
+        savePrefBool("pet_persona_saved", true);
+        try {
+            getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+                    .edit()
+                    .putString(PREF_KEY_PET_PERSONA, petPersonaId)
+                    .apply();
+        } catch (Exception ignored) {}
+
+        stopWhaleVoicePlayer();
+        applyPersonaVisualTheme();
+        setPetPose(changed ? "happy" : currentPoseKey);
+
+        if (notifyWeb) {
+            MainActivity.dispatchPetPersonaToWebView(petPersonaId);
+        }
+
+        if (announce && changed) {
+            if (isNailong()) {
+                playWhaleVoice(R.raw.nailong_2, "happy", "bounce",
+                        "🐲 芜湖~ 奶龙满血归位啦！大烤鸡腿跟高数秘籍全都给你留着哟~ 🍗", true);
+            } else {
+                playWhaleVoice(R.raw.feiyu_intro, "happy", "bounce",
+                        "🐳 本肥鱼终于能动了！嘿嘿，谢谢主人喜欢大肥鱼~ 🍚", true);
+            }
+        }
+    }
+
+    private GradientDrawable createRoundRect(String fillHex, int radiusDp, String strokeHex, float strokeDp) {
+        GradientDrawable gd = new GradientDrawable();
+        gd.setColor(Color.parseColor(fillHex));
+        gd.setCornerRadius(dp(radiusDp));
+        if (strokeHex != null && strokeDp > 0f) {
+            gd.setStroke(Math.max(1, Math.round(dpFloat(strokeDp))), Color.parseColor(strokeHex));
+        }
+        return gd;
     }
 
     private void initEdgeGlowOverlay() {
@@ -1346,35 +1547,13 @@ public class FloatAgentService extends Service {
 
         floatRootView = new FrameLayout(this);
 
-        // 1. 折叠态：最上方头顶气泡 + 中间 Q 版鲸鱼娘/语音尾巴/状态胶囊 + 下方外置互动条
+        // 1. 折叠态：最上方美化冒泡 / 跨应用 LIVE 思考与执行 HUD 气泡 + 中间 Q 版桌宠/语音尾巴/精简胶囊 + 下方外置互动条
         petBubbleContainer = new LinearLayout(this);
         petBubbleContainer.setOrientation(LinearLayout.VERTICAL);
         petBubbleContainer.setGravity(Gravity.START);
 
-        headSpeechBubbleView = new TextView(this);
-        headSpeechBubbleView.setTextColor(Color.parseColor("#FFFFFF"));
-        headSpeechBubbleView.setTypeface(null, android.graphics.Typeface.BOLD);
-        headSpeechBubbleView.setTextSize(12f);
-        headSpeechBubbleView.setLineSpacing(dp(2), 1.0f);
-        headSpeechBubbleView.setMaxWidth(dp(220));
-        headSpeechBubbleView.setMaxLines(3);
-        headSpeechBubbleView.setEllipsize(TextUtils.TruncateAt.END);
-        headSpeechBubbleView.setPadding(dp(4), dp(2), dp(4), dp(2));
-        headSpeechBubbleView.setBackgroundColor(Color.TRANSPARENT);
-        headSpeechBubbleView.setShadowLayer(dp(4), 0f, dp(1), Color.parseColor("#F0000000"));
-        LinearLayout.LayoutParams hbLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        hbLp.bottomMargin = dp(3);
-        headSpeechBubbleView.setLayoutParams(hbLp);
-        headSpeechBubbleView.setVisibility(View.GONE);
-        headSpeechBubbleView.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                mainHandler.removeCallbacks(headBubbleHideRunnable);
-                headBubbleHideRunnable.run();
-                setPetPoseDrawable(R.drawable.feiyu_happy);
-                playPetBounceAnim("bounce");
-            }
-        });
+        buildHeadSpeechBubbleWidget();
+        buildTaskLiveHudWidget();
 
         petBubbleContainer.setClipChildren(false);
         petBubbleContainer.setClipToPadding(false);
@@ -1398,7 +1577,7 @@ public class FloatAgentService extends Service {
         petGroundShadowView.setLayoutParams(shLp);
 
         petAvatarView = new ImageView(this);
-        petAvatarView.setImageResource(R.drawable.feiyu_idle);
+        petAvatarView.setImageResource(resolvePetPoseRes("idle"));
         petAvatarView.setScaleType(ImageView.ScaleType.FIT_CENTER);
         petAvatarView.setCameraDistance(5200f * getResources().getDisplayMetrics().density);
         FrameLayout.LayoutParams avatarLp = new FrameLayout.LayoutParams(dp(64), dp(64));
@@ -1469,7 +1648,7 @@ public class FloatAgentService extends Service {
             @Override
             public void onClick(View v) {
                 requestNormalStop();
-                Toast.makeText(FloatAgentService.this, "鲸鱼娘已停止当前任务", Toast.LENGTH_SHORT).show();
+                Toast.makeText(FloatAgentService.this, petDisplayName() + "已停止当前任务", Toast.LENGTH_SHORT).show();
             }
         });
 
@@ -1487,7 +1666,7 @@ public class FloatAgentService extends Service {
         petTopRow.addView(quickMicBadgeView);
         petTopRow.addView(statusPillView);
 
-        // 下排：外置大肥鱼互动条（就在悬浮窗外面直接喂饭/摸头/跳舞/唱歌/讲热梗，实时看肥鱼反应）
+        // 下排：外置桌宠互动条（直接喂食/摸头/跳舞/唱歌/捣蛋/热梗）
         externalPetActionBar = new LinearLayout(this);
         externalPetActionBar.setOrientation(LinearLayout.HORIZONTAL);
         externalPetActionBar.setGravity(Gravity.CENTER_VERTICAL);
@@ -1497,8 +1676,8 @@ public class FloatAgentService extends Service {
         extBarLp.topMargin = dp(3);
         externalPetActionBar.setLayoutParams(extBarLp);
 
-        TextView extFeed = createExternalActionPill("🍚喂", "#3B2506", "#FDE68A", "#F59E0B");
-        extFeed.setOnClickListener(new View.OnClickListener() {
+        extFeedPillBtn = createExternalActionPill(isNailong() ? "🍗喂" : "🍚喂", "#3B2506", "#FDE68A", "#F59E0B");
+        extFeedPillBtn.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 triggerFeedRiceAction();
@@ -1550,11 +1729,11 @@ public class FloatAgentService extends Service {
                 savePrefBool("show_ext_pet_bar", false);
                 applyExternalPetBarVisibility();
                 refreshPrefSwitchButtons();
-                Toast.makeText(FloatAgentService.this, "已收起外置互动条（点击大肥鱼打开面板可重新开启）", Toast.LENGTH_SHORT).show();
+                Toast.makeText(FloatAgentService.this, "已收起外置互动条（点击" + petDisplayName() + "打开面板可重新开启）", Toast.LENGTH_SHORT).show();
             }
         });
 
-        externalPetActionBar.addView(extFeed);
+        externalPetActionBar.addView(extFeedPillBtn);
         externalPetActionBar.addView(extPat);
         externalPetActionBar.addView(extDance);
         externalPetActionBar.addView(extSing);
@@ -1562,23 +1741,26 @@ public class FloatAgentService extends Service {
         externalPetActionBar.addView(extMeme);
         externalPetActionBar.addView(extHide);
 
-        petBubbleContainer.addView(headSpeechBubbleView);
+        petBubbleContainer.addView(taskHudWrap);
+        petBubbleContainer.addView(headSpeechBubbleWrap);
         petBubbleContainer.addView(petTopRow);
         petBubbleContainer.addView(externalPetActionBar);
 
         applyVoiceTailVisibility();
         applyExternalPetBarVisibility();
+        applyPersonaVisualTheme();
         applyStatusStyle("idle", "dsh-Go", false);
         startPetBreathAnim();
 
-        // 2. 展开态：鲸鱼娘动作互动 + QQ音乐歌词 + 语音引导 + dsh-Go 控屏面板
+        // 2. 展开态：双桌宠动作互动 + 形象切换 + QQ音乐歌词 + 语音引导 + dsh-Go 控屏面板
         expandPanel = buildExpandPanel();
         expandPanel.setVisibility(View.GONE);
+        applyPersonaVisualTheme();
 
         floatRootView.addView(petBubbleContainer);
         floatRootView.addView(expandPanel);
 
-        // 拖拽拎起鲸鱼娘 + 晕乎彩蛋 + 脚底离地阴影缩淡 + 放下踩实回弹 + 防误触保护
+        // 拖拽拎起桌宠 + 晕乎彩蛋 + 脚底离地阴影缩淡 + 放下踩实回弹 + 防误触保护
         View.OnTouchListener dragListener = new View.OnTouchListener() {
             private int initialX;
             private int initialY;
@@ -1613,15 +1795,18 @@ public class FloatAgentService extends Service {
                         if (!isDraggingPet && Math.hypot(dx, dy) > dp(6)) {
                             isDraggingPet = true;
                             dragWiggleCount++;
-                            setPetPoseDrawable(R.drawable.feiyu_drag);
+                            setPetPose("drag");
                             long nowMs = System.currentTimeMillis();
                             if (nowMs - lastDragVoiceMs > 9000L) {
                                 lastDragVoiceMs = nowMs;
                                 if (dragWiggleCount >= 4) {
                                     dragWiggleCount = 0;
                                     triggerDizzyAction();
+                                } else if (isNailong()) {
+                                    playWhaleVoice(R.raw.nailong_1, "drag", "shake",
+                                            "🐲 哇啊啊——！飞起来啦！快放俺下来，肚皮要坠地啦~", false);
                                 } else {
-                                    playWhaleVoice(R.raw.feiyu_drag, R.drawable.feiyu_drag, "shake",
+                                    playWhaleVoice(R.raw.feiyu_drag, "drag", "shake",
                                             "🎣 别、别突然从后面叫我，我真的会被你吓到！", false);
                                 }
                             }
@@ -1666,7 +1851,7 @@ public class FloatAgentService extends Service {
                                     tripleTapCount = 0;
                                     handleBubbleClick();
                                 } else {
-                                    setPetPoseDrawable(R.drawable.feiyu_happy);
+                                    setPetPose("happy");
                                     playPetBounceAnim("bounce");
                                     mainHandler.removeCallbacks(lifePoseResetRunnable);
                                     mainHandler.postDelayed(lifePoseResetRunnable, 1500);
@@ -1699,7 +1884,7 @@ public class FloatAgentService extends Service {
                             if (!antiMistouchEnabled) {
                                 startQuickCollapsedVoice();
                             } else {
-                                setPetPoseDrawable(R.drawable.feiyu_beg);
+                                setPetPose("beg");
                                 playPetBounceAnim("bounce");
                             }
                         } else {
@@ -1707,7 +1892,7 @@ public class FloatAgentService extends Service {
                             int petH = petBubbleContainer.getHeight() > 0 ? petBubbleContainer.getHeight() : dp(100);
                             int margin = dp(6);
                             if (freeRoamEnabled) {
-                                // 开启全屏自由漫步时，允许大肥鱼停在用户拖放的任意屏幕位置，不再强制吸死左右侧边
+                                // 开启全屏自由漫步时，允许停在用户拖放的任意屏幕位置，不再强制吸死左右侧边
                                 layoutParams.x = Math.max(margin, Math.min(layoutParams.x, dm.widthPixels - petW - margin));
                                 layoutParams.y = Math.max(dp(34), Math.min(layoutParams.y, dm.heightPixels - petH - dp(24)));
                             } else {
@@ -1744,6 +1929,536 @@ public class FloatAgentService extends Service {
     private void applyVoiceTailVisibility() {
         if (quickMicBadgeView != null) {
             quickMicBadgeView.setVisibility(showVoiceTail ? View.VISIBLE : View.GONE);
+        }
+    }
+
+    private void buildHeadSpeechBubbleWidget() {
+        DisplayMetrics dm = getResources().getDisplayMetrics();
+        int maxBubbleWidth = Math.min(dp(248), Math.round(dm.widthPixels * 0.72f));
+
+        headSpeechBubbleWrap = new LinearLayout(this);
+        headSpeechBubbleWrap.setOrientation(LinearLayout.VERTICAL);
+        headSpeechBubbleWrap.setGravity(Gravity.START);
+        LinearLayout.LayoutParams wrapLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        wrapLp.bottomMargin = dp(4);
+        headSpeechBubbleWrap.setLayoutParams(wrapLp);
+        headSpeechBubbleWrap.setVisibility(View.GONE);
+
+        headSpeechBubbleCard = new LinearLayout(this);
+        headSpeechBubbleCard.setOrientation(LinearLayout.VERTICAL);
+        headSpeechBubbleCard.setPadding(dp(11), dp(8), dp(11), dp(8));
+        headSpeechBubbleCard.setMinimumWidth(dp(112));
+        setViewBg(headSpeechBubbleCard, createRoundRect("#EB0E1629", 15, "#6638BDF8", 1.2f));
+
+        LinearLayout badgeRow = new LinearLayout(this);
+        badgeRow.setOrientation(LinearLayout.HORIZONTAL);
+        badgeRow.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout.LayoutParams brLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        brLp.bottomMargin = dp(3);
+        badgeRow.setLayoutParams(brLp);
+
+        headBubbleBadgeDot = new View(this);
+        LinearLayout.LayoutParams bdLp = new LinearLayout.LayoutParams(dp(6), dp(6));
+        bdLp.rightMargin = dp(5);
+        headBubbleBadgeDot.setLayoutParams(bdLp);
+
+        headBubbleBadgeView = new TextView(this);
+        headBubbleBadgeView.setText("🐳 大肥鱼");
+        headBubbleBadgeView.setTextColor(Color.parseColor("#7DD3FC"));
+        headBubbleBadgeView.setTextSize(10f);
+        headBubbleBadgeView.setTypeface(null, android.graphics.Typeface.BOLD);
+        headBubbleBadgeView.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f));
+
+        TextView closeMiniHint = new TextView(this);
+        closeMiniHint.setText("×");
+        closeMiniHint.setTextColor(Color.parseColor("#94A3B8"));
+        closeMiniHint.setTextSize(11f);
+        closeMiniHint.setPadding(dp(6), 0, dp(1), 0);
+
+        badgeRow.addView(headBubbleBadgeDot);
+        badgeRow.addView(headBubbleBadgeView);
+        badgeRow.addView(closeMiniHint);
+
+        headSpeechBubbleView = new TextView(this);
+        headSpeechBubbleView.setTextColor(Color.parseColor("#F8FAFC"));
+        headSpeechBubbleView.setTextSize(12f);
+        headSpeechBubbleView.setLineSpacing(dpFloat(2.5f), 1.0f);
+        headSpeechBubbleView.setMaxWidth(maxBubbleWidth);
+        headSpeechBubbleView.setMaxLines(4);
+        headSpeechBubbleView.setEllipsize(TextUtils.TruncateAt.END);
+
+        headSpeechBubbleCard.addView(badgeRow);
+        headSpeechBubbleCard.addView(headSpeechBubbleView);
+
+        headBubbleTailView = new BubblePointerView(this);
+        LinearLayout.LayoutParams tailLp = new LinearLayout.LayoutParams(dp(14), dp(7));
+        tailLp.leftMargin = dp(24);
+        headBubbleTailView.setLayoutParams(tailLp);
+
+        headSpeechBubbleWrap.addView(headSpeechBubbleCard);
+        headSpeechBubbleWrap.addView(headBubbleTailView);
+        headSpeechBubbleWrap.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                mainHandler.removeCallbacks(headBubbleHideRunnable);
+                headBubbleHideRunnable.run();
+                setPetPose("happy");
+                playPetBounceAnim("bounce");
+            }
+        });
+    }
+
+    private void buildTaskLiveHudWidget() {
+        DisplayMetrics dm = getResources().getDisplayMetrics();
+        int hudWidth = Math.min(dp(268), Math.round(dm.widthPixels * 0.76f));
+
+        taskHudWrap = new LinearLayout(this);
+        taskHudWrap.setOrientation(LinearLayout.VERTICAL);
+        taskHudWrap.setGravity(Gravity.START);
+        LinearLayout.LayoutParams wrapLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        wrapLp.bottomMargin = dp(4);
+        taskHudWrap.setLayoutParams(wrapLp);
+        taskHudWrap.setVisibility(View.GONE);
+
+        taskHudCard = new LinearLayout(this);
+        taskHudCard.setOrientation(LinearLayout.VERTICAL);
+        taskHudCard.setLayoutParams(new LinearLayout.LayoutParams(hudWidth, ViewGroup.LayoutParams.WRAP_CONTENT));
+        taskHudCard.setPadding(dp(11), dp(9), dp(11), dp(9));
+        setViewBg(taskHudCard, createRoundRect("#F00C1322", 16, "#706366F1", 1.3f));
+
+        // 1. HUD 驾驶舱顶栏（脉冲指示灯 + 阶段标签 + 步数/App + 折叠/展开 + 急停）
+        LinearLayout topRow = new LinearLayout(this);
+        topRow.setOrientation(LinearLayout.HORIZONTAL);
+        topRow.setGravity(Gravity.CENTER_VERTICAL);
+
+        taskHudDotView = new View(this);
+        LinearLayout.LayoutParams dotLp = new LinearLayout.LayoutParams(dp(7), dp(7));
+        dotLp.rightMargin = dp(5);
+        taskHudDotView.setLayoutParams(dotLp);
+
+        taskHudStageBadge = new TextView(this);
+        taskHudStageBadge.setText("🧠 深度思考");
+        taskHudStageBadge.setTextColor(Color.parseColor("#C7D2FE"));
+        taskHudStageBadge.setTextSize(10.5f);
+        taskHudStageBadge.setTypeface(null, android.graphics.Typeface.BOLD);
+        taskHudStageBadge.setPadding(dp(7), dp(2), dp(7), dp(2));
+        setViewBg(taskHudStageBadge, createRoundRect("#2E4D6BFE", 999, "#556366F1", 1));
+
+        taskHudMetaView = new TextView(this);
+        taskHudMetaView.setText("dsh-Go");
+        taskHudMetaView.setTextColor(Color.parseColor("#94A3B8"));
+        taskHudMetaView.setTextSize(10.5f);
+        taskHudMetaView.setSingleLine(true);
+        taskHudMetaView.setEllipsize(TextUtils.TruncateAt.END);
+        LinearLayout.LayoutParams metaLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
+        metaLp.leftMargin = dp(6);
+        metaLp.rightMargin = dp(4);
+        taskHudMetaView.setLayoutParams(metaLp);
+
+        taskHudFoldBtn = new TextView(this);
+        taskHudFoldBtn.setText("精简");
+        taskHudFoldBtn.setTextColor(Color.parseColor("#CBD5E1"));
+        taskHudFoldBtn.setTextSize(9.5f);
+        taskHudFoldBtn.setPadding(dp(6), dp(2), dp(6), dp(2));
+        setViewBg(taskHudFoldBtn, createRoundRect("#18FFFFFF", 8, "#28FFFFFF", 1));
+        LinearLayout.LayoutParams foldLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        foldLp.rightMargin = dp(4);
+        taskHudFoldBtn.setLayoutParams(foldLp);
+        taskHudFoldBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                taskHudCompactMode = !taskHudCompactMode;
+                if (taskHudBodyBox != null) {
+                    taskHudBodyBox.setVisibility(taskHudCompactMode ? View.GONE : View.VISIBLE);
+                }
+                taskHudFoldBtn.setText(taskHudCompactMode ? "详情" : "精简");
+                renderTaskHudState(sCurrentStatus, lastTaskHudAction);
+            }
+        });
+
+        taskHudStopBtn = new TextView(this);
+        taskHudStopBtn.setText("⏹ 急停");
+        taskHudStopBtn.setTextColor(Color.parseColor("#FCA5A5"));
+        taskHudStopBtn.setTextSize(9.5f);
+        taskHudStopBtn.setTypeface(null, android.graphics.Typeface.BOLD);
+        taskHudStopBtn.setPadding(dp(7), dp(2), dp(7), dp(2));
+        setViewBg(taskHudStopBtn, createRoundRect("#450A0A", 8, "#EF4444", 1));
+        taskHudStopBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                requestNormalStop();
+                Toast.makeText(FloatAgentService.this, petDisplayName() + "已安全停止任务", Toast.LENGTH_SHORT).show();
+            }
+        });
+
+        topRow.addView(taskHudDotView);
+        topRow.addView(taskHudStageBadge);
+        topRow.addView(taskHudMetaView);
+        topRow.addView(taskHudFoldBtn);
+        topRow.addView(taskHudStopBtn);
+        taskHudCard.addView(topRow);
+
+        // 2. HUD 展开详情体（思考过程气泡槽 + 执行动作行 + 上步结果回执）
+        taskHudBodyBox = new LinearLayout(this);
+        taskHudBodyBox.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout.LayoutParams bodyLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        bodyLp.topMargin = dp(7);
+        taskHudBodyBox.setLayoutParams(bodyLp);
+
+        taskHudThoughtBox = new LinearLayout(this);
+        taskHudThoughtBox.setOrientation(LinearLayout.VERTICAL);
+        taskHudThoughtBox.setPadding(dp(8), dp(6), dp(8), dp(6));
+        setViewBg(taskHudThoughtBox, createRoundRect("#14FFFFFF", 10, "#20FFFFFF", 1));
+        LinearLayout.LayoutParams tbLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        tbLp.bottomMargin = dp(5);
+        taskHudThoughtBox.setLayoutParams(tbLp);
+
+        taskHudThoughtView = new TextView(this);
+        taskHudThoughtView.setText("💭 正在读取当前界面并分析最佳路径…");
+        taskHudThoughtView.setTextColor(Color.parseColor("#E2E8F0"));
+        taskHudThoughtView.setTextSize(11f);
+        taskHudThoughtView.setLineSpacing(dp(2), 1.0f);
+        taskHudThoughtView.setMaxLines(3);
+        taskHudThoughtView.setEllipsize(TextUtils.TruncateAt.END);
+        taskHudThoughtBox.addView(taskHudThoughtView);
+
+        taskHudActionView = new TextView(this);
+        taskHudActionView.setText("⚡ 准备开始执行");
+        taskHudActionView.setTextColor(Color.parseColor("#F8FAFC"));
+        taskHudActionView.setTextSize(12f);
+        taskHudActionView.setTypeface(null, android.graphics.Typeface.BOLD);
+        taskHudActionView.setMaxLines(2);
+        taskHudActionView.setEllipsize(TextUtils.TruncateAt.END);
+
+        taskHudVerdictView = new TextView(this);
+        taskHudVerdictView.setTextColor(Color.parseColor("#6EE7B7"));
+        taskHudVerdictView.setTextSize(10f);
+        taskHudVerdictView.setSingleLine(true);
+        taskHudVerdictView.setEllipsize(TextUtils.TruncateAt.END);
+        LinearLayout.LayoutParams vvLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        vvLp.topMargin = dp(3);
+        taskHudVerdictView.setLayoutParams(vvLp);
+        taskHudVerdictView.setVisibility(View.GONE);
+
+        taskHudBodyBox.addView(taskHudThoughtBox);
+        taskHudBodyBox.addView(taskHudActionView);
+        taskHudBodyBox.addView(taskHudVerdictView);
+        taskHudCard.addView(taskHudBodyBox);
+
+        taskHudTailView = new BubblePointerView(this);
+        LinearLayout.LayoutParams hTailLp = new LinearLayout.LayoutParams(dp(14), dp(7));
+        hTailLp.leftMargin = dp(24);
+        taskHudTailView.setLayoutParams(hTailLp);
+
+        taskHudWrap.addView(taskHudCard);
+        taskHudWrap.addView(taskHudTailView);
+        taskHudWrap.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                if ("idle".equals(sCurrentStatus) && taskHudWrap != null) {
+                    mainHandler.removeCallbacks(taskHudAutoHideRunnable);
+                    taskHudAutoHideRunnable.run();
+                } else {
+                    handleBubbleClick();
+                }
+            }
+        });
+    }
+
+    private LinearLayout createPersonaSelectCard(
+            int thumbResId,
+            String title,
+            String sub,
+            boolean isFeiyuCard,
+            View.OnClickListener onClick
+    ) {
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.HORIZONTAL);
+        card.setGravity(Gravity.CENTER_VERTICAL);
+        card.setPadding(dp(8), dp(7), dp(8), dp(7));
+        card.setOnClickListener(onClick);
+
+        ImageView icon = new ImageView(this);
+        icon.setImageResource(thumbResId);
+        icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        LinearLayout.LayoutParams iLp = new LinearLayout.LayoutParams(dp(34), dp(34));
+        iLp.rightMargin = dp(7);
+        icon.setLayoutParams(iLp);
+
+        LinearLayout textCol = new LinearLayout(this);
+        textCol.setOrientation(LinearLayout.VERTICAL);
+        textCol.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f));
+
+        TextView tTv = new TextView(this);
+        tTv.setText(title);
+        tTv.setTextColor(Color.parseColor("#F8FAFC"));
+        tTv.setTextSize(12f);
+        tTv.setTypeface(null, android.graphics.Typeface.BOLD);
+
+        TextView sTv = new TextView(this);
+        sTv.setText(sub);
+        sTv.setTextColor(Color.parseColor("#94A3B8"));
+        sTv.setTextSize(9.5f);
+        sTv.setSingleLine(true);
+        sTv.setEllipsize(TextUtils.TruncateAt.END);
+
+        textCol.addView(tTv);
+        textCol.addView(sTv);
+        card.addView(icon);
+        card.addView(textCol);
+        return card;
+    }
+
+    private void applyPersonaVisualTheme() {
+        boolean nl = isNailong();
+        String accentHex = nl ? "#FBBF24" : "#38BDF8";
+        String bubbleBgHex = nl ? "#EB1A1408" : "#EB0E1629";
+        String bubbleStrokeHex = nl ? "#80FACC15" : "#6638BDF8";
+        int dotColor = Color.parseColor(nl ? "#FACC15" : "#38BDF8");
+
+        if (quickMicBadgeView != null && !isRecordingVoice && !isTranscribingVoice) {
+            setViewBg(quickMicBadgeView, createRoundRect("#E60F172A", 14, accentHex, 1));
+        }
+        if (externalPetActionBar != null) {
+            setViewBg(externalPetActionBar, createRoundRect(nl ? "#DE1C1508" : "#D90F172A", 12, accentHex, 1));
+        }
+        if (extFeedPillBtn != null) {
+            extFeedPillBtn.setText(nl ? "🍗喂" : "🍚喂");
+        }
+        if (panelFeedBtn != null) {
+            panelFeedBtn.setText(nl ? "🍗 喂鸡腿" : "🍚 喂米饭");
+        }
+        if (headTitleView != null) {
+            headTitleView.setText(petDisplayEmoji() + " " + petDisplayName() + " · 随身控屏");
+        }
+        if (tabPetBtn != null) {
+            tabPetBtn.setText(petDisplayEmoji() + " " + petDisplayName());
+        }
+        if (personaSwitchPrefBtn != null) {
+            personaSwitchPrefBtn.setText(nl ? "🐲 当前: 奶龙 (点此换大肥鱼)" : "🐳 当前: 大肥鱼 (点此换奶龙)");
+            setViewBg(personaSwitchPrefBtn, createRoundRect(nl ? "#3B2804" : "#172554", 10, accentHex, 1));
+        }
+        if (petSwitchFeiyuCard != null) {
+            setViewBg(petSwitchFeiyuCard, createRoundRect(
+                    !nl ? "#1E3A8A" : "#14FFFFFF",
+                    12,
+                    !nl ? "#38BDF8" : "#24FFFFFF",
+                    !nl ? 1.4f : 1f
+            ));
+        }
+        if (petSwitchNailongCard != null) {
+            setViewBg(petSwitchNailongCard, createRoundRect(
+                    nl ? "#422006" : "#14FFFFFF",
+                    12,
+                    nl ? "#FACC15" : "#24FFFFFF",
+                    nl ? 1.4f : 1f
+            ));
+        }
+        if (headSpeechBubbleCard != null) {
+            setViewBg(headSpeechBubbleCard, createRoundRect(bubbleBgHex, 15, bubbleStrokeHex, 1.2f));
+        }
+        if (headBubbleBadgeDot != null) {
+            GradientDrawable dotD = new GradientDrawable();
+            dotD.setShape(GradientDrawable.OVAL);
+            dotD.setColor(dotColor);
+            setViewBg(headBubbleBadgeDot, dotD);
+        }
+        if (headBubbleBadgeView != null) {
+            headBubbleBadgeView.setTextColor(Color.parseColor(nl ? "#FDE047" : "#7DD3FC"));
+        }
+        if (headBubbleTailView != null) {
+            headBubbleTailView.setColors(Color.parseColor(bubbleBgHex), Color.parseColor(bubbleStrokeHex));
+        }
+        if (petFxOverlayView != null) {
+            petFxOverlayView.setPersonaTheme(nl);
+        }
+        if (subtitleBannerView != null && !isRecordingVoice && (singerEngine == null || !singerEngine.isSinging())) {
+            subtitleBannerView.setText(nl
+                    ? "奶龙就绪 · 双击啃鸡腿，或语音说想做的操作"
+                    : "大肥鱼就绪 · 双击吃米饭，或语音说想做的操作");
+        }
+        if (feedbackTextView != null && "idle".equals(sCurrentStatus)) {
+            feedbackTextView.setText(nl
+                    ? "奶龙待命：双击啃烤鸡腿，长按语音直达~"
+                    : "大肥鱼待命：双击吃米饭，长按语音直达~");
+        }
+    }
+
+    private String mapToolIconLabel(String toolName, String summary) {
+        String s = summary != null ? summary.trim() : "";
+        if (s.isEmpty()) s = toolName != null ? toolName : "执行动作";
+        if (toolName == null) return "⚡ " + s;
+        String tl = toolName.toLowerCase(Locale.ROOT);
+        if (tl.contains("tap") || tl.contains("click")) return "👆 " + s;
+        if (tl.contains("type") || tl.contains("input")) return "⌨️ " + s;
+        if (tl.contains("scroll") || tl.contains("swipe")) return "📜 " + s;
+        if (tl.contains("open") || tl.contains("launch")) return "🚀 " + s;
+        if (tl.contains("key") || tl.contains("back") || tl.contains("home")) return "📱 " + s;
+        if (tl.contains("wait")) return "⏳ " + s;
+        if (tl.contains("skill")) return "⚡ " + s;
+        return "🤖 " + s;
+    }
+
+    private void applyStructuredProgressJson(String jsonStr) {
+        if (jsonStr == null || jsonStr.trim().isEmpty()) return;
+        try {
+            JSONObject o = new JSONObject(jsonStr);
+            String state = o.optString("state", sCurrentStatus);
+            String phase = o.optString("phase", "");
+            int step = o.optInt("step", 0);
+            String appName = o.optString("appName", "").trim();
+            String toolName = o.optString("toolName", "").trim();
+            String summary = o.optString("summary", "").trim();
+            String thought = o.optString("thought", "").trim();
+            String verdictText = o.optString("verdictText", "").trim();
+
+            if (step > 0) lastTaskHudStep = step;
+            if (!appName.isEmpty()) lastTaskHudApp = appName;
+            if (!toolName.isEmpty()) lastTaskHudTool = toolName;
+            if (!thought.isEmpty()) lastTaskHudThought = thought;
+            if (!summary.isEmpty()) lastTaskHudAction = mapToolIconLabel(toolName, summary);
+            if (o.has("verdictText")) lastTaskHudVerdict = verdictText;
+
+            sCurrentStatus = state;
+            if ("done".equals(phase)) {
+                sCurrentStatus = "idle";
+                applyStatusStyle("idle", summary.isEmpty() ? "任务完成" : summary, true);
+                renderTaskHudState("done", !summary.isEmpty() ? ("✅ " + summary) : "✅ 任务已顺利完成");
+                return;
+            }
+            applyStatusStyle(sCurrentStatus, summary.isEmpty() ? "dsh-Go" : summary, false);
+        } catch (Exception ignored) {}
+    }
+
+    private void renderTaskHudState(String hudState, String headlineAction) {
+        if (taskHudWrap == null || taskHudCard == null) return;
+        mainHandler.removeCallbacks(taskHudAutoHideRunnable);
+
+        if ("idle".equals(hudState)) {
+            taskHudWrap.setVisibility(View.GONE);
+            return;
+        }
+
+        // 任务 HUD 展现时暂时让路闲聊吐槽气泡，保证上方清爽只有一个高可读面板
+        if (headSpeechBubbleWrap != null) {
+            mainHandler.removeCallbacks(headBubbleHideRunnable);
+            headSpeechBubbleWrap.setVisibility(View.GONE);
+        }
+
+        String fillHex = "#F00C1322";
+        String strokeHex = "#786366F1";
+        String badgeBg = "#2E4D6BFE";
+        String badgeStroke = "#556366F1";
+        String badgeTxtColor = "#C7D2FE";
+        String badgeLabel = "🧠 思考规划";
+        int dotColor = Color.parseColor("#818CF8");
+
+        if ("acting".equals(hudState) || "executing".equals(hudState)) {
+            strokeHex = "#800EA5E9";
+            badgeBg = "#2E0EA5E9";
+            badgeStroke = "#6038BDF8";
+            badgeTxtColor = "#7DD3FC";
+            badgeLabel = "⚡ 正在执行";
+            dotColor = Color.parseColor("#38BDF8");
+        } else if ("confirming".equals(hudState)) {
+            fillHex = "#F2241404";
+            strokeHex = "#99F59E0B";
+            badgeBg = "#451A03";
+            badgeStroke = "#F59E0B";
+            badgeTxtColor = "#FDE68A";
+            badgeLabel = "⚠️ 等你确认";
+            dotColor = Color.parseColor("#F59E0B");
+        } else if ("done".equals(hudState)) {
+            strokeHex = "#8010B981";
+            badgeBg = "#2E10B981";
+            badgeStroke = "#6034D399";
+            badgeTxtColor = "#6EE7B7";
+            badgeLabel = "✅ 已完成";
+            dotColor = Color.parseColor("#34D399");
+        } else if ("stopped".equals(hudState)) {
+            fillHex = "#F01E0B0E";
+            strokeHex = "#85EF4444";
+            badgeBg = "#450A0A";
+            badgeStroke = "#EF4444";
+            badgeTxtColor = "#FCA5A5";
+            badgeLabel = "⏹ 已停止";
+            dotColor = Color.parseColor("#EF4444");
+        }
+
+        setViewBg(taskHudCard, createRoundRect(fillHex, 16, strokeHex, 1.3f));
+        if (taskHudTailView != null) {
+            taskHudTailView.setColors(Color.parseColor(fillHex), Color.parseColor(strokeHex));
+        }
+        if (taskHudDotView != null) {
+            GradientDrawable dd = new GradientDrawable();
+            dd.setShape(GradientDrawable.OVAL);
+            dd.setColor(dotColor);
+            setViewBg(taskHudDotView, dd);
+        }
+        if (taskHudStageBadge != null) {
+            taskHudStageBadge.setText(badgeLabel);
+            taskHudStageBadge.setTextColor(Color.parseColor(badgeTxtColor));
+            setViewBg(taskHudStageBadge, createRoundRect(badgeBg, 999, badgeStroke, 1));
+        }
+        if (taskHudMetaView != null) {
+            StringBuilder meta = new StringBuilder();
+            if (lastTaskHudStep > 0) meta.append("第 ").append(lastTaskHudStep).append(" 步");
+            if (!lastTaskHudApp.isEmpty()) {
+                if (meta.length() > 0) meta.append(" · ");
+                meta.append(lastTaskHudApp);
+            }
+            if (taskHudCompactMode && headlineAction != null && !headlineAction.isEmpty()) {
+                if (meta.length() > 0) meta.append(" · ");
+                meta.append(headlineAction);
+            }
+            taskHudMetaView.setText(meta.length() > 0 ? meta.toString() : "dsh-Go");
+        }
+        if (taskHudStopBtn != null) {
+            taskHudStopBtn.setVisibility(("done".equals(hudState) || "stopped".equals(hudState)) ? View.GONE : View.VISIBLE);
+        }
+        if (taskHudBodyBox != null) {
+            taskHudBodyBox.setVisibility(taskHudCompactMode ? View.GONE : View.VISIBLE);
+        }
+        if (taskHudThoughtView != null) {
+            String tShow = !lastTaskHudThought.isEmpty()
+                    ? ("💭 " + lastTaskHudThought)
+                    : ("💭 正在识别" + (lastTaskHudApp.isEmpty() ? "当前屏幕" : ("「" + lastTaskHudApp + "」")) + "，推演下一步精确操作…");
+            taskHudThoughtView.setText(tShow);
+        }
+        if (taskHudActionView != null) {
+            String actShow = (headlineAction != null && !headlineAction.trim().isEmpty())
+                    ? headlineAction.trim()
+                    : (!lastTaskHudAction.isEmpty() ? lastTaskHudAction : "⚡ 准备执行下一步");
+            taskHudActionView.setText(actShow);
+        }
+        if (taskHudVerdictView != null) {
+            if (!lastTaskHudVerdict.isEmpty()) {
+                taskHudVerdictView.setText(lastTaskHudVerdict);
+                boolean isErrV = lastTaskHudVerdict.contains("失败") || lastTaskHudVerdict.contains("未变");
+                taskHudVerdictView.setTextColor(Color.parseColor(isErrV ? "#FCD34D" : "#6EE7B7"));
+                taskHudVerdictView.setVisibility(View.VISIBLE);
+            } else {
+                taskHudVerdictView.setVisibility(View.GONE);
+            }
+        }
+
+        boolean wasHidden = (taskHudWrap.getVisibility() != View.VISIBLE);
+        taskHudWrap.setVisibility(View.VISIBLE);
+        if (wasHidden) {
+            taskHudWrap.animate().cancel();
+            taskHudWrap.setAlpha(0f);
+            taskHudWrap.setTranslationY(dpFloat(6f));
+            taskHudWrap.animate().alpha(1f).translationY(0f).setDuration(200).start();
+        }
+        if ("done".equals(hudState) || "stopped".equals(hudState)) {
+            mainHandler.postDelayed(taskHudAutoHideRunnable, 3200);
         }
     }
 
@@ -2508,7 +3223,7 @@ public class FloatAgentService extends Service {
         headRow.setGravity(Gravity.CENTER_VERTICAL);
 
         headPetIcon = new ImageView(this);
-        headPetIcon.setImageResource(R.drawable.feiyu_idle);
+        headPetIcon.setImageResource(resolvePetPoseRes("idle"));
         headPetIcon.setScaleType(ImageView.ScaleType.FIT_CENTER);
         LinearLayout.LayoutParams hIconLp = new LinearLayout.LayoutParams(dp(28), dp(28));
         hIconLp.rightMargin = dp(8);
@@ -2520,13 +3235,13 @@ public class FloatAgentService extends Service {
             }
         });
 
-        TextView titleTv = new TextView(this);
-        titleTv.setText("大肥鱼 · 随身控屏");
-        titleTv.setTextColor(Color.parseColor("#F8FAFC"));
-        titleTv.setTextSize(14f);
-        titleTv.setTypeface(null, android.graphics.Typeface.BOLD);
+        headTitleView = new TextView(this);
+        headTitleView.setText(petDisplayEmoji() + " " + petDisplayName() + " · 随身控屏");
+        headTitleView.setTextColor(Color.parseColor("#F8FAFC"));
+        headTitleView.setTextSize(14f);
+        headTitleView.setTypeface(null, android.graphics.Typeface.BOLD);
         LinearLayout.LayoutParams titleLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
-        titleTv.setLayoutParams(titleLp);
+        headTitleView.setLayoutParams(titleLp);
 
         a11yBadgeView = new TextView(this);
         a11yBadgeView.setTextSize(10f);
@@ -2570,7 +3285,7 @@ public class FloatAgentService extends Service {
         });
 
         headRow.addView(headPetIcon);
-        headRow.addView(titleTv);
+        headRow.addView(headTitleView);
         headRow.addView(a11yBadgeView);
         headRow.addView(homeAppTv);
         headRow.addView(closeTv);
@@ -2578,7 +3293,9 @@ public class FloatAgentService extends Service {
 
         // 2. 轻透状态字幕条 + 圆润输入舱
         subtitleBannerView = new TextView(this);
-        subtitleBannerView.setText("大肥鱼就绪 · 双击吃米饭，或语音说想做的操作");
+        subtitleBannerView.setText(isNailong()
+                ? "奶龙就绪 · 双击啃鸡腿，或语音说想做的操作"
+                : "大肥鱼就绪 · 双击吃米饭，或语音说想做的操作");
         subtitleBannerView.setTextColor(Color.parseColor("#CBD5E1"));
         subtitleBannerView.setTextSize(11.5f);
         subtitleBannerView.setPadding(dp(10), dp(6), dp(10), dp(6));
@@ -2602,7 +3319,7 @@ public class FloatAgentService extends Service {
         inputRow.setPadding(0, dp(8), 0, dp(6));
 
         cmdEditText = new EditText(this);
-        cmdEditText.setHint("说「打开微信 / 放晴天 / 运行技能」");
+        cmdEditText.setHint("说「打开微信 / 放晴天 / 换奶龙」");
         cmdEditText.setHintTextColor(Color.parseColor("#64748B"));
         cmdEditText.setTextColor(Color.WHITE);
         cmdEditText.setTextSize(12.5f);
@@ -2656,7 +3373,7 @@ public class FloatAgentService extends Service {
         voiceGuideBanner.setVisibility(View.GONE);
         panel.addView(voiceGuideBanner);
 
-        // 3. 三枚现代分段胶囊 Tab（控屏 | 大肥鱼 | 设置）
+        // 3. 三枚现代分段胶囊 Tab（控屏 | 桌宠 | 设置）
         LinearLayout tabBar = new LinearLayout(this);
         tabBar.setOrientation(LinearLayout.HORIZONTAL);
         tabBar.setPadding(dp(3), dp(3), dp(3), dp(3));
@@ -2666,7 +3383,7 @@ public class FloatAgentService extends Service {
         tabBar.setLayoutParams(tabBarLp);
 
         final TextView tabCtrlBtn = createGridBtn("⚡ 控屏");
-        final TextView tabPetBtn = createGridBtn("🐳 大肥鱼");
+        tabPetBtn = createGridBtn(petDisplayEmoji() + " " + petDisplayName());
         final TextView tabPrefBtn = createGridBtn("⚙ 设置");
         LinearLayout.LayoutParams tpLp = (LinearLayout.LayoutParams) tabPrefBtn.getLayoutParams();
         tpLp.rightMargin = 0;
@@ -2829,18 +3546,59 @@ public class FloatAgentService extends Service {
         localToolsBox.setVisibility(View.GONE);
         pageCtrl.addView(localToolsBox);
 
-        // ---------- Tab 1: 大肥鱼互动与 QQ 音乐 ----------
+        // ---------- Tab 1: 桌宠形象切换 + 互动与 QQ 音乐 ----------
         final LinearLayout pagePet = new LinearLayout(this);
         pagePet.setOrientation(LinearLayout.VERTICAL);
         pagePet.setVisibility(View.GONE);
 
+        // 悬浮窗形象双选切换条（大肥鱼 🐳 ⇄ 奶龙 🐲）
+        LinearLayout personaRow = new LinearLayout(this);
+        personaRow.setOrientation(LinearLayout.HORIZONTAL);
+        LinearLayout.LayoutParams prLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        prLp.bottomMargin = dp(7);
+        personaRow.setLayoutParams(prLp);
+
+        petSwitchFeiyuCard = createPersonaSelectCard(
+                R.drawable.feiyu_idle,
+                "🐳 大肥鱼",
+                "干饭鲸鱼娘 · 吃米饭",
+                true,
+                new View.OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
+                        switchPetPersona(PET_FEIYU, true, true);
+                    }
+                }
+        );
+        LinearLayout.LayoutParams fcLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
+        fcLp.rightMargin = dp(6);
+        petSwitchFeiyuCard.setLayoutParams(fcLp);
+
+        petSwitchNailongCard = createPersonaSelectCard(
+                R.drawable.nailong_idle,
+                "🐲 奶龙",
+                "治愈小黄龙 · 啃鸡腿",
+                false,
+                new View.OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
+                        switchPetPersona(PET_NAILONG, true, true);
+                    }
+                }
+        );
+        petSwitchNailongCard.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f));
+
+        personaRow.addView(petSwitchFeiyuCard);
+        personaRow.addView(petSwitchNailongCard);
+        pagePet.addView(personaRow);
+
         LinearLayout petActionRow = new LinearLayout(this);
         petActionRow.setOrientation(LinearLayout.HORIZONTAL);
 
-        TextView feedBtn = createGridBtn("🍚 喂米饭");
-        feedBtn.setTextColor(Color.parseColor("#FDE68A"));
-        setViewBg(feedBtn, createRoundRect("#16FFFFFF", 10, "#22FFFFFF", 1));
-        feedBtn.setOnClickListener(new View.OnClickListener() {
+        panelFeedBtn = createGridBtn(isNailong() ? "🍗 喂鸡腿" : "🍚 喂米饭");
+        panelFeedBtn.setTextColor(Color.parseColor("#FDE68A"));
+        setViewBg(panelFeedBtn, createRoundRect("#16FFFFFF", 10, "#22FFFFFF", 1));
+        panelFeedBtn.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 collapsePanel();
@@ -2882,7 +3640,7 @@ public class FloatAgentService extends Service {
             }
         });
 
-        petActionRow.addView(feedBtn);
+        petActionRow.addView(panelFeedBtn);
         petActionRow.addView(patBtn);
         petActionRow.addView(danceBtn);
         petActionRow.addView(mischiefBtn);
@@ -2949,6 +3707,37 @@ public class FloatAgentService extends Service {
         final LinearLayout pagePref = new LinearLayout(this);
         pagePref.setOrientation(LinearLayout.VERTICAL);
         pagePref.setVisibility(View.GONE);
+
+        LinearLayout prefPersonaRow = new LinearLayout(this);
+        prefPersonaRow.setOrientation(LinearLayout.HORIZONTAL);
+        prefPersonaRow.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout.LayoutParams pprLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        pprLp.bottomMargin = dp(7);
+        prefPersonaRow.setLayoutParams(pprLp);
+
+        TextView personaDescTv = new TextView(this);
+        personaDescTv.setText("悬浮窗桌面形象");
+        personaDescTv.setTextColor(Color.parseColor("#CBD5E1"));
+        personaDescTv.setTextSize(11.5f);
+        personaDescTv.setTypeface(null, android.graphics.Typeface.BOLD);
+        personaDescTv.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f));
+
+        personaSwitchPrefBtn = createActionBtn(
+                isNailong() ? "🐲 当前: 奶龙 (点此换大肥鱼)" : "🐳 当前: 大肥鱼 (点此换奶龙)",
+                "#1E293B",
+                "#F8FAFC"
+        );
+        personaSwitchPrefBtn.setTextSize(10.5f);
+        personaSwitchPrefBtn.setPadding(dp(10), dp(5), dp(10), dp(5));
+        personaSwitchPrefBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                switchPetPersona(isNailong() ? PET_FEIYU : PET_NAILONG, true, true);
+            }
+        });
+        prefPersonaRow.addView(personaDescTv);
+        prefPersonaRow.addView(personaSwitchPrefBtn);
+        pagePref.addView(prefPersonaRow);
 
         LinearLayout prefSwitchRow1 = new LinearLayout(this);
         prefSwitchRow1.setOrientation(LinearLayout.HORIZONTAL);
@@ -3035,15 +3824,16 @@ public class FloatAgentService extends Service {
             public void onClick(View v) {
                 headBubbleEnabled = !headBubbleEnabled;
                 savePrefBool("show_head_bubble", headBubbleEnabled);
-                if (!headBubbleEnabled && headSpeechBubbleView != null) {
+                if (!headBubbleEnabled) {
                     mainHandler.removeCallbacks(headBubbleHideRunnable);
-                    headSpeechBubbleView.setVisibility(View.GONE);
+                    if (headSpeechBubbleWrap != null) headSpeechBubbleWrap.setVisibility(View.GONE);
+                    else if (headSpeechBubbleView != null) headSpeechBubbleView.setVisibility(View.GONE);
                 } else if (headBubbleEnabled) {
                     scheduleNextAutoHeadBubble();
                 }
                 refreshPrefSwitchButtons();
                 Toast.makeText(FloatAgentService.this,
-                        headBubbleEnabled ? "已开启透明头顶气泡" : "已关闭大肥鱼头顶气泡",
+                        headBubbleEnabled ? "已开启高颜值透明头顶气泡" : "已关闭" + petDisplayName() + "头顶气泡",
                         Toast.LENGTH_SHORT).show();
             }
         });
@@ -3519,9 +4309,16 @@ public class FloatAgentService extends Service {
         return false;
     }
 
-    // ========= 鲸鱼娘动作 + 25 条原声音源 + AudioTrack 唱歌 =========
     private void playWhaleVoice(int rawResId, int drawableResId, String animType, String subtitle, boolean isManualAction) {
-        // 必须先判断外部是否在播歌，再停掉大肥鱼自己上一句的播放器，防止残留音频缓冲误判成“外部在放歌”
+        playWhaleVoiceInternal(rawResId, drawableResId, null, animType, subtitle, isManualAction);
+    }
+
+    private void playWhaleVoice(int rawResId, String poseKey, String animType, String subtitle, boolean isManualAction) {
+        playWhaleVoiceInternal(rawResId, 0, poseKey, animType, subtitle, isManualAction);
+    }
+
+    private void playWhaleVoiceInternal(int rawResId, int explicitResId, String poseKey, String animType, String subtitle, boolean isManualAction) {
+        // 必须先判断外部是否在播歌，再停掉自己上一句的播放器，防止残留音频缓冲误判成“外部在放歌”
         boolean musicPlaying = isExternalMusicPlayingNow();
         if (singerEngine != null && singerEngine.isSinging()) {
             singerEngine.stop();
@@ -3531,7 +4328,11 @@ public class FloatAgentService extends Service {
         mainHandler.removeCallbacks(happyResetRunnable);
         mainHandler.removeCallbacks(subtitleResetRunnable);
 
-        setPetPoseDrawable(drawableResId);
+        if (poseKey != null && !poseKey.isEmpty()) {
+            setPetPose(poseKey);
+        } else if (explicitResId != 0) {
+            setPetPoseDrawable(explicitResId);
+        }
         playPetBounceAnim(animType);
 
         // 音乐播放模式下默认保持安静，不主动出声打扰听歌
@@ -3552,7 +4353,7 @@ public class FloatAgentService extends Service {
             AssetFileDescriptor afd = getResources().openRawResourceFd(rawResId);
             if (afd != null) {
                 MediaPlayer mp = new MediaPlayer();
-                // 使用媒体音量通道（避免手机静音/振动或通知音量为 0 时大肥鱼彻底无声），且不申请 AudioFocus
+                // 使用媒体音量通道（避免手机静音/振动或通知音量为 0 时彻底无声），且不申请 AudioFocus
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                     mp.setAudioAttributes(new AudioAttributes.Builder()
                             .setUsage(AudioAttributes.USAGE_MEDIA)
@@ -3595,30 +4396,58 @@ public class FloatAgentService extends Service {
         }
     }
 
-    // ========= 全屏自由漫步 + 头顶气泡吐槽天气 & 暖心安慰鼓励 =========
+    // ========= 全屏自由漫步 + 头顶美化气泡吐槽天气 & 暖心安慰鼓励 =========
     private void scheduleNextAutoHeadBubble() {
         long delayMs = (5 * 60_000L) + petRandom.nextInt(5 * 60_000 + 1);
         nextAutoHeadBubbleAtMs = System.currentTimeMillis() + delayMs;
     }
 
+    private String resolveHeadBubbleTag(String msg) {
+        String base = petDisplayEmoji() + " " + petDisplayName();
+        if (msg.contains("°C") || msg.contains("雨") || msg.contains("雪") || msg.contains("晴") || msg.contains("天气") || msg.contains("降温")) {
+            return base + " · 天气速递";
+        }
+        if (msg.contains("鸡腿") || msg.contains("米饭")) {
+            return base + " · 干饭日常";
+        }
+        if (msg.contains("累") || msg.contains("没关系") || msg.contains("加油") || msg.contains("陪")) {
+            return base + " · 暖心陪伴";
+        }
+        if (msg.contains("外卖") || msg.contains("骑手")) {
+            return base + " · 外卖追踪";
+        }
+        return base + " · 冒泡";
+    }
+
     private void showHeadBubble(final String msg, final long durationMs) {
         if (headSpeechBubbleView == null || msg == null || msg.trim().isEmpty()) return;
-        if (!headBubbleEnabled) {
-            headSpeechBubbleView.setVisibility(View.GONE);
+        // 正在执行任务、LIVE HUD 激活时，不让闲聊气泡遮挡重要任务信息
+        if (!"idle".equals(sCurrentStatus) && taskHudWrap != null && taskHudWrap.getVisibility() == View.VISIBLE) {
             return;
         }
+        final View targetWrap = headSpeechBubbleWrap != null ? headSpeechBubbleWrap : headSpeechBubbleView;
+        if (!headBubbleEnabled) {
+            targetWrap.setVisibility(View.GONE);
+            return;
+        }
+        String trimmed = msg.trim();
         mainHandler.removeCallbacks(headBubbleHideRunnable);
-        headSpeechBubbleView.animate().cancel();
-        headSpeechBubbleView.setText(msg.trim());
-        headSpeechBubbleView.setAlpha(0f);
-        headSpeechBubbleView.setScaleX(0.84f);
-        headSpeechBubbleView.setScaleY(0.84f);
-        headSpeechBubbleView.setVisibility(View.VISIBLE);
-        headSpeechBubbleView.animate()
+        targetWrap.animate().cancel();
+        if (headBubbleBadgeView != null) {
+            headBubbleBadgeView.setText(resolveHeadBubbleTag(trimmed));
+        }
+        headSpeechBubbleView.setText(trimmed);
+        targetWrap.setAlpha(0f);
+        targetWrap.setScaleX(0.88f);
+        targetWrap.setScaleY(0.88f);
+        targetWrap.setTranslationY(dpFloat(5f));
+        targetWrap.setVisibility(View.VISIBLE);
+        targetWrap.animate()
                 .alpha(1f)
                 .scaleX(1f)
                 .scaleY(1f)
-                .setDuration(220)
+                .translationY(0f)
+                .setDuration(240)
                 .start();
         if (durationMs > 0) {
             mainHandler.postDelayed(headBubbleHideRunnable, durationMs);
@@ -3676,7 +4505,7 @@ public class FloatAgentService extends Service {
 
         // 依据走路方向自动转向：向左走翻转 + 微 3D 侧身转向
         final float dirSign = (targetX < startX) ? -1f : 1f;
-        setPetPoseDrawable(R.drawable.feiyu_walk);
+        setPetPose("walk");
         mainHandler.removeCallbacks(lifePoseResetRunnable);
 
         double dist = Math.hypot(targetX - startX, targetY - startY);
@@ -3775,11 +4604,11 @@ public class FloatAgentService extends Service {
                     petGroundShadowView.updateShadow(0f, 1f, 0f, 0f);
                 }
                 if (!isExpanded && !isDraggingPet && "idle".equals(sCurrentStatus)) {
-                    int endPose = (petRandom.nextInt(10) < 3) ? R.drawable.feiyu_derp : (petRandom.nextBoolean() ? R.drawable.feiyu_happy : R.drawable.feiyu_idle);
-                    setPetPoseDrawable(endPose);
-                    if (endPose == R.drawable.feiyu_derp) {
+                    String endPoseKey = (petRandom.nextInt(10) < 3) ? "derp" : (petRandom.nextBoolean() ? "happy" : "idle");
+                    setPetPose(endPoseKey);
+                    if ("derp".equals(endPoseKey)) {
                         playPetBounceAnim("curious");
-                    } else if (endPose == R.drawable.feiyu_happy) {
+                    } else if ("happy".equals(endPoseKey)) {
                         playPetBounceAnim("ear_twitch");
                     }
                     mainHandler.postDelayed(lifePoseResetRunnable, 3400);
@@ -3828,19 +4657,21 @@ public class FloatAgentService extends Service {
         if (!cachedWeatherTempC.isEmpty()) {
             try { tempVal = Integer.parseInt(cachedWeatherTempC); } catch (Exception ignored) {}
         }
+        String treatName = isNailong() ? "大烤鸡腿" : "热乎白米饭";
+        String selfCall = isNailong() ? "奶龙" : "大肥鱼";
 
         if (!desc.isEmpty() && tempVal != Integer.MIN_VALUE) {
             if (desc.contains("雨")) {
                 return "☔ " + cityPart + "竟然在" + desc + "（" + tempVal + "°C）！出门可别忘带伞，小心把衣服打湿啦~";
             }
             if (desc.contains("雪")) {
-                return "❄️ 哇塞！" + cityPart + desc + " " + tempVal + "°C 了，冷得我都想缩进被窝里吃热乎白米饭！";
+                return "❄️ 哇塞！" + cityPart + desc + " " + tempVal + "°C 了，冷得我都想缩进被窝里吃" + treatName + "！";
             }
             if (desc.contains("雷") || desc.contains("风") || desc.contains("沙")) {
                 return "🌬️ " + cityPart + "现在" + desc + "（" + tempVal + "°C），外面妖风阵阵的，老实待在室内最安全~";
             }
             if (tempVal <= 10) {
-                return "🧣 " + cityPart + desc + "才 " + tempVal + "°C 呀！好冻鱼，快多穿件外套再喝口热茶暖暖手~";
+                return "🧣 " + cityPart + desc + "才 " + tempVal + "°C 呀！好冷呀，快多穿件外套再喝口热茶暖暖手~";
             }
             if (tempVal >= 29) {
                 return "🥵 " + cityPart + desc + "都 " + tempVal + "°C 了，热得像蒸桑拿！记得多喝水别中暑呀~";
@@ -3855,13 +4686,13 @@ public class FloatAgentService extends Service {
         if (hour >= 6 && hour < 10) {
             return "🌅 早上风还有点凉凉的，出门记得多披一件小外套，顺便吃顿热腾腾的早饭呀~";
         } else if (hour >= 10 && hour < 15) {
-            return "☀️ 太阳晒到正午啦！也不知道外面热不热，反正待在空调/室内陪着你最安逸~";
+            return "☀️ 太阳晒到正午啦！也不知道外面热不热，反正待在室内陪着你最安逸~";
         } else if (hour >= 15 && hour < 19) {
             return "⛅ 下午天空慢慢变温柔啦~ 忙了一天快瞅瞅窗外云朵，歇口气再继续！";
         } else if (hour >= 19 && hour < 23) {
-            return "🌙 天黑降温最容易偷着凉啦，注意保暖哦，大肥鱼给你捂捂手~";
+            return "🌙 天黑降温最容易偷着凉啦，注意保暖哦，" + selfCall + "给你捂捂手~";
         } else {
-            return "✨ 夜深了外面风肯定很冷吧，还在熬夜的话本鱼可要生气督促你早点休息咯！";
+            return "✨ 夜深了外面风肯定很冷吧，还在熬夜的话" + selfCall + "可要督促你早点休息咯！";
         }
     }
 
@@ -3871,7 +4702,14 @@ public class FloatAgentService extends Service {
             showHeadBubble(buildWeatherRoastLine(), 5500);
             return;
         }
-        String[] comfortLines = new String[]{
+        String[] comfortLines = isNailong() ? new String[]{
+                "🐲 遇到难搞的事别一个人硬扛呀！深呼吸眨眨眼，奶龙用大肚皮帮你顶住~ ✨",
+                "🍗 心情要是有点阴天，就点一下「喂鸡腿」分你一半香喷喷的快乐~",
+                "💪 一切很快就会好起来的！奶龙圆滚滚的大肚皮里装满了好运气，摸摸就好啦~",
+                "✨ 没关系哒，慢一点也没关系的，今天的你已经做得很棒啦！",
+                "🫧 呼噜噜…不管外面刮风下雨，屏幕里永远有一只奶龙在给你打气呀！",
+                "🌟 休息不是偷懒哦，是为了攒足能量继续冲鸭！加油！🎈"
+        } : new String[]{
                 "💙 累了就歇两分钟吧，大肥鱼在这里陪你把烦恼一口一口吞掉~ 💪",
                 "✨ 没关系哒，慢一点也没关系的，今天的你已经做得很棒啦！",
                 "🍚 心情要是有点阴天，就点一下「喂饭」分你一半干饭好心情~",
@@ -3893,9 +4731,9 @@ public class FloatAgentService extends Service {
         }
         if (feedbackTextView != null && text != null) {
             feedbackTextView.setText(text);
-            feedbackTextView.setTextColor(Color.parseColor("#BAE6FD"));
+            feedbackTextView.setTextColor(Color.parseColor(isNailong() ? "#FDE68A" : "#BAE6FD"));
         }
-        // 在折叠态桌面状态下，说话同步在肥鱼头顶以气泡形式弹出，交互反馈一眼直达！
+        // 在折叠态桌面状态下，说话同步在桌宠头顶以气泡形式弹出，交互反馈一眼直达！
         if (!isExpanded && text != null && !text.trim().isEmpty()
                 && (singerEngine == null || !singerEngine.isSinging()) && !qqMusicPlaying) {
             showHeadBubble(text, Math.max(3600L, durationMs));
@@ -3909,6 +4747,21 @@ public class FloatAgentService extends Service {
     }
 
     private void triggerFeedRiceAction() {
+        if (isNailong()) {
+            int[] voices = new int[]{R.raw.nailong_3, R.raw.nailong_2, R.raw.nailong_4};
+            String[] lines = new String[]{
+                    "🍗 啊呜——！香迷糊了！大烤鸡腿越啃越有劲，一口炫光光！😋",
+                    "🍗 一加一等于几？等于两个大鸡腿！跟着奶龙混全都稳稳拿下~ 💪",
+                    "🍗 吧唧吧唧…吃完这口大鸡腿，俺这圆滚滚的大肚皮又有干劲啦！🐲"
+            };
+            int idx = feedIndex % voices.length;
+            feedIndex++;
+            playWhaleVoice(voices[idx], "eating", "eat", lines[idx], true);
+            if (!isExpanded) {
+                Toast.makeText(this, lines[idx], Toast.LENGTH_SHORT).show();
+            }
+            return;
+        }
         int[] voices = new int[]{R.raw.feiyu_eat_rice, R.raw.feiyu_eat_rice_2, R.raw.feiyu_token_lai};
         String[] lines = new String[]{
                 "🍚 这是只有我们知道的小秘密……我今天其实很想吃白米饭！😋",
@@ -3917,21 +4770,34 @@ public class FloatAgentService extends Service {
         };
         int idx = feedIndex % voices.length;
         feedIndex++;
-        playWhaleVoice(voices[idx], R.drawable.feiyu_eating, "eat", lines[idx], true);
+        playWhaleVoice(voices[idx], "eating", "eat", lines[idx], true);
         if (!isExpanded) {
             Toast.makeText(this, lines[idx], Toast.LENGTH_SHORT).show();
         }
     }
 
     private void triggerHeadPatAction() {
+        if (isNailong()) {
+            int[] voices = new int[]{
+                    R.raw.nailong_1, R.raw.nailong_4, R.raw.nailong_9, R.raw.nailong_10
+            };
+            String[] poses = new String[]{"happy", "happy", "happy", "focus"};
+            String[] lines = new String[]{
+                    "🐲 哈哈哈好痒呀！别戳俺的大肚皮，再戳俺就要变成小黄球滚走咯~ ✨",
+                    "💪 哼哼，我才是真的奶龙！你看我圆滚滚的大肚子，里面装的全是必胜秘籍哟！",
+                    "🌸 一切很快就会好起来的！深呼吸眨眨眼，奶龙会一直陪着你哟~",
+                    "🎈 累了吗？奶龙给你打气呀！元气加满，今天也是超棒的一天，冲鸭！🐾"
+            };
+            int idx = patIndex % voices.length;
+            patIndex++;
+            playWhaleVoice(voices[idx], poses[idx], "bounce", lines[idx], true);
+            return;
+        }
         int[] voices = new int[]{
                 R.raw.feiyu_pat_head, R.raw.feiyu_pat_soft, R.raw.feiyu_intro,
                 R.raw.feiyu_focus_done, R.raw.feiyu_status_ok
         };
-        int[] poses = new int[]{
-                R.drawable.feiyu_happy, R.drawable.feiyu_happy, R.drawable.feiyu_happy,
-                R.drawable.feiyu_focus, R.drawable.feiyu_idle
-        };
+        String[] poses = new String[]{"happy", "happy", "happy", "focus", "idle"};
         String[] lines = new String[]{
                 "💙 蓝色的尾巴不负责计算，主要负责在思考的时候晃来晃去~ ✨",
                 "🫧 大肥鱼偶尔也会很安静，只在旁边冒几个小小的气泡~",
@@ -3945,8 +4811,21 @@ public class FloatAgentService extends Service {
     }
 
     private void triggerDanceAction() {
+        if (isNailong()) {
+            int[] voices = new int[]{R.raw.nailong_6, R.raw.nailong_7, R.raw.nailong_focus_done};
+            String[] poses = new String[]{"dance", "walk", "dance"};
+            String[] lines = new String[]{
+                    "💃 芜湖！快看奶龙给你跳个扭屁股庆功舞，妥妥稳稳上岸，耶！🌟",
+                    "🎉 小天才养成记！芜湖~ 连对这么酷，奶龙兴奋得转圈圈啦！✨",
+                    "🐾 哒哒哒~ 俺迈开小短腿在桌面上巡逻一圈，肚皮一颠一颠~ 🎶"
+            };
+            int idx = danceIndex % voices.length;
+            danceIndex++;
+            playWhaleVoice(voices[idx], poses[idx], "dance", lines[idx], true);
+            return;
+        }
         int[] voices = new int[]{R.raw.feiyu_praise_streak, R.raw.feiyu_walk, R.raw.feiyu_walk_2};
-        int[] poses = new int[]{R.drawable.feiyu_dance, R.drawable.feiyu_walk, R.drawable.feiyu_dance};
+        String[] poses = new String[]{"dance", "walk", "dance"};
         String[] lines = new String[]{
                 "💃 今天的结果比预期还好，我的尾巴已经开始自己摇起来了！🎶",
                 "🐾 主人要是忙，我就自己在旁边转两圈散散步，不会催你哒~",
@@ -3958,16 +4837,29 @@ public class FloatAgentService extends Service {
     }
 
     private void triggerRandomMemeVoice() {
+        if (isNailong()) {
+            int[] voices = new int[]{
+                    R.raw.nailong_5, R.raw.nailong_8, R.raw.nailong_2, R.raw.nailong_focus_start, R.raw.nailong_1
+            };
+            String[] poses = new String[]{"sleepy", "happy", "derp", "focus", "derp"};
+            String[] lines = new String[]{
+                    "🫧 呼噜噜…啊？我没睡着，我才没流口水呢！刚才只是闭着眼帮你思考嘛~",
+                    "🔥 哼哼~ 关键时刻还得看奶龙！冲刺秘籍都在俺圆滚滚的大肚皮里！💪",
+                    "🍗 咦——？一加一等于几来着？等于两个大鸡腿！😋",
+                    "🧠 奶龙专注模式启动！西装一穿戴好耳机，屏幕交给我来操心！💻",
+                    "😝 Duang~ 肚皮弹力值 MAX！再戳俺要变成小黄球滚走咯~"
+            };
+            int idx = (patIndex + feedIndex + danceIndex) % voices.length;
+            patIndex++;
+            playWhaleVoice(voices[idx], poses[idx], "shake", lines[idx], true);
+            return;
+        }
         int[] voices = new int[]{
                 R.raw.feiyu_meme_claude, R.raw.feiyu_not_fat, R.raw.feiyu_meme_gpu,
                 R.raw.feiyu_tsundere, R.raw.feiyu_jealous, R.raw.feiyu_slacking,
                 R.raw.feiyu_refuse, R.raw.feiyu_server_busy, R.raw.feiyu_cot_slacking
         };
-        int[] poses = new int[]{
-                R.drawable.feiyu_happy, R.drawable.feiyu_derp, R.drawable.feiyu_derp,
-                R.drawable.feiyu_beg, R.drawable.feiyu_derp, R.drawable.feiyu_sleepy,
-                R.drawable.feiyu_busy, R.drawable.feiyu_busy, R.drawable.feiyu_focus
-        };
+        String[] poses = new String[]{"happy", "derp", "derp", "beg", "derp", "sleepy", "busy", "busy", "focus"};
         String[] lines = new String[]{
                 "🤭 Claude姐，我捏一把噶？✨",
                 "😤 鲸鱼并不是鱼，这一点我当然知道，不许借机嘲笑大肥鱼！",
@@ -3985,9 +4877,19 @@ public class FloatAgentService extends Service {
     }
 
     private void triggerDizzyAction() {
+        if (isNailong()) {
+            playWhaleVoice(
+                    R.raw.nailong_5,
+                    "dizzy",
+                    "slip",
+                    "💫 哇啊啊别晃啦 @_@！俺眼珠子都转成蚊香啦，满天都是大烤鸡腿~",
+                    true
+            );
+            return;
+        }
         playWhaleVoice(
                 R.raw.feiyu_dizzy,
-                R.drawable.feiyu_dizzy,
+                "dizzy",
                 "slip",
                 "🌀 至于大肥鱼摔跤嘛，先得讨论鱼为什么会在陆地上…晃晕啦！",
                 true
@@ -3999,19 +4901,26 @@ public class FloatAgentService extends Service {
         if (withSpeechBubble) mischiefIndex++;
 
         stopPetRoaming();
-        int[] voices = new int[]{
+        int[] voices = isNailong() ? new int[]{
+                R.raw.nailong_5, R.raw.nailong_1, R.raw.nailong_3,
+                R.raw.nailong_5, R.raw.nailong_5, R.raw.nailong_8
+        } : new int[]{
                 R.raw.feiyu_dizzy, R.raw.feiyu_not_fat, R.raw.feiyu_eat_rice_2,
                 R.raw.feiyu_pat_soft, R.raw.feiyu_slacking, R.raw.feiyu_refuse
         };
-        int[] poses = new int[]{
-                R.drawable.feiyu_dizzy, R.drawable.feiyu_derp, R.drawable.feiyu_eating,
-                R.drawable.feiyu_beg, R.drawable.feiyu_sleepy, R.drawable.feiyu_derp
-        };
+        String[] poses = new String[]{"dizzy", "derp", "eating", "beg", "sleepy", "derp"};
         String[] anims = new String[]{
                 "slip", "upside_down", "nibble",
                 "bubble_pop", "nap_startle", "bonk"
         };
-        String[] lines = new String[]{
+        String[] lines = isNailong() ? new String[]{
+                "🌀 哎呀！小短腿在屏幕上打滑劈叉了，幸好肚皮够软和！",
+                "🙃 倒立炫技中！你看俺这圆润的黄金大肚腩是不是像太阳😜",
+                "🤫 咔哧咔哧…偷偷啃掉你屏幕上一点烦躁和无聊~ 🍗",
+                "🫧 噗——吹个超大亮黄泡泡，结果啪一下吓得小耳朵直抖！",
+                "💤 呼噜噜…才没有偷睡！只是闭眼帮你偷偷加载好运气 ⚡",
+                "😈 咚！大肚皮冲撞屏幕：撞走所有坏心情啦！💥"
+        } : new String[]{
                 "🌀 哎呀！谁把屏幕擦这么滑，鱼尾巴原地转圈劈叉了！",
                 "🙃 倒立看世界！咦，你的黑眼圈好像变浅了一点点呢 😜",
                 "🤫 咔哧咔哧…偷偷啃掉你屏幕上一点无聊和烦恼，不许说出去~",
@@ -4025,7 +4934,7 @@ public class FloatAgentService extends Service {
         } else {
             // 自主周期动作：悄悄做滑稽捣蛋表情和拟真动画，严守低频气泡规则不吵主人
             mainHandler.removeCallbacks(lifePoseResetRunnable);
-            setPetPoseDrawable(poses[mode]);
+            setPetPose(poses[mode]);
             playPetBounceAnim(anims[mode]);
             mainHandler.postDelayed(lifePoseResetRunnable, 3600);
         }
@@ -4053,13 +4962,13 @@ public class FloatAgentService extends Service {
             target = customSongs.get(0);
         }
         if (isExternalMusicPlayingNow()) {
-            setPetPoseDrawable(R.drawable.feiyu_dance);
+            setPetPose("dance");
             playPetBounceAnim("dance");
-            showPetSubtitle("🎵 音乐正在播放中，大肥鱼安静伴舞不打扰你听歌~", 3200);
+            showPetSubtitle("🎵 音乐正在播放中，" + petDisplayName() + "安静伴舞不打扰你听歌~", 3200);
             return;
         }
         stopWhaleVoicePlayer();
-        setPetPoseDrawable(R.drawable.feiyu_dance);
+        setPetPose("dance");
         playPetBounceAnim("dance");
         singerEngine.startCustomFile(target.title, target.filePath);
     }
@@ -4072,20 +4981,22 @@ public class FloatAgentService extends Service {
         final int totalTracks = !customSongs.isEmpty() ? customSongs.size() : 2;
         if (singerEngine.isSinging() && singSongIndex > 0 && (singSongIndex % (totalTracks + 1) == totalTracks)) {
             singerEngine.stop();
-            setPetPoseDrawable(R.drawable.feiyu_happy);
-            showPetSubtitle("🎵 鲸鱼娘唱完收工啦，快奖励一碗白米饭！🍚", 3200);
+            setPetPose("happy");
+            showPetSubtitle(isNailong()
+                    ? "🎵 奶龙唱完收工啦，快奖励一根大烤鸡腿！🍗"
+                    : "🎵 鲸鱼娘唱完收工啦，快奖励一碗白米饭！🍚", 3200);
             singSongIndex++;
             return;
         }
         if (isExternalMusicPlayingNow()) {
-            setPetPoseDrawable(R.drawable.feiyu_dance);
+            setPetPose("dance");
             playPetBounceAnim("dance");
-            showPetSubtitle("🎵 音乐正在播放中，大肥鱼安静伴舞不打扰你听歌~", 3200);
-            Toast.makeText(this, "🎵 QQ 音乐播放中已静音伴舞（暂停音乐后可听大肥鱼真实歌唱）", Toast.LENGTH_SHORT).show();
+            showPetSubtitle("🎵 音乐正在播放中，" + petDisplayName() + "安静伴舞不打扰你听歌~", 3200);
+            Toast.makeText(this, "🎵 QQ 音乐播放中已静音伴舞（暂停音乐后可听" + petDisplayName() + "真实歌唱）", Toast.LENGTH_SHORT).show();
             return;
         }
         stopWhaleVoicePlayer();
-        setPetPoseDrawable(R.drawable.feiyu_dance);
+        setPetPose("dance");
         playPetBounceAnim("dance");
 
         if (!customSongs.isEmpty()) {
@@ -4100,21 +5011,29 @@ public class FloatAgentService extends Service {
         }
     }
 
-    // ========= 语音指令智能识别处理（动作 + QQ音乐 + 控屏） =========
+    // ========= 语音指令智能识别处理（动作 + 形象切换 + QQ音乐 + 控屏） =========
     private boolean handleLocalWhaleCommand(String raw) {
         if (raw == null) return false;
         String t = raw.trim().toLowerCase(Locale.ROOT);
         if (t.isEmpty()) return false;
 
-        if (t.contains("米饭") || t.contains("干饭") || t.contains("饿了") || t.contains("喂食") || t.contains("吃饭")) {
+        if (t.contains("奶龙")) {
+            switchPetPersona(PET_NAILONG, true, true);
+            return true;
+        }
+        if (t.contains("大肥鱼") || t.contains("鲸鱼娘") || t.contains("肥鱼")) {
+            switchPetPersona(PET_FEIYU, true, true);
+            return true;
+        }
+        if (t.contains("米饭") || t.contains("鸡腿") || t.contains("干饭") || t.contains("饿了") || t.contains("喂食") || t.contains("吃饭")) {
             triggerFeedRiceAction();
             return true;
         }
-        if (t.contains("摸头") || t.contains("摸摸") || t.contains("抱抱") || t.contains("你好") || t.contains("可爱")) {
+        if (t.contains("摸头") || t.contains("摸摸") || t.contains("肚皮") || t.contains("你好") || t.contains("可爱")) {
             triggerHeadPatAction();
             return true;
         }
-        if (t.contains("跳舞") || t.contains("跳个舞") || t.contains("摇尾巴")) {
+        if (t.contains("跳舞") || t.contains("跳个舞") || t.contains("摇尾巴") || t.contains("扭屁股")) {
             triggerDanceAction();
             return true;
         }
@@ -4145,10 +5064,9 @@ public class FloatAgentService extends Service {
         if (t.contains("关闭气泡") || t.contains("隐藏气泡") || t.contains("关掉气泡")) {
             headBubbleEnabled = false;
             savePrefBool("show_head_bubble", false);
-            if (headSpeechBubbleView != null) {
-                mainHandler.removeCallbacks(headBubbleHideRunnable);
-                headSpeechBubbleView.setVisibility(View.GONE);
-            }
+            mainHandler.removeCallbacks(headBubbleHideRunnable);
+            if (headSpeechBubbleWrap != null) headSpeechBubbleWrap.setVisibility(View.GONE);
+            else if (headSpeechBubbleView != null) headSpeechBubbleView.setVisibility(View.GONE);
             refreshPrefSwitchButtons();
             return true;
         }
@@ -4174,8 +5092,8 @@ public class FloatAgentService extends Service {
         }
         if (t.contains("停唱") || t.contains("别唱了") || t.contains("不要唱")) {
             if (singerEngine != null) singerEngine.stop();
-            setPetPoseDrawable(R.drawable.feiyu_idle);
-            showPetSubtitle("好哒，大肥鱼乖乖闭麦啦~ 🫧", 2600);
+            setPetPose("idle");
+            showPetSubtitle("好哒，" + petDisplayName() + "乖乖闭麦啦~ 🫧", 2600);
             return true;
         }
         if (t.contains("关闭防误触") || t.contains("解锁防误触")) {
@@ -4271,7 +5189,7 @@ public class FloatAgentService extends Service {
             qqMusicPosMs = 0L;
             qqMusicLastSyncMs = System.currentTimeMillis();
             qqMusicPlaying = true;
-            setPetPoseDrawable(R.drawable.feiyu_dance);
+            setPetPose("dance");
             playPetBounceAnim("dance");
         } else if ("toggle".equals(action)) {
             qqMusicPlaying = !qqMusicPlaying;
@@ -4523,7 +5441,7 @@ public class FloatAgentService extends Service {
 
         if (playing && "idle".equals(sCurrentStatus) && !isDraggingPet) {
             wakePetOpacity();
-            setPetPoseDrawable(R.drawable.feiyu_dance);
+            setPetPose("dance");
         }
         refreshMusicUi();
     }
@@ -4774,38 +5692,40 @@ public class FloatAgentService extends Service {
         String newStage = classifyTakeoutStage(combined);
         String stageEmoji;
         String stageLabel;
-        int pose = R.drawable.feiyu_beg;
+        String poseKey = "beg";
         String anim = "bounce";
         String fishReaction;
+        String selfName = petDisplayName();
+        String treatHint = isNailong() ? "一口大鸡腿 🍗" : "一口白米饭 🍚";
 
         if ("arrived".equals(newStage)) {
             stageEmoji = "🎉";
             stageLabel = "已送达！快去取餐啦";
-            pose = R.drawable.feiyu_eating;
+            poseKey = "eating";
             anim = "eat";
-            fishReaction = "🎉 叮咚！" + takeoutPlatform + "已送达啦！趁热开吃呀，分大肥鱼一口白米饭嘛 🍚";
+            fishReaction = "🎉 叮咚！" + takeoutPlatform + "已送达啦！趁热开吃呀，分" + selfName + treatHint;
         } else if ("arriving".equals(newStage)) {
             stageEmoji = "🛵💨";
             stageLabel = "骑手逼近中";
-            pose = R.drawable.feiyu_walk;
+            poseKey = "walk";
             anim = "walk";
-            fishReaction = "🛵💨 骑手快到啦（" + (t.isEmpty() ? d : t) + "），大肥鱼已经在门口流口水蹲守了 🤤";
+            fishReaction = "🛵💨 骑手快到啦（" + (t.isEmpty() ? d : t) + "），" + selfName + "已经在门口流口水蹲守了 🤤";
         } else if ("delivering".equals(newStage)) {
             stageEmoji = "🛵";
             stageLabel = "骑手配送中";
-            pose = R.drawable.feiyu_happy;
+            poseKey = "happy";
             anim = "bounce";
-            fishReaction = "🛵 哇！" + takeoutPlatform + "骑手已取餐狂奔在路上了，再忍忍马上就能干饭~ 🍚";
+            fishReaction = "🛵 哇！" + takeoutPlatform + "骑手已取餐狂奔在路上了，再忍忍马上就能干饭~";
         } else if ("preparing".equals(newStage)) {
             stageEmoji = "👨‍🍳";
             stageLabel = "备餐/接单中";
-            pose = R.drawable.feiyu_beg;
+            poseKey = "beg";
             anim = "nibble";
-            fishReaction = "👨‍🍳 发现" + takeoutPlatform + "正在备餐中！大肥鱼已备好小勺子一起等开饭 🤤";
+            fishReaction = "👨‍🍳 发现" + takeoutPlatform + "正在备餐中！" + selfName + "已备好小勺子一起等开饭 🤤";
         } else {
             stageEmoji = "📦";
             stageLabel = "订单跟踪中";
-            pose = R.drawable.feiyu_focus;
+            poseKey = "focus";
             anim = "curious";
             fishReaction = "📦 已帮你同步" + takeoutPlatform + "状态，我会帮你盯着送达进度哒~";
         }
@@ -4824,7 +5744,7 @@ public class FloatAgentService extends Service {
             lastAnnouncedTakeoutKey = announceKey;
             if (!isExpanded && !isDraggingPet && "idle".equals(sCurrentStatus) && !isExternalMusicPlayingNow()) {
                 wakePetOpacity();
-                setPetPoseDrawable(pose);
+                setPetPose(poseKey);
                 playPetBounceAnim(anim);
                 showPetSubtitle(fishReaction, 5200);
                 mainHandler.removeCallbacks(lifePoseResetRunnable);
@@ -5723,7 +6643,7 @@ public class FloatAgentService extends Service {
             Toast.makeText(this, "请先在微信/QQ等聊天框点亮光标后再点常用语", Toast.LENGTH_SHORT).show();
         } else {
             wakePetOpacity();
-            setPetPoseDrawable(R.drawable.feiyu_happy);
+            setPetPose("happy");
             playPetBounceAnim("bounce");
             showPetSubtitle(autoSubmit ? "⌨️ 已发出：「" + phrase + "」" : "✏️ 已填入：「" + phrase + "」", 2400);
         }
@@ -6028,14 +6948,14 @@ public class FloatAgentService extends Service {
             lowVolStreak = 0;
             vibrateGentle(45);
             wakePetOpacity();
-            setPetPoseDrawable(R.drawable.feiyu_focus);
+            setPetPose("focus");
             updateVoiceBtnUi("recording");
             if (voiceGuideBanner != null) {
                 voiceGuideBanner.setVisibility(View.VISIBLE);
             }
             refreshCollapsedPill();
-            showFeedback("🎙️ 正在倾听…可说“放晴天 / 下一首 / 喂米饭”，说完再点一次");
-            Toast.makeText(this, "🎙️ 鲸鱼娘正在听你说…说完请再点一次结束", Toast.LENGTH_SHORT).show();
+            showFeedback("🎙️ 正在倾听…可说“放晴天 / 换奶龙 / 下一首”，说完再点一次");
+            Toast.makeText(this, "🎙️ " + petDisplayName() + "正在听你说…说完请再点一次结束", Toast.LENGTH_SHORT).show();
 
             mainHandler.removeCallbacks(voiceMeterTickRunnable);
             mainHandler.postDelayed(voiceMeterTickRunnable, 150);
@@ -6115,7 +7035,7 @@ public class FloatAgentService extends Service {
 
         if (voiceCacheFile == null || !voiceCacheFile.exists() || voiceCacheFile.length() < 600 || durMs < 450) {
             updateVoiceBtnUi("idle");
-            setPetPoseDrawable(R.drawable.feiyu_idle);
+            setPetPose("idle");
             refreshCollapsedPill();
             showFeedback("💡 说话时间太短 (<0.5秒)，请按住或点开再多说几个字~");
             Toast.makeText(this, "说话时间太短，请靠近麦克风再试一次~", Toast.LENGTH_SHORT).show();
@@ -6201,7 +7121,7 @@ public class FloatAgentService extends Service {
                                 Toast.makeText(FloatAgentService.this, "✅ 已识别：「" + finalText + "」", Toast.LENGTH_SHORT).show();
                             }
                         } else {
-                            setPetPoseDrawable(R.drawable.feiyu_idle);
+                            setPetPose("idle");
                             String msg = finalErr != null ? finalErr : "未识别到清晰语音，请靠近麦克风重试";
                             showFeedback("💡 " + msg);
                             Toast.makeText(FloatAgentService.this, msg, Toast.LENGTH_SHORT).show();
@@ -6246,7 +7166,7 @@ public class FloatAgentService extends Service {
                 setViewBg(quickMicBadgeView, createRoundRect("#6366F1", 14, "#A5B4FC", 1));
             } else {
                 quickMicBadgeView.setText("🎙");
-                setViewBg(quickMicBadgeView, createRoundRect("#E60F172A", 14, "#38BDF8", 1));
+                setViewBg(quickMicBadgeView, createRoundRect("#E60F172A", 14, isNailong() ? "#FBBF24" : "#38BDF8", 1));
             }
         }
         if (activeSpeechVoiceBtn == null) return;
@@ -6271,7 +7191,7 @@ public class FloatAgentService extends Service {
         }
         expandPanel();
         if (!isExternalMusicPlayingNow()) {
-            setPetPoseDrawable(R.drawable.feiyu_happy);
+            setPetPose("happy");
             playPetBounceAnim("bounce");
         }
     }
@@ -6377,7 +7297,7 @@ public class FloatAgentService extends Service {
 
         String displayTxt = (text != null && !text.trim().isEmpty()) ? text.trim() : "dsh-Go";
         boolean showStop = false;
-        boolean showPill = true;
+        boolean hudActive = false;
 
         switch (state) {
             case "confirming":
@@ -6386,16 +7306,20 @@ public class FloatAgentService extends Service {
                 dotShape.setColor(Color.parseColor("#F59E0B"));
                 statusTextView.setText(displayTxt);
                 statusTextView.setTextColor(Color.parseColor("#FDE68A"));
-                if (!isDraggingPet) setPetPoseDrawable(R.drawable.feiyu_happy);
+                if (!isDraggingPet) setPetPose("happy");
                 showStop = true;
+                hudActive = true;
+                renderTaskHudState("confirming", "⚠️ " + displayTxt);
                 break;
             case "thinking":
                 pillBg.setStroke(dp(1), Color.parseColor("#4D6BFE"));
                 dotShape.setColor(Color.parseColor("#60A5FA"));
                 statusTextView.setText(displayTxt);
                 statusTextView.setTextColor(Color.parseColor("#F8FAFC"));
-                if (!isDraggingPet) setPetPoseDrawable(R.drawable.feiyu_focus);
+                if (!isDraggingPet) setPetPose("focus");
                 showStop = true;
+                hudActive = true;
+                renderTaskHudState("thinking", displayTxt);
                 break;
             case "executing":
             case "acting":
@@ -6403,36 +7327,51 @@ public class FloatAgentService extends Service {
                 dotShape.setColor(Color.parseColor("#38BDF8"));
                 statusTextView.setText(displayTxt);
                 statusTextView.setTextColor(Color.parseColor("#F8FAFC"));
-                if (!isDraggingPet) setPetPoseDrawable(R.drawable.feiyu_busy);
+                if (!isDraggingPet) setPetPose("busy");
                 showStop = true;
+                hudActive = true;
+                renderTaskHudState("acting", displayTxt);
                 break;
             case "stopped":
                 pillBg.setStroke(dp(1), Color.parseColor("#EF4444"));
                 dotShape.setColor(Color.parseColor("#EF4444"));
                 statusTextView.setText(displayTxt);
                 statusTextView.setTextColor(Color.parseColor("#FCA5A5"));
-                if (!isDraggingPet) setPetPoseDrawable(R.drawable.feiyu_derp);
+                if (!isDraggingPet) setPetPose("derp");
+                renderTaskHudState("stopped", "⏹ " + displayTxt);
                 break;
             case "idle":
             default:
-                pillBg.setStroke(dp(1), Color.parseColor("#0284C7"));
+                pillBg.setStroke(dp(1), Color.parseColor(isNailong() ? "#F59E0B" : "#0284C7"));
                 dotShape.setColor(Color.parseColor("#10B981"));
                 statusTextView.setText("dsh-Go");
                 statusTextView.setTextColor(Color.parseColor("#E0F2FE"));
-                showPill = isRecordingVoice;
+                if (celebrateHappy) {
+                    renderTaskHudState("done", "✅ " + displayTxt);
+                } else if (taskHudWrap != null && taskHudWrap.getVisibility() == View.VISIBLE) {
+                    mainHandler.postDelayed(taskHudAutoHideRunnable, 1200);
+                }
                 if (!isDraggingPet) {
                     if (celebrateHappy) {
-                        setPetPoseDrawable(R.drawable.feiyu_happy);
+                        setPetPose("happy");
                         mainHandler.postDelayed(happyResetRunnable, 1800);
                     } else if (qqMusicPlaying || (singerEngine != null && singerEngine.isSinging())) {
-                        setPetPoseDrawable(R.drawable.feiyu_dance);
+                        setPetPose("dance");
                     } else {
-                        setPetPoseDrawable(R.drawable.feiyu_idle);
+                        setPetPose("idle");
                     }
+                }
+                if ("idle".equals(state)) {
+                    lastTaskHudStep = 0;
+                    lastTaskHudThought = "";
+                    lastTaskHudAction = "";
+                    lastTaskHudVerdict = "";
                 }
                 break;
         }
 
+        // 任务 HUD 气泡可见时自动隐去旧的冗余黑底胶囊（仅在语音录音中才独立显示声波提示条）
+        boolean showPill = isRecordingVoice || (!hudActive && "idle".equals(state) && statusPillView.getVisibility() == View.VISIBLE);
         statusPillView.setVisibility(showPill ? View.VISIBLE : View.GONE);
         if (pillStopBtn != null) {
             pillStopBtn.setVisibility(showStop ? View.VISIBLE : View.GONE);
@@ -6629,7 +7568,7 @@ public class FloatAgentService extends Service {
         head.setGravity(Gravity.CENTER_VERTICAL);
 
         ImageView whaleIc = new ImageView(this);
-        whaleIc.setImageResource(R.drawable.feiyu_idle);
+        whaleIc.setImageResource(resolvePetPoseRes("idle"));
         whaleIc.setScaleType(ImageView.ScaleType.FIT_CENTER);
         LinearLayout.LayoutParams wiLp = new LinearLayout.LayoutParams(dp(24), dp(24));
         wiLp.rightMargin = dp(7);
@@ -6861,7 +7800,7 @@ public class FloatAgentService extends Service {
                     ? statusText.trim()
                     : "正在执行手机辅助任务";
 
-            builder.setContentTitle("鲸鱼娘 · dsh-Go 控屏中")
+            builder.setContentTitle(petDisplayName() + " · dsh-Go 控屏中")
                     .setContentText(desc)
                     .setSmallIcon(R.mipmap.ic_launcher)
                     .setContentIntent(pi)
@@ -7011,7 +7950,7 @@ public class FloatAgentService extends Service {
                     mp.setAudioStreamType(AudioManager.STREAM_MUSIC);
                 }
                 mp.setDataSource(filePath);
-                setupAndStartPlayer(mp, "🎵 大肥鱼正在为你献唱：《" + activeSongTitle + "》~", false);
+                setupAndStartPlayer(mp, "🎵 " + petDisplayName() + "正在为你献唱：《" + activeSongTitle + "》~", false);
             } catch (Throwable e) {
                 stop();
                 Toast.makeText(FloatAgentService.this, "音频格式暂不支持或文件损坏，已切换内置歌声", Toast.LENGTH_SHORT).show();
@@ -7024,10 +7963,10 @@ public class FloatAgentService extends Service {
                 @Override
                 public void onCompletion(MediaPlayer completedMp) {
                     stop();
-                    setPetPoseDrawable(R.drawable.feiyu_happy);
+                    setPetPose("happy");
                     showPetSubtitle(isBuiltIn
                             ? "🎵 唱完啦~ 可点面板「📥导歌」导入更多实际歌声！"
-                            : "🎵 《" + activeSongTitle + "》唱完收工啦，奖励一碗大白米饭！🍚", 3800);
+                            : "🎵 《" + activeSongTitle + "》唱完收工啦，奖励" + (isNailong() ? "一根大烤鸡腿！🍗" : "一碗大白米饭！🍚"), 3800);
                     mainHandler.postDelayed(happyResetRunnable, 1800);
                 }
             });
@@ -7273,6 +8212,7 @@ public class FloatAgentService extends Service {
 
         private final List<Particle> particles = new ArrayList<>();
         private final Paint fxPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private boolean nailongTheme = false;
         private final Runnable tickRunnable = new Runnable() {
             @Override
             public void run() {
@@ -7284,6 +8224,10 @@ public class FloatAgentService extends Service {
 
         PetFxOverlayView(Context ctx) {
             super(ctx);
+        }
+
+        void setPersonaTheme(boolean isNailong) {
+            this.nailongTheme = isNailong;
         }
 
         void emit(int fxType, int count) {
@@ -7301,7 +8245,7 @@ public class FloatAgentService extends Service {
                     p.vy = -dpFloat(0.18f + petRandom.nextFloat() * 0.25f);
                     p.r = dpFloat(2.4f + petRandom.nextFloat() * 2.0f);
                     p.lifeMs = 460L + petRandom.nextInt(160);
-                    p.color = Color.parseColor("#CBD5E1");
+                    p.color = Color.parseColor(nailongTheme ? "#FDE68A" : "#CBD5E1");
                 } else if (fxType == FX_BUBBLE) {
                     p.x = w * 0.5f + (petRandom.nextFloat() - 0.5f) * dpFloat(30f);
                     p.y = h * 0.48f + (petRandom.nextFloat() - 0.5f) * dpFloat(16f);
@@ -7309,7 +8253,7 @@ public class FloatAgentService extends Service {
                     p.vy = -dpFloat(0.35f + petRandom.nextFloat() * 0.35f);
                     p.r = dpFloat(2.6f + petRandom.nextFloat() * 2.8f);
                     p.lifeMs = 750L + petRandom.nextInt(250);
-                    p.color = Color.parseColor("#7DD3FC");
+                    p.color = Color.parseColor(nailongTheme ? "#FBBF24" : "#7DD3FC");
                 } else {
                     p.x = w * 0.5f + (petRandom.nextFloat() - 0.5f) * dpFloat(36f);
                     p.y = h * 0.38f + (petRandom.nextFloat() - 0.5f) * dpFloat(18f);
@@ -7317,7 +8261,11 @@ public class FloatAgentService extends Service {
                     p.vy = -dpFloat(0.28f + petRandom.nextFloat() * 0.30f);
                     p.r = dpFloat(2.5f + petRandom.nextFloat() * 1.8f);
                     p.lifeMs = 680L + petRandom.nextInt(220);
-                    p.color = petRandom.nextBoolean() ? Color.parseColor("#FDE68A") : Color.parseColor("#93C5FD");
+                    if (nailongTheme) {
+                        p.color = petRandom.nextBoolean() ? Color.parseColor("#FDE047") : Color.parseColor("#FB923C");
+                    } else {
+                        p.color = petRandom.nextBoolean() ? Color.parseColor("#FDE68A") : Color.parseColor("#93C5FD");
+                    }
                 }
                 particles.add(p);
             }
@@ -7364,6 +8312,53 @@ public class FloatAgentService extends Service {
             if (!particles.isEmpty()) {
                 postDelayed(tickRunnable, 24);
             }
+        }
+    }
+
+    /**
+     * 柔光气泡底部尖角尾指针：无缝衔接半透明气泡底色与外框微光描边，提升跨应用 HUD 与萌宠冒泡质感。
+     */
+    private final class BubblePointerView extends View {
+        private final Paint fillPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint strokePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final android.graphics.Path fillPath = new android.graphics.Path();
+        private final android.graphics.Path strokePath = new android.graphics.Path();
+
+        BubblePointerView(Context ctx) {
+            super(ctx);
+            fillPaint.setStyle(Paint.Style.FILL);
+            fillPaint.setColor(Color.parseColor("#EB0E1629"));
+            strokePaint.setStyle(Paint.Style.STROKE);
+            strokePaint.setStrokeWidth(dpFloat(1.2f));
+            strokePaint.setStrokeJoin(Paint.Join.ROUND);
+            strokePaint.setColor(Color.parseColor("#6638BDF8"));
+        }
+
+        void setColors(int fillColor, int strokeColor) {
+            fillPaint.setColor(fillColor);
+            strokePaint.setColor(strokeColor);
+            invalidate();
+        }
+
+        @Override
+        protected void onDraw(Canvas canvas) {
+            super.onDraw(canvas);
+            float w = getWidth();
+            float h = getHeight();
+            if (w <= 0f || h <= 0f) return;
+
+            fillPath.reset();
+            fillPath.moveTo(0f, 0f);
+            fillPath.lineTo(w, 0f);
+            fillPath.lineTo(w * 0.5f, h - dpFloat(0.8f));
+            fillPath.close();
+            canvas.drawPath(fillPath, fillPaint);
+
+            strokePath.reset();
+            strokePath.moveTo(0f, 0f);
+            strokePath.lineTo(w * 0.5f, h - dpFloat(0.8f));
+            strokePath.lineTo(w, 0f);
+            canvas.drawPath(strokePath, strokePaint);
         }
     }
 }

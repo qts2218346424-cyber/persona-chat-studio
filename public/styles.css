@@ -4490,10 +4490,13 @@ body[data-ui-mode="phone-agent"] .ambient-aurora {
   opacity: 1;
 }
 
-.app-shell[data-ui-mode="deepseek"] .messages-viewport ,
-.app-shell[data-ui-mode="phone-agent"] .messages-viewport {
+.app-shell[data-ui-mode="deepseek"] .messages-viewport {
   padding: 28px 28px 18px !important;
   background: var(--bg-app) !important;
+}
+
+.app-shell[data-ui-mode="phone-agent"] .messages-viewport {
+  padding: 24px 24px 18px !important;
 }
 
 .app-shell[data-ui-mode="deepseek"] .messages-container ,

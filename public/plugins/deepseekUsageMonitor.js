@@ -535,21 +535,30 @@
   function positionPopoverNearTrigger(btn, pop) {
     if (!btn || !pop || typeof btn.getBoundingClientRect !== 'function') return;
     const vw = window.innerWidth || 1200;
+    const vh = window.innerHeight || 800;
     if (vw <= 640) {
       pop.style.top = 'auto';
       pop.style.left = '12px';
       pop.style.right = '12px';
+      pop.style.maxHeight = `${Math.min(480, Math.max(240, vh - 110))}px`;
       return;
     }
     const rect = btn.getBoundingClientRect();
     if (!rect.width && !rect.height) return;
-    const vh = window.innerHeight || 800;
-    const bottom = Math.min(Math.max(72, vh - rect.top + 8), Math.max(72, vh - 160));
+    const spaceAbove = Math.max(0, rect.top - 16);
+    const spaceBelow = Math.max(0, vh - rect.bottom - 16);
     const right = Math.min(Math.max(12, vw - rect.right), Math.max(12, vw - 380));
-    pop.style.top = 'auto';
     pop.style.left = 'auto';
-    pop.style.bottom = `${bottom}px`;
     pop.style.right = `${right}px`;
+    if (spaceAbove >= 420 || spaceAbove >= spaceBelow) {
+      pop.style.top = 'auto';
+      pop.style.bottom = `${Math.max(12, vh - rect.top + 8)}px`;
+      pop.style.maxHeight = `${Math.min(500, Math.max(220, Math.floor(spaceAbove)))}px`;
+    } else {
+      pop.style.bottom = 'auto';
+      pop.style.top = `${Math.max(12, rect.bottom + 8)}px`;
+      pop.style.maxHeight = `${Math.min(500, Math.max(220, Math.floor(spaceBelow)))}px`;
+    }
   }
 
   function openPopover() {

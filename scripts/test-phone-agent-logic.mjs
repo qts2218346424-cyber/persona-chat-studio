@@ -95,7 +95,7 @@ class MockElement {
   }
   // 解析测试交互需要的按钮/输入框/带 id/class/data-* 的关键节点
   _hydrateQuickHtml(html) {
-    const tagRe = /<(button|input|div|span|ol)\b([^>]*)>([\s\S]*?)<\/\1>|<input\b([^>]*)\/?>/gi;
+    const tagRe = /<(button|input|div|span|ol|strong)\b([^>]*)>([\s\S]*?)<\/\1>|<input\b([^>]*)\/?>/gi;
     let m;
     while ((m = tagRe.exec(html)) !== null) {
       const tag = (m[1] || 'input').toLowerCase();
@@ -114,7 +114,7 @@ class MockElement {
       child.textContent = inner.replace(/<[^>]+>/g, '').trim();
       child._innerHTML = inner;
       this.appendChild(child);
-      if (inner && /<(?:button|input|div|span|ol)\b/i.test(inner)) {
+      if (inner && /<(?:button|input|div|span|ol|strong)\b/i.test(inner)) {
         child._hydrateQuickHtml(inner);
       }
     }
@@ -1263,6 +1263,217 @@ async function runTests() {
     ok(dumpSnapshotCalls === 1, `第 2 步直接复用原生 prefetchedSnapshot 零重复采树 (actual=${dumpSnapshotCalls})`);
     ok(!sawPrefetchedLeakInPayload, 'screenVerdict 未将 prefetchedSnapshot 冗余载荷发往大模型');
     ok(nativeSleepCalls >= 0, 'nativeSleepAsync 原生定时通道就绪');
+  }
+
+  // ========= 场景 14：DeepSeek 用量/费用/余额插件全链路校验（跨模式隔离 + 自动余额 + 今日统计 + 尾包 usage + 预检记账） =========
+  {
+    const h = createHarness({
+      initialStorage: {
+        pa_exec_mode_v1: 'local',
+        pa_exclusive_api_key_v1: 'sk-pa-preflight-123456',
+        pa_clarify_policy_v1: 'always'
+      }
+    });
+    const { win, doc, setFetchHandler, hooks } = h;
+    const appShell = doc.getElementById('app-shell');
+    appShell.dataset.uiMode = 'deepseek';
+
+    const chatForm = doc.createElement('form');
+    chatForm.id = 'chat-form';
+    doc.body.appendChild(chatForm);
+    doc.head = doc.createElement('head');
+    const monitorCode = fs.readFileSync(path.join(ROOT, 'public', 'plugins', 'deepseekUsageMonitor.js'), 'utf8');
+    ok(!monitorCode.includes('light-dark('), 'DeepSeek 计费插件已彻底移除无回退的 light-dark() CSS 函数');
+    vm.runInContext(monitorCode, win);
+
+    const plugin = win.DeepSeekMonitorPlugin;
+    let balanceReqBody = null;
+    setFetchHandler(async (url, opts = {}) => {
+      if (String(url).includes('/api/deepseek/check-balance')) {
+        balanceReqBody = JSON.parse(opts.body || '{}');
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            ok: true,
+            enabled: true,
+            provider_label: 'DeepSeek 官方 API',
+            is_official_deepseek: true,
+            balance_supported: true,
+            is_available: true,
+            symbol: '¥',
+            total_balance: '48.62',
+            topped_up_balance: '40.00',
+            granted_balance: '8.62'
+          })
+        };
+      }
+      return { ok: true, status: 200, json: async () => ({ ok: true }) };
+    });
+
+    // 1) 聊天模式传参 sync（含 apiKey）自动拉取实时余额
+    plugin.sync({
+      scopeProvider: 'own_deepseek',
+      apiKey: 'sk-chat-123456',
+      baseUrl: 'https://api.deepseek.com/v1/chat/completions',
+      settings: { provider: 'own_deepseek', has_own_deepseek_key: true, own_deepseek_model: 'deepseek-v4.1-flash' }
+    });
+    await new Promise((r) => setTimeout(r, 30));
+
+    ok(balanceReqBody && balanceReqBody.customApiKey === 'sk-chat-123456', '聊天模式自动携带分模式 apiKey 请求 /api/deepseek/check-balance');
+    const pill = doc.getElementById('oss-ds-monitor-trigger-btn');
+    const balNumEl = doc.getElementById('oss-mon-bal-num');
+    ok(pill && pill.innerHTML.includes('余 ¥48.62'), '胶囊实时展示账户余额 余 ¥48.62');
+    ok(balNumEl && balNumEl.textContent === '¥ 48.62', '详情弹窗实时展示余额 ¥ 48.62');
+
+    // 2) 跨模式不抢占：当在 DeepSeek 聊天页面，PhoneAgent syncStatus/setExecMode('local') 不得关闭聊天计费胶囊
+    win.PhoneAgent.setExecMode('local');
+    win.PhoneAgent.syncStatus();
+    ok(plugin.getState().enabled === true && !pill.classList.contains('hidden'), '非手机辅助模式下 PhoneAgent.syncStatus 不会抢占或隐藏聊天计费胶囊');
+
+    // 3) 多轮记账（含 reasoning_tokens）与今日/累计统计校验
+    plugin.recordTurnUsage({
+      usage: {
+        prompt_tokens: 2000,
+        prompt_cache_hit_tokens: 1000,
+        completion_tokens: 400,
+        completion_tokens_details: { reasoning_tokens: 150 }
+      },
+      model: 'deepseek-v4.1-flash',
+      source: 'DeepSeek对话',
+      apiKey: 'sk-chat-123456',
+      provider: 'own_deepseek'
+    });
+    plugin.recordTurnUsage({
+      usage: {
+        prompt_tokens: 1000,
+        prompt_cache_hit_tokens: 500,
+        completion_tokens: 200
+      },
+      model: 'deepseek-v4.1-flash',
+      source: '主动对话',
+      apiKey: 'sk-chat-123456',
+      provider: 'own_deepseek'
+    });
+
+    const st3 = plugin.getState();
+    ok(st3.records.length === 2 && st3.aggregate.totalTokens === 3600, '正确累加 2 轮对话总 Token (3600)');
+    ok(st3.aggregate.todayTokens === 3600 && st3.aggregate.todayCost > 0, '今日消耗 Token 与费用统计正确');
+    ok(st3.aggregate.totalReasoningTokens === 150, '正确记录推理 reasoning_tokens');
+    const todayStatsEl = doc.getElementById('oss-mon-today-stats');
+    const totalStatsEl = doc.getElementById('oss-mon-total-stats');
+    ok(todayStatsEl && todayStatsEl.textContent.includes('3600 tok'), '弹窗今日统计节点渲染正确');
+    ok(totalStatsEl && totalStatsEl.textContent.includes('3600 tok'), '弹窗累计统计节点渲染正确');
+
+    // 4) 手机辅助 api_direct 模式下的需求预检（runPreFlightCheck）记账验证
+    appShell.dataset.uiMode = 'phone-agent';
+    win.PhoneAgent.setExecMode('api_direct');
+    win.AndroidAppBridge.nativeHttpPostAsync = (reqId) => {
+      setTimeout(() => {
+        win.__onNativeHttpResult(reqId, JSON.stringify({
+          ok: true,
+          status: 200,
+          body: JSON.stringify({
+            choices: [{ message: { content: JSON.stringify({ intent: 'task', ready: false, thought: '需确认店铺', question: '想点哪家？', options: ['麦当劳'] }) } }],
+            usage: { prompt_tokens: 300, completion_tokens: 50, total_tokens: 350 }
+          })
+        }));
+      }, 5);
+    };
+    const preRes = await hooks.requestPreFlightCheck({
+      execMode: 'api_direct',
+      task: '帮我点个外卖',
+      clarifyPolicy: 'always',
+      installedApps: ['美团']
+    });
+    ok(preRes && preRes.ok === true, 'requestPreFlightCheck 正常完成需求预检');
+    const stAfterPre = plugin.getState();
+    ok(stAfterPre.records[0]?.source === '手机辅助·预检' && stAfterPre.records[0]?.totalTokens === 350, '手机辅助预检消耗的 Token 自动计入 DeepSeekMonitorPlugin');
+
+    // 5) App 端 standaloneAdapter.js own_deepseek 模式附带 stream_options 并保留尾包完整 usage
+    const adapterCode = fs.readFileSync(path.join(ROOT, 'public', 'standaloneAdapter.js'), 'utf8');
+    const lsMap2 = new Map();
+    const ssMap2 = new Map();
+    let capturedDsReqBody = null;
+    const enc2 = new TextEncoder();
+    const dsChunks = [
+      enc2.encode('data: {"choices":[{"delta":{"content":"你好，计费正常"}}]}\n\n'),
+      // 模拟无结尾换行符的尾包，测试 tailStr 循环解析 usage
+      enc2.encode('data: {"choices":[],"usage":{"prompt_tokens":1500,"completion_tokens":320,"total_tokens":1820,"prompt_cache_hit_tokens":800,"prompt_cache_miss_tokens":700,"completion_tokens_details":{"reasoning_tokens":120}}}')
+    ];
+    let dsIdx = 0;
+    const saWin2 = {
+      location: { protocol: 'https:', hostname: 'appassets.androidplatform.net', origin: 'https://appassets.androidplatform.net', search: '' },
+      AndroidAppBridge: { isNativeApk: () => true, saveAuthCredentials: () => {} },
+      localStorage: {
+        getItem: (k) => (lsMap2.has(k) ? lsMap2.get(k) : null),
+        setItem: (k, v) => lsMap2.set(k, String(v)),
+        removeItem: (k) => lsMap2.delete(k)
+      },
+      sessionStorage: {
+        getItem: (k) => (ssMap2.has(k) ? ssMap2.get(k) : null),
+        setItem: (k, v) => ssMap2.set(k, String(v)),
+        removeItem: (k) => ssMap2.delete(k)
+      },
+      fetch: async (url, init = {}) => {
+        if (String(url).includes('api.deepseek.com') && String(url).includes('/chat/completions')) {
+          capturedDsReqBody = JSON.parse(init.body || '{}');
+          return {
+            ok: true,
+            status: 200,
+            body: {
+              getReader() {
+                return {
+                  async read() {
+                    if (dsIdx < dsChunks.length) return { done: false, value: dsChunks[dsIdx++] };
+                    return { done: true, value: undefined };
+                  },
+                  releaseLock() {}
+                };
+              }
+            }
+          };
+        }
+        return { ok: true, status: 200, json: async () => ({ ok: true }) };
+      },
+      Headers, Response, ReadableStream, TextEncoder, TextDecoder, URL, URLSearchParams, AbortController,
+      console, Math, Date, JSON, setTimeout, clearTimeout
+    };
+    saWin2.window = saWin2;
+    vm.createContext(saWin2);
+    vm.runInContext(adapterCode, saWin2);
+
+    const boot2 = await (await saWin2.fetch('/api/bootstrap')).json();
+    const sess2 = await (await saWin2.fetch('/api/sessions', {
+      method: 'POST',
+      body: JSON.stringify({ persona_id: boot2.personas[0].id })
+    })).json();
+    const stream2 = await saWin2.fetch('/api/chat/stream', {
+      method: 'POST',
+      body: JSON.stringify({
+        session_id: sess2.session_id,
+        content: '测试统计用量',
+        include_follow_ups: false,
+        llm_mode: 'api',
+        mode_api_override: {
+          provider: 'own_deepseek',
+          api_key: 'sk-ds-live-999'
+        }
+      })
+    });
+    const dec2 = new TextDecoder();
+    let sse2 = '';
+    await saWin2.__STAR_STANDALONE_HOOKS__.readStreamBodyWithReader(stream2.body, (c) => {
+      sse2 += dec2.decode(c, { stream: true });
+    });
+    sse2 += dec2.decode();
+
+    ok(capturedDsReqBody && capturedDsReqBody.stream_options?.include_usage === true, 'App 端 DeepSeek 官方直连自动附带 stream_options.include_usage');
+    ok(sse2.includes('"total_tokens":1820') && sse2.includes('"reasoning_tokens":120'), 'App 端 SSE done 事件完整透传尾包 usage 全部字段');
+    const exp2 = await (await saWin2.fetch(`/api/sessions/${sess2.session_id}/export`)).json();
+    const lastAsst2 = [...(exp2.messages || [])].reverse().find((m) => m.role === 'assistant');
+    const meta2 = JSON.parse(lastAsst2?.meta_json || '{}');
+    ok(meta2.usage?.prompt_tokens === 1500 && meta2.usage?.completion_tokens === 320 && meta2.usage?.prompt_cache_hit_tokens === 800, 'App 端持久化消息完整保留 prompt/completion/cache_hit usage');
   }
 
   console.log(`ALL_PHONE_AGENT_LOGIC_TESTS_PASSED (${passed} assertions)`);

@@ -7627,7 +7627,7 @@
       findPopupDismissNode,
       getActionFingerprint,
       shouldSkipPreFlightClarify,
-      runPreFlightCheck,
+      requestPreFlightCheck,
       summarizePlanArgs,
       runReActLoop,
       openSetupGuideWizard,

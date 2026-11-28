@@ -220,6 +220,8 @@ public class FloatAgentService extends Service {
     private ValueAnimator petBreathAnim;
     private ValueAnimator petActionAnim;
     private boolean isDraggingPet = false;
+    private boolean extBarHiddenDuringDrag = false;
+    private int headBubbleYOffset = 0;
     private long lastDragVoiceMs = 0L;
     private int dragWiggleCount = 0;
 
@@ -382,19 +384,52 @@ public class FloatAgentService extends Service {
         }
     };
 
+    private void restoreBubbleWindowOffset() {
+        if (headBubbleYOffset != 0 && layoutParams != null && windowManager != null && floatRootView != null) {
+            DisplayMetrics dm = getResources().getDisplayMetrics();
+            int petH = (petBubbleContainer != null && petBubbleContainer.getHeight() > 0) ? petBubbleContainer.getHeight() : dp(100);
+            int maxY = Math.max(dp(28), dm.heightPixels - petH - dp(24));
+            layoutParams.y = Math.max(dp(28), Math.min(layoutParams.y + headBubbleYOffset, maxY));
+            savedPillY = layoutParams.y;
+            headBubbleYOffset = 0;
+            try {
+                windowManager.updateViewLayout(floatRootView, layoutParams);
+            } catch (Exception ignored) {}
+        } else {
+            headBubbleYOffset = 0;
+        }
+    }
+
+    private void dismissHeadBubbleImmediate() {
+        mainHandler.removeCallbacks(headBubbleHideRunnable);
+        final View targetWrap = headSpeechBubbleWrap != null ? headSpeechBubbleWrap : headSpeechBubbleView;
+        if (targetWrap != null) {
+            targetWrap.animate().cancel();
+            if (targetWrap.getVisibility() == View.VISIBLE) {
+                targetWrap.setVisibility(View.GONE);
+            }
+            targetWrap.setAlpha(1f);
+            targetWrap.setTranslationY(0f);
+        }
+        restoreBubbleWindowOffset();
+    }
+
     private final Runnable headBubbleHideRunnable = new Runnable() {
         @Override
         public void run() {
             final View targetWrap = headSpeechBubbleWrap != null ? headSpeechBubbleWrap : headSpeechBubbleView;
-            if (targetWrap != null) {
-                targetWrap.animate().alpha(0f).translationY(dpFloat(4f)).setDuration(260).withEndAction(new Runnable() {
+            if (targetWrap != null && targetWrap.getVisibility() == View.VISIBLE) {
+                targetWrap.animate().alpha(0f).translationY(dpFloat(4f)).setDuration(220).withEndAction(new Runnable() {
                     @Override
                     public void run() {
                         targetWrap.setVisibility(View.GONE);
                         targetWrap.setAlpha(1f);
                         targetWrap.setTranslationY(0f);
+                        restoreBubbleWindowOffset();
                     }
                 }).start();
+            } else {
+                restoreBubbleWindowOffset();
             }
         }
     };
@@ -1366,24 +1401,24 @@ public class FloatAgentService extends Service {
         String key = poseKey != null ? poseKey : "idle";
         if (isNailong()) {
             switch (key) {
+                case "walk_right":
+                    return R.drawable.nailong_happy;
+                case "walk":
+                    return R.drawable.nailong_walk;
                 case "happy":
                 case "eating":
                 case "dance":
-                    return R.drawable.nailong_happy;
-                case "focus":
-                case "busy":
-                    return R.drawable.nailong_focus;
-                case "sleepy":
                 case "beg":
                     return R.drawable.nailong_sleepy;
-                case "walk":
-                    return R.drawable.nailong_walk;
-                case "drag":
+                case "focus":
+                case "busy":
                     return R.drawable.nailong_drag;
+                case "drag":
                 case "derp":
                 case "dizzy":
                     return R.drawable.nailong_derp;
                 case "idle":
+                case "sleepy":
                 default:
                     return R.drawable.nailong_idle;
             }
@@ -1564,14 +1599,14 @@ public class FloatAgentService extends Service {
         petTopRow.setClipChildren(false);
         petTopRow.setClipToPadding(false);
 
-        // 接地舞台：双层柔和地面接触投影 + 3D 透视景深立绘 + 脚底微尘/星光/气泡粒子画布
+        // 接地舞台：双层柔和地面接触投影 + 底层微尘星光粒子 + 清晰 Q 版立绘（粒子置于底层防遮脸）
         petStageFrame = new FrameLayout(this);
         petStageFrame.setClipChildren(false);
         petStageFrame.setClipToPadding(false);
-        petStageFrame.setLayoutParams(new LinearLayout.LayoutParams(dp(76), dp(70)));
+        petStageFrame.setLayoutParams(new LinearLayout.LayoutParams(dp(82), dp(76)));
 
         petGroundShadowView = new PetGroundShadowView(this);
-        FrameLayout.LayoutParams shLp = new FrameLayout.LayoutParams(dp(74), dp(18));
+        FrameLayout.LayoutParams shLp = new FrameLayout.LayoutParams(dp(78), dp(18));
         shLp.gravity = Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL;
         shLp.bottomMargin = dp(1);
         petGroundShadowView.setLayoutParams(shLp);
@@ -1579,8 +1614,7 @@ public class FloatAgentService extends Service {
         petAvatarView = new ImageView(this);
         petAvatarView.setImageResource(resolvePetPoseRes("idle"));
         petAvatarView.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        petAvatarView.setCameraDistance(5200f * getResources().getDisplayMetrics().density);
-        FrameLayout.LayoutParams avatarLp = new FrameLayout.LayoutParams(dp(64), dp(64));
+        FrameLayout.LayoutParams avatarLp = new FrameLayout.LayoutParams(dp(68), dp(68));
         avatarLp.gravity = Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL;
         avatarLp.bottomMargin = dp(4);
         petAvatarView.setLayoutParams(avatarLp);
@@ -1590,8 +1624,8 @@ public class FloatAgentService extends Service {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
         petStageFrame.addView(petGroundShadowView);
-        petStageFrame.addView(petAvatarView);
         petStageFrame.addView(petFxOverlayView);
+        petStageFrame.addView(petAvatarView);
 
         // 折叠态旁轻量「🎙」直达语音钮（靠腰部齐平，不抢脚底地面阴影视觉）
         quickMicBadgeView = new TextView(this);
@@ -1776,7 +1810,11 @@ public class FloatAgentService extends Service {
                     case MotionEvent.ACTION_DOWN:
                         wakePetOpacity();
                         stopPetRoaming();
+                        if (petActionAnim != null && petActionAnim.isRunning()) {
+                            petActionAnim.cancel();
+                        }
                         if (petAvatarView != null) {
+                            petAvatarView.animate().cancel();
                             petAvatarView.setScaleX(Math.abs(petAvatarView.getScaleX()));
                         }
                         initialX = layoutParams.x;
@@ -1795,6 +1833,15 @@ public class FloatAgentService extends Service {
                         if (!isDraggingPet && Math.hypot(dx, dy) > dp(6)) {
                             isDraggingPet = true;
                             dragWiggleCount++;
+                            if (petActionAnim != null && petActionAnim.isRunning()) {
+                                petActionAnim.cancel();
+                            }
+                            dismissHeadBubbleImmediate();
+                            initialY = layoutParams.y;
+                            if (externalPetActionBar != null && externalPetActionBar.getVisibility() == View.VISIBLE) {
+                                extBarHiddenDuringDrag = true;
+                                externalPetActionBar.setVisibility(View.GONE);
+                            }
                             setPetPose("drag");
                             long nowMs = System.currentTimeMillis();
                             if (nowMs - lastDragVoiceMs > 9000L) {
@@ -1803,26 +1850,33 @@ public class FloatAgentService extends Service {
                                     dragWiggleCount = 0;
                                     triggerDizzyAction();
                                 } else if (isNailong()) {
-                                    playWhaleVoice(R.raw.nailong_1, "drag", "shake",
+                                    playWhaleVoice(R.raw.nailong_1, "drag", "none",
                                             "🐲 哇啊啊——！飞起来啦！快放俺下来，肚皮要坠地啦~", false);
                                 } else {
-                                    playWhaleVoice(R.raw.feiyu_drag, "drag", "shake",
+                                    playWhaleVoice(R.raw.feiyu_drag, "drag", "none",
                                             "🎣 别、别突然从后面叫我，我真的会被你吓到！", false);
                                 }
                             }
                         }
                         if (isDraggingPet) {
-                            // 拎在半空中时脚底阴影明显缩淡，且随拖动惯性微摆身
-                            applyPetPhysics(9.5f, 0.96f, 1.045f, -vx * 0.45f, vx * 0.7f, 0f, 0.16f);
+                            // 拎在半空中时脚底阴影缩淡，关闭 3D rotationY 透视避免边缘发虚锯齿
+                            applyPetPhysics(6.5f, 0.98f, 1.03f, -vx * 0.35f, 0f, 0f, 0.22f);
+                            int curW = (petBubbleContainer != null && petBubbleContainer.getWidth() > 0)
+                                    ? Math.min(petBubbleContainer.getWidth(), dp(120))
+                                    : dp(82);
+                            int nextX = initialX + (int) dx;
+                            int nextY = initialY + (int) dy;
+                            int maxY = Math.max(dp(100), dm.heightPixels - dp(80));
+                            int clampedX = Math.max(0, Math.min(nextX, dm.widthPixels - curW));
+                            int clampedY = Math.max(dp(28), Math.min(nextY, maxY));
+                            if (clampedX != layoutParams.x || clampedY != layoutParams.y) {
+                                layoutParams.x = clampedX;
+                                layoutParams.y = clampedY;
+                                try {
+                                    windowManager.updateViewLayout(floatRootView, layoutParams);
+                                } catch (Exception ignored) {}
+                            }
                         }
-                        int nextX = initialX + (int) dx;
-                        int nextY = initialY + (int) dy;
-                        int maxY = Math.max(dp(100), dm.heightPixels - dp(80));
-                        layoutParams.x = Math.max(0, Math.min(nextX, dm.widthPixels - dp(56)));
-                        layoutParams.y = Math.max(dp(28), Math.min(nextY, maxY));
-                        try {
-                            windowManager.updateViewLayout(floatRootView, layoutParams);
-                        } catch (Exception ignored) {}
                         return true;
 
                     case MotionEvent.ACTION_UP:
@@ -1832,6 +1886,10 @@ public class FloatAgentService extends Service {
                         float diffY = Math.abs(event.getRawY() - initialTouchY);
                         boolean wasDragging = isDraggingPet;
                         isDraggingPet = false;
+                        if (extBarHiddenDuringDrag) {
+                            extBarHiddenDuringDrag = false;
+                            applyExternalPetBarVisibility();
+                        }
                         if (petAvatarView != null) {
                             petAvatarView.setRotation(0f);
                             petAvatarView.setRotationY(0f);
@@ -1949,13 +2007,13 @@ public class FloatAgentService extends Service {
         headSpeechBubbleCard.setOrientation(LinearLayout.VERTICAL);
         headSpeechBubbleCard.setPadding(dp(11), dp(8), dp(11), dp(8));
         headSpeechBubbleCard.setMinimumWidth(dp(112));
-        setViewBg(headSpeechBubbleCard, createRoundRect("#EB0E1629", 15, "#6638BDF8", 1.2f));
+        setViewBg(headSpeechBubbleCard, createRoundRect("#F20F172A", 15, "#7038BDF8", 1.2f));
 
         LinearLayout badgeRow = new LinearLayout(this);
         badgeRow.setOrientation(LinearLayout.HORIZONTAL);
         badgeRow.setGravity(Gravity.CENTER_VERTICAL);
         LinearLayout.LayoutParams brLp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         brLp.bottomMargin = dp(3);
         badgeRow.setLayoutParams(brLp);
 
@@ -1969,21 +2027,22 @@ public class FloatAgentService extends Service {
         headBubbleBadgeView.setTextColor(Color.parseColor("#7DD3FC"));
         headBubbleBadgeView.setTextSize(10f);
         headBubbleBadgeView.setTypeface(null, android.graphics.Typeface.BOLD);
-        headBubbleBadgeView.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f));
+        headBubbleBadgeView.setLayoutParams(new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         TextView closeMiniHint = new TextView(this);
         closeMiniHint.setText("×");
         closeMiniHint.setTextColor(Color.parseColor("#94A3B8"));
         closeMiniHint.setTextSize(11f);
-        closeMiniHint.setPadding(dp(6), 0, dp(1), 0);
+        closeMiniHint.setPadding(dp(8), 0, dp(1), 0);
 
         badgeRow.addView(headBubbleBadgeDot);
         badgeRow.addView(headBubbleBadgeView);
         badgeRow.addView(closeMiniHint);
 
         headSpeechBubbleView = new TextView(this);
-        headSpeechBubbleView.setTextColor(Color.parseColor("#F8FAFC"));
-        headSpeechBubbleView.setTextSize(12f);
+        headSpeechBubbleView.setTextColor(Color.parseColor("#FFFFFF"));
+        headSpeechBubbleView.setTextSize(12.5f);
         headSpeechBubbleView.setLineSpacing(dpFloat(2.5f), 1.0f);
         headSpeechBubbleView.setMaxWidth(maxBubbleWidth);
         headSpeechBubbleView.setMaxLines(4);
@@ -1995,6 +2054,7 @@ public class FloatAgentService extends Service {
         headBubbleTailView = new BubblePointerView(this);
         LinearLayout.LayoutParams tailLp = new LinearLayout.LayoutParams(dp(14), dp(7));
         tailLp.leftMargin = dp(24);
+        tailLp.topMargin = -dp(1);
         headBubbleTailView.setLayoutParams(tailLp);
 
         headSpeechBubbleWrap.addView(headSpeechBubbleCard);
@@ -2155,6 +2215,7 @@ public class FloatAgentService extends Service {
         taskHudTailView = new BubblePointerView(this);
         LinearLayout.LayoutParams hTailLp = new LinearLayout.LayoutParams(dp(14), dp(7));
         hTailLp.leftMargin = dp(24);
+        hTailLp.topMargin = -dp(1);
         taskHudTailView.setLayoutParams(hTailLp);
 
         taskHudWrap.addView(taskHudCard);
@@ -2219,8 +2280,8 @@ public class FloatAgentService extends Service {
     private void applyPersonaVisualTheme() {
         boolean nl = isNailong();
         String accentHex = nl ? "#FBBF24" : "#38BDF8";
-        String bubbleBgHex = nl ? "#EB1A1408" : "#EB0E1629";
-        String bubbleStrokeHex = nl ? "#80FACC15" : "#6638BDF8";
+        String bubbleBgHex = nl ? "#F21F170A" : "#F20F172A";
+        String bubbleStrokeHex = nl ? "#99FACC15" : "#7038BDF8";
         int dotColor = Color.parseColor(nl ? "#FACC15" : "#38BDF8");
 
         if (quickMicBadgeView != null && !isRecordingVoice && !isTranscribingVoice) {
@@ -2471,14 +2532,14 @@ public class FloatAgentService extends Service {
     private TextView createExternalActionPill(String label, String fillHex, String textHex, String strokeHex) {
         TextView btn = new TextView(this);
         btn.setText(label);
-        btn.setTextSize(10.5f);
+        btn.setTextSize(10f);
         btn.setTextColor(Color.parseColor(textHex));
         btn.setGravity(Gravity.CENTER);
         btn.setSingleLine(true);
-        btn.setPadding(dp(7), dp(3), dp(7), dp(3));
+        btn.setPadding(dp(5), dp(3), dp(5), dp(3));
         setViewBg(btn, createRoundRect(fillHex, 9, strokeHex, 1));
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        lp.rightMargin = dp(4);
+        lp.rightMargin = dp(3);
         btn.setLayoutParams(lp);
         return btn;
     }
@@ -2611,7 +2672,7 @@ public class FloatAgentService extends Service {
         boolean isSingingNow = singerEngine != null && singerEngine.isSinging();
         if (isSingingNow) {
             String line = singerEngine.getCurrentLine();
-            floatingLyricSubText.setText("🎤 鲸鱼娘正在清唱");
+            floatingLyricSubText.setText("🎤 " + petDisplayName() + "正在清唱");
             floatingLyricMainText.setText(!TextUtils.isEmpty(line) ? line : "🎵 冒尖一碗大白米饭~");
             floatingLyricRootView.setVisibility(View.VISIBLE);
             return;
@@ -2699,12 +2760,11 @@ public class FloatAgentService extends Service {
                     float scaleY = 0.986f + 0.044f * asymBreath;
                     float scaleX = 1.0f / scaleY;
                     float liftDp = -0.6f * (1.0f - asymBreath);
-                    // 柔和重心换脚微倾与 3D 侧头看人细节
+                    // 柔和重心换脚微倾，去掉 3D rotationY 避免透明浮窗边缘锯齿发虚
                     float shiftWave = (float) Math.sin(f * Math.PI * 2.0);
-                    float tiltDeg = 1.5f * shiftWave;
-                    float yawDeg = 5.0f * (float) Math.sin(f * Math.PI * 2.0 + 0.6);
-                    float shiftXdp = 0.8f * shiftWave;
-                    applyPetPhysics(liftDp, scaleX, scaleY, tiltDeg, yawDeg, shiftXdp, 0.971f);
+                    float tiltDeg = 1.4f * shiftWave;
+                    float shiftXdp = 0.7f * shiftWave;
+                    applyPetPhysics(liftDp, scaleX, scaleY, tiltDeg, 0f, shiftXdp, 0.971f);
                 }
             }
         });
@@ -2714,6 +2774,9 @@ public class FloatAgentService extends Service {
     private void playPetBounceAnim(final String animType) {
         if (petActionAnim != null) {
             petActionAnim.cancel();
+        }
+        if (animType == null || animType.isEmpty() || "none".equals(animType)) {
+            return;
         }
         final ImageView target = isExpanded ? headPetIcon : petAvatarView;
         if (target == null) return;
@@ -3752,7 +3815,7 @@ public class FloatAgentService extends Service {
                 refreshPrefSwitchButtons();
                 Toast.makeText(FloatAgentService.this,
                         antiMistouchEnabled
-                                ? "已开启防误触：单点大肥鱼不弹窗（连点 3 下打开面板）"
+                                ? "已开启防误触：单点" + petDisplayName() + "不弹窗（连点 3 下打开面板）"
                                 : "已关闭防误触：单击即可展开面板",
                         Toast.LENGTH_LONG).show();
             }
@@ -3768,7 +3831,7 @@ public class FloatAgentService extends Service {
                 applyVoiceTailVisibility();
                 refreshPrefSwitchButtons();
                 Toast.makeText(FloatAgentService.this,
-                        showVoiceTail ? "已显示折叠态快捷语音尾巴" : "已隐藏折叠态语音尾巴（只保留大肥鱼本体）",
+                        showVoiceTail ? "已显示折叠态快捷语音尾巴" : "已隐藏折叠态语音尾巴（只保留" + petDisplayName() + "本体）",
                         Toast.LENGTH_SHORT).show();
             }
         });
@@ -4420,7 +4483,7 @@ public class FloatAgentService extends Service {
     }
 
     private void showHeadBubble(final String msg, final long durationMs) {
-        if (headSpeechBubbleView == null || msg == null || msg.trim().isEmpty()) return;
+        if (headSpeechBubbleView == null || msg == null || msg.trim().isEmpty() || isDraggingPet) return;
         // 正在执行任务、LIVE HUD 激活时，不让闲聊气泡遮挡重要任务信息
         if (!"idle".equals(sCurrentStatus) && taskHudWrap != null && taskHudWrap.getVisibility() == View.VISIBLE) {
             return;
@@ -4428,6 +4491,7 @@ public class FloatAgentService extends Service {
         final View targetWrap = headSpeechBubbleWrap != null ? headSpeechBubbleWrap : headSpeechBubbleView;
         if (!headBubbleEnabled) {
             targetWrap.setVisibility(View.GONE);
+            restoreBubbleWindowOffset();
             return;
         }
         String trimmed = msg.trim();
@@ -4438,16 +4502,40 @@ public class FloatAgentService extends Service {
         }
         headSpeechBubbleView.setText(trimmed);
         targetWrap.setAlpha(0f);
-        targetWrap.setScaleX(0.88f);
-        targetWrap.setScaleY(0.88f);
-        targetWrap.setTranslationY(dpFloat(5f));
+        targetWrap.setScaleX(0.92f);
+        targetWrap.setScaleY(0.92f);
+        targetWrap.setTranslationY(dpFloat(4f));
         targetWrap.setVisibility(View.VISIBLE);
+
+        // 向上扩展空间，避免弹出头顶气泡时将奶龙本体向下挤出或溢出屏幕右侧
+        if (layoutParams != null && windowManager != null && floatRootView != null) {
+            DisplayMetrics dm = getResources().getDisplayMetrics();
+            int maxW = Math.min(dp(248), Math.round(dm.widthPixels * 0.72f));
+            targetWrap.measure(
+                    View.MeasureSpec.makeMeasureSpec(maxW, View.MeasureSpec.AT_MOST),
+                    View.MeasureSpec.makeMeasureSpec(dp(180), View.MeasureSpec.AT_MOST)
+            );
+            int measuredH = targetWrap.getMeasuredHeight() + dp(4);
+            int measuredW = Math.max(dp(124), targetWrap.getMeasuredWidth());
+            int curAnchorY = layoutParams.y + headBubbleYOffset;
+            int targetY = Math.max(dp(28), curAnchorY - measuredH);
+            headBubbleYOffset = curAnchorY - targetY;
+            layoutParams.y = targetY;
+            int maxSafeX = Math.max(dp(6), dm.widthPixels - measuredW - dp(8));
+            if (layoutParams.x > maxSafeX) {
+                layoutParams.x = maxSafeX;
+            }
+            try {
+                windowManager.updateViewLayout(floatRootView, layoutParams);
+            } catch (Exception ignored) {}
+        }
+
         targetWrap.animate()
                 .alpha(1f)
                 .scaleX(1f)
                 .scaleY(1f)
                 .translationY(0f)
-                .setDuration(240)
+                .setDuration(220)
                 .start();
         if (durationMs > 0) {
             mainHandler.postDelayed(headBubbleHideRunnable, durationMs);
@@ -4472,22 +4560,23 @@ public class FloatAgentService extends Service {
         if (petActionAnim != null && petActionAnim.isRunning()) {
             petActionAnim.cancel();
         }
+        dismissHeadBubbleImmediate();
 
         final DisplayMetrics dm = getResources().getDisplayMetrics();
         int petW = (petBubbleContainer != null && petBubbleContainer.getWidth() > 0) ? petBubbleContainer.getWidth() : dp(96);
         int petH = (petBubbleContainer != null && petBubbleContainer.getHeight() > 0) ? petBubbleContainer.getHeight() : dp(120);
 
         final int minX = dp(8);
-        final int maxX = Math.max(minX + dp(40), dm.widthPixels - Math.min(petW, dp(160)) - dp(8));
+        final int maxX = Math.max(minX + dp(32), dm.widthPixels - petW - dp(8));
         final int minY = dp(52);
         final int maxY = Math.max(minY + dp(80), dm.heightPixels - petH - dp(95));
 
-        final int startX = layoutParams.x;
-        final int startY = layoutParams.y;
+        final int startX = Math.max(minX, Math.min(layoutParams.x, maxX));
+        final int startY = Math.max(minY, Math.min(layoutParams.y, maxY));
 
         // 贴地行走：偏向横移为主（±25° 以内平缓走位），避免无重力垂直斜飘浮空感
-        int stepDistMin = dp(78);
-        int stepDistMax = dp(185);
+        int stepDistMin = dp(72);
+        int stepDistMax = dp(172);
         int distTarget = stepDistMin + petRandom.nextInt(Math.max(10, stepDistMax - stepDistMin));
         float dirChoice = (startX < minX + dp(45)) ? 1f : ((startX > maxX - dp(45)) ? -1f : (petRandom.nextBoolean() ? 1f : -1f));
         double angle = (dirChoice > 0 ? 0.0 : Math.PI) + (petRandom.nextDouble() - 0.5) * 0.72;
@@ -4503,9 +4592,10 @@ public class FloatAgentService extends Service {
         final int targetX = Math.max(minX, Math.min(candX, maxX));
         final int targetY = Math.max(minY, Math.min(candY, maxY));
 
-        // 依据走路方向自动转向：向左走翻转 + 微 3D 侧身转向
+        // 奶龙：向左使用天然朝左贴图 walk，向右使用天然朝右贴图 walk_right（绝不镜像）；大肥鱼维持朝向翻转
         final float dirSign = (targetX < startX) ? -1f : 1f;
-        setPetPose("walk");
+        final boolean nl = isNailong();
+        setPetPose((nl && dirSign > 0f) ? "walk_right" : "walk");
         mainHandler.removeCallbacks(lifePoseResetRunnable);
 
         double dist = Math.hypot(targetX - startX, targetY - startY);
@@ -4526,65 +4616,59 @@ public class FloatAgentService extends Service {
                 float liftDp;
                 float sy;
                 float tiltDeg;
-                float yawDeg;
 
                 if (f < 0.09f) {
-                    // 起步前预备动作（Anticipation）：微蹲踩实准备迈步
                     float p = f / 0.09f;
                     float pre = (float) Math.sin(p * Math.PI * 0.5);
                     moveProgress = 0f;
-                    liftDp = -1.2f * pre;
-                    sy = 1f - 0.055f * pre;
-                    tiltDeg = -3.5f * dirSign * pre;
-                    yawDeg = dirSign * 14f * pre;
+                    liftDp = -1.0f * pre;
+                    sy = 1f - 0.045f * pre;
+                    tiltDeg = -2.8f * dirSign * pre;
                 } else if (f < 0.91f) {
-                    // 4-Keyframe 步态循环：Contact/Down(压沉发尘) -> Passing/Up(抬步推高)
                     float walkF = (f - 0.09f) / 0.82f;
                     moveProgress = (float) (0.5 - 0.5 * Math.cos(Math.PI * walkF));
                     double rad = walkF * Math.PI * 2.0 * strideCycles;
                     float sVal = (float) Math.sin(rad);
                     float cVal = (float) Math.cos(rad);
                     if (sVal >= 0f) {
-                        // Passing / Up：抬脚过渡，身体微伸
-                        liftDp = 2.6f * sVal;
-                        sy = 1f + 0.032f * sVal;
+                        liftDp = 2.2f * sVal;
+                        sy = 1f + 0.028f * sVal;
                     } else {
-                        // Contact / Down：脚掌重踩地面！重心下沉 + 体积压扁 + 阴影扩实 + 弹微小尘！
-                        liftDp = 1.35f * sVal;
-                        sy = 1f + 0.055f * sVal;
+                        liftDp = 1.0f * sVal;
+                        sy = 1f + 0.045f * sVal;
                     }
                     int stepIdx = (int) Math.floor(walkF * strideCycles);
                     if (stepIdx != lastFootstepIndex[0] && sVal < -0.75f) {
                         lastFootstepIndex[0] = stepIdx;
                         emitPetFx(PetFxOverlayView.FX_DUST, 1);
                     }
-                    tiltDeg = 4.5f * cVal + 2.0f * dirSign;
-                    yawDeg = dirSign * 14f;
+                    tiltDeg = 3.0f * cVal + 1.5f * dirSign;
                 } else {
-                    // 到站前刹车过冲与回弹归位（Overshoot & Settle）
                     float p = (f - 0.91f) / 0.09f;
                     float brake = (float) Math.sin(p * Math.PI);
                     moveProgress = 1f;
-                    liftDp = -1.4f * brake;
-                    sy = 1f - 0.06f * brake;
-                    tiltDeg = 3.2f * dirSign * brake;
-                    yawDeg = dirSign * 14f * (1f - p);
+                    liftDp = -1.1f * brake;
+                    sy = 1f - 0.05f * brake;
+                    tiltDeg = 2.5f * dirSign * brake;
                     if (lastFootstepIndex[0] != 999) {
                         lastFootstepIndex[0] = 999;
                         emitPetFx(PetFxOverlayView.FX_DUST, 2);
                     }
                 }
 
-                layoutParams.x = Math.max(minX, Math.min(Math.round(startX + (targetX - startX) * moveProgress), maxX));
-                layoutParams.y = Math.max(minY, Math.min(Math.round(startY + (targetY - startY) * moveProgress), maxY));
-                savedPillX = layoutParams.x;
-                savedPillY = layoutParams.y;
-
-                float sx = dirSign * (1.0f / Math.max(0.85f, sy));
-                applyPetPhysics(liftDp, sx, sy, tiltDeg, yawDeg, 0f, 0.971f);
-                try {
-                    windowManager.updateViewLayout(floatRootView, layoutParams);
-                } catch (Exception ignored) {}
+                int nextX = Math.max(minX, Math.min(Math.round(startX + (targetX - startX) * moveProgress), maxX));
+                int nextY = Math.max(minY, Math.min(Math.round(startY + (targetY - startY) * moveProgress), maxY));
+                float sx = (nl ? 1.0f : dirSign) * (1.0f / Math.max(0.88f, sy));
+                applyPetPhysics(liftDp, sx, sy, tiltDeg, 0f, 0f, 0.971f);
+                if (nextX != layoutParams.x || nextY != layoutParams.y) {
+                    layoutParams.x = nextX;
+                    layoutParams.y = nextY;
+                    savedPillX = nextX;
+                    savedPillY = nextY;
+                    try {
+                        windowManager.updateViewLayout(floatRootView, layoutParams);
+                    } catch (Exception ignored) {}
+                }
             }
         });
         petRoamAnimator.addListener(new AnimatorListenerAdapter() {
@@ -4597,7 +4681,7 @@ public class FloatAgentService extends Service {
                             .rotationY(0f)
                             .scaleX(1f)
                             .scaleY(1f)
-                            .setDuration(260)
+                            .setDuration(240)
                             .start();
                 }
                 if (petGroundShadowView != null) {
@@ -5847,8 +5931,8 @@ public class FloatAgentService extends Service {
         if (!dispatched) {
             bringMainActivityToFront(cmd, false);
         } else {
-            showPetSubtitle("🐟 鲸鱼娘收到「" + cmd + "」，马上行动~", 3000);
-            Toast.makeText(this, "鲸鱼娘已收到，正在规划执行", Toast.LENGTH_SHORT).show();
+            showPetSubtitle(petDisplayEmoji() + " " + petDisplayName() + "收到「" + cmd + "」，马上行动~", 3000);
+            Toast.makeText(this, petDisplayName() + "已收到，正在规划执行", Toast.LENGTH_SHORT).show();
         }
     }
 
@@ -8152,45 +8236,36 @@ public class FloatAgentService extends Service {
             if (w <= 0f || h <= 0f) return;
 
             float heightRatio = Math.max(0f, Math.min(1f, liftDp / 14f));
-            // 离地越高投影越窄越淡；往下踩实（liftDp < 0）时阴影略扩宽并变浓
             float pressBoost = liftDp < 0f ? Math.min(0.20f, (-liftDp) * 0.08f) : 0f;
-            float cx = w * 0.5f + dpFloat(shiftXdp) + dpFloat(tiltDeg * 0.14f);
-            float cy = h * 0.55f;
+            float cx = w * 0.5f + dpFloat(shiftXdp) + dpFloat(tiltDeg * 0.12f);
+            float cy = h * 0.56f;
 
-            float outerRx = w * (0.37f + pressBoost * 0.25f) * (1f - 0.38f * heightRatio) * (0.65f + 0.35f * scaleFactorX);
-            float outerRy = h * (0.40f + pressBoost * 0.20f) * (1f - 0.35f * heightRatio);
-            int outerAlpha = Math.max(12, Math.min(110, Math.round((68 + pressBoost * 110) * (1f - 0.65f * heightRatio))));
-
-            outerPaint.setShader(new RadialGradient(
-                    0f, 0f, 1f,
-                    Color.argb(outerAlpha, 15, 23, 42),
-                    Color.argb(0, 15, 23, 42),
-                    Shader.TileMode.CLAMP
-            ));
-            canvas.save();
-            canvas.translate(cx, cy);
-            canvas.scale(Math.max(1f, outerRx), Math.max(1f, outerRy));
-            outerRect.set(-1f, -1f, 1f, 1f);
+            // 使用三层柔滑半透明同心椭圆替代逐帧 Shader + canvas.scale，彻底避免移动中 GPU 块状伪影与内存抖动
+            float outerRx = Math.max(2f, w * (0.36f + pressBoost * 0.22f) * (1f - 0.36f * heightRatio) * (0.68f + 0.32f * scaleFactorX));
+            float outerRy = Math.max(1.5f, h * (0.38f + pressBoost * 0.18f) * (1f - 0.34f * heightRatio));
+            int aOuter = Math.max(6, Math.min(48, Math.round((30 + pressBoost * 40) * (1f - 0.68f * heightRatio))));
+            outerPaint.setShader(null);
+            outerPaint.setStyle(Paint.Style.FILL);
+            outerPaint.setColor(Color.argb(aOuter, 15, 23, 42));
+            outerRect.set(cx - outerRx, cy - outerRy, cx + outerRx, cy + outerRy);
             canvas.drawOval(outerRect, outerPaint);
-            canvas.restore();
 
-            // 内层鞋底接触封闭影（Ambient Occlusion），专治双脚悬空感
-            float coreRx = w * (0.24f + pressBoost * 0.22f) * (1f - 0.52f * heightRatio) * (0.6f + 0.4f * scaleFactorX);
-            float coreRy = h * (0.23f + pressBoost * 0.15f) * (1f - 0.48f * heightRatio);
-            int coreAlpha = Math.max(8, Math.min(145, Math.round((108 + pressBoost * 120) * (1f - 0.80f * heightRatio))));
-            if (coreAlpha > 8 && coreRx > 1f && coreRy > 1f) {
-                corePaint.setShader(new RadialGradient(
-                        0f, 0f, 1f,
-                        Color.argb(coreAlpha, 15, 23, 42),
-                        Color.argb(0, 15, 23, 42),
-                        Shader.TileMode.CLAMP
-                ));
-                canvas.save();
-                canvas.translate(cx, cy - dpFloat(0.6f));
-                canvas.scale(coreRx, coreRy);
-                coreRect.set(-1f, -1f, 1f, 1f);
+            float midRx = outerRx * 0.72f;
+            float midRy = outerRy * 0.70f;
+            int aMid = Math.max(6, Math.min(64, Math.round((44 + pressBoost * 55) * (1f - 0.72f * heightRatio))));
+            outerPaint.setColor(Color.argb(aMid, 15, 23, 42));
+            outerRect.set(cx - midRx, cy - midRy, cx + midRx, cy + midRy);
+            canvas.drawOval(outerRect, outerPaint);
+
+            float coreRx = Math.max(1.5f, outerRx * 0.45f);
+            float coreRy = Math.max(1.0f, outerRy * 0.44f);
+            int coreAlpha = Math.max(6, Math.min(82, Math.round((56 + pressBoost * 65) * (1f - 0.80f * heightRatio))));
+            if (coreAlpha > 6) {
+                corePaint.setShader(null);
+                corePaint.setStyle(Paint.Style.FILL);
+                corePaint.setColor(Color.argb(coreAlpha, 15, 23, 42));
+                coreRect.set(cx - coreRx, cy - coreRy - dpFloat(0.4f), cx + coreRx, cy + coreRy - dpFloat(0.4f));
                 canvas.drawOval(coreRect, corePaint);
-                canvas.restore();
             }
         }
     }
@@ -8239,13 +8314,13 @@ public class FloatAgentService extends Service {
                 p.type = fxType;
                 p.startMs = now;
                 if (fxType == FX_DUST) {
-                    p.x = w * 0.5f + (petRandom.nextFloat() - 0.5f) * dpFloat(22f);
-                    p.y = h - dpFloat(6.5f) + (petRandom.nextFloat() - 0.5f) * dpFloat(2.5f);
-                    p.vx = (p.x < w * 0.5f ? -1f : 1f) * dpFloat(0.25f + petRandom.nextFloat() * 0.35f);
-                    p.vy = -dpFloat(0.18f + petRandom.nextFloat() * 0.25f);
-                    p.r = dpFloat(2.4f + petRandom.nextFloat() * 2.0f);
-                    p.lifeMs = 460L + petRandom.nextInt(160);
-                    p.color = Color.parseColor(nailongTheme ? "#FDE68A" : "#CBD5E1");
+                    p.x = w * 0.5f + (petRandom.nextFloat() - 0.5f) * dpFloat(18f);
+                    p.y = h - dpFloat(4.5f) + (petRandom.nextFloat() - 0.5f) * dpFloat(2.0f);
+                    p.vx = (p.x < w * 0.5f ? -1f : 1f) * dpFloat(0.22f + petRandom.nextFloat() * 0.30f);
+                    p.vy = -dpFloat(0.14f + petRandom.nextFloat() * 0.20f);
+                    p.r = dpFloat(1.8f + petRandom.nextFloat() * 1.4f);
+                    p.lifeMs = 400L + petRandom.nextInt(140);
+                    p.color = Color.parseColor("#94A3B8");
                 } else if (fxType == FX_BUBBLE) {
                     p.x = w * 0.5f + (petRandom.nextFloat() - 0.5f) * dpFloat(30f);
                     p.y = h * 0.48f + (petRandom.nextFloat() - 0.5f) * dpFloat(16f);
@@ -8305,7 +8380,7 @@ public class FloatAgentService extends Service {
                     canvas.drawRect(p.x - curR * 0.28f, p.y - curR, p.x + curR * 0.28f, p.y + curR, fxPaint);
                 } else {
                     fxPaint.setStyle(Paint.Style.FILL);
-                    fxPaint.setColor(Color.argb(Math.round(a * 0.72f), Color.red(p.color), Color.green(p.color), Color.blue(p.color)));
+                    fxPaint.setColor(Color.argb(Math.round(a * 0.42f), Color.red(p.color), Color.green(p.color), Color.blue(p.color)));
                     canvas.drawCircle(p.x, p.y, p.r * (0.75f + 0.65f * progress), fxPaint);
                 }
             }

@@ -21058,8 +21058,8 @@ runCloneBtn.innerHTML = origHtml;
 })();
 ;
 (() => {
-const CURRENT_APK_VERSION = '2.7.9';
-const CURRENT_APK_CODE = 170;
+const CURRENT_APK_VERSION = '2.7.10';
+const CURRENT_APK_CODE = 171;
 const DEEPSEEK_API_KEYS_URL = 'https://platform.deepseek.com/api_keys';
 const DEEPSEEK_OFFICIAL_CHAT_URL = 'https://api.deepseek.com/v1/chat/completions';
 const PUBLIC_WEB_ORIGIN = 'https://star.claudexxb.online';
